@@ -26,6 +26,7 @@ import {
 import { TabType } from './Navigation.tsx';
 import { CompanyProfile } from '../types.js';
 import { isDemoActive } from '../services/demoService.js';
+import { checkIsSupabaseConfigured } from '../services/supabaseClient.ts';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -289,28 +290,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Supabase Cloud Sync Status Widget in Sidebar */}
       <div className="p-2 border-t border-[#1E3E62] bg-[#081322] shrink-0">
         {!collapsed ? (
-          <div className="bg-slate-900/90 p-2 rounded-lg border border-blue-500/30 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onOpenCompanySetup}
+            className="w-full text-right bg-slate-900/90 hover:bg-slate-800 p-2 rounded-lg border border-blue-500/30 flex items-center justify-between cursor-pointer transition-colors"
+            title={checkIsSupabaseConfigured() ? "قاعدة Supabase السحابية متصلة" : "النظام يعمل على التخزين المحلي (اضغط للربط بالسحابة)"}
+          >
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-blue-500/20 text-cyan-300 flex items-center justify-center border border-blue-400/30 shrink-0">
-                <Cloud className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+              <div className={`w-6 h-6 rounded-md flex items-center justify-center border shrink-0 ${
+                checkIsSupabaseConfigured() ? 'bg-blue-500/20 text-cyan-300 border-blue-400/30' : 'bg-amber-500/20 text-amber-300 border-amber-400/30'
+              }`}>
+                <Cloud className={`w-3.5 h-3.5 ${checkIsSupabaseConfigured() ? 'text-cyan-400 animate-pulse' : 'text-amber-400'}`} />
               </div>
               <div className="min-w-0">
                 <div className="text-[10px] font-bold text-white flex items-center gap-1 truncate">
-                  <span>قاعدة Supabase السحابية</span>
+                  <span>قاعدة Supabase</span>
                 </div>
-                <div className="text-[9px] text-emerald-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-2.5 h-2.5" /> متصلة
+                <div className={`text-[9px] font-semibold flex items-center gap-1 ${
+                  checkIsSupabaseConfigured() ? 'text-emerald-400' : 'text-amber-400'
+                }`}>
+                  <CheckCircle2 className="w-2.5 h-2.5" />
+                  <span>{checkIsSupabaseConfigured() ? 'متصلة سحابياً' : 'تخزين محلي مؤقت'}</span>
                 </div>
               </div>
             </div>
-          </div>
+          </button>
         ) : (
-          <div
-            className="w-8 h-8 mx-auto rounded-lg bg-blue-500/20 text-cyan-300 flex items-center justify-center border border-blue-400/30"
-            title="قاعدة Supabase السحابية متصلة"
+          <button
+            type="button"
+            onClick={onOpenCompanySetup}
+            className={`w-8 h-8 mx-auto rounded-lg flex items-center justify-center border cursor-pointer ${
+              checkIsSupabaseConfigured() ? 'bg-blue-500/20 text-cyan-300 border-blue-400/30' : 'bg-amber-500/20 text-amber-300 border-amber-400/30'
+            }`}
+            title={checkIsSupabaseConfigured() ? "قاعدة Supabase السحابية متصلة" : "تخزين محلي مؤقت (اضغط للربط)"}
           >
-            <Cloud className="w-4 h-4 text-cyan-400 animate-pulse" />
-          </div>
+            <Cloud className={`w-4 h-4 ${checkIsSupabaseConfigured() ? 'text-cyan-400 animate-pulse' : 'text-amber-400'}`} />
+          </button>
         )}
       </div>
     </aside>

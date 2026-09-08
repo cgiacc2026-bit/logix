@@ -225,14 +225,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (assetAccounts.length > 0) {
       return assetAccounts.reduce((sum, a) => sum + (a.balance || 0), 0);
     }
-    return kpis?.totalAssets || 62050;
+    return kpis?.totalAssets || 0;
   }, [assetAccounts, kpis]);
 
   const totalLiabilitiesNow = useMemo(() => {
     if (liabilityAccounts.length > 0) {
       return liabilityAccounts.reduce((sum, a) => sum + (a.balance || 0), 0);
     }
-    return kpis?.totalLiabilities || 3400;
+    return kpis?.totalLiabilities || 0;
   }, [liabilityAccounts, kpis]);
 
   const postedJournals = useMemo(() => {
@@ -328,8 +328,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const netAssetsDiff = currentNetAssets - prevNetAssets;
     const netAssetsPct = prevNetAssets > 0 ? (netAssetsDiff / prevNetAssets) * 100 : 0;
 
-    const currentSolvency = currentSelectedMonthLiabilities > 0 ? (currentSelectedMonthAssets / currentSelectedMonthLiabilities) : 100;
-    const prevSolvency = previousMonthLiabilities > 0 ? (previousMonthAssets / previousMonthLiabilities) : 100;
+    const currentSolvency = currentSelectedMonthLiabilities > 0 
+      ? (currentSelectedMonthAssets / currentSelectedMonthLiabilities) 
+      : (currentSelectedMonthAssets > 0 ? 100 : 0);
+    const prevSolvency = previousMonthLiabilities > 0 
+      ? (previousMonthAssets / previousMonthLiabilities) 
+      : (previousMonthAssets > 0 ? 100 : 0);
 
     return {
       currentSelectedMonthAssets,
@@ -1143,11 +1147,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="mt-0.5">
                 <div className="text-lg sm:text-xl font-bold text-[#1A1A1A] font-mono">
-                  {comparisonData.currentSolvency.toFixed(2)}x
+                  {comparisonData.currentSelectedMonthAssets === 0 && comparisonData.currentSelectedMonthLiabilities === 0
+                    ? '0.00x'
+                    : comparisonData.currentSelectedMonthLiabilities === 0
+                    ? '100% تغطية'
+                    : `${comparisonData.currentSolvency.toFixed(2)}x`}
                 </div>
 
                 <div className="text-[10px] text-[#8C8273] mt-0.5 font-mono">
-                  الشهر السابق: <span className="font-bold text-[#1A1A1A]">{comparisonData.prevSolvency.toFixed(2)}x</span>
+                  الشهر السابق: <span className="font-bold text-[#1A1A1A]">
+                    {comparisonData.previousMonthAssets === 0 && comparisonData.previousMonthLiabilities === 0
+                      ? '0.00x'
+                      : comparisonData.previousMonthLiabilities === 0
+                      ? '100% تغطية'
+                      : `${comparisonData.prevSolvency.toFixed(2)}x`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1155,12 +1169,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="mt-3 pt-2.5 border-t border-[#E5E1DA] space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-[#8C8273]">التقييم المحاسبي:</span>
-                <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30">
-                  وضع ممتاز (ملاءة مرتفعة)
+                <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded-full border ${
+                  comparisonData.currentSelectedMonthAssets === 0 && comparisonData.currentSelectedMonthLiabilities === 0
+                    ? 'bg-slate-100 text-slate-600 border-slate-200'
+                    : comparisonData.currentSolvency >= 2 || comparisonData.currentSelectedMonthLiabilities === 0
+                    ? 'bg-[#EBF5EE] text-[#2D6A4F] border-[#2D6A4F]/30'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  {comparisonData.currentSelectedMonthAssets === 0 && comparisonData.currentSelectedMonthLiabilities === 0
+                    ? 'لا توجد حركات مسجلة'
+                    : comparisonData.currentSelectedMonthLiabilities === 0
+                    ? 'وضع آمن (بدون التزامات)'
+                    : comparisonData.currentSolvency >= 3
+                    ? 'وضع ممتاز (ملاءة مرتفعة)'
+                    : comparisonData.currentSolvency >= 1.5
+                    ? 'وضع جيد (ملاءة كافية)'
+                    : 'ملاءة منخفضة'}
                 </span>
               </div>
               <p className="text-[10px] text-[#8C8273] leading-relaxed">
-                كل دين يقابله أصول جارية بثلاثة أضعاف على الأقل.
+                {comparisonData.currentSelectedMonthAssets === 0 && comparisonData.currentSelectedMonthLiabilities === 0
+                  ? 'لم يتم تسجيل أي التزامات أو أصول بعد لهذه المنشأة في هذه الفترة.'
+                  : comparisonData.currentSelectedMonthLiabilities === 0
+                  ? 'لا توجد أي ديون أو التزامات مستحقة، جميع الأصول غير مقيدة.'
+                  : 'كل دين يقابله أصول جارية بثلاثة أضعاف على الأقل.'}
               </p>
             </div>
           </div>
@@ -1551,7 +1583,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <div className="mt-3">
                           <h3 className="text-2xl font-serif font-extrabold text-cyan-900 font-mono">
-                            {(kpis.totalLiabilities > 0 ? (kpis.totalAssets / kpis.totalLiabilities) : 100).toFixed(2)}x
+                            {comparisonData.currentSelectedMonthAssets === 0 && comparisonData.currentSelectedMonthLiabilities === 0
+                              ? '0.00x'
+                              : (kpis.totalLiabilities > 0 ? (kpis.totalAssets / kpis.totalLiabilities) : (kpis.totalAssets > 0 ? 100 : 0)).toFixed(2) + 'x'}
                           </h3>
                           <p className="text-[11px] text-cyan-700 mt-1 font-medium">
                             تغطية الأصول للالتزامات والديون

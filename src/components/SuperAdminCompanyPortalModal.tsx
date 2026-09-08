@@ -6,10 +6,12 @@ import {
   updateCompanyStatus,
   registerCompany,
   setCurrentCompanyId,
-  isSupabaseConfigured,
+  checkIsSupabaseConfigured,
   getSupabaseConfig,
   saveSupabaseCredentials,
   testSupabaseConnection,
+  syncCompanyToSupabase,
+  syncAllLocalCompaniesToSupabase,
 } from '../services/supabaseClient.ts';
 import {
   Building2,
@@ -64,6 +66,8 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
   const [newOwnerEmail, setNewOwnerEmail] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('1234');
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
+  const [isSyncingAll, setIsSyncingAll] = useState<boolean>(false);
+  const [syncingCompanyId, setSyncingCompanyId] = useState<string | null>(null);
 
   // Cloud DB Modal state
   const [showCloudModal, setShowCloudModal] = useState<boolean>(false);
@@ -144,6 +148,60 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
     }
   };
 
+  const handleSyncAllCompanies = async () => {
+    setIsSyncingAll(true);
+    setActionMessage(null);
+    try {
+      const res = await syncAllLocalCompaniesToSupabase();
+      if (res.success) {
+        setActionMessage({
+          type: 'success',
+          text: res.message,
+        });
+        await fetchCompanies();
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: res.message,
+        });
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err?.message || 'فشل مزامنة الشركات',
+      });
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
+  const handleSyncSingleCompany = async (comp: TenantCompanyRecord) => {
+    setSyncingCompanyId(comp.id);
+    setActionMessage(null);
+    try {
+      const res = await syncCompanyToSupabase(comp);
+      if (res.success) {
+        setActionMessage({
+          type: 'success',
+          text: res.message,
+        });
+        await fetchCompanies();
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: res.message,
+        });
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err?.message || 'فشل المزامنة السحابية',
+      });
+    } finally {
+      setSyncingCompanyId(null);
+    }
+  };
+
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompanyName.trim() || !newOwnerEmail.trim()) return;
@@ -152,13 +210,20 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
     setActionMessage(null);
 
     try {
-      const res = await registerCompany(newCompanyName.trim(), newOwnerEmail.trim(), newPassword.trim());
+      const res = await registerCompany(newCompanyName.trim(), newOwnerEmail.trim(), newPassword.trim(), 'active');
       if (res.success && res.data) {
         // Automatically activate this company since it was created by Super Admin
         await updateCompanyStatus(res.data.id, 'active');
+        
+        const cloudNote = res.savedToCloud
+          ? 'وحفظها في قاعدة بيانات Supabase السحابية بنجاح 🟢'
+          : res.cloudError
+          ? `(حُفظت محلياً، تعذر الحفظ السحابي: ${res.cloudError}) 🟡`
+          : 'في النظام المحلي (يمكنك مزامنتها مع السحابة بضغطة زر) 🟡';
+
         setActionMessage({
-          type: 'success',
-          text: `تم إنشاء واعتماد شركة "${newCompanyName}" بنجاح وتفعيلها في قاعدة البيانات!`,
+          type: res.savedToCloud ? 'success' : 'error',
+          text: `تم إنشاء واعتماد شركة "${newCompanyName}" ${cloudNote}`,
         });
         setShowAddModal(false);
         setNewCompanyName('');
@@ -308,9 +373,9 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                   <span>ربط وتفعيل السحابة</span>
                 </button>
               </div>
-              <span className={`text-xs font-bold flex items-center gap-1 mt-1 ${isSupabaseConfigured ? 'text-emerald-700' : 'text-amber-700'}`}>
+              <span className={`text-xs font-bold flex items-center gap-1 mt-1 ${checkIsSupabaseConfigured() ? 'text-emerald-700' : 'text-amber-700'}`}>
                 <Database className="w-3.5 h-3.5" />
-                {isSupabaseConfigured ? '🟢 Supabase سحابي متصل' : '🟡 تخزين محلي مؤقت'}
+                {checkIsSupabaseConfigured() ? '🟢 Supabase سحابي متصل' : '🟡 تخزين محلي مؤقت'}
               </span>
             </div>
           </div>
@@ -340,7 +405,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={fetchCompanies}
                 disabled={isLoading}
@@ -348,6 +413,16 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                 title="تحديث البيانات"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+
+              <button
+                onClick={handleSyncAllCompanies}
+                disabled={isSyncingAll}
+                className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                title="مزامنة وحفظ جميع الشركات المحلية في قاعدة بيانات Supabase السحابية"
+              >
+                <Database className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
+                <span>{isSyncingAll ? 'جاري المزامنة...' : 'مزامنة الشركات مع Supabase'}</span>
               </button>
 
               <button
@@ -478,6 +553,16 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                             >
                               <ExternalLink className="w-3 h-3" />
                               <span>دخول</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleSyncSingleCompany(comp)}
+                              disabled={syncingCompanyId === comp.id}
+                              className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-lg font-semibold text-xs transition-all flex items-center gap-1 cursor-pointer"
+                              title="مزامنة وحفظ هذه الشركة في قاعدة Supabase السحابية"
+                            >
+                              <Database className={`w-3 h-3 text-sky-600 ${syncingCompanyId === comp.id ? 'animate-spin' : ''}`} />
+                              <span>{syncingCompanyId === comp.id ? 'جاري الرفع...' : 'رفع للسحابة'}</span>
                             </button>
 
                             <button

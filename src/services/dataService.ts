@@ -251,6 +251,38 @@ class LocalDataStore {
       return alwaleedProfile;
     }
 
+    // Look up in registered companies / tenants cache
+    try {
+      const cacheRaw = typeof window !== 'undefined' ? localStorage.getItem('all_tenants_cache') || localStorage.getItem('logix_registered_companies') : null;
+      if (cacheRaw) {
+        const tenants = JSON.parse(cacheRaw);
+        if (Array.isArray(tenants)) {
+          const found = tenants.find((t: any) => t.id === compId);
+          if (found) {
+            const p = found.profile_data || {};
+            const createdProfile: CompanyProfile = {
+              ...DEFAULT_COMPANY_PROFILE,
+              id: found.id,
+              nameAr: found.company_name || p.nameAr || 'منشأة جديدة',
+              nameEn: p.nameEn || found.company_name || 'New Enterprise',
+              tradeName: p.tradeName || found.company_name || 'منشأة جديدة',
+              email: found.owner_email || p.email || '',
+              legalForm: p.legalForm || 'شركة ذات مسؤولية محدودة',
+              functionalCurrency: p.functionalCurrency || 'KWD',
+              currency: p.currency || 'KWD',
+              decimalPlaces: p.decimalPlaces ?? 3,
+              vatRate: p.vatRate ?? 0,
+              crNumber: p.crNumber || found.login_code || '',
+            };
+            this.saveCompany(createdProfile);
+            return createdProfile;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error reading tenant cache in getCompany:', err);
+    }
+
     return stored || DEFAULT_COMPANY_PROFILE;
   }
 
@@ -468,7 +500,7 @@ export class DataService {
     let invBalance = 0;
 
     const balMap = new Map<string, number>();
-    accounts.forEach((a) => balMap.set(a.id, 0));
+    accounts.forEach((a) => balMap.set(a.id, Number(a.balance) || 0));
 
     journals.forEach((j) => {
       j.lines.forEach((l) => {
@@ -482,24 +514,41 @@ export class DataService {
       });
     });
 
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
+
     accounts.forEach((acc) => {
       const b = balMap.get(acc.id) || 0;
-      if (acc.code === '1111') bankBalance = b;
-      if (acc.code === '1112') cashBalance = b;
-      if (acc.code === '1120') recBalance = b;
-      if (acc.code === '2110') payBalance = b;
-      if (acc.code === '1130') invBalance = b;
-      if (acc.category === 'REVENUE') totalRevenue += b;
-      if (acc.category === 'EXPENSE') totalExpenses += b;
+      const code = String(acc.code || '');
+      const cat = String(acc.category || '');
+
+      const isAsset = cat === 'ASSET' || code.startsWith('1');
+      const isLiability = cat === 'LIABILITY' || code.startsWith('2');
+      const isEquity = cat === 'EQUITY' || code.startsWith('3');
+      const isRevenue = cat === 'REVENUE' || code.startsWith('4');
+      const isExpense = cat === 'EXPENSE' || code.startsWith('5');
+
+      if (isAsset) totalAssets += b;
+      if (isLiability) totalLiabilities += b;
+      if (isEquity) totalEquity += b;
+
+      if (code === '1111') bankBalance += b;
+      if (code === '1112') cashBalance += b;
+      if (code === '1120') recBalance += b;
+      if (code === '2110') payBalance += b;
+      if (code === '1130') invBalance += b;
+      if (isRevenue) totalRevenue += b;
+      if (isExpense) totalExpenses += b;
     });
 
     const unpaidCount = invoices.filter((i) => i.dueAmount > 0 && i.status !== 'CANCELLED').length;
     const netProfit = totalRevenue - totalExpenses;
 
     return {
-      totalAssets: bankBalance + cashBalance + recBalance + invBalance + 45000,
-      totalLiabilities: payBalance + 2500,
-      totalEquity: 50000 + netProfit,
+      totalAssets,
+      totalLiabilities,
+      totalEquity: totalEquity + netProfit,
       totalRevenue,
       totalExpenses,
       netProfit,

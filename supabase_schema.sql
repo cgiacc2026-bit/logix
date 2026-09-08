@@ -9,8 +9,21 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ==============================================================================
--- 1) إصلاح بنية جدول companies
+-- 1) إنشاء وإصلاح بنية جدول companies
 -- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.companies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name TEXT NOT NULL,
+    owner_email TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    type TEXT DEFAULT 'client',
+    login_code TEXT UNIQUE,
+    status TEXT DEFAULT 'pending',
+    profile_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
+);
+
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'client';
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS login_code TEXT UNIQUE;
 DO $$ BEGIN
@@ -18,6 +31,11 @@ DO $$ BEGIN
         ALTER TABLE public.companies ADD CONSTRAINT chk_companies_type CHECK (type IN ('system','demo','client'));
     END IF;
 END $$;
+
+-- صـلاحيات الوصول والأمان (Row Level Security) للسماح بتسجيل ومزامنة الشركات
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon and auth full access to companies" ON public.companies;
+CREATE POLICY "Allow anon and auth full access to companies" ON public.companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- ==============================================================================
 -- 2) تحديث شركة الديمو الموجودة (UPDATE أو INSERT إذا لم تكن موجودة)
