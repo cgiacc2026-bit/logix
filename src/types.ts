@@ -207,7 +207,7 @@ export interface Supplier {
   isActive?: boolean;
 }
 
-export type UserRole = 'ADMIN' | 'CHIEF_ACCOUNTANT' | 'ACCOUNTANT' | 'SALES' | 'AUDITOR';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'EXECUTIVE' | 'GENERAL_MANAGER' | 'CHIEF_ACCOUNTANT' | 'ACCOUNTANT' | 'SALES' | 'AUDITOR' | 'STAFF';
 
 export interface SystemUser {
   id: string;
@@ -221,6 +221,7 @@ export interface SystemUser {
   pinCode?: string;
   phone?: string;
   createdAt?: string;
+  isPlatformAdmin?: boolean;
 }
 
 export interface UnitDefinition {
@@ -544,6 +545,8 @@ export interface TenantCompanyRecord {
   owner_email: string;
   password_hash?: string;
   status: 'pending' | 'active' | 'suspended' | 'rejected';
+  type?: 'system' | 'demo' | 'client';
+  login_code?: string;
   profile_data?: Partial<CompanyProfile>;
   created_at: string;
   updated_at?: string;

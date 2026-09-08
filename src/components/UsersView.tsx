@@ -35,10 +35,25 @@ const DEFAULT_ACTIVE_USER: SystemUser = {
 };
 
 const ROLE_PRESETS: Record<UserRole, { title: string; desc: string; badgeColor: string }> = {
+  SUPER_ADMIN: {
+    title: 'المشرف العام والمالك (Super Admin)',
+    desc: 'صلاحيات عليا على مستوى النظام بالكامل، تعيين واعتماد المنشآت والشركات.',
+    badgeColor: 'bg-[#5B21B6] text-white',
+  },
   ADMIN: {
     title: 'مدير النظام التنفيذي',
     desc: 'صلاحيات مطلقة: إنشاء الشركة، إدارة المستخدمين، التعديل الحذف، والترحيل المالي.',
     badgeColor: 'bg-[#9E2A2B] text-white',
+  },
+  EXECUTIVE: {
+    title: 'المدير التنفيذي',
+    desc: 'إشراف إداري ومالي شامل، اعتماد الصرف والمستندات والتقارير التنفيذية.',
+    badgeColor: 'bg-[#1E3A8A] text-white',
+  },
+  GENERAL_MANAGER: {
+    title: 'المدير العام',
+    desc: 'صلاحيات قيادية وإدارية عليا واعتماد قرارات التشغيل والموازنات.',
+    badgeColor: 'bg-[#065F46] text-white',
   },
   CHIEF_ACCOUNTANT: {
     title: 'محاسب رئيسي',
@@ -47,7 +62,7 @@ const ROLE_PRESETS: Record<UserRole, { title: string; desc: string; badgeColor: 
   },
   ACCOUNTANT: {
     title: 'محاسب عام',
-    desc: 'إدخال القيود، إنشاء الفواتير والسندات، طباعة التارير وتعديل المسودات.',
+    desc: 'إدخال القيود، إنشاء الفواتير والسندات، طباعة التقارير وتعديل المسودات.',
     badgeColor: 'bg-[#2D5A27] text-white',
   },
   SALES: {
@@ -59,6 +74,11 @@ const ROLE_PRESETS: Record<UserRole, { title: string; desc: string; badgeColor: 
     title: 'مدقق ومراجع حسابات',
     desc: 'صلاحية قراءة وفحص واستخراج التقارير والقوائم المالية (دون تعديل أو حذف).',
     badgeColor: 'bg-[#7F5539] text-white',
+  },
+  STAFF: {
+    title: 'موظف تشغيلي',
+    desc: 'صلاحيات إدخال ومتابعة العمليات اليومية الأساسية للمنشأة.',
+    badgeColor: 'bg-[#4B5563] text-white',
   },
 };
 

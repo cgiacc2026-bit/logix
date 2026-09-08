@@ -97,17 +97,20 @@ export const INITIAL_PRODUCTION_ORDERS: ProductionOrder[] = [
 class LocalDataStore {
   private memoryFallback: Record<string, string> = {};
 
-  public getEffectiveCompanyId(): string {
+  public getEffectiveCompanyId(): string | null {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem('supabase_company_id');
       if (saved && saved.trim()) return saved.trim();
     }
-    return 'company-logix-official-001';
+    return null;
   }
 
   public getKey(baseKey: string, specificCompanyId?: string): string {
     const compId = specificCompanyId || this.getEffectiveCompanyId();
-    if (isDemoActive() || compId === 'company-demo-clients-002') {
+    if (!compId) {
+      return `${baseKey}_unauthenticated`;
+    }
+    if (isDemoActive() || compId === '00000000-0000-0000-0000-000000000099' || compId === 'company-demo-clients-002') {
       return `${baseKey}_demo`;
     }
     return `${baseKey}_${compId}`;
@@ -140,16 +143,27 @@ class LocalDataStore {
 
   public getCompany(): CompanyProfile {
     const compId = this.getEffectiveCompanyId();
+    if (!compId) {
+      const stored = this.getLocal<CompanyProfile | null>(this.getKey(STORAGE_KEYS.COMPANY), null);
+      if (stored && stored.nameAr) return stored;
+      return {
+        ...DEFAULT_COMPANY_PROFILE,
+        id: '',
+        nameAr: 'يرجى تسجيل الدخول واختيار المنشأة',
+        nameEn: 'Please Login & Select Enterprise',
+      };
+    }
+
     const stored = this.getLocal<CompanyProfile | null>(this.getKey(STORAGE_KEYS.COMPANY), null);
     if (stored && stored.id === compId && stored.nameAr) {
       return stored;
     }
 
-    if (compId === 'company-logix-official-001') {
+    if (compId === '10000000-0000-0000-0000-000000000001' || compId === 'company-logix-official-001') {
       const officialProfile: CompanyProfile = {
         ...DEFAULT_COMPANY_PROFILE,
-        id: 'company-logix-official-001',
-        nameAr: 'شركة لوجيكس للأنظمة السحابية ذ.م.م (الرسمية)',
+        id: '10000000-0000-0000-0000-000000000001',
+        nameAr: 'شركة لوجيكس للأنظمة السحابية',
         nameEn: 'LOGIX Cloud ERP Systems Co. W.L.L',
         tradeName: 'لوجيكس للحلول السحابية وتخطيط الموارد',
         legalForm: 'شركة ذات مسؤولية محدودة',
@@ -165,7 +179,7 @@ class LocalDataStore {
         district: 'شرق',
         phone: '+965 2200 8800',
         email: 'cgiacc2026@gmail.com',
-        generalManager: 'م. خالد المنصور (المشرف العام)',
+        generalManager: 'المشرف العام (CGI Admin)',
         financialManager: 'أ. عبد العزيز الكندري',
         chiefAccountant: 'أ. طارق الفهد',
         headerNotes: 'المنشأة الرسمية لنظام لوجيكس السحابي - بيئة تشغيلية نظيفة خاضعة لإشراف الآدمن',
@@ -175,11 +189,11 @@ class LocalDataStore {
       return officialProfile;
     }
 
-    if (compId === 'company-demo-clients-002') {
+    if (compId === '00000000-0000-0000-0000-000000000099' || compId === 'company-demo-clients-002') {
       const demoProfile: CompanyProfile = {
         ...DEFAULT_COMPANY_PROFILE,
-        id: 'company-demo-clients-002',
-        nameAr: 'شركة لوجيكس التجريبية للعملاء (LOGIX Demo)',
+        id: '00000000-0000-0000-0000-000000000099',
+        nameAr: 'شركة تجريبية - LOGIX Demo',
         nameEn: 'LOGIX Demo Company for Prospective Clients',
         tradeName: 'بيئة تجريبية مخصصة لعروض العملاء',
         legalForm: 'شركة مساهمة مقفلة',
@@ -194,7 +208,7 @@ class LocalDataStore {
         buildingNo: 'طابق 22',
         district: 'شرق',
         phone: '+965 2299 1100',
-        email: 'demo@logixerp.cloud',
+        email: 'demo@logix-system.com',
         generalManager: 'م. فهد السالم (مدير عام تجريبي)',
         financialManager: 'أ. ريم المطيري (المدير المالي)',
         chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
@@ -205,30 +219,32 @@ class LocalDataStore {
       return demoProfile;
     }
 
-    if (compId === 'company-alwaleed-client-003' || compId.includes('alwaleed')) {
+    if (compId === '20000000-0000-0000-0000-000000000001' || compId === 'company-alwaleed-client-003' || compId.includes('alwaleed')) {
       const alwaleedProfile: CompanyProfile = {
         ...DEFAULT_COMPANY_PROFILE,
-        id: 'company-alwaleed-client-003',
-        nameAr: 'شركة مطحنة الوليد المتحدة ذ.م.م (شركة عميل مسجل)',
+        id: '20000000-0000-0000-0000-000000000001',
+        nameAr: 'مطحنة الوليد المتحدة (ذ.م.م)',
         nameEn: 'Al-Waleed United Mill & Food Industries Co. W.L.L',
         tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
-        legalForm: 'شركة ذات مسؤولية محدودة',
-        taxNumber: '300012345600003',
+        legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
+        taxNumber: '',
         crNumber: '450912',
         chamberNumber: '78214',
         functionalCurrency: 'KWD',
+        currency: 'KWD',
+        decimalPlaces: 3,
         vatRate: 0,
         city: 'الكويت',
         country: 'دولة الكويت',
-        streetName: 'شارع الغزالي - قسيمة 42',
-        buildingNo: 'مبنى المطحنة الرئيسي',
-        district: 'الشويخ الصناعية',
-        phone: '+965 6571 0278',
-        email: 'alwaleed.client@logixerp.cloud',
-        generalManager: 'د. خالد بن عبد العزيز السليمان',
-        financialManager: 'أ. محمد بن عبد الله الشمري',
-        chiefAccountant: 'أ. أحمد علي المصطفى',
-        headerNotes: 'شركة عميل مسجل • تدعم الاستعادة الكاملة لآخر شغل مدخل عبر ملف JSON',
+        streetName: 'شارع الغزالي',
+        buildingNo: 'قسيمة 42',
+        district: 'منطقة الري الصناعية',
+        phone: '+965 2484 1888',
+        email: 'alwaleed.mill@logixerp.com',
+        generalManager: 'د. خالد السليمان',
+        financialManager: 'أ. محمد الشمري',
+        chiefAccountant: 'أ. محمد الشمري',
+        headerNotes: 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت',
         footerNotes: 'الدفع خلال 30 يوماً من تاريخ الفاتورة • خاضع للقوانين التجارية بدولة الكويت',
       };
       this.saveCompany(alwaleedProfile);
