@@ -5,90 +5,52 @@ import {
   Lock,
   User,
   ArrowLeft,
-  KeyRound,
   CheckCircle2,
   AlertCircle,
-  HelpCircle,
-  ChevronRight,
-  Layers,
   Sparkles,
   Database,
-  Briefcase,
-  FileSpreadsheet,
-  Globe2,
   Mail,
   PlusCircle,
+  Eye,
+  EyeOff,
+  Server,
+  FileCheck,
+  LockKeyhole,
 } from 'lucide-react';
 import { SystemUser, CompanyProfile } from '../types.js';
 import {
   registerCompany,
   loginCompany,
-  setCurrentCompanyId,
-  STORAGE_KEYS,
 } from '../services/supabaseClient.js';
-import {
-  DEFAULT_COMPANY_PROFILE,
-  INITIAL_USERS,
-} from '../server/defaultData.js';
+import { DEFAULT_COMPANY_PROFILE } from '../server/defaultData.js';
 
 interface LoginViewProps {
   onLogin: (user: SystemUser, selectedCompany?: CompanyProfile) => void;
   availableUsers: SystemUser[];
-  currentCompany: CompanyProfile | null;
+  currentCompany?: CompanyProfile | null;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onLogin,
   availableUsers,
-  currentCompany,
 }) => {
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
 
   // Login form state
   const [username, setUsername] = useState('');
   const [pinCode, setPinCode] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Register company state
   const [regCompanyName, setRegCompanyName] = useState('');
   const [regOwnerEmail, setRegOwnerEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
-
-  const handleCentralAdminLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const res = await loginCompany('cgiacc2026@gmail.com', '1234');
-      setIsLoading(false);
-      if (res.success && res.user) {
-        onLogin(res.user, res.company?.profile_data || DEFAULT_COMPANY_PROFILE);
-      } else {
-        setError('تعذر تسجيل الدخول للإدارة المركزية');
-      }
-    } catch (err: any) {
-      setIsLoading(false);
-      setError(err?.message || 'حدث خطأ أثناء تسجيل الدخول');
-    }
-  };
-
-  // Quick Demo account login
-  const handleQuickLogin = (user: SystemUser) => {
-    setUsername(user.username);
-    setPinCode(user.pinCode || '1234');
-    setError(null);
-    setSuccessMessage(null);
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      onLogin(user, currentCompany || undefined);
-    }, 350);
-  };
 
   // Handle Multi-Tenant Company Registration
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -101,7 +63,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     const cleanPass = regPassword.trim();
 
     if (!cleanName) {
-      setError('يرجى إدخال اسم الشركة');
+      setError('يرجى إدخال اسم الشركة أو المؤسسة');
       return;
     }
     if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -120,7 +82,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       setIsLoading(false);
 
       if (res.success) {
-        setSuccessMessage('تم إرسال طلب تسجيل المنشأة بنجاح! حسابك قيد التفعيل من قبل الإدارة');
+        setSuccessMessage('تم إرسال طلب تسجيل المنشأة بنجاح! حسابك قيد التفعيل والاعتماد من قبل إدارة النظام.');
         setRegCompanyName('');
         setRegOwnerEmail('');
         setRegPassword('');
@@ -133,7 +95,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
-  // Handle Login
+  // Handle Secure Login
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -143,41 +105,41 @@ export const LoginView: React.FC<LoginViewProps> = ({
     const cleanPin = pinCode.trim();
 
     if (!cleanUsername) {
-      setError('يرجى إدخال اسم المستخدم أو البريد الإلكتروني');
+      setError('يرجى إدخال اسم المستخدم أو البريد الإلكتروني المعتمد');
       return;
     }
 
     if (!cleanPin) {
-      setError('يرجى إدخال رمز الدخول (PIN / كلمة المرور)');
+      setError('يرجى إدخال كلمة المرور أو رمز الدخول (PIN)');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // 1. First check Supabase companies table for multi-tenant credentials
+      // 1. First check Supabase / tenant registry for multi-tenant credentials or Super Admin
       const supabaseRes = await loginCompany(cleanUsername, cleanPin);
 
       if (supabaseRes.success && supabaseRes.user) {
         setIsLoading(false);
         const compProfile: CompanyProfile = supabaseRes.company?.profile_data || {
-          ...currentCompany,
-          id: supabaseRes.company.id,
-          nameAr: supabaseRes.company.company_name,
-          email: supabaseRes.company.owner_email,
+          ...DEFAULT_COMPANY_PROFILE,
+          id: supabaseRes.company?.id || 'company-official-001',
+          nameAr: supabaseRes.company?.company_name || 'المنشأة المعتمدة',
+          email: supabaseRes.company?.owner_email || cleanUsername,
         };
         onLogin(supabaseRes.user, compProfile);
         return;
       }
 
-      // If status is pending, show exact required message
+      // If tenant account is pending approval
       if (supabaseRes.message === 'حسابك قيد التفعيل من قبل الإدارة') {
         setIsLoading(false);
-        setError('حسابك قيد التفعيل من قبل الإدارة');
+        setError('حسابك قيد التفعيل والاعتماد من قبل إدارة النظام. يرجى التواصل مع الدعم أو المشرف لتفعيل الحساب.');
         return;
       }
 
-      // 2. Check local/fallback system users (for demo/admin users)
+      // 2. Check local/system users for authorized staff
       const matchedUser = availableUsers.find(
         (u) =>
           u.username.toLowerCase() === cleanUsername ||
@@ -187,17 +149,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
       if (matchedUser) {
         if (matchedUser.pinCode && matchedUser.pinCode !== cleanPin) {
           setIsLoading(false);
-          setError('رمز الدخول (PIN) غير صحيح. يرجى المحاولة مجدداً');
+          setError('بيانات الاعتماد أو رمز الدخول (PIN) غير صحيح. يرجى التأكد وإعادة المحاولة.');
           return;
         }
 
         setIsLoading(false);
-        onLogin(matchedUser, currentCompany || undefined);
+        onLogin(matchedUser, undefined);
         return;
       }
 
       setIsLoading(false);
-      setError(supabaseRes.message || 'اسم المستخدم أو البريد الإلكتروني غير مسجل في النظام');
+      setError(supabaseRes.message || 'بيانات الاعتماد غير صحيحة أو الحساب غير مسجل في النظام');
     } catch (err: any) {
       setIsLoading(false);
       setError(err?.message || 'حدث خطأ أثناء محاولة تسجيل الدخول');
@@ -206,15 +168,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   return (
     <div className="min-h-screen bg-[#071322] text-slate-100 flex flex-col justify-between relative overflow-hidden font-['Cairo',sans-serif] selection:bg-blue-600 selection:text-white">
-      {/* Background Ambience / Glows */}
-      <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-cyan-600/10 blur-[140px] pointer-events-none" />
+      {/* Subtle Background Glows */}
+      <div className="absolute top-[-10%] right-[-10%] w-[550px] h-[550px] rounded-full bg-blue-600/10 blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] left-[-10%] w-[550px] h-[550px] rounded-full bg-cyan-600/10 blur-[140px] pointer-events-none" />
 
-      {/* Top Bar */}
+      {/* Top Header */}
       <header className="px-6 py-4 border-b border-slate-800/80 bg-[#0B1A2E]/70 backdrop-blur-md flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 border border-blue-400/30">
-            <span className="text-base tracking-wider">LX</span>
+            <span className="text-base tracking-wider font-mono">LX</span>
           </div>
           <div>
             <h1 className="text-base font-bold text-white flex items-center gap-2">
@@ -234,11 +196,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Login / Registration Section */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 z-10">
-        <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-6 bg-[#0B1D33]/90 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl">
+        <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-0 bg-[#0B1D33]/90 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl">
           
-          {/* Left/Main Form Panel (col-span-7) */}
+          {/* Form Panel (col-span-7) */}
           <div className="lg:col-span-7 p-6 sm:p-10 flex flex-col justify-between">
             <div>
               <div className="mb-6">
@@ -247,26 +209,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </div>
                 <h2 className="text-2xl font-bold text-white tracking-tight">مرحباً بك في لوجيكس ERP</h2>
                 <p className="text-sm text-slate-400 mt-1">
-                  أدخل بيانات اعتماد حسابك للوصول إلى لوحة العمليات المحاسبية والتشغيلية.
+                  أدخل بيانات اعتماد حسابك للوصول الآمن إلى لوحة العمليات المحاسبية والتشغيلية.
                 </p>
-              </div>
-
-              {/* Active Enterprise Banner */}
-              <div className="mb-5 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-cyan-400 flex items-center justify-center border border-blue-500/30">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-400 font-medium">المنشأة المستهدفة:</div>
-                    <div className="text-xs font-bold text-white">
-                      {currentCompany?.nameAr || 'مجموعة لوجيكس لإدارة الموارد'}
-                    </div>
-                  </div>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
-                  {currentCompany?.crNumber ? `س.ت: ${currentCompany.crNumber}` : 'حساب رئيسي'}
-                </span>
               </div>
 
               {/* Mode Switch Tabs (تسجيل الدخول / تسجيل شركة جديدة) */}
@@ -301,11 +245,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   }`}
                 >
                   <PlusCircle className="w-3.5 h-3.5" />
-                  تسجيل شركة جديدة
+                  تسجيل منشأة جديدة
                 </button>
               </div>
 
-              {/* Success Message */}
+              {/* Success Alert */}
               {successMessage && (
                 <div className="mb-5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5 animate-fadeIn">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -313,7 +257,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </div>
               )}
 
-              {/* Error Message */}
+              {/* Error Alert */}
               {error && (
                 <div className="mb-5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5 animate-fadeIn">
                   <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -322,17 +266,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
               )}
 
               {authMode === 'REGISTER' ? (
-                /* Registration Form (Multi-Tenant Registration) */
-                <div className="space-y-4">
+                /* Multi-Tenant Registration Form */
+                <form onSubmit={handleRegisterSubmit} className="space-y-4">
                   <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-slate-300 flex items-center gap-2.5">
                     <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>سجل منشأتك الجديدة لبدء العمل على النظام المحاسبي السحابي. سيتم تفعيل حسابك فورياً من قبل الإدارة.</span>
+                    <span>سجل منشأتك الجديدة لفتح بيئة سحابية محاسبية خاصة. سيتم تفعيل حسابك مباشرة من قبل الإدارة.</span>
                   </div>
 
-                  <form onSubmit={handleRegisterSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                      اسم الشركة أو المؤسسة (company_name)
+                      اسم الشركة أو المؤسسة
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
@@ -342,7 +285,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         type="text"
                         value={regCompanyName}
                         onChange={(e) => setRegCompanyName(e.target.value)}
-                        placeholder="مثال: شركة الأفق للاستشارات والحلول"
+                        placeholder="أدخل الاسم التجاري للمنشأة"
                         className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                       />
                     </div>
@@ -350,7 +293,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                      البريد الإلكتروني لمالك المنشأة (owner_email)
+                      البريد الإلكتروني المعتمد لمالك المنشأة
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
@@ -361,33 +304,40 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         dir="ltr"
                         value={regOwnerEmail}
                         onChange={(e) => setRegOwnerEmail(e.target.value)}
-                        placeholder="owner@company.com"
-                        className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                        placeholder="owner@domain.com"
+                        className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-left"
                       />
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                      كلمة المرور (password_hash)
+                      كلمة المرور المشفرة
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
                         <Lock className="w-4 h-4" />
                       </div>
                       <input
-                        type="password"
+                        type={showRegPassword ? 'text' : 'password'}
                         dir="ltr"
                         value={regPassword}
                         onChange={(e) => setRegPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-left"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPassword(!showRegPassword)}
+                        className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer"
+                      >
+                        {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
 
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    ملاحظة: سيتم إدراج المنشأة بحالة <span className="text-amber-400 font-mono">status: 'pending'</span> وتتطلب تفعيل الإدارة للدخول.
+                    ملاحظة: يتم تشفير كلمات المرور وحفظ البيانات وفق أعلى معايير أمان قواعد البيانات السحابية.
                   </p>
 
                   <button
@@ -408,178 +358,171 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     )}
                   </button>
                 </form>
-              </div>
-            ) : (
-                /* Login Form */
+              ) : (
+                /* Secure Login Form */
                 <form onSubmit={handleManualSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    اسم المستخدم أو البريد الإلكتروني
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <input
-                      type="text"
-                      dir="ltr"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="مثال: admin أو admin@logixerp.com"
-                      className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-bold text-slate-300">
-                      رمز الدخول السريع (PIN) أو كلمة المرور
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      اسم المستخدم أو البريد الإلكتروني
                     </label>
-                    <span className="text-[11px] text-slate-400">الرمز الافتراضي: 1234</span>
-                  </div>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                      <Lock className="w-4 h-4" />
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="أدخل اسم المستخدم أو البريد الإلكتروني"
+                        autoComplete="username"
+                        className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-left"
+                      />
                     </div>
-                    <input
-                      type="password"
-                      dir="ltr"
-                      value={pinCode}
-                      onChange={(e) => setPinCode(e.target.value)}
-                      placeholder="••••"
-                      maxLength={12}
-                      className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm tracking-widest focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
-                    />
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between pt-1 text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer text-slate-300 select-none">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                    />
-                    <span>تذكر جلسة العمل</span>
-                  </label>
-                  <span className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer">
-                    تغيير رمز الدخول؟
-                  </span>
-                </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-300">
+                        كلمة المرور أو رمز الدخول (PIN)
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                        <LockKeyhole className="w-4 h-4" />
+                      </div>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        dir="ltr"
+                        value={pinCode}
+                        onChange={(e) => setPinCode(e.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                        maxLength={32}
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder:text-slate-500 text-sm tracking-widest focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-left"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>جاري التحقق والدخول...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>دخول إلى لوحة التحكم</span>
-                      <ArrowLeft className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
+                  <div className="flex items-center justify-between pt-1 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-300 select-none">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>تذكر جلسة العمل</span>
+                    </label>
+                    <span className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer text-[11px]">
+                      مساعدة في تسجيل الدخول
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>جاري التحقق والمصادقة...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>تسجيل الدخول إلى لوحة العمليات</span>
+                        <ArrowLeft className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
               )}
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>نظام محمي بتشفير SSL 256-bit</span>
-              <span>معايير IFRS الدولية للتقارير المالية</span>
+              <span>تشفير اتصالات آمن SSL 256-bit</span>
+              <span>معايير IFRS الدولية للمحاسبة والمراجعة</span>
             </div>
           </div>
 
-          {/* Right Panel: Central Company & Super Admin Access */}
+          {/* Right/Side Panel: Enterprise Platform Security & Architectural Trust (NO LEAKS) */}
           <div className="lg:col-span-5 bg-gradient-to-b from-[#0F243E] to-[#0A1A2E] p-6 sm:p-8 border-t lg:border-t-0 lg:border-r border-slate-800 flex flex-col justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold mb-4">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>المنشأة المعتمدة والإدارة المركزية</span>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-cyan-300 text-xs font-semibold mb-4">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                <span>معايير الأمان وحماية البيانات السحابية</span>
               </div>
 
-              <h3 className="text-base font-bold text-white mb-2">
-                مطحنة الوليد المتحده
+              <h3 className="text-lg font-bold text-white mb-2">
+                لوجيكس السحابي للشركات
               </h3>
-              <p className="text-xs text-slate-300 mb-5 leading-relaxed">
-                سجل تجاري: 450912 • دولة الكويت • نظام محاسبي وتشغيلي فعلي متكامل متوافق مع معايير IFRS لإدارة المطاحن والصناعات الغذائية.
+              <p className="text-xs text-slate-300 mb-6 leading-relaxed">
+                بيئة تشغيلية ومحاسبية سحابية متعددة المنشآت (Multi-Tenant Architecture) مع ضمان عزل البيانات وسريتها التامة وفق المعايير المالية والتنظيمية.
               </p>
 
-              {/* Single Prominent Super Admin Central Login */}
-              <button
-                type="button"
-                onClick={handleCentralAdminLogin}
-                disabled={isLoading}
-                id="btn-central-admin-login"
-                className="w-full py-3.5 px-5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-sm shadow-xl shadow-emerald-950/40 border border-emerald-400/40 flex items-center justify-center gap-3 transition-all transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer group mb-5"
-              >
-                <ShieldCheck className="w-5 h-5 text-emerald-200" />
-                <span className="font-extrabold tracking-wide">دخول الإدارة المركزية والمالك (Super Admin)</span>
-                <ChevronRight className="w-4 h-4 text-emerald-200 group-hover:translate-x-[-3px] transition-transform rotate-180" />
-              </button>
-
-              {/* Quick Login for Mill Core Staff */}
-              <div className="space-y-2 mb-6">
-                <div className="text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>دخول الكادر الإداري والمحاسبي بالمطحنة:</span>
-                </div>
-                {INITIAL_USERS.slice(0, 3).map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => handleQuickLogin(u)}
-                    className="w-full text-right p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800/90 border border-slate-700/60 text-xs flex items-center justify-between transition-colors group cursor-pointer"
-                  >
-                    <div>
-                      <div className="font-bold text-white group-hover:text-cyan-300 transition-colors">
-                        {u.name}
-                      </div>
-                      <div className="text-[11px] text-slate-400">{u.roleTitleAr}</div>
+              {/* Security & Feature Highlights (Enterprise agnostic - No private tenant details) */}
+              <div className="space-y-3.5">
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                      <ShieldCheck className="w-4 h-4" />
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-cyan-300 border border-blue-500/30 font-mono">
-                      {u.username}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white mb-0.5">عزل تام لبيانات المنشآت</h4>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        تشفير وعزل مستقل لكل شركة ومؤسسة، ولا يمكن لأي طرف الاطلاع على سجلات أو حسابات المنشآت الأخرى.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-              {/* System Production Capabilities */}
-              <div className="space-y-2 bg-slate-900/70 p-3.5 rounded-xl border border-slate-800 text-xs text-slate-300">
-                <div className="font-semibold text-cyan-300 text-[11px] mb-1.5 flex items-center gap-1.5">
-                  <Briefcase className="w-3.5 h-3.5" />
-                  الميزات التشغيلية المعتمدة:
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+                      <FileCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white mb-0.5">توافق كامل مع معايير IFRS</h4>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        قيود محاسبية مزدوجة آلية، سندات صرف وقبض، ونظام جرد وتقييم مستمر للمخزون بدقة متناهية.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>62 صنف بهارات وخامات ومواد غذائية معتمدة بالباركود والأسعار</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>دورة كاملة لمشتريات المطاحن ومبيعات الجمعيات التعاونية</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>نظام الجرد المستمر وتقييم المخزون المرجح مع سندات القيد الآلية</span>
+
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">
+                      <Server className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white mb-0.5">تحكم وصلاحيات دقيقة للأدوار</h4>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        إدارة الصلاحيات بحسب الأدوار الوظيفية (مدير عام، محاسب رئيسي، أمين مستودع، مشرف تدقيق).
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Architecture Highlights */}
-            <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-1.5 text-[11px] text-slate-400">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>حساب السوبر أدمن معتمد للتحكم في المنشآت وتفعيل السجلات السحابية</span>
-              </div>
+            <div className="mt-6 pt-4 border-t border-slate-800/80 space-y-2 text-[11px] text-slate-400">
               <div className="flex items-center gap-2">
                 <Database className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span>تزامن سحابي فوري مع قواعد بيانات PostgreSQL / Supabase</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>نسخ احتياطي فوري واستعادة مرنة للبيانات بصيغ مشفرة</span>
               </div>
             </div>
 

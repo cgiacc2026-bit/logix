@@ -340,7 +340,7 @@ export default function App() {
       <LoginView
         onLogin={handleLogin}
         availableUsers={users}
-        currentCompany={activeCompany}
+        currentCompany={null}
       />
     );
   }
