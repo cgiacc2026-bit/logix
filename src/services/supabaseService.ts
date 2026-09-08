@@ -32,6 +32,7 @@ import {
   Account,
   InventoryItem,
   Customer,
+  Supplier,
   Invoice,
   InvoiceLine,
   JournalEntry,
@@ -53,17 +54,6 @@ export class SupabaseDataService {
         .select('*')
         .eq('id', companyId)
         .maybeSingle();
-
-      if (!data && companyId === ALWALEED_CANONICAL_UUID) {
-        const { data: byCode } = await supabase
-          .from('companies')
-          .select('*')
-          .or('login_code.eq.450912,company_name.ilike.%الوليد%')
-          .maybeSingle();
-        if (byCode) {
-          data = byCode;
-        }
-      }
 
       if (error) {
         console.warn('Supabase getCompany error:', error.message);
@@ -184,23 +174,6 @@ export class SupabaseDataService {
         .eq('company_id', companyId)
         .order('created_at', { ascending: true });
 
-      // Diagnostic self-healing: if 0 items found for Al-Waleed, check if unlinked/orphaned items exist
-      if ((!data || data.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
-        const { data: orphaned } = await supabase
-          .from('items')
-          .select('*')
-          .is('company_id', null);
-        if (orphaned && orphaned.length > 0) {
-          data = orphaned;
-          try {
-            await supabase
-              .from('items')
-              .update({ company_id: ALWALEED_CANONICAL_UUID })
-              .is('company_id', null);
-          } catch {}
-        }
-      }
-
       if (error) {
         console.warn('Supabase getItems error:', error.message);
         return [];
@@ -305,23 +278,6 @@ export class SupabaseDataService {
         .eq('company_id', companyId)
         .order('created_at', { ascending: true });
 
-      // Diagnostic self-healing for orphaned customer records
-      if ((!data || data.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
-        const { data: orphaned } = await supabase
-          .from('customers')
-          .select('*')
-          .is('company_id', null);
-        if (orphaned && orphaned.length > 0) {
-          data = orphaned;
-          try {
-            await supabase
-              .from('customers')
-              .update({ company_id: ALWALEED_CANONICAL_UUID })
-              .is('company_id', null);
-          } catch {}
-        }
-      }
-
       if (error) {
         console.warn('Supabase getCustomers error:', error.message);
         return [];
@@ -407,6 +363,130 @@ export class SupabaseDataService {
   }
 
   /**
+   * 3.1 SUPPLIERS (الموردين)
+   */
+  public static async getSuppliers(): Promise<Supplier[]> {
+    if (!isSupabaseConfigured) return [];
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return [];
+    try {
+      let { data, error } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('Supabase getSuppliers error:', error.message);
+        return [];
+      }
+
+      if (!data || data.length === 0) return [];
+
+      return data.map((row: any) => {
+        const raw = row.raw_data || {};
+        return {
+          id: row.id,
+          code: row.code,
+          nameAr: row.name_ar,
+          nameEn: row.name_en || raw.nameEn || '',
+          phone: row.phone || raw.phone || '',
+          address: row.address || raw.address || '',
+          city: row.city || raw.city || 'الرياض',
+          balance: Number(row.balance ?? raw.balance ?? 0),
+          openingBalance: raw.openingBalance ?? 0,
+          isActive: raw.isActive ?? true,
+          ...raw,
+        };
+      });
+    } catch (err: any) {
+      console.warn('Supabase getSuppliers exception:', err?.message);
+      return [];
+    }
+  }
+
+  public static async saveSupplier(supp: Supplier): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const { error } = await supabase
+        .from('suppliers')
+        .upsert([
+          {
+            id: supp.id,
+            company_id: companyId,
+            code: supp.code,
+            name_ar: supp.nameAr,
+            name_en: supp.nameEn || '',
+            phone: supp.phone || '',
+            address: supp.address || '',
+            city: supp.city || '',
+            balance: supp.balance || 0,
+            raw_data: supp,
+            created_at: new Date().toISOString(),
+          },
+        ]);
+
+      if (error) {
+        console.warn('Supabase saveSupplier error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      console.warn('Supabase saveSupplier exception:', err?.message);
+      return false;
+    }
+  }
+
+  public static async saveSuppliers(suppliers: Supplier[]): Promise<boolean> {
+    if (!isSupabaseConfigured || suppliers.length === 0) return false;
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const rows = suppliers.map((s) => ({
+        id: s.id,
+        company_id: companyId,
+        code: s.code,
+        name_ar: s.nameAr,
+        name_en: s.nameEn || '',
+        phone: s.phone || '',
+        address: s.address || '',
+        city: s.city || '',
+        balance: s.balance || 0,
+        raw_data: s,
+        created_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase.from('suppliers').upsert(rows);
+      return !error;
+    } catch (err: any) {
+      return false;
+    }
+  }
+
+  public static async deleteSupplier(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const { error } = await supabase
+        .from('suppliers')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('id', id);
+
+      return !error;
+    } catch (err: any) {
+      console.warn('Supabase deleteSupplier exception:', err?.message);
+      return false;
+    }
+  }
+
+  /**
    * 4. SALES_MASTER & SALES_DETAILS (الفواتير والمبيعات)
    */
   public static async getInvoices(): Promise<Invoice[]> {
@@ -420,29 +500,6 @@ export class SupabaseDataService {
         .select('*')
         .eq('company_id', companyId)
         .order('date', { ascending: false });
-
-      // Diagnostic self-healing for orphaned invoices
-      if ((!masters || masters.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
-        const { data: orphaned } = await supabase
-          .from('sales_master')
-          .select('*')
-          .is('company_id', null);
-        if (orphaned && orphaned.length > 0) {
-          masters = orphaned;
-          try {
-            await supabase
-              .from('sales_master')
-              .update({ company_id: ALWALEED_CANONICAL_UUID })
-              .is('company_id', null);
-          } catch {}
-          try {
-            await supabase
-              .from('sales_details')
-              .update({ company_id: ALWALEED_CANONICAL_UUID })
-              .is('company_id', null);
-          } catch {}
-        }
-      }
 
       if (masterErr) {
         console.warn('Supabase getInvoices masterErr:', masterErr.message);
@@ -631,23 +688,6 @@ export class SupabaseDataService {
         .select('*')
         .eq('company_id', companyId)
         .order('date', { ascending: false });
-
-      // Diagnostic self-healing for orphaned journal entries
-      if ((!data || data.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
-        const { data: orphaned } = await supabase
-          .from('journal_entries')
-          .select('*')
-          .is('company_id', null);
-        if (orphaned && orphaned.length > 0) {
-          data = orphaned;
-          try {
-            await supabase
-              .from('journal_entries')
-              .update({ company_id: ALWALEED_CANONICAL_UUID })
-              .is('company_id', null);
-          } catch {}
-        }
-      }
 
       if (error) {
         console.warn('Supabase getJournals error:', error.message);

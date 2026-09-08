@@ -36,7 +36,7 @@ import {
 } from '../server/defaultData.js';
 import { safeJsonParse, safeApiFetch } from '../utils/safeJson.js';
 import { SupabaseDataService } from './supabaseService.js';
-import { isSupabaseConfigured } from './supabaseClient.js';
+import { isSupabaseConfigured, resolveToSupabaseCompanyUUID } from './supabaseClient.js';
 import {
   DEMO_COMPANY,
   DEMO_USER,
@@ -160,21 +160,14 @@ class LocalDataStore {
   }
 
   public getKey(baseKey: string, specificCompanyId?: string): string {
-    const compId = specificCompanyId || this.getEffectiveCompanyId();
-    if (!compId) {
+    const rawId = specificCompanyId || this.getEffectiveCompanyId();
+    if (!rawId) {
       return `${baseKey}_unauthenticated`;
     }
-    if (isDemoActive() || compId === '00000000-0000-0000-0000-000000000099' || compId === 'company-demo-clients-002') {
+    if (isDemoActive() || rawId === '00000000-0000-0000-0000-000000000099' || rawId === 'company-demo-clients-002') {
       return `${baseKey}_demo`;
     }
-    if (
-      compId === '20000000-0000-0000-0000-000000000001' ||
-      compId === 'company-alwaleed-client-003' ||
-      compId.toLowerCase().includes('alwaleed') ||
-      compId === '450912'
-    ) {
-      return `${baseKey}_20000000-0000-0000-0000-000000000001`;
-    }
+    const compId = resolveToSupabaseCompanyUUID(rawId) || rawId;
     return `${baseKey}_${compId}`;
   }
 
@@ -182,10 +175,16 @@ class LocalDataStore {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         let item = window.localStorage.getItem(key);
-        if (!item && key.includes('20000000-0000-0000-0000-000000000001')) {
-          item = window.localStorage.getItem(key.replace('20000000-0000-0000-0000-000000000001', 'company-alwaleed-client-003'));
+        if (!item) {
+          const compId = this.getEffectiveCompanyId();
+          if (compId && key.includes(compId)) {
+            const rawId = window.localStorage.getItem('supabase_company_id');
+            if (rawId && rawId !== compId) {
+              item = window.localStorage.getItem(key.replace(compId, rawId));
+            }
+          }
         }
-        return safeJsonParse<T>(item, defaultVal);
+        if (item) return safeJsonParse<T>(item, defaultVal);
       }
     } catch (e) {
       console.warn('LocalStorage get error, using memory fallback:', e);
@@ -200,6 +199,13 @@ class LocalDataStore {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem(key, serialized);
+        const compId = this.getEffectiveCompanyId();
+        if (compId && key.includes(compId)) {
+          const rawId = window.localStorage.getItem('supabase_company_id');
+          if (rawId && rawId !== compId) {
+            window.localStorage.setItem(key.replace(compId, rawId), serialized);
+          }
+        }
       }
     } catch (e) {
       console.warn('LocalStorage save error:', e);
@@ -207,37 +213,54 @@ class LocalDataStore {
   }
 
   public markRestoreLocked(specificCompanyId?: string): void {
-    const compId = specificCompanyId || this.getEffectiveCompanyId();
-    if (!compId) return;
+    const rawId = specificCompanyId || this.getEffectiveCompanyId();
+    if (!rawId) return;
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
     const lockObj = { timestamp: Date.now(), locked: true };
-    const key = `logix_restore_lock_${compId}`;
-    this.setLocal(key, lockObj);
+    const serialized = JSON.stringify(lockObj);
+
     if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(key, JSON.stringify(lockObj));
-      window.localStorage.setItem('logix_last_restored_company_id', compId);
+      window.localStorage.setItem(`logix_restore_lock_${rawId}`, serialized);
+      window.localStorage.setItem(`logix_restore_lock_${canonId}`, serialized);
+      window.localStorage.setItem('logix_last_restored_company_id', canonId);
       window.localStorage.setItem('logix_last_restore_time', String(Date.now()));
     }
+    this.memoryFallback[`logix_restore_lock_${rawId}`] = serialized;
+    this.memoryFallback[`logix_restore_lock_${canonId}`] = serialized;
   }
 
   public isRestoreLocked(specificCompanyId?: string): boolean {
-    const compId = specificCompanyId || this.getEffectiveCompanyId();
-    if (!compId) return false;
-    const key = `logix_restore_lock_${compId}`;
-    const lockObj = this.getLocal<{ timestamp: number; locked: boolean } | null>(key, null);
-    if (!lockObj || !lockObj.locked) return false;
-    // Lock lasts for 30 minutes to prevent background cloud fetch overwriting fresh restores
-    const elapsed = Date.now() - (lockObj.timestamp || 0);
-    return elapsed < 30 * 60 * 1000;
+    const rawId = specificCompanyId || this.getEffectiveCompanyId();
+    if (!rawId) return false;
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+
+    const checkLock = (k: string) => {
+      let lockObj = this.getLocal<{ timestamp: number; locked: boolean } | null>(k, null);
+      if (!lockObj && typeof window !== 'undefined' && window.localStorage) {
+        const item = window.localStorage.getItem(k);
+        if (item) lockObj = safeJsonParse(item, null);
+      }
+      if (lockObj && lockObj.locked) {
+        const elapsed = Date.now() - (lockObj.timestamp || 0);
+        // Protect restored JSON data for 45 minutes against background cloud wipes
+        if (elapsed < 45 * 60 * 1000) return true;
+      }
+      return false;
+    };
+
+    return checkLock(`logix_restore_lock_${canonId}`) || checkLock(`logix_restore_lock_${rawId}`);
   }
 
   public clearRestoreLock(specificCompanyId?: string): void {
-    const compId = specificCompanyId || this.getEffectiveCompanyId();
-    if (!compId) return;
-    const key = `logix_restore_lock_${compId}`;
-    this.setLocal(key, { timestamp: 0, locked: false });
+    const rawId = specificCompanyId || this.getEffectiveCompanyId();
+    if (!rawId) return;
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
     if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.removeItem(key);
+      window.localStorage.removeItem(`logix_restore_lock_${rawId}`);
+      window.localStorage.removeItem(`logix_restore_lock_${canonId}`);
     }
+    delete this.memoryFallback[`logix_restore_lock_${rawId}`];
+    delete this.memoryFallback[`logix_restore_lock_${canonId}`];
   }
 
   public getCompany(): CompanyProfile {
@@ -504,7 +527,6 @@ class LocalDataStore {
         this.saveCustomers(zeroedCustomers);
         return zeroedCustomers;
       }
-      this.saveCustomers([]);
       return [];
     }
     return list;
@@ -526,7 +548,6 @@ class LocalDataStore {
         this.saveSuppliers(zeroedSuppliers);
         return zeroedSuppliers;
       }
-      this.saveSuppliers([]);
       return [];
     }
     return list;
@@ -543,7 +564,6 @@ class LocalDataStore {
         this.saveInventory(alwaleedInventory);
         return alwaleedInventory;
       }
-      this.saveInventory([]);
       return [];
     }
     return list;
@@ -560,7 +580,6 @@ class LocalDataStore {
         this.saveJournals(alwaleedJournals);
         return alwaleedJournals;
       }
-      this.saveJournals([]);
       return [];
     }
     return list;
@@ -577,7 +596,6 @@ class LocalDataStore {
         this.saveInvoices(alwaleedInvoices);
         return alwaleedInvoices;
       }
-      this.saveInvoices([]);
       return [];
     }
     return list;
@@ -589,7 +607,6 @@ class LocalDataStore {
   public getVouchers(): PaymentVoucher[] {
     const list = this.getLocal<PaymentVoucher[] | null>(this.getKey(STORAGE_KEYS.VOUCHERS), null);
     if (!list) {
-      this.saveVouchers([]);
       return [];
     }
     return list;
@@ -608,7 +625,6 @@ class LocalDataStore {
   public getProductionOrders(): ProductionOrder[] {
     const list = this.getLocal<ProductionOrder[] | null>(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), null);
     if (!list) {
-      this.saveProductionOrders([]);
       return [];
     }
     return list;
@@ -2073,7 +2089,28 @@ export class DataService {
   }
 
   public static async getSuppliers(): Promise<Supplier[]> {
-    return localDataStore.getSuppliers();
+    const localSuppliers = localDataStore.getSuppliers();
+    const isLocked = localDataStore.isRestoreLocked();
+
+    try {
+      const fromSupabase = await SupabaseDataService.getSuppliers();
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+        if (localSuppliers.length > 0 && (isLocked || fromSupabase.length < localSuppliers.length)) {
+          if (isSupabaseConfigured) {
+            Promise.all(localSuppliers.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
+          }
+          return localSuppliers;
+        }
+        localDataStore.saveSuppliers(fromSupabase);
+        return fromSupabase;
+      }
+    } catch (e) {
+      console.warn('Supabase getSuppliers notice:', e);
+    }
+    if (isSupabaseConfigured && localSuppliers.length > 0) {
+      Promise.all(localSuppliers.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
+    }
+    return localSuppliers;
   }
 
   public static async createSupplier(data: any): Promise<Supplier> {
@@ -2095,6 +2132,11 @@ export class DataService {
     };
     list.push(newSupp);
     localDataStore.saveSuppliers(list);
+    try {
+      await SupabaseDataService.saveSupplier(newSupp);
+    } catch (e) {
+      console.warn('Supabase saveSupplier notice:', e);
+    }
     syncToFirestore('erp_suppliers', newSupp.id, newSupp);
     await safeApiFetch('/api/suppliers', {
       method: 'POST',
@@ -2125,6 +2167,11 @@ export class DataService {
       currentBalance: updatedBalance,
     };
     localDataStore.saveSuppliers(list);
+    try {
+      await SupabaseDataService.saveSupplier(list[idx]);
+    } catch (e) {
+      console.warn('Supabase updateSupplier notice:', e);
+    }
     syncToFirestore('erp_suppliers', id, list[idx]);
     const apiRes = await safeApiFetch<any>(`/api/suppliers/${id}`, {
       method: 'PUT',
@@ -2142,6 +2189,11 @@ export class DataService {
     const list = localDataStore.getSuppliers();
     const filtered = list.filter((s) => s.id !== id);
     localDataStore.saveSuppliers(filtered);
+    try {
+      await SupabaseDataService.deleteSupplier(id);
+    } catch (e) {
+      console.warn('Supabase deleteSupplier notice:', e);
+    }
     deleteFromFirestore('erp_suppliers', id);
     await safeApiFetch(`/api/suppliers/${id}`, { method: 'DELETE' });
     return true;
@@ -2845,23 +2897,58 @@ export class DataService {
   }
 
   public static async syncSystemIntegrity(): Promise<any> {
+    const compId = localDataStore.getEffectiveCompanyId();
+    // 1. If restore lock is active, completely bypass remote overwrites to safeguard restored JSON data
+    if (localDataStore.isRestoreLocked(compId || undefined)) {
+      return { success: true, message: 'Restore lock active, local state strictly preserved', source: 'restore_lock' };
+    }
+
     if (isSupabaseConfigured) {
       try {
-        const [customers, inventory, journals] = await Promise.all([
+        const [customers, suppliers, inventory, journals] = await Promise.all([
           SupabaseDataService.getCustomers(),
+          SupabaseDataService.getSuppliers(),
           SupabaseDataService.getItems(),
           SupabaseDataService.getJournals(),
         ]);
-        if (Array.isArray(customers)) localDataStore.saveCustomers(customers);
-        if (Array.isArray(inventory)) localDataStore.saveInventory(inventory);
-        if (Array.isArray(journals)) localDataStore.saveJournals(journals);
+        const localCust = localDataStore.getCustomers();
+        const localSupp = localDataStore.getSuppliers();
+        const localInv = localDataStore.getInventory();
+        const localJournals = localDataStore.getJournals();
+
+        if (Array.isArray(customers) && customers.length > 0) {
+          localDataStore.saveCustomers(customers);
+        } else if (localCust.length > 0) {
+          Promise.all(localCust.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
+        }
+
+        if (Array.isArray(suppliers) && suppliers.length > 0) {
+          localDataStore.saveSuppliers(suppliers);
+        } else if (localSupp.length > 0) {
+          Promise.all(localSupp.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
+        }
+
+        if (Array.isArray(inventory) && inventory.length > 0) {
+          localDataStore.saveInventory(inventory);
+        } else if (localInv.length > 0) {
+          Promise.all(localInv.map((it) => SupabaseDataService.saveItem(it))).catch(() => {});
+        }
+
+        if (Array.isArray(journals) && journals.length > 0) {
+          localDataStore.saveJournals(journals);
+        } else if (localJournals.length > 0) {
+          Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
+        }
 
         let accounts = await SupabaseDataService.getAccounts();
         if (!accounts || accounts.length === 0) {
           accounts = localDataStore.getAccounts();
         }
-        if (Array.isArray(accounts)) {
-          const withBal = this.calculateDynamicAccountBalances(accounts, journals || []);
+        if (Array.isArray(accounts) && accounts.length > 0) {
+          const withBal = this.calculateDynamicAccountBalances(
+            accounts,
+            Array.isArray(journals) && journals.length > 0 ? journals : localJournals
+          );
           localDataStore.saveAccounts(withBal);
         }
         return { success: true, source: 'supabase' };
@@ -2870,21 +2957,28 @@ export class DataService {
       }
     }
 
-    const apiRes = await safeApiFetch<any>('/api/system/integrity-sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    // Fetch refreshed balances from server
-    const [customers, suppliers, inventory, accounts] = await Promise.all([
-      safeApiFetch<Customer[]>('/api/customers'),
-      safeApiFetch<Supplier[]>('/api/suppliers'),
-      safeApiFetch<InventoryItem[]>('/api/inventory'),
-      safeApiFetch<Account[]>('/api/chart-of-accounts'),
-    ]);
-    if (customers) localDataStore.saveCustomers(customers);
-    if (suppliers) localDataStore.saveSuppliers(suppliers);
-    if (inventory) localDataStore.saveInventory(inventory);
-    if (accounts) localDataStore.saveAccounts(accounts);
-    return apiRes;
+    // Secondary fallback to local API only if restore is NOT locked and local has no data to protect
+    const localCust = localDataStore.getCustomers();
+    const localSupp = localDataStore.getSuppliers();
+    const localInv = localDataStore.getInventory();
+    if (localCust.length === 0 && localSupp.length === 0 && localInv.length === 0) {
+      const apiRes = await safeApiFetch<any>('/api/system/integrity-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const [customers, suppliers, inventory, accounts] = await Promise.all([
+        safeApiFetch<Customer[]>('/api/customers'),
+        safeApiFetch<Supplier[]>('/api/suppliers'),
+        safeApiFetch<InventoryItem[]>('/api/inventory'),
+        safeApiFetch<Account[]>('/api/chart-of-accounts'),
+      ]);
+      if (customers && customers.length > 0) localDataStore.saveCustomers(customers);
+      if (suppliers && suppliers.length > 0) localDataStore.saveSuppliers(suppliers);
+      if (inventory && inventory.length > 0) localDataStore.saveInventory(inventory);
+      if (accounts && accounts.length > 0) localDataStore.saveAccounts(accounts);
+      return apiRes;
+    }
+
+    return { success: true, message: 'Local data retained safely' };
   }
 }

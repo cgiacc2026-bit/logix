@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Account, JournalEntry, JournalLine, Customer, Supplier } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import {
@@ -20,6 +20,8 @@ import {
   Link,
   Search,
 } from 'lucide-react';
+
+import { localDataStore } from '../services/dataService';
 
 interface JournalEntriesProps {
   journals: JournalEntry[];
@@ -56,8 +58,10 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
   onDeleteJournal,
   onRebuildOpeningJournal,
   onReverseJournal,
-  companyName = 'مطحنة الوليد المتحدة',
+  companyName: propCompanyName,
 }) => {
+  const activeProfile = useMemo(() => localDataStore.getCompany(), []);
+  const companyName = propCompanyName || activeProfile?.nameAr || 'المنشأة';
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJournalId, setEditingJournalId] = useState<string | null>(null);

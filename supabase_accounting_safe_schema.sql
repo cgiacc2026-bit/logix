@@ -9,7 +9,33 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ==============================================================================
--- 1) شجرة الحسابات والدليل المحاسي (chart_of_accounts)
+-- 1) المنشآت والشركات متعددة المستأجرين (companies)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.companies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name TEXT NOT NULL,
+    login_code TEXT,
+    owner_email TEXT DEFAULT 'admin@logixerp.com',
+    status TEXT DEFAULT 'active',
+    logo_url TEXT DEFAULT '',
+    default_accounts JSONB DEFAULT '{}'::jsonb,
+    profile_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS login_code TEXT;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS owner_email TEXT DEFAULT 'admin@logixerp.com';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_accounts JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS profile_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+CREATE INDEX IF NOT EXISTS idx_companies_login_code ON public.companies(login_code);
+
+-- ==============================================================================
+-- 2) شجرة الحسابات والدليل المحاسبي (chart_of_accounts)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.chart_of_accounts (
     id TEXT PRIMARY KEY,
@@ -31,7 +57,6 @@ CREATE TABLE IF NOT EXISTS public.chart_of_accounts (
     CONSTRAINT uq_chart_company_code UNIQUE (company_id, code)
 );
 
--- إضافة أي أعمدة جديدة إن لم تكن موجودة بأمان تام
 ALTER TABLE public.chart_of_accounts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
 ALTER TABLE public.chart_of_accounts ADD COLUMN IF NOT EXISTS code TEXT;
 ALTER TABLE public.chart_of_accounts ADD COLUMN IF NOT EXISTS name_ar TEXT;
@@ -51,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_coa_company_id ON public.chart_of_accounts(compan
 CREATE INDEX IF NOT EXISTS idx_coa_code ON public.chart_of_accounts(company_id, code);
 
 -- ==============================================================================
--- 2) قيود اليومية والأستاذ العام (journal_entries)
+-- 3) قيود اليومية والأستاذ العام (journal_entries)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.journal_entries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -59,7 +84,7 @@ CREATE TABLE IF NOT EXISTS public.journal_entries (
     entry_number TEXT NOT NULL,
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     description TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'POSTED', -- DRAFT, POSTED, REVERSED
+    status TEXT NOT NULL DEFAULT 'POSTED', -- DRAFT, POSTED, CANCELLED, REVERSED
     reference TEXT,
     reference_type TEXT,
     reference_id TEXT,
@@ -72,7 +97,6 @@ CREATE TABLE IF NOT EXISTS public.journal_entries (
     CONSTRAINT uq_journal_company_entry_number UNIQUE (company_id, entry_number)
 );
 
--- إضافة أي أعمدة جديدة إن لم تكن موجودة بأمان
 ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
 ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS entry_number TEXT;
 ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
@@ -92,7 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_journal_date ON public.journal_entries(company_id
 CREATE INDEX IF NOT EXISTS idx_journal_entry_number ON public.journal_entries(company_id, entry_number);
 
 -- ==============================================================================
--- 3) الأصناف والمخزون والتكاليف (items)
+-- 4) الأصناف والمخزون والتكاليف (items)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.items (
     id TEXT PRIMARY KEY,
@@ -100,12 +124,12 @@ CREATE TABLE IF NOT EXISTS public.items (
     code TEXT NOT NULL,
     name_ar TEXT NOT NULL,
     name_en TEXT DEFAULT '',
-    category TEXT DEFAULT 'عام',
+    category TEXT DEFAULT 'مواد غذائية',
     unit TEXT DEFAULT 'حبة',
     cost_price NUMERIC(18, 4) DEFAULT 0,
     selling_price NUMERIC(18, 4) DEFAULT 0,
     current_balance NUMERIC(18, 4) DEFAULT 0,
-    min_limit NUMERIC(18, 4) DEFAULT 0,
+    min_limit NUMERIC(18, 4) DEFAULT 10,
     raw_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
@@ -116,12 +140,12 @@ ALTER TABLE public.items ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES pub
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS code TEXT;
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_ar TEXT;
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'عام';
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'مواد غذائية';
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'حبة';
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS cost_price NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS selling_price NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS current_balance NUMERIC(18, 4) DEFAULT 0;
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS min_limit NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS min_limit NUMERIC(18, 4) DEFAULT 10;
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
 
@@ -129,7 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_items_company_id ON public.items(company_id);
 CREATE INDEX IF NOT EXISTS idx_items_code ON public.items(company_id, code);
 
 -- ==============================================================================
--- 4) العملاء ودفتر الأستاذ المساعد (customers)
+-- 5) العملاء (customers)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.customers (
     id TEXT PRIMARY KEY,
@@ -162,7 +186,77 @@ CREATE INDEX IF NOT EXISTS idx_customers_company_id ON public.customers(company_
 CREATE INDEX IF NOT EXISTS idx_customers_code ON public.customers(company_id, code);
 
 -- ==============================================================================
--- 5) المبيعات ورؤوس الفواتير (sales_master)
+-- 6) الموردين (suppliers)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.suppliers (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    name_ar TEXT NOT NULL,
+    name_en TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    city TEXT DEFAULT '',
+    balance NUMERIC(18, 4) DEFAULT 0,
+    raw_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_supplier_company_code UNIQUE (company_id, code)
+);
+
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS code TEXT;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name_ar TEXT;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS balance NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+CREATE INDEX IF NOT EXISTS idx_suppliers_company_id ON public.suppliers(company_id);
+CREATE INDEX IF NOT EXISTS idx_suppliers_code ON public.suppliers(company_id, code);
+
+-- ==============================================================================
+-- 7) سندات القبض والصرف (payment_vouchers)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.payment_vouchers (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    voucher_number TEXT NOT NULL,
+    type TEXT NOT NULL, -- RECEIPT, PAYMENT
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    amount NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    payment_method TEXT DEFAULT 'CASH', -- CASH, BANK, CHEQUE
+    entity_type TEXT DEFAULT 'NONE', -- CUSTOMER, SUPPLIER, ACCOUNT, NONE
+    entity_id TEXT,
+    entity_name TEXT,
+    notes TEXT DEFAULT '',
+    raw_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_voucher_company_number UNIQUE (company_id, voucher_number)
+);
+
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS voucher_number TEXT;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS type TEXT;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'CASH';
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT 'NONE';
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_id TEXT;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_name TEXT;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+CREATE INDEX IF NOT EXISTS idx_vouchers_company_id ON public.payment_vouchers(company_id);
+CREATE INDEX IF NOT EXISTS idx_vouchers_date ON public.payment_vouchers(company_id, date);
+
+-- ==============================================================================
+-- 8) الفواتير ورؤوس المبيعات (sales_master)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.sales_master (
     id TEXT PRIMARY KEY,
@@ -204,7 +298,7 @@ CREATE INDEX IF NOT EXISTS idx_sales_master_date ON public.sales_master(company_
 CREATE INDEX IF NOT EXISTS idx_sales_master_customer ON public.sales_master(company_id, customer_id);
 
 -- ==============================================================================
--- 6) بنود وتفاصيل الفواتير (sales_details)
+-- 9) بنود وتفاصيل الفواتير (sales_details)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.sales_details (
     id TEXT PRIMARY KEY,
@@ -236,16 +330,23 @@ CREATE INDEX IF NOT EXISTS idx_sales_details_company ON public.sales_details(com
 CREATE INDEX IF NOT EXISTS idx_sales_details_invoice ON public.sales_details(company_id, invoice_id);
 
 -- ==============================================================================
--- 7) تفعيل سياسات الأمان والمزامنة (Row Level Security - RLS)
+-- 10) تفعيل سياسات الأمان والمزامنة الشاملة (Row Level Security - RLS)
 -- ==============================================================================
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chart_of_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.journal_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_vouchers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_master ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_details ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
+    -- companies policy
+    DROP POLICY IF EXISTS "Allow full access to companies" ON public.companies;
+    CREATE POLICY "Allow full access to companies" ON public.companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
     -- chart_of_accounts policy
     DROP POLICY IF EXISTS "Allow full access to chart_of_accounts" ON public.chart_of_accounts;
     CREATE POLICY "Allow full access to chart_of_accounts" ON public.chart_of_accounts FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
@@ -262,6 +363,14 @@ DO $$ BEGIN
     DROP POLICY IF EXISTS "Allow full access to customers" ON public.customers;
     CREATE POLICY "Allow full access to customers" ON public.customers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
+    -- suppliers policy
+    DROP POLICY IF EXISTS "Allow full access to suppliers" ON public.suppliers;
+    CREATE POLICY "Allow full access to suppliers" ON public.suppliers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+    -- payment_vouchers policy
+    DROP POLICY IF EXISTS "Allow full access to payment_vouchers" ON public.payment_vouchers;
+    CREATE POLICY "Allow full access to payment_vouchers" ON public.payment_vouchers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
     -- sales_master policy
     DROP POLICY IF EXISTS "Allow full access to sales_master" ON public.sales_master;
     CREATE POLICY "Allow full access to sales_master" ON public.sales_master FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
@@ -269,37 +378,4 @@ DO $$ BEGIN
     -- sales_details policy
     DROP POLICY IF EXISTS "Allow full access to sales_details" ON public.sales_details;
     CREATE POLICY "Allow full access to sales_details" ON public.sales_details FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-END $$;
-
--- ==============================================================================
--- 8) استعادة بيانات مطحنة الوليد المعلقة (Self-Healing Orphaned Records)
--- يضمن ربط أي سجلات تائهة بالمعرف الرسمي لمطحنة الوليد
--- ==============================================================================
-DO $$ 
-DECLARE
-    v_alwaleed_id UUID := '20000000-0000-0000-0000-000000000001'::uuid;
-BEGIN
-    -- ربط الأصناف غير المرتبطة بشركة
-    UPDATE public.items 
-    SET company_id = v_alwaleed_id 
-    WHERE company_id IS NULL;
-
-    -- ربط العملاء غير المرتبطين بشركة
-    UPDATE public.customers 
-    SET company_id = v_alwaleed_id 
-    WHERE company_id IS NULL;
-
-    -- ربط الفواتير غير المرتبطة بشركة
-    UPDATE public.sales_master 
-    SET company_id = v_alwaleed_id 
-    WHERE company_id IS NULL;
-
-    UPDATE public.sales_details 
-    SET company_id = v_alwaleed_id 
-    WHERE company_id IS NULL;
-
-    -- ربط القيود غير المرتبطة بشركة
-    UPDATE public.journal_entries 
-    SET company_id = v_alwaleed_id 
-    WHERE company_id IS NULL;
 END $$;

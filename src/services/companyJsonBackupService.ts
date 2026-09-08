@@ -342,9 +342,6 @@ export class CompanyJsonBackupService {
         const serialized = JSON.stringify(val);
         window.localStorage.setItem(getPartitionKey(baseKey, companyId), serialized);
         window.localStorage.setItem(getPartitionKey(baseKey, canonicalId), serialized);
-        if (canonicalId === ALWALEED_CANONICAL_UUID) {
-          window.localStorage.setItem(getPartitionKey(baseKey, 'company-alwaleed-client-003'), serialized);
-        }
       };
 
       writeRawPair(STORAGE_PREFIX.COMPANY, company);
@@ -367,8 +364,10 @@ export class CompanyJsonBackupService {
       if (isSupabaseConfigured) {
         Promise.resolve().then(async () => {
           try {
+            if (company) await SupabaseDataService.saveCompany(company);
             if (accounts.length > 0) await SupabaseDataService.saveAccounts(accounts);
             if (customers.length > 0) await Promise.all(customers.map((c) => SupabaseDataService.saveCustomer(c)));
+            if (suppliers.length > 0) await SupabaseDataService.saveSuppliers(suppliers);
             if (inventory.length > 0) await Promise.all(inventory.map((it) => SupabaseDataService.saveItem(it)));
             if (journals.length > 0) await Promise.all(journals.map((j) => SupabaseDataService.saveJournal(j)));
             if (invoices.length > 0) await Promise.all(invoices.map((inv) => SupabaseDataService.saveInvoice(inv)));

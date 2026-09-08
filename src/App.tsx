@@ -487,6 +487,7 @@ export default function App() {
               customers={customers}
               suppliers={suppliers}
               currency={currency}
+              companyName={company?.nameAr}
               onCreateJournal={handleCreateJournal}
               onUpdateJournal={handleUpdateJournal}
               onDeleteJournal={handleDeleteJournal}
