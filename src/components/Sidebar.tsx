@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
 import { CompanyProfile } from '../types.js';
+import { isDemoActive } from '../services/demoService.js';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -169,12 +170,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: 'المستخدمون والصلاحيات',
           icon: Users,
           color: 'text-pink-400',
+          badge: isDemoActive() ? 'مقيد' : undefined,
         },
         {
           id: 'system-reset',
           label: 'تصفير النظام وبدء دورة',
           icon: RotateCcw,
           color: 'text-rose-400',
+          badge: isDemoActive() ? 'مقيد' : undefined,
         },
       ],
     },
@@ -262,7 +265,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
 
                     {!collapsed && item.badge !== undefined && (
-                      <span className="px-2 py-0.5 text-[10px] font-black bg-rose-600 text-white rounded-full shadow-xs">
+                      <span className={`px-2 py-0.5 text-[10px] font-black rounded-full shadow-xs ${
+                        item.badge === 'مقيد'
+                          ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
+                          : 'bg-rose-600 text-white'
+                      }`}>
                         {item.badge}
                       </span>
                     )}

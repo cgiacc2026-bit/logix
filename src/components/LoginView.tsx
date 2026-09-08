@@ -20,7 +20,14 @@ import {
   PlusCircle,
 } from 'lucide-react';
 import { SystemUser, CompanyProfile } from '../types.js';
-import { registerCompany, loginCompany, setCurrentCompanyId } from '../services/supabaseClient.js';
+import { registerCompany, loginCompany, setCurrentCompanyId, STORAGE_KEYS } from '../services/supabaseClient.js';
+import {
+  DEMO_COMPANY_ID,
+  DEMO_COMPANY,
+  DEMO_USER,
+  seedDemoCompanyInSupabase,
+  checkAndAutoResetDemo,
+} from '../services/demoService.js';
 
 interface LoginViewProps {
   onLogin: (user: SystemUser, selectedCompany?: CompanyProfile) => void;
@@ -48,6 +55,36 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
+  // Instant Demo Company Trial
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
+
+  const handleInstantDemoTrial = async () => {
+    setIsDemoLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      checkAndAutoResetDemo();
+      setCurrentCompanyId(DEMO_COMPANY_ID);
+
+      // Seed Supabase if configured (background task)
+      seedDemoCompanyInSupabase().catch((e) => console.warn('Supabase demo seed warning:', e));
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(DEMO_USER));
+        localStorage.setItem(STORAGE_KEYS.COMPANY_INFO, JSON.stringify(DEMO_COMPANY));
+      }
+
+      setTimeout(() => {
+        setIsDemoLoading(false);
+        onLogin(DEMO_USER, DEMO_COMPANY);
+      }, 350);
+    } catch (err) {
+      setIsDemoLoading(false);
+      onLogin(DEMO_USER, DEMO_COMPANY);
+    }
+  };
 
   // Quick Demo account login
   const handleQuickLogin = (user: SystemUser) => {
@@ -461,61 +498,77 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </div>
           </div>
 
-          {/* Right Panel: Quick Role Accounts & Capabilities (col-span-5) */}
+          {/* Right Panel: Instant Demo Company Access */}
           <div className="lg:col-span-5 bg-gradient-to-b from-[#0F243E] to-[#0A1A2E] p-6 sm:p-8 border-t lg:border-t-0 lg:border-r border-slate-800 flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                  <KeyRound className="w-4 h-4 text-cyan-400" />
-                  حسابات الوصول السريع (تجربة بنقرة واحدة)
-                </h3>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold mb-4">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <span>النسخة التجريبية المباشرة (Demo)</span>
               </div>
-              <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
-                اضغط على أي دور وظيفي أدناه لتسجيل الدخول الفوري وتجربة الصلاحيات:
+
+              <h3 className="text-base font-bold text-white mb-2">
+                جرّب النظام فوراً — شركة تجريبية مجهزة
+              </h3>
+              <p className="text-xs text-slate-300 mb-6 leading-relaxed">
+                استكشف كافة مزايا لوجيكس السحابي في بيئة أعمال متكاملة تحتوي على فواتير مبيعات ومشتريات، أصناف مخزنية، حسابات بنكية، وتقارير أرباح وخسائر واقعية.
               </p>
 
-              <div className="space-y-2.5">
-                {availableUsers.slice(0, 5).map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => handleQuickLogin(u)}
-                    type="button"
-                    className="w-full p-2.5 rounded-xl bg-slate-900/60 hover:bg-blue-900/40 border border-slate-700/80 hover:border-blue-500/50 text-right transition-all flex items-center justify-between group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-cyan-300 flex items-center justify-center font-bold text-xs border border-blue-500/30 group-hover:scale-105 transition-transform">
-                        {u.name.slice(0, 1)}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
-                          {u.name}
-                        </div>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                          <span className="text-cyan-400 font-mono">@{u.username}</span>
-                          <span>•</span>
-                          <span className="text-slate-300">{u.roleTitleAr}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 transition-colors rotate-180" />
-                  </button>
-                ))}
+              {/* Single Prominent Trial Button */}
+              <button
+                type="button"
+                onClick={handleInstantDemoTrial}
+                disabled={isDemoLoading}
+                id="btn-instant-demo-trial"
+                className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-sm sm:text-base shadow-xl shadow-cyan-950/40 border border-cyan-400/40 flex items-center justify-center gap-3 transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer group"
+              >
+                {isDemoLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>جارٍ تهيئة بيئة العرض المباشرة...</span>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-lg">🔍</span>
+                    <span className="font-extrabold tracking-wide">جرّب النظام الآن — بدون تسجيل</span>
+                    <ChevronRight className="w-4 h-4 text-cyan-200 group-hover:translate-x-[-3px] transition-transform rotate-180" />
+                  </>
+                )}
+              </button>
+
+              {/* Demo Pre-Seeded Features Preview */}
+              <div className="mt-6 space-y-2.5 bg-slate-900/70 p-4 rounded-xl border border-slate-800 text-xs text-slate-300">
+                <div className="font-semibold text-cyan-300 text-[11px] mb-2 flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5" />
+                  محتويات بيئة العرض المجهزة:
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>شركة تجريبية معتمدة (LOGIX Demo) بحسابات بنكية نشطة</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>أصناف تموينية وغذائية وفواتير مبيعات ومشتريات حقيقية</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>كشوف حسابات العملاء والموردين ودفتر الأستاذ وميزان المراجعة</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>إمكانية إعادة تعيين البيانات للأصل في أي وقت بنقرة واحدة</span>
+                </div>
               </div>
             </div>
 
             {/* Architecture Highlights */}
-            <div className="mt-6 pt-5 border-t border-slate-800/80 space-y-2 text-[11px] text-slate-300">
+            <div className="mt-6 pt-5 border-t border-slate-800/80 space-y-2 text-[11px] text-slate-400">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>دورة محاسبية شاملة (شجرة الحسابات، قيود، أستاذ عام، ميزان مراجعة)</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>دعم الفوترة الإلكترونية المرحلة الثانية ZATCA والضريبة 15%</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>كشف حساب تفصيلي للعملاء والموردين وتصدير Excel</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>إدارة الفواتير والمخزون وسندات القبض والصرف والتصنيع</span>
+                <Database className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>عزل كامل ومستقل لبيانات الديمو مع إمكانية تجربة الإضافة الحية</span>
               </div>
             </div>
 

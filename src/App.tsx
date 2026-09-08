@@ -34,6 +34,13 @@ import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
+import {
+  isDemoActive,
+  resetDemoCompanyData,
+  checkAndAutoResetDemo,
+  DEMO_COMPANY,
+} from './services/demoService.js';
+import { RotateCcw, Lock } from 'lucide-react';
 
 const DEFAULT_COMPANY: CompanyProfile = {
   id: 'company-logix-01',
@@ -119,9 +126,29 @@ export default function App() {
     return null;
   });
 
+  const [isResettingDemo, setIsResettingDemo] = useState(false);
+  const isDemo = isDemoActive();
+
+  const handleResetDemo = async () => {
+    if (!window.confirm('هل تريد إعادة تعيين بيانات الشركة التجريبية وحذف الفواتير والأصناف التي أضفتها أثناء التجربة واستعادة البيانات الأولية؟')) {
+      return;
+    }
+    setIsResettingDemo(true);
+    try {
+      const res = await resetDemoCompanyData();
+      await refreshAllData();
+      alert(res.message);
+    } catch (err: any) {
+      alert(err?.message || 'تعذر إعادة تعيين بيانات الديمو');
+    } finally {
+      setIsResettingDemo(false);
+    }
+  };
+
   const handleLogin = (user: SystemUser, selectedCompany?: CompanyProfile) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
+    setActiveTab('dashboard');
     localStorage.setItem('logix_auth_session', JSON.stringify(user));
     if (selectedCompany) {
       setCompany(selectedCompany);
@@ -129,6 +156,7 @@ export default function App() {
         setCurrency(selectedCompany.functionalCurrency);
       }
     }
+    refreshAllData();
   };
 
   const handleLogout = () => {
@@ -184,6 +212,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    checkAndAutoResetDemo();
     refreshAllData();
   }, []);
 
@@ -392,6 +421,34 @@ export default function App() {
           sidebarCollapsed ? 'mr-20' : 'mr-72'
         }`}
       >
+        {/* Persistent Demo Mode Banner */}
+        {isDemo && (
+          <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white px-4 py-2.5 border-b border-blue-500/40 flex flex-wrap items-center justify-between gap-3 shadow-md sticky top-0 z-40">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+              </span>
+              <span className="font-extrabold text-cyan-300 text-xs sm:text-sm">🔵 وضع تجريبي —</span>
+              <span className="text-slate-200 text-xs sm:text-sm font-medium">
+                البيانات هنا للعرض فقط ولا يُعتد بها. يمكنك إضافة فواتير وأصناف وتجربة كافة التقارير.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetDemo}
+                disabled={isResettingDemo}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm border border-blue-400/40 active:scale-95 cursor-pointer disabled:opacity-50"
+                title="إعادة ضبط بيانات الشركة التجريبية وحذف أي فواتير أو أصناف أضيفت أثناء الجلسة"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isResettingDemo ? 'animate-spin' : ''}`} />
+                <span>{isResettingDemo ? 'جارٍ إعادة الضبط...' : 'إعادة تعيين بيانات العرض (Reset Demo)'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Top Application Header */}
         <Header
           company={activeCompany}
@@ -559,19 +616,57 @@ export default function App() {
           )}
 
           {activeTab === 'users' && (
-            <UsersView
-              currentUser={currentUser}
-              setCurrentUser={setCurrentUser}
-            />
+            isDemo ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl mx-auto my-12 text-center shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 border border-blue-200">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900 mb-2">إدارة المستخدمين مقيدة في الوضع التجريبي</h2>
+                <p className="text-slate-600 text-sm leading-relaxed mb-6">
+                  تم قفل شاشة المستخدمين والصلاحيات في بيئة العرض التشاركية لحماية إعدادات الدخول. يمكنك تجربة كافة دورات المبيعات، المشتريات، المخزون، القيود المحاسبية، والتقارير المالية بحرية كاملة.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-sm cursor-pointer"
+                >
+                  العودة للوحة التحكم
+                </button>
+              </div>
+            ) : (
+              <UsersView
+                currentUser={currentUser}
+                setCurrentUser={setCurrentUser}
+              />
+            )
           )}
 
           {activeTab === 'system-reset' && (
-            <SystemResetPanel
-              currentUser={currentUser}
-              company={activeCompany}
-              currency={currency}
-              onResetComplete={refreshAllData}
-            />
+            isDemo ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl mx-auto my-12 text-center shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4 border border-amber-200">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900 mb-2">تصفير النظام العام غير متاح في الوضع التجريبي</h2>
+                <p className="text-slate-600 text-sm leading-relaxed mb-6">
+                  لتصفير بيانات الشركة التجريبية واستعادة العينة الأصلية، يرجى استخدام زر &quot;إعادة ضبط بيانات العرض (Reset Demo)&quot; الموجود في الشريط الأزرق أعلى الشاشة.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-sm cursor-pointer"
+                >
+                  العودة للوحة التحكم
+                </button>
+              </div>
+            ) : (
+              <SystemResetPanel
+                currentUser={currentUser}
+                company={activeCompany}
+                currency={currency}
+                onResetComplete={refreshAllData}
+              />
+            )
           )}
 
           {activeTab === 'company' && (
