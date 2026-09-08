@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public.companies (
     type TEXT DEFAULT 'client',
     login_code TEXT UNIQUE,
     status TEXT DEFAULT 'pending',
+    logo_url TEXT,
     profile_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS public.companies (
 
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'client';
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS login_code TEXT UNIQUE;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS logo_url TEXT;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_companies_type') THEN
         ALTER TABLE public.companies ADD CONSTRAINT chk_companies_type CHECK (type IN ('system','demo','client'));

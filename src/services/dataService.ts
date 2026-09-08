@@ -185,19 +185,30 @@ class LocalDataStore {
 
   public getCompany(): CompanyProfile {
     const compId = this.getEffectiveCompanyId();
+    const dedicatedLogo = typeof window !== 'undefined'
+      ? window.localStorage.getItem(compId ? `logix_company_logo_${compId}` : 'logix_current_company_logo') || window.localStorage.getItem('logix_current_company_logo')
+      : null;
+
     if (!compId) {
       const stored = this.getLocal<CompanyProfile | null>(this.getKey(STORAGE_KEYS.COMPANY), null);
-      if (stored && stored.nameAr) return stored;
+      if (stored && stored.nameAr) {
+        if (dedicatedLogo && !stored.logoUrl) stored.logoUrl = dedicatedLogo;
+        return stored;
+      }
       return {
         ...DEFAULT_COMPANY_PROFILE,
         id: '',
         nameAr: 'يرجى تسجيل الدخول واختيار المنشأة',
         nameEn: 'Please Login & Select Enterprise',
+        logoUrl: dedicatedLogo || '',
       };
     }
 
     const stored = this.getLocal<CompanyProfile | null>(this.getKey(STORAGE_KEYS.COMPANY), null);
-    if (stored && stored.id === compId && stored.nameAr) {
+    if (stored && (stored.id === compId || !stored.id) && stored.nameAr) {
+      if (dedicatedLogo && !stored.logoUrl) {
+        stored.logoUrl = dedicatedLogo;
+      }
       return stored;
     }
 
@@ -224,6 +235,7 @@ class LocalDataStore {
         generalManager: 'المشرف العام (CGI Admin)',
         financialManager: 'أ. عبد العزيز الكندري',
         chiefAccountant: 'أ. طارق الفهد',
+        logoUrl: dedicatedLogo || '',
         headerNotes: 'المنشأة الرسمية لنظام لوجيكس السحابي - بيئة تشغيلية نظيفة خاضعة لإشراف الآدمن',
         footerNotes: 'نظام لوجيكس السحابي لإدارة وتخطيط موارد المنشآت الصناعية والتجارية',
       };
@@ -254,6 +266,7 @@ class LocalDataStore {
         generalManager: 'م. فهد السالم (مدير عام تجريبي)',
         financialManager: 'أ. ريم المطيري (المدير المالي)',
         chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
+        logoUrl: dedicatedLogo || '',
         headerNotes: 'بيئة تجريبية لاختبار دورات التصنيع وإدارة سلاسل الإمداد وعروض العملاء',
         footerNotes: 'نسخة تجريبية لعرض إمكانيات نظام لوجيكس السحابي للعملاء المحتملين',
       };
@@ -286,6 +299,7 @@ class LocalDataStore {
         generalManager: 'د. خالد السليمان',
         financialManager: 'أ. محمد الشمري',
         chiefAccountant: 'أ. محمد الشمري',
+        logoUrl: dedicatedLogo || '',
         headerNotes: 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت',
         footerNotes: 'الدفع خلال 30 يوماً من تاريخ الفاتورة • خاضع للقوانين التجارية بدولة الكويت',
       };
@@ -315,6 +329,7 @@ class LocalDataStore {
               decimalPlaces: p.decimalPlaces ?? 3,
               vatRate: p.vatRate ?? 0,
               crNumber: p.crNumber || found.login_code || '',
+              logoUrl: found.logo_url || found.logo || p.logoUrl || dedicatedLogo || '',
             };
             this.saveCompany(createdProfile);
             return createdProfile;
@@ -326,6 +341,9 @@ class LocalDataStore {
     }
 
     const result = stored || DEFAULT_COMPANY_PROFILE;
+    if (dedicatedLogo && !result.logoUrl) {
+      result.logoUrl = dedicatedLogo;
+    }
     if (!result.defaultAccounts) {
       const accs = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
       if (accs && accs.length > 0) {
@@ -339,6 +357,25 @@ class LocalDataStore {
 
   public saveCompany(comp: CompanyProfile): CompanyProfile {
     const compId = comp.id || this.getEffectiveCompanyId();
+    if (compId && !comp.id) {
+      comp.id = compId;
+    }
+
+    // Dedicated Logo Storage for Guaranteed Persistence
+    if (typeof window !== 'undefined' && window.localStorage && compId) {
+      try {
+        if (comp.logoUrl) {
+          window.localStorage.setItem(`logix_company_logo_${compId}`, comp.logoUrl);
+          window.localStorage.setItem('logix_current_company_logo', comp.logoUrl);
+        } else if (comp.logoUrl === '') {
+          window.localStorage.removeItem(`logix_company_logo_${compId}`);
+          window.localStorage.removeItem('logix_current_company_logo');
+        }
+      } catch (e) {
+        console.warn('Dedicated logo storage notice:', e);
+      }
+    }
+
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY, compId || undefined), comp);
 
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -355,6 +392,7 @@ class LocalDataStore {
               tenants[idx] = {
                 ...tenants[idx],
                 company_name: comp.nameAr,
+                logo_url: comp.logoUrl || '',
                 profile_data: comp,
                 updated_at: new Date().toISOString(),
               };
@@ -550,6 +588,18 @@ export class DataService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(comp),
     });
+
+    if (comp.logoUrl) {
+      try {
+        await safeApiFetch('/api/company/upload-logo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logoUrl: comp.logoUrl, companyId: comp.id }),
+        });
+      } catch (logoErr) {
+        console.warn('Logo endpoint sync notice:', logoErr);
+      }
+    }
     return comp;
   }
 

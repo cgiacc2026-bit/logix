@@ -54,6 +54,53 @@ interface CompanySetupViewProps {
   onResetDatabase?: () => Promise<void>;
 }
 
+function compressAndOptimizeLogo(file: File, maxDim = 400): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve((e.target?.result as string) || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve((e.target?.result as string) || '');
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/png', 0.92);
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        resolve((e.target?.result as string) || '');
+      };
+      img.src = (e.target?.result as string) || '';
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   company,
   accounts,
@@ -68,6 +115,8 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSavingLogo, setIsSavingLogo] = useState(false);
+  const [logoSuccessMessage, setLogoSuccessMessage] = useState('');
   const [mappingSuccess, setMappingSuccess] = useState('');
   const [cleanGenSuccess, setCleanGenSuccess] = useState('');
   const [isGeneratingClean, setIsGeneratingClean] = useState(false);
@@ -174,6 +223,32 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
       setErrorMessage(err.message || 'حدث خطأ أثناء حفظ بيانات الشركة');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveLogoOnly = async (logoToSave?: string) => {
+    const finalLogo = logoToSave !== undefined ? logoToSave : (formData.logoUrl || '');
+    setIsSavingLogo(true);
+    setLogoSuccessMessage('');
+    setErrorMessage('');
+    try {
+      const updatedProfile: CompanyProfile = {
+        ...(company || {}),
+        ...formData,
+        logoUrl: finalLogo,
+      } as CompanyProfile;
+
+      await onSaveCompany(updatedProfile);
+      setFormData((prev) => ({ ...prev, logoUrl: finalLogo }));
+      setLogoSuccessMessage(finalLogo ? 'تم حفظ وتثبيت الشعار بنجاح في قاعدة البيانات سحابياً ومحلياً!' : 'تم حذف الشعار بنجاح!');
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+      setTimeout(() => setLogoSuccessMessage(''), 5000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'فشل حفظ الشعار');
+    } finally {
+      setIsSavingLogo(false);
     }
   };
 
@@ -1480,19 +1555,31 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                     شعار المنشأة والمطبوعات (Entity Logo)
                   </h4>
                   <p className="text-[11px] text-[#6E6659]">
-                    رفع لوجو المنشأة بدقة عالية ليظهر في ترويسة الفواتير، بطاقات حركة المخزون، وسندات الصرف والقبض
+                    رفع لوجو المنشأة بدقة عالية ومحسنة ليحفظ في قاعدة البيانات المركزية ويطبع في ترويسة الفواتير، بطاقات حركة المخزون، وسندات الصرف والقبض.
                   </p>
                 </div>
                 {formData.logoUrl && (
                   <button
                     type="button"
-                    onClick={() => handleChange('logoUrl', '')}
-                    className="text-xs text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    disabled={isSavingLogo}
+                    onClick={async () => {
+                      if (window.confirm('تأكيد: هل ترغب في حذف شعار المنشأة وحفظ التعديل في قاعدة البيانات؟')) {
+                        await handleSaveLogoOnly('');
+                      }
+                    }}
+                    className="text-xs text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> حذف الشعار
                   </button>
                 )}
               </div>
+
+              {logoSuccessMessage && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-bold animate-in fade-in">
+                  <CheckCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{logoSuccessMessage}</span>
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row items-center gap-6">
                 {/* Logo Preview box */}
@@ -1509,6 +1596,12 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       <span className="text-[10px] font-bold block">لا يوجد شعار</span>
                     </div>
                   )}
+                  {isSavingLogo && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex flex-col items-center justify-center gap-1">
+                      <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
+                      <span className="text-[9px] font-bold text-blue-800">جاري التثبيت...</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Upload Buttons & Options */}
@@ -1516,21 +1609,26 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <div className="flex flex-wrap items-center gap-3">
                     <label className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-2">
                       <Upload className="w-4 h-4 text-emerald-400" />
-                      <span>اختيار ملف لوجو من جهازك (PNG / JPG / SVG / WebP)</span>
+                      <span>{isSavingLogo ? 'جاري معالجة وحفظ الشعار...' : 'اختيار ملف لوجو من جهازك (PNG / JPG / SVG / WebP)'}</span>
                       <input
                         type="file"
                         accept="image/*"
+                        disabled={isSavingLogo}
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (uploadEvt) => {
-                              if (uploadEvt.target?.result) {
-                                handleChange('logoUrl', uploadEvt.target.result as string);
-                              }
-                            };
-                            reader.readAsDataURL(file);
+                            setIsSavingLogo(true);
+                            try {
+                              const optimized = await compressAndOptimizeLogo(file);
+                              handleChange('logoUrl', optimized);
+                              await handleSaveLogoOnly(optimized);
+                            } catch (uploadErr: any) {
+                              setErrorMessage('فشل معالجة الشعار: ' + (uploadErr?.message || ''));
+                            } finally {
+                              setIsSavingLogo(false);
+                              e.target.value = '';
+                            }
                           }
                         }}
                       />
@@ -1545,9 +1643,21 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       placeholder="لصق رابط مباشر لصورة الشعار (URL)..."
                       className="flex-1 min-w-[220px] bg-white border border-[#E5E1DA] rounded-xl px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-blue-600"
                     />
+
+                    {formData.logoUrl && (
+                      <button
+                        type="button"
+                        disabled={isSavingLogo}
+                        onClick={() => handleSaveLogoOnly()}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {isSavingLogo ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        <span>تثبيت وحفظ الشعار في القاعدة</span>
+                      </button>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    يتم تحويل الشعار وتخزينه كبيانات Base64 متوافقة سحابياً ومحلياً ليطبع في كل فاتورة وسند ومستند.
+                    يتم ضغط الشعار تلقائياً وتخزينه كبيانات Base64 متوافقة مع قاعدة البيانات السحابية (Supabase) والذاكرة الدائمة، ليظل محفوظاً ولا يُمسح أبداً.
                   </p>
                 </div>
               </div>

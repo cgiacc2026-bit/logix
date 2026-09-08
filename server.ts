@@ -33,7 +33,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // ----------------------- API ROUTES -----------------------
 
@@ -1685,12 +1686,91 @@ async function startServer() {
     }
   });
 
-  app.put('/api/company', (req, res) => {
+  app.put('/api/company', async (req, res) => {
     try {
       const updated = db.updateCompany(req.body);
+      const targetId = updated.id || req.body.id;
+
+      // Sync company profile and logo_url to Supabase with admin credentials
+      if (targetId && supabaseAdmin) {
+        try {
+          const payload: any = {
+            id: targetId,
+            company_name: updated.nameAr || req.body.nameAr,
+            owner_email: updated.email || req.body.email || 'admin@logixerp.com',
+            status: 'active',
+            logo_url: updated.logoUrl || req.body.logoUrl || '',
+            profile_data: updated,
+            updated_at: new Date().toISOString(),
+          };
+
+          const { error } = await supabaseAdmin
+            .from('companies')
+            .upsert([payload], { onConflict: 'id' });
+
+          if (error) {
+            // Fallback if logo_url column does not exist yet in DB
+            const fallbackPayload: any = {
+              id: targetId,
+              company_name: updated.nameAr || req.body.nameAr,
+              owner_email: updated.email || req.body.email || 'admin@logixerp.com',
+              status: 'active',
+              profile_data: updated,
+              updated_at: new Date().toISOString(),
+            };
+            await supabaseAdmin
+              .from('companies')
+              .upsert([fallbackPayload], { onConflict: 'id' });
+          }
+        } catch (cloudErr: any) {
+          console.warn('Server Supabase company sync note:', cloudErr?.message);
+        }
+      }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Dedicated Logo Upload & Sync Endpoint
+  app.post('/api/company/upload-logo', async (req, res) => {
+    try {
+      const { logoUrl, companyId } = req.body;
+      if (!logoUrl) {
+        return res.status(400).json({ success: false, message: 'لم يتم إرسال بيانات الشعار' });
+      }
+
+      const existingCompany = db.getCompany();
+      const targetId = companyId || existingCompany.id;
+      const updated = db.updateCompany({
+        ...existingCompany,
+        id: targetId,
+        logoUrl: logoUrl,
+      });
+
+      // Synchronize directly with Supabase
+      if (targetId && supabaseAdmin) {
+        try {
+          await supabaseAdmin
+            .from('companies')
+            .update({
+              logo_url: logoUrl,
+              profile_data: {
+                ...(existingCompany || {}),
+                logoUrl: logoUrl,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', targetId);
+        } catch (supaErr: any) {
+          console.warn('Supabase logo update notice:', supaErr?.message);
+        }
+      }
+
+      res.json({ success: true, company: updated, logoUrl });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 

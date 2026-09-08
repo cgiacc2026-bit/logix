@@ -79,7 +79,7 @@ export class SupabaseDataService {
         generalManager: data.profile_data?.generalManager || 'م. عبد العزيز بن فهد',
         financialManager: data.profile_data?.financialManager || 'أ. ياسر القحطاني',
         chiefAccountant: data.profile_data?.chiefAccountant || 'أ. عبد الرحمن السعيد',
-        logoUrl: data.profile_data?.logoUrl || '',
+        logoUrl: data.logo_url || data.logo || data.profile_data?.logoUrl || '',
         headerNotes: data.profile_data?.headerNotes || 'نظام لوجيكس السحابي لتخطيط الموارد (LOGIX Multi-Tenant ERP)',
         footerNotes: data.profile_data?.footerNotes || 'الدفع خلال 30 يوماً من تاريخ استلام الفاتورة.',
         showDigitalStamp: data.profile_data?.showDigitalStamp ?? true,
@@ -97,22 +97,38 @@ export class SupabaseDataService {
     const companyId = getCurrentCompanyId() || comp.id;
     if (!companyId) return false;
     try {
+      const payload: any = {
+        id: companyId,
+        company_name: comp.nameAr,
+        owner_email: comp.email || 'admin@logixerp.com',
+        status: 'active',
+        logo_url: comp.logoUrl || '',
+        profile_data: comp,
+        updated_at: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from('companies')
-        .upsert([
-          {
-            id: companyId,
-            company_name: comp.nameAr,
-            owner_email: comp.email || 'admin@logixerp.com',
-            status: 'active',
-            profile_data: comp,
-            updated_at: new Date().toISOString(),
-          },
-        ]);
+        .upsert([payload], { onConflict: 'id' });
 
       if (error) {
-        console.warn('Supabase saveCompany error:', error.message);
-        return false;
+        console.warn('Supabase saveCompany primary error, attempting fallback without logo_url column:', error.message);
+        const fallbackPayload: any = {
+          id: companyId,
+          company_name: comp.nameAr,
+          owner_email: comp.email || 'admin@logixerp.com',
+          status: 'active',
+          profile_data: comp,
+          updated_at: new Date().toISOString(),
+        };
+        const { error: fallbackError } = await supabase
+          .from('companies')
+          .upsert([fallbackPayload], { onConflict: 'id' });
+
+        if (fallbackError) {
+          console.warn('Supabase saveCompany fallback error:', fallbackError.message);
+          return false;
+        }
       }
       return true;
     } catch (err: any) {
