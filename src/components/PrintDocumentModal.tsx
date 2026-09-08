@@ -1,0 +1,925 @@
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
+import { CompanyProfile, Invoice, PaymentVoucher, JournalEntry } from '../types';
+import {
+  Printer,
+  X,
+  CheckCircle2,
+  QrCode,
+  Eye,
+  EyeOff,
+  FileText,
+  DollarSign,
+  Calendar,
+  UserCheck,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Type,
+  RotateCcw,
+  Building2,
+  ShieldCheck,
+} from 'lucide-react';
+import { formatCurrency } from '../utils/formatters.ts';
+import { tafqeetCurrency } from '../utils/tafqeet.ts';
+
+interface PrintDocumentModalProps {
+  documentType: 'INVOICE' | 'VOUCHER' | 'JOURNAL' | 'STATEMENT';
+  data: any;
+  company: CompanyProfile;
+  onClose: () => void;
+}
+
+export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
+  documentType,
+  data,
+  company,
+  onClose,
+}) => {
+  if (!data) return null;
+
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [showQr, setShowQr] = useState<boolean>(true);
+
+  // Zoom & Font Size Control State
+  const [zoomLevel, setZoomLevel] = useState<number>(100); // 70% to 200%
+  const [fontScale, setFontScale] = useState<'NORMAL' | 'LARGE' | 'XLARGE'>('NORMAL');
+
+  const formattedCurrency = (val: number) => {
+    return formatCurrency(val, company.functionalCurrency || 'KWD');
+  };
+
+  const getDocTitle = () => {
+    if (documentType === 'INVOICE') {
+      const inv = data as Invoice;
+      const isCash = inv.paymentTerms === 'CASH' || (inv.paidAmount >= inv.grandTotal && inv.grandTotal > 0);
+      if (inv.type === 'SALES_RETURN') return 'إشعار دائن (مرتجع مبيعات)';
+      if (inv.type === 'PURCHASE_RETURN') return 'إشعار مدين (مرتجع مشتريات)';
+      if (inv.type === 'PURCHASE') return isCash ? 'فاتورة مشتريات نقدية (كاش)' : 'فاتورة مشتريات آجلة (ذمم)';
+      return isCash ? 'فاتورة مبيعات نقدية (كاش)' : 'فاتورة مبيعات آجلة (على الحساب)';
+    }
+    if (documentType === 'VOUCHER') {
+      return (data as PaymentVoucher).type === 'RECEIPT' ? 'سند قبض مالي' : 'سند صرف مالي';
+    }
+    if (documentType === 'JOURNAL') return 'قيد يومية محاسبي معتمد';
+    if (documentType === 'STATEMENT') return 'كشف حساب مالي تفصيلي';
+    return 'مستند مالي رسمي';
+  };
+
+  // Generate Real QR Code
+  useEffect(() => {
+    if (documentType === 'INVOICE') {
+      const inv = data as Invoice;
+      const paymentTermText =
+        inv.paymentTerms === 'CASH' || (inv.paidAmount >= inv.grandTotal && inv.grandTotal > 0)
+          ? 'نقدي (كاش)'
+          : 'آجل (على الحساب)';
+
+      const qrPayloadText = [
+        `المورد: ${company.nameAr || 'مطحنة الوليد المتحدة'}`,
+        `س.ت: ${company.crNumber || '450912'}`,
+        `المستند: ${getDocTitle()} - ${inv.invoiceNumber}`,
+        `التاريخ: ${inv.date}`,
+        `الطرف: ${inv.entityNameAr || '-'}`,
+        `طريقة الدفع: ${paymentTermText}`,
+        `الصافي المستحق: ${formattedCurrency(inv.grandTotal)}`,
+        `عدد البنود: ${inv.lines?.length || 0}`,
+      ].join('\n');
+
+      QRCode.toDataURL(qrPayloadText, {
+        width: 180,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
+        },
+        errorCorrectionLevel: 'M',
+      })
+        .then((url) => setQrCodeDataUrl(url))
+        .catch((err) => console.error('Error generating invoice QR Code', err));
+    } else if (documentType === 'VOUCHER') {
+      const v = data as PaymentVoucher;
+      const qrPayloadText = [
+        `الجهة: ${company.nameAr}`,
+        `السند: ${v.type === 'RECEIPT' ? 'سند قبض' : 'سند صرف'} (${v.voucherNumber})`,
+        `التاريخ: ${v.date}`,
+        `المبلغ: ${formattedCurrency(v.amount)}`,
+        `الطرف: ${v.entityNameAr}`,
+      ].join('\n');
+
+      QRCode.toDataURL(qrPayloadText, {
+        width: 180,
+        margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then((url) => setQrCodeDataUrl(url))
+        .catch((err) => console.error('QR Error', err));
+    }
+  }, [documentType, data, company]);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleZoomIn = () => {
+    setZoomLevel((prev) => Math.min(200, prev + 10));
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel((prev) => Math.max(70, prev - 10));
+  };
+
+  const handleResetZoom = () => {
+    setZoomLevel(100);
+    setFontScale('NORMAL');
+  };
+
+  // Font Scale Multiplier classes
+  const getFontScaleClass = () => {
+    if (fontScale === 'XLARGE') return 'text-[15px] leading-relaxed';
+    if (fontScale === 'LARGE') return 'text-[13.5px] leading-normal';
+    return 'text-xs leading-normal';
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto print:backdrop-blur-none">
+      {/* Injected Print Stylesheet for High-DPI Crisp Vector Printing */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 12mm 10mm 12mm 10mm;
+          }
+          body {
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+            background: white !important;
+            color: black !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .print-scalable-container {
+            transform: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          table {
+            page-break-inside: auto;
+          }
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tfoot {
+            display: table-footer-group;
+          }
+        }
+      ` }} />
+
+      <div className="bg-white rounded-2xl max-w-5xl w-full my-auto shadow-2xl dir-rtl text-right overflow-hidden flex flex-col max-h-[96vh] print:max-h-none print:shadow-none print:rounded-none print:border-none print:w-full print:m-0 print:p-0">
+        
+        {/* ========================================================================= */}
+        {/* Top Control Action Bar with Zoom In / Zoom Out & Font Scaling */}
+        {/* ========================================================================= */}
+        <div className="bg-[#1A1A1A] text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 no-print border-b border-black shrink-0">
+          
+          {/* Title & Document Badge */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/20 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37]">
+              <Printer className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-sm font-black text-white block leading-tight">
+                معاينة وطباعة {getDocTitle()}
+              </span>
+              <span className="text-[10px] text-neutral-400 font-mono">
+                مطحنة الوليد المتحدة • معاينة عالية الوضوح
+              </span>
+            </div>
+          </div>
+
+          {/* Interactive Zoom & Visual Toolset */}
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Zoom Controls Pill */}
+            <div className="flex items-center bg-neutral-900 border border-neutral-700 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                disabled={zoomLevel <= 70}
+                className="p-1.5 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-md transition-colors disabled:opacity-30 cursor-pointer"
+                title="تصغير المعاينة (Zoom Out)"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+
+              <div className="px-2 text-xs font-mono font-bold text-[#D4AF37] min-w-[52px] text-center select-none">
+                {zoomLevel}%
+              </div>
+
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                disabled={zoomLevel >= 200}
+                className="p-1.5 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-md transition-colors disabled:opacity-30 cursor-pointer"
+                title="تكبير المعاينة (Zoom In)"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                className="p-1.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 rounded-md transition-colors border-r border-neutral-800 cursor-pointer"
+                title="إعادة ضبط الحجم الافتراضي 100%"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Font Size Preset Selector */}
+            <div className="flex items-center bg-neutral-900 border border-neutral-700 rounded-lg p-0.5 text-[11px] font-bold">
+              <span className="px-2 text-neutral-400 flex items-center gap-1">
+                <Type className="w-3.5 h-3.5 text-[#D4AF37]" /> الخط:
+              </span>
+              <button
+                type="button"
+                onClick={() => setFontScale('NORMAL')}
+                className={`px-2 py-1 rounded-md transition-colors cursor-pointer ${
+                  fontScale === 'NORMAL' ? 'bg-[#D4AF37] text-black font-black' : 'text-neutral-300 hover:text-white'
+                }`}
+              >
+                عادي
+              </button>
+              <button
+                type="button"
+                onClick={() => setFontScale('LARGE')}
+                className={`px-2 py-1 rounded-md transition-colors cursor-pointer ${
+                  fontScale === 'LARGE' ? 'bg-[#D4AF37] text-black font-black' : 'text-neutral-300 hover:text-white'
+                }`}
+              >
+                كبير (+15%)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFontScale('XLARGE')}
+                className={`px-2 py-1 rounded-md transition-colors cursor-pointer ${
+                  fontScale === 'XLARGE' ? 'bg-[#D4AF37] text-black font-black' : 'text-neutral-300 hover:text-white'
+                }`}
+              >
+                واضح جداً (+30%)
+              </button>
+            </div>
+
+            {/* QR Toggle Button */}
+            {documentType === 'INVOICE' && (
+              <button
+                type="button"
+                onClick={() => setShowQr(!showQr)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all border ${
+                  showQr
+                    ? 'bg-neutral-800 text-[#D4AF37] border-[#D4AF37]/50 hover:bg-neutral-700'
+                    : 'bg-neutral-900 text-neutral-400 border-neutral-700 hover:text-white'
+                }`}
+                title="إظهار أو إلغاء رمز الـ QR على الفاتورة"
+              >
+                {showQr ? <Eye className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5 text-rose-400" />}
+                <span>{showQr ? 'رمز QR: مفعل' : 'رمز QR: ملغي'}</span>
+              </button>
+            )}
+
+            {/* Print Instant Action Button */}
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="px-4 py-1.5 bg-[#D4AF37] hover:bg-[#b8952b] text-black font-black text-xs rounded-lg shadow-md flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+            >
+              <Printer className="w-4 h-4" />
+              طباعة فورية (Print)
+            </button>
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
+              title="إغلاق المعاينة"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* Printable View Container with Zoom & Font Sizing Applied */}
+        {/* ========================================================================= */}
+        <div className="flex-1 overflow-auto bg-neutral-100 p-3 sm:p-6 print:p-0 print:bg-white print:overflow-visible flex justify-center">
+          <div
+            className={`bg-white text-black p-6 sm:p-10 shadow-lg border border-neutral-300 print:border-none print:shadow-none print:p-0 w-full max-w-4xl transition-transform duration-150 origin-top print-scalable-container ${getFontScaleClass()}`}
+            style={{
+              transform: zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined,
+              transformOrigin: 'top center',
+              marginBottom: zoomLevel > 100 ? `${(zoomLevel - 100) * 8}px` : undefined,
+            }}
+            id="printable-document"
+          >
+            {/* Header Section: Company Profile & Invoice Identification */}
+            <div className="flex items-start justify-between border-b-2 border-black pb-5 gap-4">
+              {/* Right: Company Information */}
+              <div className="space-y-1 text-right max-w-md">
+                <h1 className="text-2xl sm:text-3xl font-black text-black tracking-tight">
+                  {company.nameAr || 'مطحنة الوليد المتحدة'}
+                </h1>
+                <p className="text-xs text-neutral-700 font-bold uppercase tracking-wider font-mono">
+                  {company.nameEn || 'Al-Waleed United Mill'}
+                </p>
+                <div className="text-xs text-neutral-800 space-y-0.5 pt-1.5 font-medium leading-relaxed">
+                  <p>
+                    السجل التجاري: <span className="font-bold font-mono text-black">{company.crNumber || company.commercialRegNumber || '450912'}</span>
+                    {company.taxNumber && (
+                      <span className="mr-3">الرقم الضريبي: <span className="font-bold font-mono text-black">{company.taxNumber}</span></span>
+                    )}
+                  </p>
+                  <p>{company.streetName || 'شارع السور'}، {company.district || 'منطقة القبلة'}، {company.city || 'الكويت'}</p>
+                  <p>
+                    هاتف: <span className="font-mono font-bold">{company.phone || '65710278'}</span>
+                    <span className="mx-2 text-neutral-400">|</span>
+                    بريد: <span className="font-mono font-bold">{company.email || 'alwaleedmill@gmail.com'}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Left: QR Code & Document Meta Identifier Badge */}
+              <div className="flex items-center gap-3 text-left shrink-0">
+                {/* Real Generated QR Code (Togglable) */}
+                {showQr && (
+                  <div className="flex flex-col items-center justify-center p-1.5 bg-white border-2 border-black rounded-lg shadow-2xs">
+                    {qrCodeDataUrl ? (
+                      <img
+                        src={qrCodeDataUrl}
+                        alt="Invoice QR"
+                        className="w-20 h-20 sm:w-24 sm:h-24 object-contain"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 flex flex-col items-center justify-center bg-neutral-50 text-neutral-400">
+                        <QrCode className="w-10 h-10" />
+                        <span className="text-[8px] font-bold">QR CODE</span>
+                      </div>
+                    )}
+                    <span className="text-[8px] font-bold text-neutral-700 mt-1 font-mono">E-INVOICE QR</span>
+                  </div>
+                )}
+
+                {/* Invoice Meta Box */}
+                <div className="border-2 border-black px-4 py-3 rounded-xl text-center bg-neutral-50 min-w-[190px] shadow-2xs">
+                  <div className="text-xs sm:text-sm font-black text-black">
+                    {getDocTitle()}
+                  </div>
+                  <div className="text-sm sm:text-base font-mono font-black pt-1 text-black">
+                    {documentType === 'INVOICE' && (data as Invoice).invoiceNumber}
+                    {documentType === 'VOUCHER' && (data as PaymentVoucher).voucherNumber}
+                    {documentType === 'JOURNAL' && (data as JournalEntry).entryNumber}
+                    {documentType === 'STATEMENT' && (data.customer?.code ? `كود: ${data.customer.code}` : 'STMT-2026')}
+                  </div>
+                  <div className="text-xs text-neutral-800 font-bold mt-1.5 pt-1.5 border-t border-neutral-300">
+                    التاريخ: <span className="font-mono font-black text-black">{data.date || new Date().toISOString().split('T')[0]}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* 1. INVOICE VIEW */}
+            {/* ========================================================================= */}
+            {documentType === 'INVOICE' && (() => {
+              const inv = data as Invoice;
+              const isSales = inv.type === 'SALES' || inv.type === 'SALES_RETURN';
+              const isCash = inv.paymentTerms === 'CASH' || (inv.paidAmount >= inv.grandTotal && inv.grandTotal > 0);
+
+              // Calculate item lines gross, discounts, and nets
+              let grossItemsTotal = 0;
+              let lineDiscountsTotal = 0;
+
+              const processedLines = (inv.lines || []).map((line, idx) => {
+                const qty = Number(line.quantity) || 1;
+                const price = Number(line.unitPrice) || 0;
+                const lineGross = qty * price;
+                grossItemsTotal += lineGross;
+
+                let lineDiscAmt = 0;
+                if (line.discountType === 'PERCENT' && Number(line.discountValue) > 0) {
+                  lineDiscAmt = (lineGross * Math.min(100, Math.max(0, Number(line.discountValue)))) / 100;
+                } else if (line.discountType === 'FIXED' && Number(line.discountValue) > 0) {
+                  lineDiscAmt = Math.min(lineGross, Number(line.discountValue));
+                } else if (Number(line.discountAmount) > 0) {
+                  lineDiscAmt = Math.min(lineGross, Number(line.discountAmount));
+                } else if (Number(line.discountValue) > 0) {
+                  lineDiscAmt = Math.min(lineGross, Number(line.discountValue));
+                }
+
+                lineDiscountsTotal += lineDiscAmt;
+                const lineNet = Math.max(0, lineGross - lineDiscAmt);
+
+                return {
+                  ...line,
+                  lineGross,
+                  lineDiscAmt,
+                  lineNet,
+                  idx: idx + 1,
+                };
+              });
+
+              const overallSubtotalAfterLines = Math.max(0, grossItemsTotal - lineDiscountsTotal);
+              let invoiceDiscAmt = 0;
+              if (inv.discountType === 'PERCENT' && Number(inv.discountValue) > 0) {
+                invoiceDiscAmt = (overallSubtotalAfterLines * Math.min(100, Number(inv.discountValue))) / 100;
+              } else if (inv.discountType === 'FIXED' && Number(inv.discountValue) > 0) {
+                invoiceDiscAmt = Math.min(overallSubtotalAfterLines, Number(inv.discountValue));
+              } else if (Number(inv.discountTotal) > lineDiscountsTotal) {
+                invoiceDiscAmt = Number(inv.discountTotal) - lineDiscountsTotal;
+              }
+
+              const totalAllDiscounts = lineDiscountsTotal + invoiceDiscAmt;
+              const finalGrandTotal =
+                inv.grandTotal !== undefined && inv.grandTotal > 0
+                  ? inv.grandTotal
+                  : Math.max(0, grossItemsTotal - totalAllDiscounts);
+              const paid = Number(inv.paidAmount) || (isCash ? finalGrandTotal : 0);
+              const due = inv.dueAmount !== undefined ? inv.dueAmount : Math.max(0, finalGrandTotal - paid);
+
+              return (
+                <div className="space-y-6 pt-4">
+                  {/* Customer Details & Invoice Meta Box */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-[#FAF9F6] border-2 border-neutral-300 rounded-xl text-xs sm:text-sm text-right">
+                    <div className="space-y-1">
+                      <span className="text-neutral-600 block text-xs font-bold">
+                        {isSales ? 'السادة / العميل (المشتري):' : 'السادة / المورد:'}
+                      </span>
+                      <span className="font-black text-base text-black block">{inv.entityNameAr || '-'}</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-neutral-600 block text-xs font-bold">نوع وشروط الفاتورة:</span>
+                      <span className="font-extrabold text-xs sm:text-sm block text-black">
+                        {isCash ? (
+                          <span className="text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-300 font-bold inline-block">
+                            نقدي (كاش - مدفوعة)
+                          </span>
+                        ) : (
+                          <span className="text-neutral-900 bg-neutral-100 px-2.5 py-1 rounded border border-neutral-300 font-bold inline-block">
+                            آجل (على الحساب / ذمم)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-neutral-600 block text-xs font-bold">تاريخ الاستحقاق:</span>
+                      <span className="font-bold text-black block font-mono text-sm">
+                        {inv.dueDate || inv.date || '-'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Items Table - Clean, precise, high readability */}
+                  <div className="overflow-x-auto print:overflow-visible">
+                    <table className="w-full text-xs sm:text-sm text-right border-collapse border border-neutral-400 print:border-neutral-500">
+                      <thead>
+                        <tr className="bg-[#1A1A1A] print:bg-neutral-900 text-white font-bold text-xs sm:text-sm">
+                          <th className="py-2.5 px-2.5 text-center w-10 border-b border-neutral-300">م</th>
+                          <th className="py-2.5 px-3 text-center w-28 border-b border-neutral-300">رقم الصنف (SKU)</th>
+                          <th className="py-2.5 px-3.5 text-right border-b border-neutral-300">بيان الصنف والمواصفات</th>
+                          <th className="py-2.5 px-3 text-center w-16 border-b border-neutral-300">الكمية</th>
+                          <th className="py-2.5 px-3 text-center w-16 border-b border-neutral-300">الوحدة</th>
+                          <th className="py-2.5 px-3 text-center w-16 border-b border-neutral-300">الشد</th>
+                          <th className="py-2.5 px-3.5 text-left w-24 border-b border-neutral-300">سعر الوحدة</th>
+                          <th className="py-2.5 px-3 text-left w-20 border-b border-neutral-300">الخصم</th>
+                          <th className="py-2.5 px-3.5 text-left w-28 border-b border-neutral-300">الإجمالي</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-300 print:divide-neutral-400">
+                        {processedLines.map((line) => {
+                          const unitsPerPack = Number(line.unitsPerPack) || 1;
+                          const hasDiscount = line.lineDiscAmt > 0;
+
+                          return (
+                            <tr key={line.id || line.idx} className="hover:bg-neutral-50 print:hover:bg-transparent">
+                              <td className="py-2.5 px-2.5 text-center font-bold text-neutral-700">
+                                {line.idx}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-black">
+                                {line.itemSku || line.barcode || '-'}
+                              </td>
+                              <td className="py-2.5 px-3.5 font-bold text-black">
+                                <div className="text-sm">{line.itemNameAr}</div>
+                                {line.notes && <div className="text-xs text-neutral-500 font-normal mt-0.5">{line.notes}</div>}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-mono font-black text-black text-sm">
+                                {line.quantity}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-bold text-neutral-800">
+                                {line.unit || 'حبة'}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-neutral-800">
+                                {unitsPerPack > 1 ? `شد ${unitsPerPack}` : '1'}
+                              </td>
+                              <td className="py-2.5 px-3.5 text-left font-mono font-bold text-[#1A1A1A]">
+                                {formattedCurrency(line.unitPrice)}
+                              </td>
+                              <td className="py-2.5 px-3 text-left font-mono text-neutral-700">
+                                {hasDiscount ? (
+                                  <span className="font-bold text-amber-900">
+                                    -{formattedCurrency(line.lineDiscAmt)}
+                                  </span>
+                                ) : (
+                                  <span className="text-neutral-400">-</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3.5 text-left font-mono font-black text-black text-sm">
+                                {formattedCurrency(line.lineNet)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-[#FAF9F6] border-t-2 border-black text-xs sm:text-sm font-bold">
+                        <tr>
+                          <td colSpan={3} className="py-2.5 px-3.5 text-right">
+                            عدد الأصناف: <span className="font-black font-mono">{processedLines.length}</span> | إجمالي الكمية: <span className="font-black font-mono">{processedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)}</span>
+                          </td>
+                          <td colSpan={4} className="py-2.5 px-3 text-left text-neutral-700">
+                            المجموع قبل الخصومات:
+                          </td>
+                          <td colSpan={2} className="py-2.5 px-3.5 text-left font-mono text-black font-black text-sm sm:text-base">
+                            {formattedCurrency(grossItemsTotal)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* Summary Totals & Tafqeet Section */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch pt-2">
+                    {/* Right: Arabic Tafqeet Box & Delivery Notes */}
+                    <div className="space-y-3 flex flex-col justify-between">
+                      <div className="p-4 bg-[#FAF9F6] rounded-xl border-2 border-neutral-300 space-y-1.5">
+                        <span className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                          المبلغ تفقيطاً بالكلمات:
+                        </span>
+                        <p className="text-xs sm:text-sm font-serif font-black text-black leading-relaxed bg-white p-3 rounded-lg border border-neutral-300 shadow-2xs">
+                          {tafqeetCurrency(finalGrandTotal, company.functionalCurrency || 'KWD')}
+                        </p>
+                      </div>
+
+                      {inv.notes && (
+                        <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-300 text-xs">
+                          <span className="font-bold text-neutral-700 block mb-0.5">ملاحظات الفاتورة:</span>
+                          <p className="text-neutral-700 leading-relaxed">{inv.notes}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Left: Financial Calculations Card */}
+                    <div className="bg-[#FAF9F6] border-2 border-neutral-400 p-4 rounded-xl space-y-2 text-xs sm:text-sm">
+                      <div className="flex justify-between items-center text-neutral-700">
+                        <span>إجمالي قيمة الأصناف:</span>
+                        <span className="font-bold font-mono text-black text-sm">{formattedCurrency(grossItemsTotal)}</span>
+                      </div>
+
+                      {totalAllDiscounts > 0 && (
+                        <div className="flex justify-between items-center text-amber-900 font-bold border-t border-neutral-300 pt-1.5">
+                          <span>إجمالي الخصومات الممنوحة:</span>
+                          <span className="font-mono text-sm">-{formattedCurrency(totalAllDiscounts)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center text-sm sm:text-base font-black text-black pt-2 border-t-2 border-black bg-white p-2.5 rounded-lg border">
+                        <span>صافي القيمة المستحقة:</span>
+                        <span className="font-mono text-emerald-900 text-lg font-black">{formattedCurrency(finalGrandTotal)}</span>
+                      </div>
+
+                      {isCash ? (
+                        <div className="flex justify-between items-center text-emerald-800 font-bold pt-1 text-xs sm:text-sm">
+                          <span>حالة السداد:</span>
+                          <span className="font-bold">مسدد بالكامل نقداً (كاش)</span>
+                        </div>
+                      ) : (
+                        paid > 0 && (
+                          <div className="flex justify-between items-center text-neutral-700 pt-1 text-xs sm:text-sm">
+                            <span>المدفوع:</span>
+                            <span className="font-mono font-bold text-emerald-700">{formattedCurrency(paid)}</span>
+                          </div>
+                        )
+                      )}
+
+                      {!isCash && due > 0 && (
+                        <div className="flex justify-between items-center text-neutral-900 font-bold text-xs sm:text-sm">
+                          <span>المبلغ المتبقي المستحق (آجل):</span>
+                          <span className="font-mono font-black text-rose-800 text-sm">{formattedCurrency(due)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Classic Professional Footer: Receiver Name, Receiver Signature, and Al-Waleed United Mill */}
+                  <div className="pt-6 border-t-2 border-black grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs sm:text-sm">
+                    {/* 1. اسم المستلم */}
+                    <div className="border border-neutral-300 rounded-xl p-4 bg-[#FAF9F6] space-y-2">
+                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm">
+                        اسم المستلم:
+                      </div>
+                      <div className="text-xs sm:text-sm pt-1 text-neutral-900 font-bold min-h-[35px] flex items-center">
+                        {inv.receiverName || inv.entityNameAr || '...................................................'}
+                      </div>
+                    </div>
+
+                    {/* 2. توقيع المستلم */}
+                    <div className="border border-neutral-300 rounded-xl p-4 bg-[#FAF9F6] space-y-2">
+                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm">
+                        توقيع المستلم:
+                      </div>
+                      <div className="text-xs pt-1 text-neutral-900 space-y-1.5">
+                        <p>التوقيع: .......................................</p>
+                        <p>التاريخ: ...... / ...... / 2026</p>
+                      </div>
+                    </div>
+
+                    {/* 3. مطحنة الوليد المتحدة */}
+                    <div className="border border-neutral-300 rounded-xl p-4 bg-[#FAF9F6] space-y-2 text-center">
+                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm">
+                        مطحنة الوليد المتحدة
+                      </div>
+                      <div className="text-xs pt-1 text-neutral-800 space-y-1.5">
+                        <p>الختم والتوقيع: .................................</p>
+                        <p className="text-[10px] text-neutral-500 font-mono">AL-WALEED UNITED MILL</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ========================================================================= */}
+            {/* 2. VOUCHER VIEW */}
+            {/* ========================================================================= */}
+            {documentType === 'VOUCHER' && (() => {
+              const v = data as PaymentVoucher;
+              return (
+                <div className="space-y-6 pt-4">
+                  <div className="border-2 border-black p-6 rounded-2xl space-y-4 text-xs sm:text-sm bg-[#FAF9F6]">
+                    <div className="flex items-center justify-between border-b border-neutral-300 pb-3">
+                      <span className="text-sm font-bold text-neutral-700">
+                        {v.type === 'RECEIPT' ? 'استلمنا من السيد/الشركة:' : 'صرفنا إلى السيد/الشركة:'}
+                      </span>
+                      <span className="text-base sm:text-lg font-black underline text-black">{v.entityNameAr}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-neutral-300 pb-3">
+                      <span className="text-sm font-bold text-neutral-700">مبلغ وقدره:</span>
+                      <span className="text-lg sm:text-xl font-mono font-black bg-white px-4 py-1.5 rounded-lg border-2 border-black text-emerald-900">
+                        {formattedCurrency(v.amount)}
+                      </span>
+                    </div>
+
+                    {/* Tafqeet Row */}
+                    <div className="p-3.5 bg-white rounded-xl border border-neutral-300">
+                      <span className="text-xs font-bold text-neutral-600 block mb-0.5">المبلغ تفقيطاً بالكلمات:</span>
+                      <p className="text-xs sm:text-sm font-serif font-black text-black">
+                        {tafqeetCurrency(v.amount, company.functionalCurrency)}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 border-b border-neutral-300 pb-3">
+                      <div>
+                        <span className="font-bold block text-neutral-600 text-xs">طريقة الدفع:</span>
+                        <span className="font-bold text-black">{v.paymentMethod === 'BANK' ? 'تحويل بنكي / شيك' : 'نقداً من الخزينة'}</span>
+                      </div>
+                      <div>
+                        <span className="font-bold block text-neutral-600 text-xs">المرجع / رقم الشيك:</span>
+                        <span className="font-mono font-bold text-black">{v.reference || '-'}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="font-bold block text-neutral-600 text-xs mb-1">وذلك عن (البيان):</span>
+                      <p className="p-3 bg-white rounded-lg border border-neutral-200 font-semibold leading-relaxed">
+                        {v.notes || 'سداد دفعة حساب فاتورة / سند رسمي'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Signatures for Voucher */}
+                  <div className="pt-8 border-t-2 border-neutral-300 grid grid-cols-3 gap-6 text-center text-xs">
+                    <div className="space-y-6">
+                      <span className="font-bold block text-neutral-800">المسلّم / المحاسب</span>
+                      <div className="border-b border-dashed border-neutral-400 w-36 mx-auto"></div>
+                      <span className="text-[11px] text-neutral-500">التوقيع</span>
+                    </div>
+                    <div className="space-y-6">
+                      <span className="font-bold block text-neutral-800">ختم الاعتماد</span>
+                      <div className="w-16 h-16 border-2 border-dashed border-neutral-400 rounded-full mx-auto flex items-center justify-center text-[10px] text-neutral-500 font-bold">
+                        ختم الشركة
+                      </div>
+                    </div>
+                    <div className="space-y-6">
+                      <span className="font-bold block text-neutral-800">المستلم</span>
+                      <div className="border-b border-dashed border-neutral-400 w-36 mx-auto"></div>
+                      <span className="text-[11px] text-neutral-500">التوقيع والتاريخ</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ========================================================================= */}
+            {/* 3. JOURNAL PRINT VIEW */}
+            {/* ========================================================================= */}
+            {documentType === 'JOURNAL' && (() => {
+              const jv = data as JournalEntry;
+              return (
+                <div className="space-y-6 pt-4">
+                  <div className="bg-[#FAF9F6] p-4 rounded-xl border border-neutral-300 text-xs sm:text-sm grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-neutral-600 block text-xs">رقم القيد اليومي:</span>
+                      <span className="font-mono font-bold text-sm sm:text-base text-black">{jv.entryNumber}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-600 block text-xs">مرجع ومستند القيد:</span>
+                      <span className="font-mono font-bold text-black">{jv.reference || 'يدوي'}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-xs sm:text-sm bg-neutral-100 p-3.5 rounded-xl border border-neutral-300">
+                    <span className="font-bold block mb-1 text-xs text-neutral-700">البيان الشامل للقيد:</span>
+                    <p className="font-bold text-neutral-900 leading-relaxed">{jv.description}</p>
+                  </div>
+
+                  <table className="w-full text-xs sm:text-sm text-right border-collapse border border-neutral-400">
+                    <thead>
+                      <tr className="bg-neutral-900 text-white font-bold">
+                        <th className="p-3 border border-neutral-400">رقم الحساب</th>
+                        <th className="p-3 border border-neutral-400">اسم الحساب والطرف الفرعي</th>
+                        <th className="p-3 border border-neutral-400">الشرح / البيان التفصيلي</th>
+                        <th className="p-3 border border-neutral-400 text-left">مدين (Debit)</th>
+                        <th className="p-3 border border-neutral-400 text-left">دائن (Credit)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-300">
+                      {jv.lines.map((line, idx) => (
+                        <tr key={line.id || idx} className="hover:bg-neutral-50">
+                          <td className="p-3 border border-neutral-300 font-mono font-bold">{line.accountCode}</td>
+                          <td className="p-3 border border-neutral-300 font-bold">
+                            <div>{line.accountNameAr}</div>
+                            {line.entityNameAr && (
+                              <span className="inline-block mt-0.5 text-[11px] font-bold px-2 py-0.5 bg-blue-50 text-blue-800 rounded border border-blue-200">
+                                {line.entityType === 'SUPPLIER' ? 'المورد' : 'العميل'}: {line.entityNameAr}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 border border-neutral-300 text-neutral-700">{line.memo || '-'}</td>
+                          <td className="p-3 border border-neutral-300 text-left font-mono font-bold text-emerald-800">
+                            {line.debit > 0 ? formattedCurrency(line.debit) : '-'}
+                          </td>
+                          <td className="p-3 border border-neutral-300 text-left font-mono font-bold text-rose-800">
+                            {line.credit > 0 ? formattedCurrency(line.credit) : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-neutral-100 font-extrabold text-sm">
+                        <td colSpan={3} className="p-3 border border-neutral-400 text-left">الإجمالي المتوازن:</td>
+                        <td className="p-3 border border-neutral-400 text-left font-mono text-emerald-900 font-black">{formattedCurrency(jv.totalDebit)}</td>
+                        <td className="p-3 border border-neutral-400 text-left font-mono text-rose-900 font-black">{formattedCurrency(jv.totalCredit)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
+                  {/* Tafqeet Box */}
+                  <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300">
+                    <span className="text-xs font-bold text-neutral-600 block mb-0.5">إجمالي قيمة القيد تفقيطاً بالكلمات:</span>
+                    <p className="text-xs sm:text-sm font-serif font-black text-black">
+                      {tafqeetCurrency(jv.totalDebit, company.functionalCurrency)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ========================================================================= */}
+            {/* 4. STATEMENT PRINT VIEW */}
+            {/* ========================================================================= */}
+            {documentType === 'STATEMENT' && (() => {
+              const stmt = data;
+              const cust = stmt.customer || stmt.supplier || {};
+              const isCust = stmt.entityType !== 'SUPPLIER';
+              return (
+                <div className="space-y-6 pt-4">
+                  {/* Customer / Supplier Meta */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-[#FAF9F6] p-4.5 rounded-xl border border-neutral-300 text-xs sm:text-sm">
+                    <div>
+                      <span className="text-neutral-600 block mb-0.5 text-xs">اسم {isCust ? 'العميل / الجمعية' : 'المورد'}:</span>
+                      <span className="font-extrabold text-sm sm:text-base text-black">{cust.nameAr || 'غير محدد'}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-600 block mb-0.5 text-xs">الكود التعريفي:</span>
+                      <span className="font-bold text-black font-mono">{cust.code || '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-600 block mb-0.5 text-xs">الهاتف:</span>
+                      <span className="font-bold text-black font-mono">{cust.phone || '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-600 block mb-0.5 text-xs">المحافظة / المدينة:</span>
+                      <span className="font-bold text-black">{cust.governorate || cust.city || 'الكويت'}</span>
+                    </div>
+                  </div>
+
+                  {/* Account Summary Cards */}
+                  <div className="grid grid-cols-3 gap-4 text-xs sm:text-sm font-bold">
+                    <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300">
+                      <span className="text-neutral-600 block font-normal text-xs">الرصيد الافتتاحي:</span>
+                      <span className="text-sm sm:text-base font-mono text-black font-black">{formattedCurrency(stmt.openingBalance || 0)}</span>
+                    </div>
+                    <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300">
+                      <span className="text-neutral-600 block font-normal text-xs">إجمالي حركات المدين:</span>
+                      <span className="text-sm sm:text-base font-mono text-amber-900 font-black">{formattedCurrency(stmt.totalInvoiced || stmt.totalPeriodDebit || 0)}</span>
+                    </div>
+                    <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-300">
+                      <span className="text-emerald-800 block font-normal text-xs">الرصيد النهائي المستحق:</span>
+                      <span className="text-base sm:text-lg font-mono font-black text-emerald-950">{formattedCurrency(stmt.currentBalance || stmt.closingBalance || 0)}</span>
+                    </div>
+                  </div>
+
+                  {/* Statement Detailed Table */}
+                  <div className="overflow-x-auto print:overflow-visible">
+                    <table className="w-full text-xs sm:text-sm text-right border-collapse border border-neutral-400">
+                      <thead>
+                        <tr className="bg-neutral-900 text-white font-bold">
+                          <th className="p-3 border border-neutral-400">التاريخ</th>
+                          <th className="p-3 border border-neutral-400">نوع الحركة</th>
+                          <th className="p-3 border border-neutral-400">رقم المرجع / الفاتورة</th>
+                          <th className="p-3 border border-neutral-400">البيان التفصيلي</th>
+                          <th className="p-3 border border-neutral-400 text-left text-emerald-300">مدين (Debit)</th>
+                          <th className="p-3 border border-neutral-400 text-left text-rose-300">دائن (Credit)</th>
+                          <th className="p-3 border border-neutral-400 text-left font-black">الرصيد التراكمي</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-300">
+                        {(stmt.statementLines || stmt.transactions || []).map((line: any, idx: number) => (
+                          <tr key={line.id || idx} className={`hover:bg-neutral-50 ${line.type === 'OPENING' ? 'bg-amber-50/70 font-bold' : ''}`}>
+                            <td className="p-2.5 sm:p-3 border border-neutral-300 font-mono whitespace-nowrap">{line.date}</td>
+                            <td className="p-2.5 sm:p-3 border border-neutral-300 font-bold text-neutral-800 whitespace-nowrap">{line.typeAr || line.docTypeLabel}</td>
+                            <td className="p-2.5 sm:p-3 border border-neutral-300 font-mono font-bold text-amber-900 whitespace-nowrap">{line.refNo || line.docNumber}</td>
+                            <td className="p-2.5 sm:p-3 border border-neutral-300 text-neutral-800">{line.description}</td>
+                            <td className="p-2.5 sm:p-3 border border-neutral-300 text-left font-mono font-bold text-emerald-800 whitespace-nowrap">
+                              {line.debit > 0 ? formattedCurrency(line.debit) : '-'}
+                            </td>
+                            <td className="p-2.5 sm:p-3 border border-neutral-300 text-left font-mono font-bold text-rose-800 whitespace-nowrap">
+                              {line.credit > 0 ? formattedCurrency(line.credit) : '-'}
+                            </td>
+                            <td className="p-2.5 sm:p-3 border border-neutral-300 text-left font-mono font-black bg-neutral-50 whitespace-nowrap text-sm">
+                              {formattedCurrency(line.runningBalance)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-neutral-900 text-white font-extrabold">
+                          <td colSpan={4} className="p-3 border border-neutral-400 text-left text-xs sm:text-sm">الرصيد الختامي المستحق:</td>
+                          <td colSpan={3} className="p-3 border border-neutral-400 text-left text-sm sm:text-base font-mono text-amber-300 font-black">
+                            {formattedCurrency(stmt.currentBalance || stmt.closingBalance || 0)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* Tafqeet Box */}
+                  <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300">
+                    <span className="text-xs font-bold text-neutral-600 block mb-0.5">الرصيد المستحق تفقيطاً بالكلمات:</span>
+                    <p className="text-xs sm:text-sm font-serif font-black text-black">
+                      {tafqeetCurrency(stmt.currentBalance || stmt.closingBalance || 0, company.functionalCurrency)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Bottom Document Footnote */}
+            <div className="text-center text-xs text-neutral-600 pt-6 border-t-2 border-neutral-300 mt-6 font-medium">
+              {company.headerNotes || 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت'}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

@@ -1,0 +1,193 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Cairo', system-ui, sans-serif;
+    background-color: #F8FAFC;
+    color: #0F172A;
+  }
+  .font-serif {
+    font-family: 'Cairo', system-ui, sans-serif;
+  }
+}
+
+/* Executive ERP Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #E2E8F0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #94A3B8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748B;
+}
+
+/* Print styling for invoices, vouchers, statements, and reports */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 6mm 8mm 6mm;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box !important;
+  }
+
+  /* Reset body and html for clean full-page print flow */
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    font-size: 10pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide all non-printable UI elements */
+  .no-print,
+  aside,
+  header,
+  footer,
+  nav,
+  button,
+  input[type="button"],
+  input[type="submit"],
+  .no-print * {
+    display: none !important;
+  }
+
+  /* When printing from a modal document, isolate it and hide all background app siblings */
+  body:has(#printable-document) #root > div > div > main > div:not(:has(#printable-document)),
+  body:has(#printable-statement) #root > div > div > main > div:not(:has(#printable-statement)),
+  body:has(#printable-production) #root > div > div > main > div:not(:has(#printable-production)) {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Reset main app layout wrappers - strip sidebar margins, sticky headers, and flex constraints */
+  #root,
+  #root > div,
+  .min-h-screen,
+  main,
+  .flex-1 {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  /* Reset modal overlays during print so modal content prints as regular flow */
+  .fixed.inset-0,
+  .fixed,
+  div[role="dialog"],
+  .modal-overlay {
+    position: static !important;
+    inset: auto !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    display: block !important;
+  }
+
+  /* Modal container card resets */
+  .modal-container,
+  .modal-content,
+  .bg-white.rounded-xl,
+  .bg-white.rounded-2xl,
+  .max-w-4xl,
+  .max-w-5xl {
+    max-height: none !important;
+    height: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  /* Printable containers */
+  #printable-document,
+  #printable-invoice,
+  #printable-voucher,
+  #printable-statement,
+  #printable-production,
+  .printable-card,
+  .print-area {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  /* Tables formatting for print */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+  thead {
+    display: table-header-group !important;
+  }
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  /* Keep signatures and summary boxes together on the page */
+  .summary-box,
+  .signatures-section,
+  .grid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* High contrast borders and backgrounds for ink clarity */
+  .border,
+  .border-slate-200,
+  .border-slate-300,
+  .border-\[\#E5E1DA\] {
+    border-color: #CBD5E1 !important;
+  }
+}

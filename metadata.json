@@ -1,0 +1,6 @@
+{
+  "name": "نظام لوجيكس المحاسبي المتكامل LOGIX ERP (IFRS)",
+  "description": "نظام لوجيكس المحاسبي والتشغيلي المتكامل المتوافق مع المعايير الدولية للتقارير المالية (IFRS) مع شجرة الحسابات والقيود اليومية وميزان المراجعة وكشوف الحسابات والقوائم المالية والمخازن والفوترة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
