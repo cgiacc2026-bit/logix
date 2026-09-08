@@ -2,12 +2,22 @@ import { Account, Customer, Supplier, InventoryItem, JournalEntry, Invoice, Comp
 
 export const INITIAL_USERS: SystemUser[] = [
   {
+    id: 'user-super-admin',
+    name: 'المشرف العام (CGI Admin)',
+    username: 'cgiacc2026',
+    email: 'cgiacc2026@gmail.com',
+    role: 'ADMIN',
+    roleTitleAr: 'المدير العام والمالك - تفعيل واعتماد الشركات السحابية',
+    isActive: true,
+    pinCode: '1234',
+  },
+  {
     id: 'user-001',
     name: 'د. خالد السليمان',
     username: 'admin',
     email: 'admin@logixerp.com',
     role: 'ADMIN',
-    roleTitleAr: 'المدير العام والتنفيذي',
+    roleTitleAr: 'المدير التنفيذي',
     isActive: true,
     pinCode: '1234',
   },

@@ -6,7 +6,8 @@ import {
   Invoice,
   PaymentVoucher,
   CompanyProfile,
-  UnitDefinition
+  UnitDefinition,
+  ProductionOrder
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
@@ -15,6 +16,7 @@ import { DataImportModal } from './DataImportModal';
 import { PriceManagementModal } from './PriceManagementModal';
 import { AccountStatementModal } from './AccountStatementModal';
 import { NegativeStockConfirmationModal, DeficitItem } from './NegativeStockConfirmationModal';
+import { StockLedgerAndAuditView } from './StockLedgerAndAuditView';
 import { DataService } from '../services/dataService.ts';
 import { calculateEntityCurrentBalance } from '../services/statementService.ts';
 import {
@@ -73,6 +75,7 @@ interface InvoicesProps {
   onCreateUnit?: (data: any) => Promise<void>;
   onUpdateUnit?: (id: string, data: any) => Promise<void>;
   onDeleteUnit?: (id: string) => Promise<void>;
+  productionOrders?: ProductionOrder[];
 }
 
 export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
@@ -106,10 +109,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   onCreateUnit,
   onUpdateUnit,
   onDeleteUnit,
+  productionOrders = [],
 }) => {
   const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units'>(
     activeSubTab || 'invoices'
   );
+  const [inventoryViewMode, setInventoryViewMode] = useState<'catalog' | 'audit_ledger'>('catalog');
 
   React.useEffect(() => {
     if (activeSubTab) {
@@ -1283,18 +1288,59 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
       {/* TAB 4: INVENTORY & PACK SPECIFICATIONS */}
       {subTab === 'inventory' && (
-        <div className="bg-white border border-[#E5E1DA] rounded-2xl p-6 shadow-xs space-y-6">
-          {/* Header & Controls */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border-b border-[#E5E1DA] pb-4">
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-[#1A1A1A] flex items-center gap-2">
-                <Box className="w-5 h-5 text-[#D4AF37]" />
-                دليل الاصناف والمخزون وحاسبة الشد (Pack Units)
-              </h3>
-              <p className="text-xs text-[#8C8273]">
-                إدارة كميات المخزون بالقطعة/الحبة وبـ الشد/الكرتون مع تنبيهات مستوى الحد الأدنى والباركود.
-              </p>
+        <div className="space-y-4">
+          {/* Sub-mode switcher */}
+          <div className="flex items-center justify-between bg-white border border-[#E5E1DA] p-2 rounded-2xl shadow-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setInventoryViewMode('catalog')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  inventoryViewMode === 'catalog'
+                    ? 'bg-[#1A1A1A] text-white shadow-xs'
+                    : 'text-[#8C8273] hover:bg-[#F7F5F0] hover:text-[#1A1A1A]'
+                }`}
+              >
+                <Box className="w-4 h-4 text-[#D4AF37]" />
+                <span>دليل بطاقات الأصناف والشد (Catalog & Packs)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInventoryViewMode('audit_ledger')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  inventoryViewMode === 'audit_ledger'
+                    ? 'bg-[#1A1A1A] text-white shadow-xs'
+                    : 'text-[#8C8273] hover:bg-[#F7F5F0] hover:text-[#1A1A1A]'
+                }`}
+              >
+                <Layers className="w-4 h-4 text-[#D4AF37]" />
+                <span>فحص وتقييم المخزون ودفتر الأستاذ IFRS (ERPNext Mode)</span>
+              </button>
             </div>
+          </div>
+
+          {inventoryViewMode === 'audit_ledger' ? (
+            <StockLedgerAndAuditView
+              inventory={inventory}
+              invoices={invoices}
+              productionOrders={productionOrders}
+              currency={currency}
+              onRefreshData={onRefreshAll}
+            />
+          ) : (
+            <div className="bg-white border border-[#E5E1DA] rounded-2xl p-6 shadow-xs space-y-6">
+              {/* Header & Controls */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border-b border-[#E5E1DA] pb-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-[#1A1A1A] flex items-center gap-2">
+                    <Box className="w-5 h-5 text-[#D4AF37]" />
+                    دليل الاصناف والمخزون وحاسبة الشد (Pack Units)
+                  </h3>
+                  <p className="text-xs text-[#8C8273]">
+                    إدارة كميات المخزون بالقطعة/الحبة وبـ الشد/الكرتون مع تنبيهات مستوى الحد الأدنى والباركود.
+                  </p>
+                </div>
 
             <div className="flex flex-wrap items-center gap-3">
               {/* Category Filter */}
@@ -1451,6 +1497,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             </table>
           </div>
         </div>
+        )}
+      </div>
       )}
 
       {/* TAB 5: UNITS MANAGEMENT */}

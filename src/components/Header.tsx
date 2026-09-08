@@ -21,6 +21,7 @@ interface HeaderProps {
   setCurrency: (c: string) => void;
   onOpenCompanySetup: () => void;
   onOpenDiagnostics?: () => void;
+  onOpenSuperAdminPortal?: () => void;
   currentUser?: SystemUser | null;
   onLogout?: () => void;
 }
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   setCurrency,
   onOpenCompanySetup,
   onOpenDiagnostics,
+  onOpenSuperAdminPortal,
   currentUser,
   onLogout,
 }) => {
@@ -134,6 +136,18 @@ export const Header: React.FC<HeaderProps> = ({
             <Download className={`w-3 h-3 ${isExporting ? 'animate-bounce' : ''}`} />
             <span>JSON</span>
           </button>
+
+          {/* Super Admin Company Activation Portal */}
+          {onOpenSuperAdminPortal && (currentUser?.email === 'cgiacc2026@gmail.com' || currentUser?.role === 'ADMIN') && (
+            <button
+              onClick={onOpenSuperAdminPortal}
+              title="لوحة المشرف العام لاعتماد وتفعيل الشركات السحابية المسجلة"
+              className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-bold flex items-center gap-1.5 border border-amber-400/40 shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
+              <span className="hidden sm:inline">تفعيل الشركات</span>
+            </button>
+          )}
 
           {/* Company Setup Button */}
           <button

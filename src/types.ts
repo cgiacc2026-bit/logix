@@ -448,3 +448,59 @@ export interface CompanyProfile {
   footerNotes?: string;
   showDigitalStamp: boolean;
 }
+
+export type StockMovementType =
+  | 'OPENING' // رصيد افتتاحي
+  | 'PURCHASE_RECEIPT' // فاتورة مشتريات / توريد مخزني
+  | 'SALES_ISSUE' // فاتورة مبيعات / صرف مخزني
+  | 'PRODUCTION_IN' // منتج تام الصنع من أمر تشغيل مطحنة
+  | 'PRODUCTION_OUT' // مواد أولية مستهلكة في الطحن
+  | 'STOCK_ADJUSTMENT' // تسوية جردية (عجز / زيادة)
+  | 'INTERNAL_TRANSFER'; // تحويل بين مستودعات
+
+export interface StockMovement {
+  id: string;
+  date: string;
+  time?: string;
+  itemId: string;
+  itemSku: string;
+  itemNameAr: string;
+  type: StockMovementType;
+  typeTitleAr: string;
+  referenceDocNumber: string;
+  referenceDocType: string;
+  quantityIn: number;
+  quantityOut: number;
+  balanceAfter: number;
+  unit: string;
+  unitCost: number;
+  totalCostValue: number;
+  warehouse?: string;
+  notes?: string;
+  createdBy?: string;
+}
+
+export interface StockAuditSummary {
+  totalItemCount: number;
+  totalUnitsInStock: number;
+  totalValuationAtCost: number;
+  totalValuationAtSale: number;
+  expectedGrossProfit: number;
+  expectedGrossMarginPct: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  safeStockCount: number;
+  excessStockCount: number;
+}
+
+export interface TenantCompanyRecord {
+  id: string;
+  company_name: string;
+  owner_email: string;
+  password_hash?: string;
+  status: 'pending' | 'active' | 'suspended' | 'rejected';
+  profile_data?: Partial<CompanyProfile>;
+  created_at: string;
+  updated_at?: string;
+}
+

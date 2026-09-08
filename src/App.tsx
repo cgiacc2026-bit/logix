@@ -32,6 +32,7 @@ import { AccountingCycleBar } from './components/AccountingCycleBar.tsx';
 import { OperationalReportsView } from './components/OperationalReportsView.tsx';
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
+import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
 import {
@@ -127,6 +128,7 @@ export default function App() {
   });
 
   const [isResettingDemo, setIsResettingDemo] = useState(false);
+  const [isSuperAdminModalOpen, setIsSuperAdminModalOpen] = useState(false);
   const isDemo = isDemoActive();
 
   const handleResetDemo = async () => {
@@ -457,6 +459,7 @@ export default function App() {
           currency={currency}
           setCurrency={handleCurrencyChange}
           onOpenCompanySetup={() => setActiveTab('company')}
+          onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
           currentUser={currentUser}
           onLogout={handleLogout}
         />
@@ -614,6 +617,7 @@ export default function App() {
               onCreateUnit={handleCreateUnit}
               onUpdateUnit={handleUpdateUnit}
               onDeleteUnit={handleDeleteUnit}
+              productionOrders={productionOrders}
               onRefreshAll={refreshAllData}
             />
           )}
@@ -676,6 +680,14 @@ export default function App() {
           currency={currency}
         />
       )}
+
+      {/* Super Admin Multi-Tenant Company Portal Modal */}
+      <SuperAdminCompanyPortalModal
+        isOpen={isSuperAdminModalOpen}
+        onClose={() => setIsSuperAdminModalOpen(false)}
+        currentUser={currentUser}
+        onSwitchCompany={() => refreshAllData()}
+      />
     </div>
   );
 }
