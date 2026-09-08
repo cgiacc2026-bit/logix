@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Customer,
   Supplier,
@@ -17,8 +17,11 @@ import { PriceManagementModal } from './PriceManagementModal';
 import { AccountStatementModal } from './AccountStatementModal';
 import { NegativeStockConfirmationModal, DeficitItem } from './NegativeStockConfirmationModal';
 import { StockLedgerAndAuditView } from './StockLedgerAndAuditView';
-import { DataService } from '../services/dataService.ts';
+import { DataService, localDataStore } from '../services/dataService.ts';
 import { calculateEntityCurrentBalance } from '../services/statementService.ts';
+import { CustomerSearchCombobox } from './CustomerSearchCombobox.tsx';
+import { InvoiceItemSearchCombobox } from './InvoiceItemSearchCombobox.tsx';
+import { matchesSearch } from '../utils/searchUtils.ts';
 import {
   ShoppingBag,
   Plus,
@@ -134,6 +137,36 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [inventorySearch, setInventorySearch] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
 
+  // Active company ID and Multi-tenant Scoped Lists
+  const activeCompanyId = company?.id || localDataStore.getEffectiveCompanyId();
+
+  const scopedCustomers = useMemo(() => {
+    return customers.filter((c: any) => {
+      if (!c) return false;
+      if (c.company_id && activeCompanyId && c.company_id !== activeCompanyId) return false;
+      if (c.companyId && activeCompanyId && c.companyId !== activeCompanyId) return false;
+      return true;
+    });
+  }, [customers, activeCompanyId]);
+
+  const scopedSuppliers = useMemo(() => {
+    return suppliers.filter((s: any) => {
+      if (!s) return false;
+      if (s.company_id && activeCompanyId && s.company_id !== activeCompanyId) return false;
+      if (s.companyId && activeCompanyId && s.companyId !== activeCompanyId) return false;
+      return true;
+    });
+  }, [suppliers, activeCompanyId]);
+
+  const scopedInventory = useMemo(() => {
+    return inventory.filter((item: any) => {
+      if (!item) return false;
+      if (item.company_id && activeCompanyId && item.company_id !== activeCompanyId) return false;
+      if (item.companyId && activeCompanyId && item.companyId !== activeCompanyId) return false;
+      return true;
+    });
+  }, [inventory, activeCompanyId]);
+
   // Print Modal State
   const [printDoc, setPrintDoc] = useState<{
     type: 'INVOICE' | 'VOUCHER' | 'JOURNAL' | 'STATEMENT';
@@ -162,6 +195,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [invLines, setInvLines] = useState<
     {
       itemId: string;
+      itemNameAr?: string;
+      itemNameEn?: string;
       itemSku?: string;
       barcode?: string;
       unit: string;
@@ -176,6 +211,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   >([
     {
       itemId: '',
+      itemNameAr: '',
+      itemNameEn: '',
       itemSku: '',
       barcode: '',
       unit: 'حبة',
@@ -358,11 +395,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvLines(invLines.filter((_, i) => i !== index));
   };
 
-  const handleInvItemSelect = (index: number, itemId: string) => {
-    const item = inventory.find((i) => i.id === itemId);
+  const handleInvItemSelect = (index: number, itemId: string, itemObj?: InventoryItem) => {
+    const item = itemObj || scopedInventory.find((i) => i.id === itemId);
     const updated = [...invLines];
     updated[index].itemId = itemId;
     if (item) {
+      updated[index].itemNameAr = item.nameAr;
       updated[index].itemSku = item.sku || '';
       updated[index].barcode = item.barcode || '';
       updated[index].unit = item.unit || 'حبة';
@@ -694,16 +732,20 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     return calculateEntityCurrentBalance(s, 'SUPPLIER', invoices, vouchers);
   };
 
-  // Inventory Filtering & Categories
-  const categories = Array.from(new Set(inventory.map((i) => i.category || 'عام')));
-  const filteredInventory = inventory.filter((item) => {
-    const matchesCategory = selectedCategoryFilter === 'ALL' || item.category === selectedCategoryFilter;
-    const matchesQuery =
-      item.nameAr.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-      item.sku.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-      (item.barcode && item.barcode.includes(inventorySearch));
-    return matchesCategory && matchesQuery;
-  });
+  // Inventory Filtering & Categories with Multi-Tenant Scoping & Normalized Search
+  const categories = useMemo(() => Array.from(new Set(scopedInventory.map((i) => i.category || 'عام'))), [scopedInventory]);
+  const filteredInventory = useMemo(() => {
+    return scopedInventory.filter((item) => {
+      const matchesCategory = selectedCategoryFilter === 'ALL' || item.category === selectedCategoryFilter;
+      const matchesQuery =
+        !inventorySearch ||
+        matchesSearch(item.nameAr, inventorySearch) ||
+        matchesSearch(item.nameEn, inventorySearch) ||
+        matchesSearch(item.sku, inventorySearch) ||
+        matchesSearch(item.barcode, inventorySearch);
+      return matchesCategory && matchesQuery;
+    });
+  }, [scopedInventory, selectedCategoryFilter, inventorySearch]);
 
   const isPrintingModalOpen = !!printDoc || isStatementModalOpen;
 
@@ -1161,15 +1203,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             <div className="bg-white border border-[#E5E1DA] rounded-2xl p-5 shadow-xs space-y-3">
               <h4 className="text-xs font-bold text-[#B8860B] flex items-center justify-between border-b pb-2">
                 <span>قائمة العملاء والجمعيات التعاونية (Customers)</span>
-                <span>العدد: {customers.length}</span>
+                <span>العدد: {scopedCustomers.length}</span>
               </h4>
               <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
-                {customers
+                {scopedCustomers
                   .filter((c) =>
                     !entitySearch ||
-                    c.nameAr.includes(entitySearch) ||
-                    (c.code && c.code.includes(entitySearch)) ||
-                    (c.phone && c.phone.includes(entitySearch))
+                    matchesSearch(c.nameAr, entitySearch) ||
+                    matchesSearch((c as any).nameEn, entitySearch) ||
+                    matchesSearch(c.code, entitySearch) ||
+                    matchesSearch(c.phone, entitySearch)
                   )
                   .map((c) => (
                     <div key={c.id} className="py-3.5 space-y-2 text-xs">
@@ -1225,15 +1268,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             <div className="bg-white border border-[#E5E1DA] rounded-2xl p-5 shadow-xs space-y-3">
               <h4 className="text-xs font-bold text-[#9E2A2B] flex items-center justify-between border-b pb-2">
                 <span>قائمة الموردين والشركات الموردة (Suppliers)</span>
-                <span>العدد: {suppliers.length}</span>
+                <span>العدد: {scopedSuppliers.length}</span>
               </h4>
               <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
-                {suppliers
+                {scopedSuppliers
                   .filter((s) =>
                     !entitySearch ||
-                    s.nameAr.includes(entitySearch) ||
-                    (s.code && s.code.includes(entitySearch)) ||
-                    (s.phone && s.phone.includes(entitySearch))
+                    matchesSearch(s.nameAr, entitySearch) ||
+                    matchesSearch((s as any).nameEn, entitySearch) ||
+                    matchesSearch(s.code, entitySearch) ||
+                    matchesSearch(s.phone, entitySearch)
                   )
                   .map((s) => (
                     <div key={s.id} className="py-3.5 space-y-2 text-xs">
@@ -1682,27 +1726,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 {/* Payment Terms & Invoice Meta Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-[#E5E1DA]">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-[#1A1A1A] mb-1">
-                      {invType === 'SALES' || invType === 'SALES_RETURN' ? 'العميل / الحساب المدين *' : 'المورد / الحساب الدائن *'}
-                    </label>
-                    <select
-                      value={invEntityId}
-                      onChange={(e) => setInvEntityId(e.target.value)}
-                      className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 font-bold text-[#1A1A1A] outline-none"
-                    >
-                      <option value="">-- اختر الطرف المعني --</option>
-                      {invType === 'SALES' || invType === 'SALES_RETURN'
-                        ? customers.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.nameAr} (الرصيد الحالي: {formatCurrency(getCustomerCurrentBalance(c), currency)})
-                            </option>
-                          ))
-                        : suppliers.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.nameAr} (الرصيد الحالي: {formatCurrency(getSupplierCurrentBalance(s), currency)})
-                            </option>
-                          ))}
-                    </select>
+                    <CustomerSearchCombobox
+                      entities={invType === 'SALES' || invType === 'SALES_RETURN' ? scopedCustomers : scopedSuppliers}
+                      selectedId={invEntityId}
+                      onSelect={(id) => setInvEntityId(id)}
+                      entityType={invType === 'SALES' || invType === 'SALES_RETURN' ? 'CUSTOMER' : 'SUPPLIER'}
+                      currency={currency}
+                      getBalance={invType === 'SALES' || invType === 'SALES_RETURN' ? getCustomerCurrentBalance : getSupplierCurrentBalance}
+                      required
+                    />
                   </div>
 
                   {/* Manual Document Date */}
@@ -1861,9 +1893,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                     const updated = [...invLines];
                                     updated[idx].itemSku = val;
                                     // Also lookup if matches an item
-                                    const matched = inventory.find((i) => i.sku === val || i.barcode === val);
+                                    const matched = scopedInventory.find(
+                                      (i) => i.sku === val || i.barcode === val || i.id === val
+                                    );
                                     if (matched) {
                                       updated[idx].itemId = matched.id;
+                                      updated[idx].itemNameAr = matched.nameAr;
                                       updated[idx].itemSku = matched.sku || '';
                                       updated[idx].barcode = matched.barcode || '';
                                       updated[idx].unit = matched.unit || 'حبة';
@@ -1879,20 +1914,22 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                 />
                               </td>
 
-                              {/* اسم الصنف */}
-                              <td className="py-2 px-2 border-l border-[#E5E1DA]">
-                                <select
-                                  value={line.itemId}
-                                  onChange={(e) => handleInvItemSelect(idx, e.target.value)}
-                                  className="w-full bg-[#FAF9F6] border border-[#E5E1DA] rounded-lg px-2 py-1 font-bold text-black text-xs outline-none"
-                                >
-                                  <option value="">-- اختر الصنف --</option>
-                                  {inventory.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.nameAr} [{item.sku || 'بدون رمز'}] (مخزون: {item.quantityOnHand} {item.unit})
-                                    </option>
-                                  ))}
-                                </select>
+                              {/* اسم الصنف والبيان - بحث فوري وسلس بالاسم */}
+                              <td className="py-2 px-2 border-l border-[#E5E1DA] min-w-[220px]">
+                                <InvoiceItemSearchCombobox
+                                  inventory={scopedInventory}
+                                  selectedItemId={line.itemId}
+                                  selectedItemName={line.itemNameAr || ''}
+                                  onSelectItem={(item) => handleInvItemSelect(idx, item.id, item)}
+                                  onCustomNameChange={(customName) => {
+                                    const updated = [...invLines];
+                                    updated[idx].itemNameAr = customName;
+                                    setInvLines(updated);
+                                  }}
+                                  invType={invType}
+                                  currency={currency}
+                                  placeholder="ابحث بالاسم (مثال: طحين، سكر، دقيق...)"
+                                />
                               </td>
 
                               {/* الكمية */}
@@ -2235,25 +2272,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-[#1A1A1A] mb-1">الجهة المعنية *</label>
-                <select
-                  value={vouchEntityId}
-                  onChange={(e) => setVouchEntityId(e.target.value)}
-                  className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 font-bold text-[#1A1A1A]"
-                >
-                  <option value="">-- اختر العميل / المورد --</option>
-                  {vouchType === 'RECEIPT'
-                    ? customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.nameAr}
-                        </option>
-                      ))
-                    : suppliers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.nameAr}
-                        </option>
-                      ))}
-                </select>
+                <CustomerSearchCombobox
+                  entities={vouchType === 'RECEIPT' ? scopedCustomers : scopedSuppliers}
+                  selectedId={vouchEntityId}
+                  onSelect={(id) => setVouchEntityId(id)}
+                  entityType={vouchType === 'RECEIPT' ? 'CUSTOMER' : 'SUPPLIER'}
+                  currency={currency}
+                  getBalance={vouchType === 'RECEIPT' ? getCustomerCurrentBalance : getSupplierCurrentBalance}
+                  label="الجهة المعنية *"
+                  required
+                />
               </div>
 
               <div>
