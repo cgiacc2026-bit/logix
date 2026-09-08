@@ -206,6 +206,40 @@ class LocalDataStore {
     }
   }
 
+  public markRestoreLocked(specificCompanyId?: string): void {
+    const compId = specificCompanyId || this.getEffectiveCompanyId();
+    if (!compId) return;
+    const lockObj = { timestamp: Date.now(), locked: true };
+    const key = `logix_restore_lock_${compId}`;
+    this.setLocal(key, lockObj);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, JSON.stringify(lockObj));
+      window.localStorage.setItem('logix_last_restored_company_id', compId);
+      window.localStorage.setItem('logix_last_restore_time', String(Date.now()));
+    }
+  }
+
+  public isRestoreLocked(specificCompanyId?: string): boolean {
+    const compId = specificCompanyId || this.getEffectiveCompanyId();
+    if (!compId) return false;
+    const key = `logix_restore_lock_${compId}`;
+    const lockObj = this.getLocal<{ timestamp: number; locked: boolean } | null>(key, null);
+    if (!lockObj || !lockObj.locked) return false;
+    // Lock lasts for 30 minutes to prevent background cloud fetch overwriting fresh restores
+    const elapsed = Date.now() - (lockObj.timestamp || 0);
+    return elapsed < 30 * 60 * 1000;
+  }
+
+  public clearRestoreLock(specificCompanyId?: string): void {
+    const compId = specificCompanyId || this.getEffectiveCompanyId();
+    if (!compId) return;
+    const key = `logix_restore_lock_${compId}`;
+    this.setLocal(key, { timestamp: 0, locked: false });
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+  }
+
   public getCompany(): CompanyProfile {
     const compId = this.getEffectiveCompanyId();
     const dedicatedLogo = typeof window !== 'undefined'
@@ -882,17 +916,24 @@ export class DataService {
 
   public static async getAccounts(): Promise<Account[]> {
     let accounts: Account[] = [];
+    const localAccounts = localDataStore.getAccounts();
+    const isLocked = localDataStore.isRestoreLocked();
+
     try {
       const fromSupabase = await SupabaseDataService.getAccounts();
       if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        accounts = fromSupabase;
+        if (localAccounts && localAccounts.length > 0 && (isLocked || fromSupabase.length < localAccounts.length)) {
+          accounts = localAccounts;
+        } else {
+          accounts = fromSupabase;
+        }
       }
     } catch (e) {
       console.warn('Supabase getAccounts notice:', e);
     }
 
     if (!accounts || accounts.length === 0) {
-      accounts = localDataStore.getAccounts();
+      accounts = localAccounts;
       if (!accounts || accounts.length === 0) {
         accounts = generateCleanChartOfAccounts(localDataStore.getEffectiveCompanyId() || undefined);
         localDataStore.saveAccounts(accounts);
@@ -960,16 +1001,24 @@ export class DataService {
 
   // Journals
   public static async getJournals(): Promise<JournalEntry[]> {
+    const localJournals = localDataStore.getJournals();
+    const isLocked = localDataStore.isRestoreLocked();
+
     try {
       const fromSupabase = await SupabaseDataService.getJournals();
       if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+        if (localJournals.length > 0 && (isLocked || fromSupabase.length < localJournals.length)) {
+          if (isSupabaseConfigured) {
+            Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
+          }
+          return localJournals;
+        }
         localDataStore.saveJournals(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getJournals notice:', e);
     }
-    const localJournals = localDataStore.getJournals();
     if (isSupabaseConfigured && localJournals.length > 0) {
       Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
     }
@@ -1006,12 +1055,12 @@ export class DataService {
     }
 
     const diff = Math.abs(totalDebit - totalCredit);
-    if (totalDebit <= 0) {
+    if (totalDebit <= 0 || totalCredit <= 0) {
       throw new Error('لا يمكن حفظ القيد: إجمالي مبالغ القيد يجب أن تكون أكبر من الصفر.');
     }
-    if (diff > 0.005) {
+    if (diff >= 0.001) {
       throw new Error(
-        `القيد غير متوازن! إجمالي الطرف المدين (${totalDebit.toFixed(3)}) لا يساوي إجمالي الطرف الدائن (${totalCredit.toFixed(3)}). فارق عدم التوازن: ${diff.toFixed(3)}`
+        `لا يمكن حفظ القيد: القيد غير متوازن إطلاقاً! إجمالي الطرف المدين (${totalDebit.toFixed(3)}) يجب أن يتطابق تماماً مع إجمالي الطرف الدائن (${totalCredit.toFixed(3)}). فارق عدم التوازن: ${diff.toFixed(3)}`
       );
     }
 
@@ -1097,12 +1146,12 @@ export class DataService {
     }
 
     const diff = Math.abs(totalDebit - totalCredit);
-    if (totalDebit <= 0) {
+    if (totalDebit <= 0 || totalCredit <= 0) {
       throw new Error('لا يمكن حفظ القيد: إجمالي المبالغ يجب أن تكون أكبر من الصفر.');
     }
-    if (diff > 0.005) {
+    if (diff >= 0.001) {
       throw new Error(
-        `القيد غير متوازن! إجمالي الطرف المدين (${totalDebit.toFixed(3)}) لا يساوي إجمالي الطرف الدائن (${totalCredit.toFixed(3)}). فارق التوازن: ${diff.toFixed(3)}`
+        `لا يمكن حفظ التعديل: القيد غير متوازن إطلاقاً! إجمالي الطرف المدين (${totalDebit.toFixed(3)}) يجب أن يتطابق تماماً مع إجمالي الطرف الدائن (${totalCredit.toFixed(3)}). فارق التوازن: ${diff.toFixed(3)}`
       );
     }
 
@@ -1229,16 +1278,24 @@ export class DataService {
 
   // Invoices
   public static async getInvoices(): Promise<Invoice[]> {
+    const localInvoices = localDataStore.getInvoices();
+    const isLocked = localDataStore.isRestoreLocked();
+
     try {
       const fromSupabase = await SupabaseDataService.getInvoices();
       if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+        if (localInvoices.length > 0 && (isLocked || fromSupabase.length < localInvoices.length)) {
+          if (isSupabaseConfigured) {
+            Promise.all(localInvoices.map((inv) => SupabaseDataService.saveInvoice(inv))).catch(() => {});
+          }
+          return localInvoices;
+        }
         localDataStore.saveInvoices(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getInvoices notice:', e);
     }
-    const localInvoices = localDataStore.getInvoices();
     if (isSupabaseConfigured && localInvoices.length > 0) {
       Promise.all(localInvoices.map((inv) => SupabaseDataService.saveInvoice(inv))).catch(() => {});
     }
@@ -1905,16 +1962,24 @@ export class DataService {
 
   // Customers & Suppliers
   public static async getCustomers(): Promise<Customer[]> {
+    const localCustomers = localDataStore.getCustomers();
+    const isLocked = localDataStore.isRestoreLocked();
+
     try {
       const fromSupabase = await SupabaseDataService.getCustomers();
       if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+        if (localCustomers.length > 0 && (isLocked || fromSupabase.length < localCustomers.length)) {
+          if (isSupabaseConfigured) {
+            Promise.all(localCustomers.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
+          }
+          return localCustomers;
+        }
         localDataStore.saveCustomers(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getCustomers notice:', e);
     }
-    const localCustomers = localDataStore.getCustomers();
     if (isSupabaseConfigured && localCustomers.length > 0) {
       Promise.all(localCustomers.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
     }
@@ -2084,16 +2149,24 @@ export class DataService {
 
   // Inventory
   public static async getInventory(): Promise<InventoryItem[]> {
+    const localInventory = localDataStore.getInventory();
+    const isLocked = localDataStore.isRestoreLocked();
+
     try {
       const fromSupabase = await SupabaseDataService.getItems();
       if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+        if (localInventory.length > 0 && (isLocked || fromSupabase.length < localInventory.length)) {
+          if (isSupabaseConfigured) {
+            Promise.all(localInventory.map((item) => SupabaseDataService.saveItem(item))).catch(() => {});
+          }
+          return localInventory;
+        }
         localDataStore.saveInventory(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getInventory notice:', e);
     }
-    const localInventory = localDataStore.getInventory();
     if (isSupabaseConfigured && localInventory.length > 0) {
       Promise.all(localInventory.map((item) => SupabaseDataService.saveItem(item))).catch(() => {});
     }

@@ -99,14 +99,14 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
   const totalDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
   const totalCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
   const diff = Math.abs(totalDebit - totalCredit);
-  const isBalanced = diff < 0.005 && totalDebit > 0;
+  const isBalanced = diff < 0.001 && totalDebit > 0;
 
   const handleAutoBalance = () => {
     if (lines.length === 0) return;
     const currentDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
     const currentCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
     const difference = currentDebit - currentCredit;
-    if (Math.abs(difference) < 0.005) return;
+    if (Math.abs(difference) < 0.001) return;
 
     const updated = [...lines];
     // Find first line with 0 on both sides, or use the last line

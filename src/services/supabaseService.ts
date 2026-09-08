@@ -19,6 +19,15 @@ import {
   ALWALEED_CANONICAL_UUID,
   toValidUUID,
 } from './supabaseClient.js';
+
+export {
+  supabase,
+  getCurrentCompanyId,
+  isSupabaseConfigured,
+  resolveToSupabaseCompanyUUID,
+  ALWALEED_CANONICAL_UUID,
+  toValidUUID,
+};
 import {
   Account,
   InventoryItem,

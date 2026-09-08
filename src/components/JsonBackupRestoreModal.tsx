@@ -64,7 +64,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
   };
 
   // Perform Restore from JSON
-  const handleRestore = () => {
+  const handleRestore = async () => {
     if (!jsonText.trim()) {
       setFeedback({ type: 'error', text: 'يرجى اختيار ملف JSON أو لصق محتوى الـ JSON أولاً.' });
       return;
@@ -73,8 +73,8 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
     setIsProcessing(true);
     setFeedback(null);
 
-    setTimeout(() => {
-      const result = CompanyJsonBackupService.importCompanyData(targetCompanyId, jsonText);
+    try {
+      const result = await CompanyJsonBackupService.importCompanyData(targetCompanyId, jsonText);
       setIsProcessing(false);
 
       if (result.success) {
@@ -89,19 +89,25 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
           text: result.message,
         });
       }
-    }, 400);
+    } catch (err: any) {
+      setIsProcessing(false);
+      setFeedback({
+        type: 'error',
+        text: `حدث خطأ أثناء الاستعادة: ${err?.message || 'خطأ غير متوقع'}`,
+      });
+    }
   };
 
   // Load Preset Al-Waleed Backup Work
-  const handleLoadAlWaleedPreset = () => {
+  const handleLoadAlWaleedPreset = async () => {
     setIsProcessing(true);
     setFeedback(null);
 
-    setTimeout(() => {
+    try {
       const alwaleedJson = CompanyJsonBackupService.getAlWaleedMillPresetBackupJson();
       const targetId = targetCompanyId.includes('alwaleed') ? targetCompanyId : 'company-alwaleed-client-003';
-      
-      const result = CompanyJsonBackupService.importCompanyData(targetId, alwaleedJson);
+
+      const result = await CompanyJsonBackupService.importCompanyData(targetId, alwaleedJson);
       setIsProcessing(false);
 
       if (result.success) {
@@ -118,7 +124,13 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
           text: result.message,
         });
       }
-    }, 400);
+    } catch (err: any) {
+      setIsProcessing(false);
+      setFeedback({
+        type: 'error',
+        text: `حدث خطأ أثناء تحميل البيانات المسبقة: ${err?.message || 'خطأ غير متوقع'}`,
+      });
+    }
   };
 
   // Export JSON Backup

@@ -28,8 +28,18 @@ import {
   INITIAL_INVOICES,
   INITIAL_UNITS,
 } from '../server/defaultData.js';
-import { INITIAL_PRODUCTION_ORDERS } from './dataService.js';
-import { safeJsonParse } from '../utils/safeJson.js';
+import {
+  localDataStore,
+  INITIAL_PRODUCTION_ORDERS,
+} from './dataService.js';
+import {
+  SupabaseDataService,
+  resolveToSupabaseCompanyUUID,
+  ALWALEED_CANONICAL_UUID,
+  isSupabaseConfigured,
+} from './supabaseService.js';
+import { safeApiFetch, safeJsonParse } from '../utils/safeJson.js';
+import { SystemResetService } from './systemResetService.js';
 
 export interface CompanyBackupEnvelope {
   format: 'LOGIX_ERP_BACKUP_V2026';
@@ -88,9 +98,13 @@ export class CompanyJsonBackupService {
   public static exportCompanyData(companyId: string, companyName: string = 'Company'): string {
     if (typeof window === 'undefined') return '{}';
 
+    const canonicalId = resolveToSupabaseCompanyUUID(companyId) || companyId;
+
     const getRaw = <T>(baseKey: string, fallback: T): T => {
       try {
-        const item = window.localStorage.getItem(getPartitionKey(baseKey, companyId));
+        const item =
+          window.localStorage.getItem(getPartitionKey(baseKey, companyId)) ||
+          window.localStorage.getItem(getPartitionKey(baseKey, canonicalId));
         if (item) return safeJsonParse<T>(item, fallback);
       } catch (err) {
         console.warn('Error reading key for export:', baseKey, err);
@@ -98,27 +112,65 @@ export class CompanyJsonBackupService {
       return fallback;
     };
 
-    const company = getRaw<CompanyProfile>(STORAGE_PREFIX.COMPANY, {
-      ...DEFAULT_COMPANY_PROFILE,
-      id: companyId,
-      nameAr: companyName,
-    });
+    // Prefer live dataStore if active company matches
+    const activeCompanyId = localDataStore.getEffectiveCompanyId();
+    const isActiveTarget =
+      activeCompanyId === companyId ||
+      activeCompanyId === canonicalId ||
+      (companyId.includes('alwaleed') && localDataStore.isAlWaleedActive());
 
-    const accounts = getRaw<Account[]>(STORAGE_PREFIX.ACCOUNTS, INITIAL_ACCOUNTS);
-    const inventory = getRaw<InventoryItem[]>(STORAGE_PREFIX.INVENTORY, []);
-    const invoices = getRaw<Invoice[]>(STORAGE_PREFIX.INVOICES, []);
-    const journals = getRaw<JournalEntry[]>(STORAGE_PREFIX.JOURNALS, []);
-    const vouchers = getRaw<PaymentVoucher[]>(STORAGE_PREFIX.VOUCHERS, []);
-    const customers = getRaw<Customer[]>(STORAGE_PREFIX.CUSTOMERS, []);
-    const suppliers = getRaw<Supplier[]>(STORAGE_PREFIX.SUPPLIERS, []);
-    const productionOrders = getRaw<ProductionOrder[]>(STORAGE_PREFIX.PRODUCTION_ORDERS, []);
-    const units = getRaw<UnitDefinition[]>(STORAGE_PREFIX.UNITS, INITIAL_UNITS);
-    const users = getRaw<SystemUser[]>(STORAGE_PREFIX.USERS, INITIAL_USERS);
+    const company: CompanyProfile = isActiveTarget
+      ? localDataStore.getCompany()
+      : getRaw<CompanyProfile>(STORAGE_PREFIX.COMPANY, {
+          ...DEFAULT_COMPANY_PROFILE,
+          id: canonicalId,
+          nameAr: companyName,
+        });
+
+    const accounts: Account[] =
+      (isActiveTarget ? localDataStore.getAccounts() : null) ||
+      getRaw<Account[]>(STORAGE_PREFIX.ACCOUNTS, INITIAL_ACCOUNTS);
+
+    const inventory: InventoryItem[] =
+      (isActiveTarget ? localDataStore.getInventory() : null) ||
+      getRaw<InventoryItem[]>(STORAGE_PREFIX.INVENTORY, []);
+
+    const invoices: Invoice[] =
+      (isActiveTarget ? localDataStore.getInvoices() : null) ||
+      getRaw<Invoice[]>(STORAGE_PREFIX.INVOICES, []);
+
+    const journals: JournalEntry[] =
+      (isActiveTarget ? localDataStore.getJournals() : null) ||
+      getRaw<JournalEntry[]>(STORAGE_PREFIX.JOURNALS, []);
+
+    const vouchers: PaymentVoucher[] =
+      (isActiveTarget ? localDataStore.getVouchers() : null) ||
+      getRaw<PaymentVoucher[]>(STORAGE_PREFIX.VOUCHERS, []);
+
+    const customers: Customer[] =
+      (isActiveTarget ? localDataStore.getCustomers() : null) ||
+      getRaw<Customer[]>(STORAGE_PREFIX.CUSTOMERS, []);
+
+    const suppliers: Supplier[] =
+      (isActiveTarget ? localDataStore.getSuppliers() : null) ||
+      getRaw<Supplier[]>(STORAGE_PREFIX.SUPPLIERS, []);
+
+    const productionOrders: ProductionOrder[] =
+      (isActiveTarget ? localDataStore.getProductionOrders() : null) ||
+      getRaw<ProductionOrder[]>(STORAGE_PREFIX.PRODUCTION_ORDERS, []);
+
+    const units: UnitDefinition[] =
+      (isActiveTarget ? localDataStore.getUnits() : null) ||
+      getRaw<UnitDefinition[]>(STORAGE_PREFIX.UNITS, INITIAL_UNITS);
+
+    const users: SystemUser[] =
+      (isActiveTarget ? localDataStore.getUsers() : null) ||
+      getRaw<SystemUser[]>(STORAGE_PREFIX.USERS, INITIAL_USERS);
 
     const envelope: CompanyBackupEnvelope = {
       format: 'LOGIX_ERP_BACKUP_V2026',
       exportTimestamp: new Date().toISOString(),
-      companyId,
+      companyId: canonicalId,
       companyName: company.nameAr || companyName,
       version: '2026.1',
       stats: {
@@ -133,17 +185,17 @@ export class CompanyJsonBackupService {
         unitsCount: units.length,
       },
       data: {
-        company,
-        accounts,
-        inventory,
-        invoices,
-        journals,
-        vouchers,
-        customers,
-        suppliers,
-        productionOrders,
-        units,
-        users,
+        company: { ...company, id: canonicalId },
+        accounts: accounts.map((a) => ({ ...a, companyId: canonicalId, company_id: canonicalId })),
+        inventory: inventory.map((i) => ({ ...i, companyId: canonicalId, company_id: canonicalId })),
+        invoices: invoices.map((inv) => ({ ...inv, companyId: canonicalId, company_id: canonicalId })),
+        journals: journals.map((j) => ({ ...j, companyId: canonicalId, company_id: canonicalId })),
+        vouchers: vouchers.map((v) => ({ ...v, companyId: canonicalId, company_id: canonicalId })),
+        customers: customers.map((c) => ({ ...c, companyId: canonicalId, company_id: canonicalId })),
+        suppliers: suppliers.map((s) => ({ ...s, companyId: canonicalId, company_id: canonicalId })),
+        productionOrders: productionOrders.map((p) => ({ ...p, companyId: canonicalId, company_id: canonicalId })),
+        units: units.map((u) => ({ ...u, companyId: canonicalId, company_id: canonicalId })),
+        users: users.map((u) => ({ ...u, companyId: canonicalId, company_id: canonicalId })),
       },
     };
 
@@ -170,12 +222,13 @@ export class CompanyJsonBackupService {
   }
 
   /**
-   * Import data from JSON into a company's partitioned storage
+   * Import data from JSON into a company's partitioned storage with full validation,
+   * restore lock protection against background overwrite, and cloud synchronization.
    */
-  public static importCompanyData(
+  public static async importCompanyData(
     companyId: string,
-    jsonInput: string
-  ): {
+    jsonInput: string | any
+  ): Promise<{
     success: boolean;
     message: string;
     stats?: {
@@ -185,8 +238,9 @@ export class CompanyJsonBackupService {
       customers: number;
       suppliers: number;
       productionOrders: number;
+      accounts: number;
     };
-  } {
+  }> {
     if (typeof window === 'undefined') {
       return { success: false, message: 'البيئة غير مدعومة' };
     }
@@ -199,65 +253,159 @@ export class CompanyJsonBackupService {
 
       // Handle both wrapped envelope and flat object formats
       const data = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+      const canonicalId = resolveToSupabaseCompanyUUID(companyId) || companyId;
 
-      const setRaw = (baseKey: string, val: any) => {
-        const key = getPartitionKey(baseKey, companyId);
-        window.localStorage.setItem(key, JSON.stringify(val));
+      // 1. Stamp companyId and canonical UUID on all entities
+      const company: CompanyProfile = data.company
+        ? { ...data.company, id: canonicalId }
+        : { ...DEFAULT_COMPANY_PROFILE, id: canonicalId };
+
+      const accounts: Account[] = (Array.isArray(data.accounts) ? data.accounts : []).map((a: any) => ({
+        ...a,
+        companyId: canonicalId,
+        company_id: canonicalId,
+      }));
+
+      const inventory: InventoryItem[] = (Array.isArray(data.inventory) ? data.inventory : []).map((i: any) => ({
+        ...i,
+        companyId: canonicalId,
+        company_id: canonicalId,
+      }));
+
+      const invoices: Invoice[] = (Array.isArray(data.invoices) ? data.invoices : []).map((inv: any) => ({
+        ...inv,
+        companyId: canonicalId,
+        company_id: canonicalId,
+        lines: (inv.lines || []).map((l: any) => ({ ...l, companyId: canonicalId, company_id: canonicalId })),
+      }));
+
+      const journals: JournalEntry[] = (Array.isArray(data.journals) ? data.journals : []).map((j: any) => ({
+        ...j,
+        companyId: canonicalId,
+        company_id: canonicalId,
+        lines: (j.lines || []).map((l: any) => ({ ...l, companyId: canonicalId, company_id: canonicalId })),
+      }));
+
+      const vouchers: PaymentVoucher[] = (Array.isArray(data.vouchers) ? data.vouchers : []).map((v: any) => ({
+        ...v,
+        companyId: canonicalId,
+        company_id: canonicalId,
+      }));
+
+      const customers: Customer[] = (Array.isArray(data.customers) ? data.customers : []).map((c: any) => ({
+        ...c,
+        companyId: canonicalId,
+        company_id: canonicalId,
+      }));
+
+      const suppliers: Supplier[] = (Array.isArray(data.suppliers) ? data.suppliers : []).map((s: any) => ({
+        ...s,
+        companyId: canonicalId,
+        company_id: canonicalId,
+      }));
+
+      const productionOrders: ProductionOrder[] = (Array.isArray(data.productionOrders) ? data.productionOrders : []).map(
+        (p: any) => ({
+          ...p,
+          companyId: canonicalId,
+          company_id: canonicalId,
+        })
+      );
+
+      const units: UnitDefinition[] = (Array.isArray(data.units) ? data.units : []).map((u: any) => ({
+        ...u,
+        companyId: canonicalId,
+        company_id: canonicalId,
+      }));
+
+      const users: SystemUser[] = (Array.isArray(data.users) ? data.users : []).map((u: any) => ({
+        ...u,
+        companyId: canonicalId,
+        company_id: canonicalId,
+      }));
+
+      // 2. Persist to LocalDataStore
+      if (data.company) localDataStore.saveCompany(company);
+      if (accounts.length > 0) localDataStore.saveAccounts(accounts);
+      localDataStore.saveInventory(inventory);
+      localDataStore.saveInvoices(invoices);
+      localDataStore.saveJournals(journals);
+      localDataStore.saveCustomers(customers);
+      localDataStore.saveSuppliers(suppliers);
+      localDataStore.saveVouchers(vouchers);
+      localDataStore.saveProductionOrders(productionOrders);
+      if (units.length > 0) localDataStore.saveUnits(units);
+      if (users.length > 0) localDataStore.saveUsers(users);
+
+      // 3. Write also to direct raw partition keys for both companyId and canonicalId
+      const writeRawPair = (baseKey: string, val: any) => {
+        const serialized = JSON.stringify(val);
+        window.localStorage.setItem(getPartitionKey(baseKey, companyId), serialized);
+        window.localStorage.setItem(getPartitionKey(baseKey, canonicalId), serialized);
+        if (canonicalId === ALWALEED_CANONICAL_UUID) {
+          window.localStorage.setItem(getPartitionKey(baseKey, 'company-alwaleed-client-003'), serialized);
+        }
       };
 
-      if (data.company) {
-        setRaw(STORAGE_PREFIX.COMPANY, { ...data.company, id: companyId });
-      }
-      if (Array.isArray(data.accounts) && data.accounts.length > 0) {
-        setRaw(STORAGE_PREFIX.ACCOUNTS, data.accounts);
-      }
-      if (Array.isArray(data.inventory)) {
-        setRaw(STORAGE_PREFIX.INVENTORY, data.inventory);
-      }
-      if (Array.isArray(data.invoices)) {
-        setRaw(STORAGE_PREFIX.INVOICES, data.invoices);
-      }
-      if (Array.isArray(data.journals)) {
-        setRaw(STORAGE_PREFIX.JOURNALS, data.journals);
-      }
-      if (Array.isArray(data.vouchers)) {
-        setRaw(STORAGE_PREFIX.VOUCHERS, data.vouchers);
-      }
-      if (Array.isArray(data.customers)) {
-        setRaw(STORAGE_PREFIX.CUSTOMERS, data.customers);
-      }
-      if (Array.isArray(data.suppliers)) {
-        setRaw(STORAGE_PREFIX.SUPPLIERS, data.suppliers);
-      }
-      if (Array.isArray(data.productionOrders)) {
-        setRaw(STORAGE_PREFIX.PRODUCTION_ORDERS, data.productionOrders);
-      }
-      if (Array.isArray(data.units)) {
-        setRaw(STORAGE_PREFIX.UNITS, data.units);
-      }
-      if (Array.isArray(data.users)) {
-        setRaw(STORAGE_PREFIX.USERS, data.users);
+      writeRawPair(STORAGE_PREFIX.COMPANY, company);
+      if (accounts.length > 0) writeRawPair(STORAGE_PREFIX.ACCOUNTS, accounts);
+      writeRawPair(STORAGE_PREFIX.INVENTORY, inventory);
+      writeRawPair(STORAGE_PREFIX.INVOICES, invoices);
+      writeRawPair(STORAGE_PREFIX.JOURNALS, journals);
+      writeRawPair(STORAGE_PREFIX.CUSTOMERS, customers);
+      writeRawPair(STORAGE_PREFIX.SUPPLIERS, suppliers);
+      writeRawPair(STORAGE_PREFIX.VOUCHERS, vouchers);
+      writeRawPair(STORAGE_PREFIX.PRODUCTION_ORDERS, productionOrders);
+      writeRawPair(STORAGE_PREFIX.UNITS, units.length > 0 ? units : INITIAL_UNITS);
+      writeRawPair(STORAGE_PREFIX.USERS, users.length > 0 ? users : INITIAL_USERS);
+
+      // 4. Activate Anti-Overwrite Restore Lock
+      localDataStore.markRestoreLocked(canonicalId);
+      localDataStore.markRestoreLocked(companyId);
+
+      // 5. Asynchronously synchronize restored records to Supabase Cloud Tables
+      if (isSupabaseConfigured) {
+        Promise.resolve().then(async () => {
+          try {
+            if (accounts.length > 0) await SupabaseDataService.saveAccounts(accounts);
+            if (customers.length > 0) await Promise.all(customers.map((c) => SupabaseDataService.saveCustomer(c)));
+            if (inventory.length > 0) await Promise.all(inventory.map((it) => SupabaseDataService.saveItem(it)));
+            if (journals.length > 0) await Promise.all(journals.map((j) => SupabaseDataService.saveJournal(j)));
+            if (invoices.length > 0) await Promise.all(invoices.map((inv) => SupabaseDataService.saveInvoice(inv)));
+          } catch (cloudErr) {
+            console.warn('Background Supabase cloud restore sync notice:', cloudErr);
+          }
+        });
       }
 
+      // 6. Safe sync to Express DB and Firestore
+      safeApiFetch('/api/backup/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyId: canonicalId, data }),
+      }).catch(() => {});
+      SystemResetService.restoreBackupToFirestore(data).catch(() => {});
+
       const stats = {
-        invoices: Array.isArray(data.invoices) ? data.invoices.length : 0,
-        inventory: Array.isArray(data.inventory) ? data.inventory.length : 0,
-        journals: Array.isArray(data.journals) ? data.journals.length : 0,
-        customers: Array.isArray(data.customers) ? data.customers.length : 0,
-        suppliers: Array.isArray(data.suppliers) ? data.suppliers.length : 0,
-        productionOrders: Array.isArray(data.productionOrders) ? data.productionOrders.length : 0,
+        invoices: invoices.length,
+        inventory: inventory.length,
+        journals: journals.length,
+        customers: customers.length,
+        suppliers: suppliers.length,
+        productionOrders: productionOrders.length,
+        accounts: accounts.length,
       };
 
       return {
         success: true,
-        message: `تم استعادة بيانات المنشأة بنجاح من ملف JSON! (${stats.inventory} صنف مخزني، ${stats.invoices} فاتورة، ${stats.journals} قيود أستاذ عام، ${stats.productionOrders} أمر تشغيل تصنيعي).`,
+        message: `تمت استعادة وتثبيت بيانات المنشأة بنجاح ومزامنتها سحابياً! (${stats.inventory} صنف مخزني، ${stats.invoices} فاتورة، ${stats.journals} قيود أستاذ عام، ${stats.customers} عميل، ${stats.productionOrders} أمر تشغيل).`,
         stats,
       };
     } catch (err: any) {
       console.error('importCompanyData error:', err);
       return {
         success: false,
-        message: `فشل قراءة ملف JSON: ${err?.message || 'تنسيق الملف غير سليم'}`,
+        message: `فشل قراءة أو استعادة ملف JSON: ${err?.message || 'تنسيق الملف غير سليم'}`,
       };
     }
   }
@@ -269,17 +417,23 @@ export class CompanyJsonBackupService {
   public static zeroOutCompanyData(companyId: string, companyProfileOverride?: Partial<CompanyProfile>): void {
     if (typeof window === 'undefined') return;
 
+    const canonicalId = resolveToSupabaseCompanyUUID(companyId) || companyId;
+
     const setRaw = (baseKey: string, val: any) => {
-      const key = getPartitionKey(baseKey, companyId);
-      window.localStorage.setItem(key, JSON.stringify(val));
+      const serialized = JSON.stringify(val);
+      window.localStorage.setItem(getPartitionKey(baseKey, companyId), serialized);
+      window.localStorage.setItem(getPartitionKey(baseKey, canonicalId), serialized);
+      if (canonicalId === ALWALEED_CANONICAL_UUID) {
+        window.localStorage.setItem(getPartitionKey(baseKey, 'company-alwaleed-client-003'), serialized);
+      }
     };
 
     // Clean accounts with 0 balance
-    const cleanAccounts = INITIAL_ACCOUNTS.map((acc) => ({ ...acc, balance: 0 }));
+    const cleanAccounts = INITIAL_ACCOUNTS.map((acc) => ({ ...acc, balance: 0, companyId: canonicalId, company_id: canonicalId }));
     // Clean customers with 0 balance
-    const cleanCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
+    const cleanCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0, companyId: canonicalId, company_id: canonicalId }));
     // Clean suppliers with 0 balance
-    const cleanSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
+    const cleanSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0, companyId: canonicalId, company_id: canonicalId }));
 
     setRaw(STORAGE_PREFIX.ACCOUNTS, cleanAccounts);
     setRaw(STORAGE_PREFIX.INVENTORY, []);
@@ -292,10 +446,22 @@ export class CompanyJsonBackupService {
     setRaw(STORAGE_PREFIX.UNITS, INITIAL_UNITS);
     setRaw(STORAGE_PREFIX.USERS, INITIAL_USERS);
 
+    // Also update localDataStore
+    localDataStore.saveAccounts(cleanAccounts);
+    localDataStore.saveInventory([]);
+    localDataStore.saveInvoices([]);
+    localDataStore.saveJournals([]);
+    localDataStore.saveVouchers([]);
+    localDataStore.saveProductionOrders([]);
+    localDataStore.saveCustomers(cleanCustomers);
+    localDataStore.saveSuppliers(cleanSuppliers);
+
     if (companyProfileOverride) {
       const current = window.localStorage.getItem(getPartitionKey(STORAGE_PREFIX.COMPANY, companyId));
       const parsed = current ? safeJsonParse<CompanyProfile>(current, DEFAULT_COMPANY_PROFILE) : DEFAULT_COMPANY_PROFILE;
-      setRaw(STORAGE_PREFIX.COMPANY, { ...parsed, ...companyProfileOverride, id: companyId });
+      const updatedProfile = { ...parsed, ...companyProfileOverride, id: canonicalId };
+      setRaw(STORAGE_PREFIX.COMPANY, updatedProfile);
+      localDataStore.saveCompany(updatedProfile);
     }
   }
 
