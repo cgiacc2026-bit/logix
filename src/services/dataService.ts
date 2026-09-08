@@ -21,6 +21,7 @@ import {
   IncomeStatementReport,
   BalanceSheetReport,
   CashFlowReport,
+  DefaultAccountsMapping,
 } from '../types.js';
 import {
   DEFAULT_COMPANY_PROFILE,
@@ -93,6 +94,47 @@ export const INITIAL_PRODUCTION_ORDERS: ProductionOrder[] = [
     completedAt: '2026-08-10T14:30:00.000Z',
   },
 ];
+
+/**
+ * Generate a pristine, completely clean opening chart of accounts with 0 balances
+ * Ensures no fake numbers or residual test balances exist for new companies.
+ */
+export function generateCleanChartOfAccounts(companyId?: string): Account[] {
+  return INITIAL_ACCOUNTS.map((acc) => ({
+    ...acc,
+    id: `acc-${acc.code}`,
+    balance: 0,
+    isActive: true,
+  }));
+}
+
+/**
+ * Automatically determine default accounting mapping based on active company's chart of accounts
+ */
+export function getDefaultMappingForAccounts(accounts: Account[]): DefaultAccountsMapping {
+  const findId = (code: string, keywords: string[]): string | undefined => {
+    const byCode = accounts.find((a) => a.code === code);
+    if (byCode) return byCode.id;
+    const byKw = accounts.find((a) => {
+      const ar = a.nameAr || '';
+      const en = (a.nameEn || '').toLowerCase();
+      return keywords.some((k) => ar.includes(k) || en.includes(k.toLowerCase()));
+    });
+    return byKw ? byKw.id : undefined;
+  };
+
+  return {
+    cashAccountId: findId('1113', ['صندوق', 'خزينة', 'cash']),
+    bankAccountId: findId('1111', ['بنك', 'bank']),
+    receivableAccountId: findId('1120', ['عملاء', 'مدينون', 'receivable']),
+    payableAccountId: findId('2110', ['موردين', 'دائنون', 'payable']),
+    inventoryAccountId: findId('1130', ['مخزون', 'بضائع', 'inventory']),
+    salesAccountId: findId('4100', ['مبيعات', 'إيراد', 'sales', 'revenue']),
+    cogsAccountId: findId('5100', ['تكلفة', 'cogs', 'cost of goods']),
+    retainedEarningsAccountId: findId('3200', ['أرباح مبقاة', 'أرباح مرحلة', 'retained earnings']),
+    vatAccountId: findId('2120', ['ضريبة', 'vat', 'tax']),
+  };
+}
 
 class LocalDataStore {
   private memoryFallback: Record<string, string> = {};
@@ -283,11 +325,48 @@ class LocalDataStore {
       console.warn('Error reading tenant cache in getCompany:', err);
     }
 
-    return stored || DEFAULT_COMPANY_PROFILE;
+    const result = stored || DEFAULT_COMPANY_PROFILE;
+    if (!result.defaultAccounts) {
+      const accs = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
+      if (accs && accs.length > 0) {
+        result.defaultAccounts = getDefaultMappingForAccounts(accs);
+      } else {
+        result.defaultAccounts = DEFAULT_COMPANY_PROFILE.defaultAccounts;
+      }
+    }
+    return result;
   }
 
   public saveCompany(comp: CompanyProfile): CompanyProfile {
-    this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), comp);
+    const compId = comp.id || this.getEffectiveCompanyId();
+    this.setLocal(this.getKey(STORAGE_KEYS.COMPANY, compId || undefined), comp);
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem('supabase_company_info', JSON.stringify(comp));
+
+        // Update tenant caches
+        const cacheRaw = window.localStorage.getItem('all_tenants_cache') || window.localStorage.getItem('logix_registered_companies');
+        if (cacheRaw) {
+          const tenants = JSON.parse(cacheRaw);
+          if (Array.isArray(tenants)) {
+            const idx = tenants.findIndex((t: any) => t.id === comp.id);
+            if (idx >= 0) {
+              tenants[idx] = {
+                ...tenants[idx],
+                company_name: comp.nameAr,
+                profile_data: comp,
+                updated_at: new Date().toISOString(),
+              };
+              window.localStorage.setItem('all_tenants_cache', JSON.stringify(tenants));
+              window.localStorage.setItem('logix_registered_companies', JSON.stringify(tenants));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error syncing company profile to local storage:', err);
+      }
+    }
     return comp;
   }
 
@@ -300,9 +379,9 @@ class LocalDataStore {
 
   public getAccounts(): Account[] {
     const list = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
-    if (!list) {
-      // Default zeroed accounts
-      const zeroedAccounts = INITIAL_ACCOUNTS.map((acc) => ({ ...acc, balance: 0 }));
+    if (!list || list.length === 0) {
+      // Default zeroed clean opening chart of accounts
+      const zeroedAccounts = generateCleanChartOfAccounts(this.getEffectiveCompanyId() || undefined);
       this.saveAccounts(zeroedAccounts);
       return zeroedAccounts;
     }
@@ -494,6 +573,13 @@ export class DataService {
     let totalLiabilities = 0;
     let totalEquity = 0;
 
+    const resolved = this.getResolvedAccounts();
+    const bankIds = [resolved.bank.id, resolved.bank.code, '1111'];
+    const cashIds = [resolved.cash.id, resolved.cash.code, '1112', '1113'];
+    const recIds = [resolved.receivable.id, resolved.receivable.code, '1120'];
+    const payIds = [resolved.payable.id, resolved.payable.code, '2110'];
+    const invIds = [resolved.inventory.id, resolved.inventory.code, '1130'];
+
     accountsWithBalances.forEach((acc) => {
       const hasChildren = accountsWithBalances.some((child) => child.parentId === acc.id);
       const isLeaf = !hasChildren;
@@ -509,15 +595,16 @@ export class DataService {
         if (cat === 'EXPENSE' || code.startsWith('5')) totalExpenses += b;
       }
 
-      if (code === '1111') bankBalance += b;
-      if (code === '1112') cashBalance += b;
-      if (code === '1120' || (isLeaf && (cat === 'ASSET' || code.startsWith('1')) && (code.startsWith('112') || acc.nameAr.includes('عملاء')))) {
+      if (bankIds.includes(acc.id) || bankIds.includes(code)) bankBalance += b;
+      else if (cashIds.includes(acc.id) || cashIds.includes(code)) cashBalance += b;
+
+      if (recIds.includes(acc.id) || recIds.includes(code) || (isLeaf && (cat === 'ASSET' || code.startsWith('1')) && (code.startsWith('112') || acc.nameAr.includes('عملاء')))) {
         recBalance += b;
       }
-      if (code === '2110' || (isLeaf && (cat === 'LIABILITY' || code.startsWith('2')) && (code.startsWith('211') || acc.nameAr.includes('موردين')))) {
+      if (payIds.includes(acc.id) || payIds.includes(code) || (isLeaf && (cat === 'LIABILITY' || code.startsWith('2')) && (code.startsWith('211') || acc.nameAr.includes('موردين')))) {
         payBalance += b;
       }
-      if (code === '1130' || (isLeaf && (cat === 'ASSET' || code.startsWith('1')) && code.startsWith('113'))) {
+      if (invIds.includes(acc.id) || invIds.includes(code) || (isLeaf && (cat === 'ASSET' || code.startsWith('1')) && code.startsWith('113'))) {
         invBalance += b;
       }
     });
@@ -614,6 +701,80 @@ export class DataService {
     });
 
     return accountsCopy.sort((a, b) => a.code.localeCompare(b.code));
+  }
+
+  /**
+   * Resolves the default accounting mappings for the currently active company.
+   * Ensures that all financial transactions (Invoices, Receipts, Payments, Production)
+   * bind directly to the company's mapped chart of accounts.
+   */
+  public static getResolvedAccounts() {
+    const company = localDataStore.getCompany();
+    const accounts = localDataStore.getAccounts();
+    const mapping = company.defaultAccounts || getDefaultMappingForAccounts(accounts);
+
+    const resolveAccount = (targetId?: string, fallbackCode?: string, fallbackKeywords: string[] = []): Account => {
+      if (targetId) {
+        const found = accounts.find((a) => a.id === targetId || a.code === targetId);
+        if (found) return found;
+      }
+      if (fallbackCode) {
+        const found = accounts.find((a) => a.code === fallbackCode);
+        if (found) return found;
+      }
+      const byKeyword = accounts.find((a) => {
+        const ar = a.nameAr || '';
+        const en = (a.nameEn || '').toLowerCase();
+        return fallbackKeywords.some((k) => ar.includes(k) || en.includes(k.toLowerCase()));
+      });
+      if (byKeyword) return byKeyword;
+      return accounts[0] || {
+        id: 'acc-generic',
+        code: '1000',
+        nameAr: 'حساب عام',
+        nameEn: 'General Account',
+        category: 'ASSET',
+        parentId: null,
+        level: 1,
+        normalBalance: 'DEBIT',
+        isActive: true,
+        isSystem: true,
+        balance: 0,
+      };
+    };
+
+    return {
+      cash: resolveAccount(mapping.cashAccountId, '1113', ['صندوق', 'خزينة', 'نقد']),
+      bank: resolveAccount(mapping.bankAccountId, '1111', ['بنك', 'مصرف', 'bank']),
+      receivable: resolveAccount(mapping.receivableAccountId, '1120', ['عملاء', 'مدينون', 'ذمم مدينة', 'receivable']),
+      payable: resolveAccount(mapping.payableAccountId, '2110', ['موردين', 'دائنون', 'ذمم دائنة', 'payable']),
+      inventory: resolveAccount(mapping.inventoryAccountId, '1130', ['مخزون', 'بضائع', 'inventory']),
+      sales: resolveAccount(mapping.salesAccountId, '4100', ['مبيعات', 'إيراد', 'sales', 'revenue']),
+      cogs: resolveAccount(mapping.cogsAccountId, '5100', ['تكلفة', 'cogs', 'cost of goods']),
+      retainedEarnings: resolveAccount(mapping.retainedEarningsAccountId, '3200', ['أرباح مبقاة', 'أرباح مرحلة', 'retained earnings']),
+      vat: resolveAccount(mapping.vatAccountId, '2120', ['ضريبة', 'أمانات الضريبة', 'vat', 'tax']),
+      mapping,
+    };
+  }
+
+  /**
+   * Generates a pristine clean opening chart of accounts for the current company with 0 balances.
+   * Auto-links the default company mapping immediately.
+   */
+  public static async generateCleanCompanyChartOfAccounts(): Promise<Account[]> {
+    const comp = localDataStore.getCompany();
+    const cleanAccounts = generateCleanChartOfAccounts(comp.id);
+    localDataStore.saveAccounts(cleanAccounts);
+    
+    // Auto map the new accounts
+    comp.defaultAccounts = getDefaultMappingForAccounts(cleanAccounts);
+    localDataStore.saveCompany(comp);
+    await safeApiFetch('/api/company', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(comp),
+    });
+    return cleanAccounts;
   }
 
   public static async getAccounts(): Promise<Account[]> {
@@ -1019,23 +1180,28 @@ export class DataService {
     });
     localDataStore.saveInventory(inventory);
 
+    const resolved = this.getResolvedAccounts();
+    const isPaid = paidAmount >= grandTotal;
+    const paymentAcc = isPaid ? resolved.cash : resolved.receivable;
+    const purchasePaymentAcc = isPaid ? resolved.cash : resolved.payable;
+
     let jLines = [];
     if (isSales) {
       jLines = [
         {
           id: 'jl-1',
-          accountId: paidAmount >= grandTotal ? 'acc-1111' : 'acc-1120',
-          accountCode: paidAmount >= grandTotal ? '1111' : '1120',
-          accountNameAr: paidAmount >= grandTotal ? 'البنك / الصندوق' : 'العملاء والجمعيات التعاونية (مدينون)',
+          accountId: paymentAcc.id,
+          accountCode: paymentAcc.code,
+          accountNameAr: paymentAcc.nameAr,
           debit: grandTotal,
           credit: 0,
           memo: `فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
         },
         {
           id: 'jl-2',
-          accountId: 'acc-4100',
-          accountCode: '4100',
-          accountNameAr: 'إيرادات مبيعات بهارات ومطحنة',
+          accountId: resolved.sales.id,
+          accountCode: resolved.sales.code,
+          accountNameAr: resolved.sales.nameAr,
           debit: 0,
           credit: grandTotal,
           memo: `إيراد مبيعات فاتورة ${invoiceNumber}`,
@@ -1045,18 +1211,18 @@ export class DataService {
       jLines = [
         {
           id: 'jl-1',
-          accountId: 'acc-4100',
-          accountCode: '4100',
-          accountNameAr: 'مردودات ومسموحات المبيعات',
+          accountId: resolved.sales.id,
+          accountCode: resolved.sales.code,
+          accountNameAr: resolved.sales.nameAr,
           debit: grandTotal,
           credit: 0,
-          memo: `مردودات مبيعات فاتورة ${invoiceNumber} - ${entityNameAr}`,
+          memo: `مردودات ومسموحات المبيعات ${invoiceNumber} - ${entityNameAr}`,
         },
         {
           id: 'jl-2',
-          accountId: paidAmount >= grandTotal ? 'acc-1111' : 'acc-1120',
-          accountCode: paidAmount >= grandTotal ? '1111' : '1120',
-          accountNameAr: paidAmount >= grandTotal ? 'البنك / الصندوق' : 'العملاء والجمعيات التعاونية (مدينون)',
+          accountId: paymentAcc.id,
+          accountCode: paymentAcc.code,
+          accountNameAr: paymentAcc.nameAr,
           debit: 0,
           credit: grandTotal,
           memo: `تخفيض حساب العميل ${entityNameAr}`,
@@ -1066,18 +1232,18 @@ export class DataService {
       jLines = [
         {
           id: 'jl-1',
-          accountId: 'acc-1130',
-          accountCode: '1130',
-          accountNameAr: 'مخزون المواد والبهارات',
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
           debit: grandTotal,
           credit: 0,
           memo: `فاتورة مشتريات ${invoiceNumber} - ${entityNameAr}`,
         },
         {
           id: 'jl-2',
-          accountId: paidAmount >= grandTotal ? 'acc-1111' : 'acc-2110',
-          accountCode: paidAmount >= grandTotal ? '1111' : '2110',
-          accountNameAr: paidAmount >= grandTotal ? 'البنك / الصندوق' : 'الموردين والشركات الموردة (دائنون)',
+          accountId: purchasePaymentAcc.id,
+          accountCode: purchasePaymentAcc.code,
+          accountNameAr: purchasePaymentAcc.nameAr,
           debit: 0,
           credit: grandTotal,
           memo: `استحقاق مشتريات فاتورة ${invoiceNumber}`,
@@ -1088,18 +1254,18 @@ export class DataService {
       jLines = [
         {
           id: 'jl-1',
-          accountId: paidAmount >= grandTotal ? 'acc-1111' : 'acc-2110',
-          accountCode: paidAmount >= grandTotal ? '1111' : '2110',
-          accountNameAr: paidAmount >= grandTotal ? 'البنك / الصندوق' : 'الموردين والشركات الموردة (دائنون)',
+          accountId: purchasePaymentAcc.id,
+          accountCode: purchasePaymentAcc.code,
+          accountNameAr: purchasePaymentAcc.nameAr,
           debit: grandTotal,
           credit: 0,
           memo: `تخفيض حساب المورد ${entityNameAr} - مرتجع مشتريات`,
         },
         {
           id: 'jl-2',
-          accountId: 'acc-1130',
-          accountCode: '1130',
-          accountNameAr: 'مخزون المواد والبهارات',
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
           debit: 0,
           credit: grandTotal,
           memo: `تخفيض المخزون لمرتجع المشتريات ${invoiceNumber}`,
@@ -1380,7 +1546,7 @@ export class DataService {
       date: data.date || new Date().toISOString().split('T')[0],
       amount,
       paymentMethod: data.paymentMethod === 'CASH' ? 'CASH' : 'BANK',
-      bankAccountId: data.bankAccountId || 'acc-1111',
+      bankAccountId: data.bankAccountId || (data.paymentMethod === 'CASH' ? this.getResolvedAccounts().cash.id : this.getResolvedAccounts().bank.id),
       entityType: data.entityType || (isReceipt ? 'CUSTOMER' : 'SUPPLIER'),
       entityId: data.entityId || '',
       entityNameAr,
@@ -1390,22 +1556,30 @@ export class DataService {
       createdAt: new Date().toISOString(),
     };
 
+    const resolved = this.getResolvedAccounts();
+    const accounts = localDataStore.getAccounts();
+    let liquidAcc = newVoucher.paymentMethod === 'CASH' ? resolved.cash : resolved.bank;
+    if (data.bankAccountId) {
+      const found = accounts.find((a) => a.id === data.bankAccountId || a.code === data.bankAccountId);
+      if (found) liquidAcc = found;
+    }
+
     const jLines = isReceipt
       ? [
           {
             id: 'jl-1',
-            accountId: 'acc-1111',
-            accountCode: '1111',
-            accountNameAr: 'البنك / الصندوق',
+            accountId: liquidAcc.id,
+            accountCode: liquidAcc.code,
+            accountNameAr: liquidAcc.nameAr,
             debit: amount,
             credit: 0,
             memo: `قبض مبالغ سند رقم ${voucherNumber} - ${entityNameAr}`,
           },
           {
             id: 'jl-2',
-            accountId: 'acc-1120',
-            accountCode: '1120',
-            accountNameAr: 'العملاء والجمعيات التعاونية (مدينون)',
+            accountId: resolved.receivable.id,
+            accountCode: resolved.receivable.code,
+            accountNameAr: resolved.receivable.nameAr,
             debit: 0,
             credit: amount,
             memo: `تحصيل من العميل ${entityNameAr}`,
@@ -1414,18 +1588,18 @@ export class DataService {
       : [
           {
             id: 'jl-1',
-            accountId: 'acc-2110',
-            accountCode: '2110',
-            accountNameAr: 'الموردين والشركات الموردة (دائنون)',
+            accountId: resolved.payable.id,
+            accountCode: resolved.payable.code,
+            accountNameAr: resolved.payable.nameAr,
             debit: amount,
             credit: 0,
             memo: `سداد للمورد ${entityNameAr}`,
           },
           {
             id: 'jl-2',
-            accountId: 'acc-1111',
-            accountCode: '1111',
-            accountNameAr: 'البنك / الصندوق',
+            accountId: liquidAcc.id,
+            accountCode: liquidAcc.code,
+            accountNameAr: liquidAcc.nameAr,
             debit: 0,
             credit: amount,
             memo: `صرف مبالغ سند رقم ${voucherNumber} - ${entityNameAr}`,
@@ -1879,22 +2053,23 @@ export class DataService {
 
       const totalDebit = newOrder.totalProductionCost;
       const rawCost = newOrder.rawMaterials.reduce((s, r) => s + r.totalCost, 0);
+      const resolved = this.getResolvedAccounts();
 
       const jLines = [
         {
           id: 'jl-1',
-          accountId: 'acc-1130',
-          accountCode: '1130',
-          accountNameAr: 'مخزون البضائع والمنتجات التامة',
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
           debit: totalDebit,
           credit: 0,
           memo: `إنتاج تام - أمر تشغيل رقم ${newOrder.orderNumber} (${newOrder.targetItemNameAr})`,
         },
         {
           id: 'jl-2',
-          accountId: 'acc-1130',
-          accountCode: '1130',
-          accountNameAr: 'مخزون المواد الخام والمكونات',
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
           debit: 0,
           credit: rawCost,
           memo: `استهلاك مواد خام ومكونات - أمر تشغيل ${newOrder.orderNumber}`,
@@ -1904,9 +2079,9 @@ export class DataService {
       if (newOrder.overheadCost > 0) {
         jLines.push({
           id: 'jl-3',
-          accountId: 'acc-5100',
-          accountCode: '5100',
-          accountNameAr: 'تكاليف تشغيل وطحن وعمالة مباشرة',
+          accountId: resolved.cogs.id,
+          accountCode: resolved.cogs.code,
+          accountNameAr: resolved.cogs.nameAr,
           debit: 0,
           credit: newOrder.overheadCost,
           memo: `تكاليف تشغيل وطحن - أمر رقم ${newOrder.orderNumber}`,
@@ -2304,8 +2479,9 @@ export class DataService {
     const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= end);
     const withBalances = this.calculateDynamicAccountBalances(accounts, postedJournals);
 
-    const cashAccount = withBalances.find((a) => a.code === '1111');
-    const cashBoxAccount = withBalances.find((a) => a.code === '1112');
+    const resolved = this.getResolvedAccounts();
+    const cashAccount = withBalances.find((a) => a.id === resolved.bank.id || a.code === resolved.bank.code);
+    const cashBoxAccount = withBalances.find((a) => a.id === resolved.cash.id || a.code === resolved.cash.code);
     const closingCash = (cashAccount?.balance || 0) + (cashBoxAccount?.balance || 0);
 
     const netIncome = income.netIncome;

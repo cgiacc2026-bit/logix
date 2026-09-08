@@ -436,6 +436,18 @@ export interface FinancialKPIs {
   unpaidInvoicesCount: number;
 }
 
+export interface DefaultAccountsMapping {
+  cashAccountId?: string;          // حساب الصندوق الرئيسي (الخزينة النقدية)
+  bankAccountId?: string;          // حساب البنك الرئيسي (الحساب الجاري)
+  receivableAccountId?: string;    // حساب العملاء / الذمم المدينة
+  payableAccountId?: string;       // حساب الموردين / الذمم الدائنة
+  inventoryAccountId?: string;     // حساب المخزون العام للبضائع
+  salesAccountId?: string;         // حساب إيرادات المبيعات
+  cogsAccountId?: string;          // حساب تكلفة البضاعة المباعة (COGS)
+  retainedEarningsAccountId?: string; // حساب الأرباح والخسائر المرحلة / المبقاة
+  vatAccountId?: string;           // حساب ضريبة القيمة المضافة / أمانات الضريبة
+}
+
 export interface CompanyProfile {
   id?: string;
   nameAr: string;
@@ -482,6 +494,9 @@ export interface CompanyProfile {
   allowNegativeBalance?: boolean; // السماح بالحسابات المكشوفة والأرصدة السالبة
   themeColor?: 'blue' | 'navy' | 'classic';
   
+  // Default Accounts Mapping (الربط المحاسبي الافتراضي بدليل الحسابات)
+  defaultAccounts?: DefaultAccountsMapping;
+
   // Signatories
   generalManager: string;
   financialManager: string;

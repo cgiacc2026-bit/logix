@@ -32,16 +32,23 @@ import {
   ArrowRight,
   Image as ImageIcon,
   Trash2,
-  Plus
+  Plus,
+  Link2,
+  RotateCcw,
+  CheckCheck,
+  Search,
+  Sliders,
 } from 'lucide-react';
-import { CompanyProfile } from '../types.js';
+import { Account, CompanyProfile, DefaultAccountsMapping } from '../types.js';
 import { DatabaseWizardModal } from './DatabaseWizardModal';
-import { localDataStore } from '../services/dataService.ts';
+import { DataService, localDataStore, getDefaultMappingForAccounts } from '../services/dataService.ts';
 import { safeApiFetch } from '../utils/safeJson.ts';
 import { SystemResetService } from '../services/systemResetService.ts';
+import { formatCurrency } from '../utils/formatters.ts';
 
 interface CompanySetupViewProps {
   company: CompanyProfile | null;
+  accounts?: Account[];
   onSaveCompany: (updated: CompanyProfile) => Promise<void>;
   onRefreshData?: () => Promise<void>;
   onResetDatabase?: () => Promise<void>;
@@ -49,14 +56,22 @@ interface CompanySetupViewProps {
 
 export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   company,
+  accounts,
   onSaveCompany,
   onRefreshData,
   onResetDatabase,
 }) => {
-  const [activeTab, setActiveTab] = useState<'legal' | 'address' | 'vat' | 'accounting' | 'branding' | 'backup'>('legal');
+  const [activeTab, setActiveTab] = useState<'legal' | 'address' | 'vat' | 'accounting' | 'mapping' | 'branding' | 'backup'>('legal');
   const [formData, setFormData] = useState<Partial<CompanyProfile>>(company || {});
+  const [companyAccounts, setCompanyAccounts] = useState<Account[]>(() => {
+    return accounts && accounts.length > 0 ? accounts : localDataStore.getAccounts();
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [mappingSuccess, setMappingSuccess] = useState('');
+  const [cleanGenSuccess, setCleanGenSuccess] = useState('');
+  const [isGeneratingClean, setIsGeneratingClean] = useState(false);
+  const [accountSearch, setAccountSearch] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
   // Backup & Security States
@@ -72,12 +87,74 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     if (company) {
       setFormData(company);
     }
-  }, [company]);
+    if (accounts && accounts.length > 0) {
+      setCompanyAccounts(accounts);
+    } else {
+      setCompanyAccounts(localDataStore.getAccounts());
+    }
+  }, [company, accounts]);
 
   const handleChange = (field: keyof CompanyProfile, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setSaveSuccess(false);
     setErrorMessage('');
+  };
+
+  const currentMapping: DefaultAccountsMapping = formData.defaultAccounts || (companyAccounts.length > 0 ? getDefaultMappingForAccounts(companyAccounts) : {});
+
+  const handleMappingChange = (field: keyof DefaultAccountsMapping, accountId: string) => {
+    const updatedMapping: DefaultAccountsMapping = {
+      ...currentMapping,
+      [field]: accountId,
+    };
+    setFormData((prev) => ({
+      ...prev,
+      defaultAccounts: updatedMapping,
+    }));
+    setSaveSuccess(false);
+    setMappingSuccess('تم تحديث ربط الحساب. يرجى الضغط على "حفظ التعديلات العامة" لتطبيق الربط على كافة العمليات.');
+    setTimeout(() => setMappingSuccess(''), 4000);
+  };
+
+  const handleAutoMapAccounts = () => {
+    if (companyAccounts.length === 0) {
+      setErrorMessage('لا توجد حسابات مسجلة في الدليل المحاسبي للشركة النشطة للقيام بالربط التلقائي.');
+      return;
+    }
+    const autoMapped = getDefaultMappingForAccounts(companyAccounts);
+    setFormData((prev) => ({
+      ...prev,
+      defaultAccounts: autoMapped,
+    }));
+    setMappingSuccess('تم مطابقة وربط حسابات الدليل المحاسبي تلقائياً بنجاح! اضغط على حفظ التعديلات لتثبيتها.');
+    setTimeout(() => setMappingSuccess(''), 5000);
+  };
+
+  const handleGenerateCleanChart = async () => {
+    if (!window.confirm('تأكيد: هل ترغب في توليد شجرة حسابات افتتاحية نظيفة بأرصدة أصفار (0.00) لهذه المنشأة وربطها تلقائياً بالإعدادات؟')) {
+      return;
+    }
+    setIsGeneratingClean(true);
+    setCleanGenSuccess('');
+    setErrorMessage('');
+    try {
+      const cleanAccounts = await DataService.generateCleanCompanyChartOfAccounts();
+      setCompanyAccounts(cleanAccounts);
+      const autoMapped = getDefaultMappingForAccounts(cleanAccounts);
+      setFormData((prev) => ({
+        ...prev,
+        defaultAccounts: autoMapped,
+      }));
+      setCleanGenSuccess('تم توليد شجرة حسابات افتتاحية نظيفة بأرصدة (0.00) خالية من الأرقام الوهمية وربطها بنجاح!');
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+      setTimeout(() => setCleanGenSuccess(''), 6000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'فشل توليد شجرة الحسابات الافتتاحية النظيفة');
+    } finally {
+      setIsGeneratingClean(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -265,6 +342,20 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
         </div>
       )}
 
+      {mappingSuccess && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-lg text-xs flex items-center gap-2 animate-fade-in font-semibold">
+          <CheckCheck className="w-5 h-5 flex-shrink-0 text-blue-600" />
+          <span>{mappingSuccess}</span>
+        </div>
+      )}
+
+      {cleanGenSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-lg text-xs flex items-center gap-2 animate-fade-in font-semibold">
+          <Sparkles className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+          <span>{cleanGenSuccess}</span>
+        </div>
+      )}
+
       {exportSuccess && (
         <div className="bg-[#EBF5EE] border border-[#2D6A4F]/30 text-[#2D6A4F] p-4 rounded-lg text-xs flex items-center gap-2 animate-fade-in font-serif font-semibold">
           <FileJson className="w-5 h-5 flex-shrink-0 text-[#2D6A4F]" />
@@ -293,6 +384,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
           { id: 'address', label: 'العنوان والاتصال', icon: MapPin },
           { id: 'vat', label: 'البيانات التجارية والفوترة', icon: Receipt },
           { id: 'accounting', label: 'السنة والسياسات المحاسبية', icon: Scale },
+          { id: 'mapping', label: 'الربط المحاسبي بدليل الحسابات', icon: Link2 },
           { id: 'branding', label: 'الموقّعون والختم والمطبوعات', icon: PenTool },
           { id: 'backup', label: 'النسخ الاحتياطي (JSON)', icon: Database },
         ].map((tab) => {
@@ -816,6 +908,553 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Direct Shortcut to Default Accounts Mapping */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-blue-600 text-white rounded-lg shadow-xs shrink-0">
+                    <Link2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">الربط المحاسبي التلقائي بالدليل (Default Accounts Mapping)</h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      اربط حساب الصندوق، البنك، العملاء، الموردين، المخزون، والأرباح المبقاة مباشرة بحسابات شجرة الشركة لتوجيه القيود آلياً.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('mapping')}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer whitespace-nowrap transition-colors shadow-xs"
+                >
+                  <span>الانتقال لتبويب الربط المحاسبي</span>
+                  <ArrowRight className="w-4 h-4 rotate-180" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: DEFAULT ACCOUNTS MAPPING */}
+        {activeTab === 'mapping' && (
+          <div className="bg-white border border-[#E5E1DA] rounded-lg p-6 shadow-xs space-y-6">
+            <div className="border-b border-[#E5E1DA] pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-serif font-bold text-[#1A1A1A] flex items-center gap-2">
+                  <Link2 className="w-5 h-5 text-blue-600" />
+                  الربط المحاسبي الافتراضي (Default Accounts Mapping) مع شجرة الحسابات
+                </h3>
+                <p className="text-xs text-[#8C8273] mt-1 leading-relaxed">
+                  ربط الحسابات الأساسية للشركة (الصندوق، البنك، العملاء، الموردين، المخزون، إيرادات المبيعات، تكلفة المبيعات، والأرباح المرحلة) بحسابات الدليل المحاسبي لضمان الدقة والترحيل الآلي.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAutoMapAccounts}
+                  className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="البحث التلقائي عن الحسابات القياسية في الدليل وربطها"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  <span>الربط الذكي التلقائي</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateCleanChart}
+                  disabled={isGeneratingClean}
+                  className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="إنشاء دليل محاسبي نظيف بأرصدة أصفار 0.00 دون أي أرقام عشوائية"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 text-emerald-600 ${isGeneratingClean ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingClean ? 'جاري التوليد...' : 'توليد شجرة حسابات نظيفة (أصفار)'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Info & Summary Bar */}
+            <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white rounded-lg border border-[#E5E1DA] shadow-2xs text-blue-600 font-mono font-bold">
+                  {companyAccounts.length}
+                </div>
+                <div>
+                  <span className="font-bold text-slate-800 block">شجرة حسابات المنشأة النشطة</span>
+                  <span className="text-slate-500 text-[11px]">
+                    الشركة: <strong className="text-slate-700">{formData.nameAr || company?.nameAr || 'الشركة الحالية'}</strong> (المعرف: <code className="font-mono text-[10px] bg-slate-200 px-1 py-0.5 rounded">{company?.id || 'default'}</code>)
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="تصفية الحسابات بالاسم أو الرمز..."
+                    value={accountSearch}
+                    onChange={(e) => setAccountSearch(e.target.value)}
+                    className="w-full bg-white border border-[#E5E1DA] rounded-md pr-8 pl-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Account Mapping Groups */}
+            <div className="space-y-6">
+              {/* GROUP 1: CASH & LIQUIDITY */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <span>1. حسابات النقدية والسيولة والمصارف (Cash & Liquidity)</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">تستخدم في سندات القبض والصرف والتحصيل</span>
+                </div>
+
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Cash Account */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب الصندوق الرئيسي (الخزينة النقدية) *</span>
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">أصول متداولة</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الطرف المدين التلقائي لسندات القبض وفواتير المبيعات النقدية، والطرف الدائن لسندات الصرف النقدية.
+                    </p>
+                    <select
+                      value={currentMapping.cashAccountId || ''}
+                      onChange={(e) => handleMappingChange('cashAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب الصندوق --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'ASSET' ? 'أصول' : acc.category})
+                          </option>
+                        ))}
+                    </select>
+
+                    {/* Mapped Badge */}
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.cashAccountId || a.code === currentMapping.cashAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-emerald-50/70 border border-emerald-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-emerald-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-emerald-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                          لم يتم التعيين - يرجى الاختيار أو الضغط على "الربط الذكي التلقائي".
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Bank Account */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب البنك الرئيسي (الحساب الجاري) *</span>
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">أصول متداولة</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الطرف المدين لسندات القبض البنكية والتحويلات، والطرف الدائن لمدفوعات الشيكات والتحويلات للموردين.
+                    </p>
+                    <select
+                      value={currentMapping.bankAccountId || ''}
+                      onChange={(e) => handleMappingChange('bankAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار الحساب البنكي --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'ASSET' ? 'أصول' : acc.category})
+                          </option>
+                        ))}
+                    </select>
+
+                    {/* Mapped Badge */}
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.bankAccountId || a.code === currentMapping.bankAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-emerald-50/70 border border-emerald-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-emerald-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-emerald-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                          لم يتم التعيين - يرجى الاختيار أو الضغط على "الربط الذكي التلقائي".
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* GROUP 2: RECEIVABLES & PAYABLES */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    <span>2. حسابات الذمم التجارية (العملاء والموردين)</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">تستخدم في فواتير المبيعات والمشتريات الآجلة والتحصيلات</span>
+                </div>
+
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Accounts Receivable */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب العملاء والذمم المدينة (Accounts Receivable) *</span>
+                      <span className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">أصول متداولة (مدين)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الطرف المدين لفواتير المبيعات الآجلة للعملاء، والطرف الدائن عند تحصيل مبالغ سندات القبض.
+                    </p>
+                    <select
+                      value={currentMapping.receivableAccountId || ''}
+                      onChange={(e) => handleMappingChange('receivableAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب العملاء --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                          </option>
+                        ))}
+                    </select>
+
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.receivableAccountId || a.code === currentMapping.receivableAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-blue-50/70 border border-blue-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-blue-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-blue-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                          لم يتم التعيين - يرجى الاختيار.
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Accounts Payable */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب الموردين والذمم الدائنة (Accounts Payable) *</span>
+                      <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">خصوم والتزامات (دائن)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الطرف الدائن لفواتير المشتريات الآجلة للموردين، والطرف المدين عند إصدار سندات صرف وسداد المستحقات.
+                    </p>
+                    <select
+                      value={currentMapping.payableAccountId || ''}
+                      onChange={(e) => handleMappingChange('payableAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب الموردين --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                          </option>
+                        ))}
+                    </select>
+
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.payableAccountId || a.code === currentMapping.payableAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-amber-50/70 border border-amber-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-amber-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-amber-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                          لم يتم التعيين - يرجى الاختيار.
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* GROUP 3: INVENTORY, SALES & COGS */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                    <span>3. حسابات المخزون والتكلفة والمبيعات (Inventory & Operations)</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">تستخدم في فواتير المبيعات، قيود التكلفة التلقائية، وأوامر التشغيل</span>
+                </div>
+
+                <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Inventory Account */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب مخزون البضائع والمنتجات *</span>
+                      <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">أصول (1130)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      يمثل قيمة بضاعة المستودع. يُخفّض بقيد التكلفة عند كل بيع ويُزاد بالإنتاج التام والمشتريات.
+                    </p>
+                    <select
+                      value={currentMapping.inventoryAccountId || ''}
+                      onChange={(e) => handleMappingChange('inventoryAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب المخزون --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr}
+                          </option>
+                        ))}
+                    </select>
+
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.inventoryAccountId || a.code === currentMapping.inventoryAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-indigo-50/70 border border-indigo-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-indigo-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-indigo-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  {/* Sales Revenue Account */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب إيرادات المبيعات *</span>
+                      <span className="text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">إيرادات (4100)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الطرف الدائن لإجمالي صافي المبيعات بدون الضريبة في فواتير المبيعات التشغيلية.
+                    </p>
+                    <select
+                      value={currentMapping.salesAccountId || ''}
+                      onChange={(e) => handleMappingChange('salesAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب المبيعات --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr}
+                          </option>
+                        ))}
+                    </select>
+
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.salesAccountId || a.code === currentMapping.salesAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-sky-50/70 border border-sky-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-sky-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-sky-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  {/* COGS Account */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب تكلفة البضاعة المباعة (COGS) *</span>
+                      <span className="text-[10px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">تكلفة/مصروفات (5100)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الطرف المدين التلقائي لقيد تكلفة المبيعات في نظام الجرد المستمر لاحتساب مجمل الربح بدقة.
+                    </p>
+                    <select
+                      value={currentMapping.cogsAccountId || ''}
+                      onChange={(e) => handleMappingChange('cogsAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب تكلفة المبيعات --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr}
+                          </option>
+                        ))}
+                    </select>
+
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.cogsAccountId || a.code === currentMapping.cogsAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-rose-50/70 border border-rose-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-rose-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-rose-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* GROUP 4: RETAINED EARNINGS & TAX */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                    <span>4. حسابات حقوق الملكية والضرائب (Equity & Tax Accounts)</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">تستخدم في إقفال الفترات المالية والميزانية العمومية وإقرارات الضريبة</span>
+                </div>
+
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Retained Earnings */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب الأرباح والخسائر المرحلة / المبقاة *</span>
+                      <span className="text-[10px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">حقوق ملكية (3200)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الحساب المخصص لتجميع أرباح وخسائر الفترات السابقة في قائمة المركز المالي وميزان المراجعة.
+                    </p>
+                    <select
+                      value={currentMapping.retainedEarningsAccountId || ''}
+                      onChange={(e) => handleMappingChange('retainedEarningsAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب الأرباح المبقاة --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                          </option>
+                        ))}
+                    </select>
+
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.retainedEarningsAccountId || a.code === currentMapping.retainedEarningsAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-purple-50/70 border border-purple-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-purple-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-purple-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  {/* VAT Payable */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>حساب ضريبة القيمة المضافة / أمانات الضريبة *</span>
+                      <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">التزامات متداولة (2120)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                      الطرف الدائن لقيمة ضريبة القيمة المضافة المحصلة في فواتير المبيعات الصادرة وفق اشتراطات الفوترة.
+                    </p>
+                    <select
+                      value={currentMapping.vatAccountId || ''}
+                      onChange={(e) => handleMappingChange('vatAccountId', e.target.value)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="">-- يرجى اختيار حساب ضريبة القيمة المضافة --</option>
+                      {companyAccounts
+                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                        .map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                          </option>
+                        ))}
+                    </select>
+
+                    {(() => {
+                      const acc = companyAccounts.find((a) => a.id === currentMapping.vatAccountId || a.code === currentMapping.vatAccountId);
+                      return acc ? (
+                        <div className="mt-2 bg-amber-50/70 border border-amber-200/80 rounded-md p-2 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-amber-900 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>[{acc.code}] {acc.nameAr}</span>
+                          </div>
+                          <span className="font-mono font-bold text-amber-800">
+                            رصيد: {formatCurrency(acc.balance || 0, formData.functionalCurrency, formData.decimalPlaces)}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Save Action reminder */}
+            <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 text-white rounded-lg">
+                  <Save className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">اعتماد وحفظ إعدادات الربط المحاسبي</h4>
+                  <p className="text-xs text-slate-300">
+                    عند الحفظ، سيتم توجيه جميع العمليات المالية والمستندات الجديدة بناءً على هذه الحسابات المختارة مباشرة.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md transition-all whitespace-nowrap"
+              >
+                <Save className="w-4 h-4 text-cyan-200" />
+                <span>{isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات العامة الآن'}</span>
+              </button>
             </div>
           </div>
         )}

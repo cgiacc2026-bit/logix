@@ -2052,6 +2052,17 @@ export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   headerNotes: 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت',
   footerNotes: 'الدفع خلال 30 يوماً من تاريخ استلام الفاتورة • خاضع للقوانين التجارية بدولة الكويت.',
   showDigitalStamp: true,
+  defaultAccounts: {
+    cashAccountId: 'acc-1113',
+    bankAccountId: 'acc-1111',
+    receivableAccountId: 'acc-1120',
+    payableAccountId: 'acc-2110',
+    inventoryAccountId: 'acc-1130',
+    salesAccountId: 'acc-4100',
+    cogsAccountId: 'acc-5100',
+    retainedEarningsAccountId: 'acc-3200',
+    vatAccountId: 'acc-2120',
+  },
 };
 
 export const INITIAL_UNITS: UnitDefinition[] = [

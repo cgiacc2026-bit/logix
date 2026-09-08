@@ -596,6 +596,7 @@ export default function App() {
           {activeTab === 'company' && (
             <CompanySetupView
               company={activeCompany}
+              accounts={accounts}
               onSaveCompany={handleSaveCompany}
               onRefreshData={refreshAllData}
               onResetDatabase={handleResetSeed}

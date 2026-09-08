@@ -2,47 +2,76 @@
  * Financial & Currency Formatting Utilities
  */
 
-export function formatCurrency(amount: number, currency: string = 'KWD'): string {
+/**
+ * Financial & Currency Formatting Utilities
+ */
+
+function getActiveCompanySettings(): { functionalCurrency?: string; currency?: string; decimalPlaces?: number } | null {
+  try {
+    const raw = localStorage.getItem('supabase_company_info');
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function formatCurrency(
+  amount: number,
+  currency?: string,
+  customDecimals?: number
+): string {
   const val = Number(amount) || 0;
+  const company = getActiveCompanySettings();
+
+  const effectiveCurrency = (currency || company?.functionalCurrency || company?.currency || 'KWD').trim().toUpperCase();
   
-  let symbol = 'د.ك';
   let decimals = 3;
-
-  const curr = (currency || '').trim().toUpperCase();
-
-  if (!curr || curr === 'KWD' || curr === 'د.ك' || curr.includes('كويتي') || curr.includes('KWD')) {
-    symbol = 'د.ك';
-    decimals = 3;
-  } else if (curr === 'SAR' || curr.includes('سعودي')) {
-    symbol = 'ر.س';
-    decimals = 2;
-  } else if (curr === 'USD' || curr === '$') {
-    symbol = '$';
-    decimals = 2;
-  } else if (curr === 'AED' || curr.includes('إماراتي')) {
-    symbol = 'د.إ';
-    decimals = 2;
-  } else if (curr === 'EUR' || curr === '€') {
-    symbol = '€';
-    decimals = 2;
-  } else if (curr === 'EGP' || curr.includes('مصري')) {
-    symbol = 'ج.م';
-    decimals = 2;
-  } else if (curr === 'BHD' || curr.includes('بحريني')) {
-    symbol = 'د.ب';
-    decimals = 3;
-  } else if (curr === 'OMR' || curr.includes('عماني')) {
-    symbol = 'ر.ع';
-    decimals = 3;
-  } else if (curr === 'QAR' || curr.includes('قطري')) {
-    symbol = 'ر.ق';
-    decimals = 2;
-  } else if (curr === 'JOD' || curr.includes('أردني')) {
-    symbol = 'د.أ';
+  if (customDecimals !== undefined) {
+    decimals = customDecimals;
+  } else if (company?.decimalPlaces !== undefined && typeof company.decimalPlaces === 'number') {
+    decimals = company.decimalPlaces;
+  } else if (
+    effectiveCurrency === 'KWD' ||
+    effectiveCurrency === 'د.ك' ||
+    effectiveCurrency.includes('كويتي') ||
+    effectiveCurrency === 'BHD' ||
+    effectiveCurrency.includes('بحريني') ||
+    effectiveCurrency === 'OMR' ||
+    effectiveCurrency.includes('عماني') ||
+    effectiveCurrency === 'JOD' ||
+    effectiveCurrency.includes('أردني')
+  ) {
     decimals = 3;
   } else {
+    decimals = 2;
+  }
+
+  let symbol = 'د.ك';
+  if (effectiveCurrency === 'KWD' || effectiveCurrency === 'د.ك' || effectiveCurrency.includes('كويتي') || effectiveCurrency.includes('KWD')) {
     symbol = 'د.ك';
-    decimals = 3;
+  } else if (effectiveCurrency === 'SAR' || effectiveCurrency.includes('سعودي')) {
+    symbol = 'ر.س';
+  } else if (effectiveCurrency === 'USD' || effectiveCurrency === '$') {
+    symbol = '$';
+  } else if (effectiveCurrency === 'AED' || effectiveCurrency.includes('إماراتي')) {
+    symbol = 'د.إ';
+  } else if (effectiveCurrency === 'EUR' || effectiveCurrency === '€') {
+    symbol = '€';
+  } else if (effectiveCurrency === 'EGP' || effectiveCurrency.includes('مصري')) {
+    symbol = 'ج.م';
+  } else if (effectiveCurrency === 'BHD' || effectiveCurrency.includes('بحريني')) {
+    symbol = 'د.ب';
+  } else if (effectiveCurrency === 'OMR' || effectiveCurrency.includes('عماني')) {
+    symbol = 'ر.ع';
+  } else if (effectiveCurrency === 'QAR' || effectiveCurrency.includes('قطري')) {
+    symbol = 'ر.ق';
+  } else if (effectiveCurrency === 'JOD' || effectiveCurrency.includes('أردني')) {
+    symbol = 'د.أ';
+  } else {
+    symbol = effectiveCurrency;
   }
 
   const formatted = Math.abs(val).toLocaleString('en-US', {
@@ -54,6 +83,16 @@ export function formatCurrency(amount: number, currency: string = 'KWD'): string
     return `(${formatted}) ${symbol}`;
   }
   return `${formatted} ${symbol}`;
+}
+
+export function formatCompanyCurrency(
+  amount: number,
+  company?: { functionalCurrency?: string; currency?: string; decimalPlaces?: number } | null,
+  fallbackCurrency: string = 'KWD'
+): string {
+  const curr = company?.functionalCurrency || company?.currency || fallbackCurrency;
+  const dec = company?.decimalPlaces;
+  return formatCurrency(amount, curr, dec);
 }
 
 export function formatNumber(amount: number, decimals: number = 3): string {
