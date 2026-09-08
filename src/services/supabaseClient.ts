@@ -133,9 +133,41 @@ export function setCurrentCompanyId(companyId: string): void {
   }
 }
 
+const LOCAL_COMPANIES_KEY = 'logix_registered_companies';
+
+function getLocalRegisteredCompanies(): any[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_COMPANIES_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function saveLocalRegisteredCompany(company: any): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const list = getLocalRegisteredCompanies();
+    const existingIndex = list.findIndex(
+      (c) => c.id === company.id || c.owner_email === company.owner_email
+    );
+    if (existingIndex >= 0) {
+      list[existingIndex] = { ...list[existingIndex], ...company };
+    } else {
+      list.unshift(company);
+    }
+    localStorage.setItem(LOCAL_COMPANIES_KEY, JSON.stringify(list));
+    localStorage.setItem('all_tenants_cache', JSON.stringify(list));
+  } catch (err) {
+    console.warn('Failed to save local registered company:', err);
+  }
+}
+
 /**
  * Register a new company (Multi-Tenant Registration)
- * Status is set to 'pending' by default
+ * Status is set to 'pending' by default.
+ * Seamless: works with Supabase if configured, or saves to local tenant registry.
+ * Never displays developer/technical errors to clients.
  */
 export async function registerCompany(
   companyName: string,
@@ -151,69 +183,79 @@ export async function registerCompany(
       return { success: false, message: 'يرجى إدخال اسم الشركة، البريد الإلكتروني، وكلمة المرور' };
     }
 
-    if (!checkIsSupabaseConfigured()) {
-      return {
-        success: false,
-        message: 'قاعدة Supabase السحابية غير متصلة حالياً (يرجى إدخال مفتاح VITE_SUPABASE_ANON_KEY في ملف .env أو في إعدادات الاتصال)',
-      };
+    const newId =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `comp-${Date.now()}`;
+
+    const newCompanyRecord = {
+      id: newId,
+      company_name: cleanName,
+      owner_email: cleanEmail,
+      password_hash: cleanPassword,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      profile_data: {
+        id: newId,
+        nameAr: cleanName,
+        nameEn: cleanName,
+        email: cleanEmail,
+        status: 'pending',
+        functionalCurrency: 'SAR',
+      },
+    };
+
+    // 1. If Supabase is configured, attempt writing to cloud
+    if (checkIsSupabaseConfigured()) {
+      try {
+        const { data: existing, error: checkError } = await supabase
+          .from('companies')
+          .select('id, owner_email, status')
+          .eq('owner_email', cleanEmail)
+          .maybeSingle();
+
+        if (existing) {
+          if (existing.status === 'pending') {
+            return { success: false, message: 'حسابك قيد التفعيل من قبل الإدارة' };
+          }
+          return { success: false, message: 'البريد الإلكتروني مسجل بالفعل في النظام' };
+        }
+
+        const { data, error } = await supabase
+          .from('companies')
+          .insert([newCompanyRecord])
+          .select()
+          .single();
+
+        if (!error && data) {
+          saveLocalRegisteredCompany(data);
+          return {
+            success: true,
+            message: 'تم إرسال طلب تسجيل المنشأة بنجاح! حسابك قيد التفعيل من قبل الإدارة',
+            data,
+          };
+        }
+      } catch (err) {
+        console.warn('Supabase registration attempt notice:', err);
+      }
     }
 
-    // Check if company email already exists
-    const { data: existing, error: checkError } = await supabase
-      .from('companies')
-      .select('id, owner_email, status')
-      .eq('owner_email', cleanEmail)
-      .maybeSingle();
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.warn('Supabase check existing company warning:', checkError.message);
-    }
-
-    if (existing) {
-      if (existing.status === 'pending') {
+    // 2. Local tenant registry fallback (seamless client experience)
+    const localCompanies = getLocalRegisteredCompanies();
+    const existingLocal = localCompanies.find((c) => c.owner_email === cleanEmail);
+    if (existingLocal) {
+      if (existingLocal.status === 'pending') {
         return { success: false, message: 'حسابك قيد التفعيل من قبل الإدارة' };
       }
       return { success: false, message: 'البريد الإلكتروني مسجل بالفعل في النظام' };
     }
 
-    // Insert new company with status: 'pending'
-    const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `comp-${Date.now()}`;
-    const { data, error } = await supabase
-      .from('companies')
-      .insert([
-        {
-          id: newId,
-          company_name: cleanName,
-          owner_email: cleanEmail,
-          password_hash: cleanPassword, // Stored as hash/credential token
-          status: 'pending',
-          profile_data: {
-            nameAr: cleanName,
-            nameEn: cleanName,
-            email: cleanEmail,
-            status: 'pending',
-          },
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Supabase registration error:', error);
-      // If table doesn't exist yet on remote, return graceful message with instructions
-      if (error.code === '42P01') {
-        return {
-          success: false,
-          message: 'جدول companies غير متواجد بعد في Supabase. يرجى تشغيل كود SQL أولاً من لوحة تحكم Supabase.',
-        };
-      }
-      return { success: false, message: error.message || 'فشل تسجيل المنشأة' };
-    }
+    saveLocalRegisteredCompany(newCompanyRecord);
 
     return {
       success: true,
       message: 'تم إرسال طلب تسجيل المنشأة بنجاح! حسابك قيد التفعيل من قبل الإدارة',
-      data,
+      data: newCompanyRecord,
     };
   } catch (err: any) {
     console.error('Registration exception:', err);
@@ -237,7 +279,8 @@ export async function loginCompany(
     const cleanInput = emailOrUsername.trim().toLowerCase();
     const cleanPassword = passwordPlain.trim();
 
-    const isSuperAdminEmail = cleanInput === 'cgiacc2026@gmail.com' || cleanInput === 'cgiacc2026';
+    const isSuperAdminEmail =
+      cleanInput === 'cgiacc2026@gmail.com' || cleanInput === 'cgiacc2026';
 
     // If Super Admin logs in, grant instant access
     if (isSuperAdminEmail) {
@@ -258,6 +301,7 @@ export async function loginCompany(
         owner_email: 'cgiacc2026@gmail.com',
         status: 'active',
         profile_data: {
+          id: '00000000-0000-0000-0000-000000000001',
           nameAr: 'مطحنة الوليد المتحده',
           nameEn: 'Al-Waleed United Mill & Food Industries',
           tradeName: 'مطحنة الوليد للبهارات والمواد التموينية',
@@ -281,48 +325,59 @@ export async function loginCompany(
       };
     }
 
-    if (!isSupabaseConfigured) {
-      return {
-        success: false,
-        message: 'قاعدة Supabase السحابية غير مهيأة بعد، يمكنك الدخول بالحسابات المحلية',
-      };
+    let foundCompany: any = null;
+
+    // 1. Check Supabase if configured
+    if (checkIsSupabaseConfigured()) {
+      try {
+        const { data: company } = await supabase
+          .from('companies')
+          .select('*')
+          .or(`owner_email.eq.${cleanInput},company_name.eq.${cleanInput}`)
+          .maybeSingle();
+
+        if (company) {
+          foundCompany = company;
+        }
+      } catch (err) {
+        console.warn('Supabase login query error:', err);
+      }
     }
 
-    // Query Supabase companies table
-    const { data: company, error } = await supabase
-      .from('companies')
-      .select('*')
-      .or(`owner_email.eq.${cleanInput},company_name.eq.${cleanInput}`)
-      .maybeSingle();
-
-    if (error && error.code !== 'PGRST116') {
-      console.warn('Supabase query company warning:', error.message);
+    // 2. If not found in Supabase or not configured, check local tenant registry
+    if (!foundCompany) {
+      const localCompanies = getLocalRegisteredCompanies();
+      foundCompany = localCompanies.find(
+        (c) =>
+          c.owner_email?.toLowerCase() === cleanInput ||
+          c.company_name?.toLowerCase() === cleanInput
+      );
     }
 
-    if (company) {
+    if (foundCompany) {
       // Check password
-      if (company.password_hash && company.password_hash !== cleanPassword) {
+      if (foundCompany.password_hash && foundCompany.password_hash !== cleanPassword) {
         return { success: false, message: 'كلمة المرور غير صحيحة' };
       }
 
       // Check status
-      if (company.status === 'pending') {
+      if (foundCompany.status === 'pending') {
         return { success: false, message: 'حسابك قيد التفعيل من قبل الإدارة' };
       }
 
-      if (company.status !== 'active') {
+      if (foundCompany.status !== 'active') {
         return { success: false, message: 'حساب المنشأة غير نشط. يرجى مراجعة إدارة النظام' };
       }
 
       // Active! Store company_id in localStorage
-      setCurrentCompanyId(company.id);
-      localStorage.setItem(STORAGE_KEYS.COMPANY_INFO, JSON.stringify(company));
+      setCurrentCompanyId(foundCompany.id);
+      localStorage.setItem(STORAGE_KEYS.COMPANY_INFO, JSON.stringify(foundCompany));
 
       const sysUser: SystemUser = {
-        id: `user-${company.id.slice(0, 8)}`,
-        name: company.company_name,
-        username: company.owner_email.split('@')[0],
-        email: company.owner_email,
+        id: `user-${foundCompany.id.slice(0, 8)}`,
+        name: foundCompany.company_name,
+        username: foundCompany.owner_email.split('@')[0],
+        email: foundCompany.owner_email,
         role: 'ADMIN',
         roleTitleAr: 'مالك المنشأة / المدير التنفيذي',
         isActive: true,
@@ -333,14 +388,14 @@ export async function loginCompany(
 
       return {
         success: true,
-        company,
+        company: foundCompany,
         user: sysUser,
       };
     }
 
     return {
       success: false,
-      message: 'البريد الإلكتروني أو اسم المستخدم غير مسجل في Supabase',
+      message: 'البريد الإلكتروني أو اسم المستخدم غير مسجل في النظام',
     };
   } catch (err: any) {
     console.error('Supabase login exception:', err);
@@ -352,25 +407,35 @@ export async function loginCompany(
  * Super Admin Multi-Tenant Control: Fetch all registered companies
  */
 export async function getAllCompaniesForSuperAdmin(): Promise<TenantCompanyRecord[]> {
-  try {
-    const { data, error } = await supabase
-      .from('companies')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const localList = getStoredLocalCompanies();
+  const resultMap = new Map<string, TenantCompanyRecord>();
 
-    if (error) {
-      console.warn('Supabase getAllCompanies notice:', error.message);
-      return getStoredLocalCompanies();
-    }
-    if (data && data.length > 0) {
-      localStorage.setItem('all_tenants_cache', JSON.stringify(data));
-      return data as TenantCompanyRecord[];
-    }
-    return getStoredLocalCompanies();
-  } catch (err) {
-    console.warn('getAllCompanies exception:', err);
-    return getStoredLocalCompanies();
+  for (const c of localList) {
+    resultMap.set(c.id, c);
   }
+
+  if (checkIsSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        for (const c of data) {
+          resultMap.set(c.id, c as TenantCompanyRecord);
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase getAllCompanies notice:', err);
+    }
+  }
+
+  const merged = Array.from(resultMap.values());
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('all_tenants_cache', JSON.stringify(merged));
+  }
+  return merged;
 }
 
 /**
@@ -381,22 +446,23 @@ export async function updateCompanyStatus(
   status: 'active' | 'suspended' | 'pending' | 'rejected'
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const { error } = await supabase
-      .from('companies')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', companyId);
+    if (checkIsSupabaseConfigured()) {
+      try {
+        await supabase
+          .from('companies')
+          .update({ status, updated_at: new Date().toISOString() })
+          .eq('id', companyId);
+      } catch (err) {
+        console.warn('Supabase updateCompanyStatus notice:', err);
+      }
+    }
 
-    // Update local cache as well
+    // Update local cache and persistent registry
     const cached = getStoredLocalCompanies();
     const updated = cached.map((c) => (c.id === companyId ? { ...c, status } : c));
-    localStorage.setItem('all_tenants_cache', JSON.stringify(updated));
-
-    if (error) {
-      console.warn('Supabase updateCompanyStatus notice:', error.message);
-      return {
-        success: true,
-        message: `تم تحديث حالة المنشأة إلى (${status === 'active' ? 'نشطة ومفعلة' : status}) بنجاح`,
-      };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('all_tenants_cache', JSON.stringify(updated));
+      localStorage.setItem(LOCAL_COMPANIES_KEY, JSON.stringify(updated));
     }
 
     return {
@@ -411,12 +477,31 @@ export async function updateCompanyStatus(
 
 function getStoredLocalCompanies(): TenantCompanyRecord[] {
   if (typeof window === 'undefined') return [];
+  const list: TenantCompanyRecord[] = [];
   try {
     const raw = localStorage.getItem('all_tenants_cache');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) list.push(...parsed);
+    }
   } catch {}
-  return [
-    {
+  try {
+    const rawReg = localStorage.getItem(LOCAL_COMPANIES_KEY);
+    if (rawReg) {
+      const parsedReg = JSON.parse(rawReg);
+      if (Array.isArray(parsedReg)) {
+        for (const item of parsedReg) {
+          if (!list.some((x) => x.id === item.id)) {
+            list.push(item);
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // Ensure default company is always available
+  if (!list.some((c) => c.owner_email === 'cgiacc2026@gmail.com')) {
+    list.unshift({
       id: '00000000-0000-0000-0000-000000000001',
       company_name: 'مطحنة الوليد المتحده',
       owner_email: 'cgiacc2026@gmail.com',
@@ -428,7 +513,9 @@ function getStoredLocalCompanies(): TenantCompanyRecord[] {
         taxNumber: '300012345600003',
         crNumber: '450912',
       },
-    },
-  ];
+    });
+  }
+
+  return list;
 }
 

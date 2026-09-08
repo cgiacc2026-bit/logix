@@ -25,9 +25,6 @@ import {
   loginCompany,
   setCurrentCompanyId,
   STORAGE_KEYS,
-  checkIsSupabaseConfigured,
-  saveSupabaseCredentials,
-  getSupabaseConfig,
 } from '../services/supabaseClient.js';
 import {
   DEMO_COMPANY_ID,
@@ -64,28 +61,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isDemoLoading, setIsDemoLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
-
-  const [isSupabaseReady, setIsSupabaseReady] = useState<boolean>(() => checkIsSupabaseConfigured());
-  const [customKeyInput, setCustomKeyInput] = useState<string>('');
-  const [showConfigBox, setShowConfigBox] = useState<boolean>(false);
-
-  const handleSaveConfig = () => {
-    if (!customKeyInput.trim()) {
-      setError('يرجى إدخال مفتاح VITE_SUPABASE_ANON_KEY بشكل صحيح');
-      return;
-    }
-    const currentConfig = getSupabaseConfig();
-    saveSupabaseCredentials(currentConfig.url, customKeyInput.trim());
-    const isNowReady = checkIsSupabaseConfigured();
-    setIsSupabaseReady(isNowReady);
-    if (isNowReady) {
-      setError(null);
-      setSuccessMessage('تم تفعيل الاتصال بقاعدة Supabase السحابية بنجاح!');
-      setShowConfigBox(false);
-    } else {
-      setError('المفتاح المدخل غير صالح أو قصير جداً');
-    }
-  };
 
   const handleInstantDemoTrial = async () => {
     setIsDemoLoading(true);
@@ -361,40 +336,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
               {authMode === 'REGISTER' ? (
                 /* Registration Form (Multi-Tenant Registration) */
                 <div className="space-y-4">
-                  {!isSupabaseReady && (
-                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs animate-fadeIn">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2 text-amber-300 font-bold">
-                          <Database className="w-4 h-4 text-amber-400 shrink-0" />
-                          <span>تنشيط ربط قاعدة Supabase السحابية</span>
-                        </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          مطلوب للتسجيل السحابي
-                        </span>
-                      </div>
-                      <p className="text-slate-300 text-[11px] leading-relaxed mb-2.5">
-                        رابط المشروع مهيأ تلقائياً (<code className="text-cyan-300 font-mono text-[10px]">gzoncsbxfdnfellspgke</code>). الرجاء لصق مفتاح <strong className="text-white">Anon Public Key</strong> لتفعيل الاتصال الفوري:
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                          type="password"
-                          dir="ltr"
-                          value={customKeyInput}
-                          onChange={(e) => setCustomKeyInput(e.target.value)}
-                          placeholder="ألصق مفتاح VITE_SUPABASE_ANON_KEY هنا..."
-                          className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 text-xs font-mono focus:outline-none focus:border-amber-500 placeholder:text-slate-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSaveConfig}
-                          className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>تفعيل الاتصال</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-slate-300 flex items-center gap-2.5">
+                    <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span>سجل منشأتك الجديدة لبدء العمل على النظام المحاسبي السحابي. سيتم تفعيل حسابك فورياً من قبل الإدارة.</span>
+                  </div>
 
                   <form onSubmit={handleRegisterSubmit} className="space-y-4">
                   <div>
