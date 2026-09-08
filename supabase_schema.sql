@@ -20,12 +20,37 @@ DO $$ BEGIN
 END $$;
 
 -- ==============================================================================
--- 2) تحديث شركة الديمو الموجودة (UPDATE فقط، بدون حذف)
+-- 2) تحديث شركة الديمو الموجودة (UPDATE أو INSERT إذا لم تكن موجودة)
 -- ==============================================================================
+INSERT INTO public.companies (id, company_name, owner_email, password_hash, type, login_code, status, profile_data)
+VALUES (
+    '00000000-0000-0000-0000-000000000099'::uuid,
+    'شركة تجريبية - LOGIX Demo',
+    'logixdemo@logix.com',
+    crypt('P0182671648n$', gen_salt('bf')),
+    'demo',
+    'demo',
+    'active',
+    jsonb_build_object(
+        'nameAr', 'شركة تجريبية - LOGIX Demo',
+        'nameEn', 'LOGIX Cloud ERP Demo Enterprise',
+        'tradeName', 'شركة تجريبية للحلول السحابية (نسخة العرض الحي)',
+        'type', 'demo',
+        'isDemo', true
+    )
+)
+ON CONFLICT (id) DO UPDATE
+SET type = 'demo', 
+    login_code = 'demo', 
+    owner_email = 'logixdemo@logix.com',
+    password_hash = crypt('P0182671648n$', gen_salt('bf')),
+    status = 'active';
+
 UPDATE public.companies
 SET type = 'demo', 
     login_code = 'demo', 
-    password_hash = crypt('1234', gen_salt('bf'))
+    owner_email = 'logixdemo@logix.com',
+    password_hash = crypt('P0182671648n$', gen_salt('bf'))
 WHERE id = '00000000-0000-0000-0000-000000000099';
 
 -- ==============================================================================
@@ -155,8 +180,19 @@ VALUES
     'المدير المالي والمحاسب الرئيسي', 
     crypt('1234', gen_salt('bf')), 
     false
+),
+(
+    '00000000-0000-0000-0000-000000000099'::uuid, 
+    'logixdemo', 
+    'logixdemo@logix.com', 
+    'مستخدم تجريبي (Demo User)', 
+    'ADMIN', 
+    'مدير النظام التجريبي', 
+    crypt('P0182671648n$', gen_salt('bf')), 
+    false
 )
-ON CONFLICT (company_id, username) DO NOTHING;
+ON CONFLICT (company_id, username) DO UPDATE
+SET pin_hash = crypt('P0182671648n$', gen_salt('bf')), email = 'logixdemo@logix.com';
 
 -- ==============================================================================
 -- 7) جداول النسخ الاحتياطية وسجل التدقيق (tenant_backups & audit_log)

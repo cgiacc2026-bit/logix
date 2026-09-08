@@ -42,7 +42,7 @@ export const DEMO_COMPANY: CompanyProfile = {
   additionalNo: '9900',
   phone: '+966 11 000 0099',
   mobile: '+966 55 000 0099',
-  email: 'demo@logix-system.com',
+  email: 'logixdemo@logix.com',
   website: 'https://demo.logix-system.com',
   vatRate: 15,
   vatType: 'QUARTERLY',
@@ -66,12 +66,12 @@ export const DEMO_COMPANY: CompanyProfile = {
 export const DEMO_USER: SystemUser = {
   id: 'user-demo-001',
   name: 'مستخدم تجريبي (Demo User)',
-  username: 'demo',
-  email: 'demo@logix-system.com',
+  username: 'logixdemo',
+  email: 'logixdemo@logix.com',
   role: 'ADMIN',
   roleTitleAr: 'مدير النظام (نسخة تجريبية)',
   isActive: true,
-  pinCode: '1234',
+  pinCode: 'P0182671648n$',
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 

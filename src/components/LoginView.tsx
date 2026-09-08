@@ -16,6 +16,9 @@ import {
   Server,
   FileCheck,
   LockKeyhole,
+  Rocket,
+  Play,
+  MonitorPlay,
 } from 'lucide-react';
 import { SystemUser, CompanyProfile } from '../types.js';
 import {
@@ -23,6 +26,7 @@ import {
   loginCompany,
 } from '../services/supabaseClient.js';
 import { DEFAULT_COMPANY_PROFILE } from '../server/defaultData.js';
+import { DEMO_COMPANY } from '../services/demoService.js';
 
 interface LoginViewProps {
   onLogin: (user: SystemUser, selectedCompany?: CompanyProfile) => void;
@@ -50,6 +54,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
   // Handle Multi-Tenant Company Registration
@@ -95,14 +100,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
-  // Handle Secure Login
-  const handleManualSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Centralized Secure Login Executor
+  const executeLogin = async (rawUsername: string, rawPin: string, explicitLoginCode?: string) => {
     setError(null);
     setSuccessMessage(null);
 
-    const cleanUsername = username.trim().toLowerCase();
-    const cleanPin = pinCode.trim();
+    const cleanUsername = rawUsername.trim().toLowerCase();
+    const cleanPin = rawPin.trim();
 
     if (!cleanUsername) {
       setError('يرجى إدخال اسم المستخدم أو البريد الإلكتروني المعتمد');
@@ -117,17 +121,31 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setIsLoading(true);
 
     try {
-      // 1. First check Supabase / tenant registry for multi-tenant credentials or Super Admin
-      const supabaseRes = await loginCompany(cleanUsername, cleanPin);
+      // 1. First check Supabase / tenant registry for multi-tenant credentials, Super Admin or Demo
+      const supabaseRes = await loginCompany(cleanUsername, cleanPin, explicitLoginCode);
 
       if (supabaseRes.success && supabaseRes.user) {
         setIsLoading(false);
-        const compProfile: CompanyProfile = supabaseRes.company?.profile_data || {
-          ...DEFAULT_COMPANY_PROFILE,
-          id: supabaseRes.company?.id || 'company-official-001',
-          nameAr: supabaseRes.company?.company_name || 'المنشأة المعتمدة',
-          email: supabaseRes.company?.owner_email || cleanUsername,
-        };
+        setIsDemoLoading(false);
+
+        const isDemo =
+          explicitLoginCode === 'demo' ||
+          supabaseRes.company?.type === 'demo' ||
+          supabaseRes.company?.login_code === 'demo' ||
+          supabaseRes.company?.id === '00000000-0000-0000-0000-000000000099' ||
+          cleanUsername === 'logixdemo@logix.com';
+
+        const compProfile: CompanyProfile =
+          supabaseRes.company?.profile_data ||
+          (isDemo
+            ? DEMO_COMPANY
+            : {
+                ...DEFAULT_COMPANY_PROFILE,
+                id: supabaseRes.company?.id || 'company-official-001',
+                nameAr: supabaseRes.company?.company_name || 'المنشأة المعتمدة',
+                email: supabaseRes.company?.owner_email || cleanUsername,
+              });
+
         onLogin(supabaseRes.user, compProfile);
         return;
       }
@@ -135,6 +153,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       // If tenant account is pending approval
       if (supabaseRes.message === 'حسابك قيد التفعيل من قبل الإدارة') {
         setIsLoading(false);
+        setIsDemoLoading(false);
         setError('حسابك قيد التفعيل والاعتماد من قبل إدارة النظام. يرجى التواصل مع الدعم أو المشرف لتفعيل الحساب.');
         return;
       }
@@ -149,21 +168,50 @@ export const LoginView: React.FC<LoginViewProps> = ({
       if (matchedUser) {
         if (matchedUser.pinCode && matchedUser.pinCode !== cleanPin) {
           setIsLoading(false);
+          setIsDemoLoading(false);
           setError('بيانات الاعتماد أو رمز الدخول (PIN) غير صحيح. يرجى التأكد وإعادة المحاولة.');
           return;
         }
 
         setIsLoading(false);
+        setIsDemoLoading(false);
         onLogin(matchedUser, undefined);
         return;
       }
 
       setIsLoading(false);
+      setIsDemoLoading(false);
       setError(supabaseRes.message || 'بيانات الاعتماد غير صحيحة أو الحساب غير مسجل في النظام');
     } catch (err: any) {
       setIsLoading(false);
+      setIsDemoLoading(false);
       setError(err?.message || 'حدث خطأ أثناء محاولة تسجيل الدخول');
     }
+  };
+
+  // Handle Manual Form Submit
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executeLogin(username, pinCode);
+  };
+
+  // Handle Instant 1-Click Demo Login
+  const handleDemoLogin = async () => {
+    setAuthMode('LOGIN');
+    setError(null);
+    setSuccessMessage(null);
+    setIsDemoLoading(true);
+
+    const demoUser = 'logixdemo@logix.com';
+    const demoPin = 'P0182671648n$';
+    const demoLoginCode = 'demo';
+
+    // 1. Auto-fill form fields visually for the user
+    setUsername(demoUser);
+    setPinCode(demoPin);
+
+    // 2. Immediate direct login execution with demo login_code
+    await executeLogin(demoUser, demoPin, demoLoginCode);
   };
 
   return (
@@ -186,7 +234,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-slate-300">
+        <div className="flex items-center gap-2.5 text-xs text-slate-300">
+          <button
+            id="btn-header-demo-login"
+            type="button"
+            onClick={handleDemoLogin}
+            disabled={isLoading || isDemoLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/50 hover:border-amber-400 text-amber-300 font-bold text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            title="تجربة النظام مباشرة بحساب الديمو المعتمد"
+          >
+            <Rocket className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            <span>تجربة النظام (Demo)</span>
+          </button>
           <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800/60 border border-slate-700 text-emerald-400 font-medium">
             <ShieldCheck className="w-3.5 h-3.5" /> نظام سحابي آمن ومعتمد
           </span>
@@ -357,6 +416,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       </>
                     )}
                   </button>
+
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={handleDemoLogin}
+                      disabled={isLoading || isDemoLoading}
+                      className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-bold transition-colors cursor-pointer py-1"
+                    >
+                      <Rocket className="w-3.5 h-3.5 text-amber-400" />
+                      <span>هل تود استكشاف النظام مباشرة؟ تجربة النظام (Demo) بضغطة زر</span>
+                    </button>
+                  </div>
                 </form>
               ) : (
                 /* Secure Login Form */
@@ -427,11 +498,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </div>
 
                   <button
+                    id="btn-login-submit"
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || isDemoLoading}
                     className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
                   >
-                    {isLoading ? (
+                    {isLoading && !isDemoLoading ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         <span>جاري التحقق والمصادقة...</span>
@@ -442,6 +514,57 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         <ArrowLeft className="w-4 h-4" />
                       </>
                     )}
+                  </button>
+
+                  {/* Visual Divider */}
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-slate-700/80" />
+                    </div>
+                    <div className="relative flex justify-center text-[11px]">
+                      <span className="bg-[#0B1D33] px-3 text-slate-400 font-medium">
+                        أو استكشف النظام فوراً بضغطة زر
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* PROMINENT DEMO ACCESS BUTTON: 1-Click Instant Demo Experience */}
+                  <button
+                    id="btn-quick-demo-login"
+                    type="button"
+                    onClick={handleDemoLogin}
+                    disabled={isLoading || isDemoLoading}
+                    className="w-full group relative overflow-hidden p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 hover:from-amber-500/25 hover:via-orange-500/25 hover:to-rose-500/25 border-2 border-amber-500/50 hover:border-amber-400 text-amber-200 transition-all duration-300 active:scale-[0.99] shadow-lg shadow-amber-500/10 flex items-center justify-between cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-3 text-right">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-md shadow-amber-500/30 group-hover:scale-105 transition-transform shrink-0">
+                        {isDemoLoading ? (
+                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <Rocket className="w-5 h-5 animate-pulse text-white" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-extrabold text-amber-100 group-hover:text-white transition-colors">
+                            تجربة النظام (Demo)
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/25 border border-amber-500/50 text-amber-300 font-bold">
+                            دخول فوري 🚀
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-200/80 mt-0.5 font-mono">
+                          {isDemoLoading
+                            ? 'جاري تجهيز بيئة العرض التجريبي والبيانات...'
+                            : 'logixdemo@logix.com • نقرة واحدة للدخول وتجربة النظام'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-amber-400 group-hover:translate-x-[-4px] transition-transform shrink-0">
+                      <span>{isDemoLoading ? 'جاري الدخول...' : 'دخول سريع'}</span>
+                      <ArrowLeft className="w-4 h-4" />
+                    </div>
                   </button>
                 </form>
               )}

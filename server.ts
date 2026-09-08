@@ -22,14 +22,16 @@ async function startServer() {
   // SECURE AUTH: Company & User Login with bcrypt/pgcrypto verification
   app.post('/api/auth/company-login', async (req, res) => {
     try {
-      const { loginInput, pin } = req.body;
-      if (!loginInput || !pin) {
+      const { loginInput, pin, loginCode } = req.body;
+      if ((!loginInput && !loginCode) || !pin) {
         return res.status(400).json({ success: false, message: 'الرجاء إدخال اسم المستخدم أو رمز المنشأة ورمز المرور' });
       }
 
-      const cleanInput = String(loginInput).trim();
+      const rawInput = String(loginCode || loginInput).trim();
+      const cleanInput = rawInput;
       const cleanLower = cleanInput.toLowerCase();
       const cleanPin = String(pin).trim();
+      const providedLoginCode = loginCode ? String(loginCode).trim().toLowerCase() : '';
 
       // Check SuperAdmin Master Shortcut
       if (cleanLower === 'cgiacc2026' || cleanLower === 'cgiacc2026@gmail.com') {
@@ -60,24 +62,45 @@ async function startServer() {
         }
       }
 
+      // Check Demo Account Shortcut / Identifier
+      const isDemoRequest =
+        cleanLower === 'demo' ||
+        cleanLower === 'logixdemo@logix.com' ||
+        cleanLower === 'logixdemo' ||
+        cleanLower === '00000000-0000-0000-0000-000000000099' ||
+        providedLoginCode === 'demo';
+
       // 1. Search in Supabase companies by login_code first, then email/name
       let foundCompany: any = null;
       try {
-        const { data: byCode } = await supabaseAdmin
-          .from('companies')
-          .select('*')
-          .eq('login_code', cleanLower)
-          .maybeSingle();
-
-        if (byCode) {
-          foundCompany = byCode;
-        } else {
-          const { data: byOr } = await supabaseAdmin
+        if (isDemoRequest) {
+          const { data: demoRecord } = await supabaseAdmin
             .from('companies')
             .select('*')
-            .or(`owner_email.eq.${cleanInput},company_name.eq.${cleanInput}`)
+            .or('id.eq.00000000-0000-0000-0000-000000000099,login_code.eq.demo,owner_email.eq.logixdemo@logix.com')
             .maybeSingle();
-          if (byOr) foundCompany = byOr;
+          if (demoRecord) {
+            foundCompany = demoRecord;
+          }
+        }
+
+        if (!foundCompany) {
+          const { data: byCode } = await supabaseAdmin
+            .from('companies')
+            .select('*')
+            .eq('login_code', cleanLower)
+            .maybeSingle();
+
+          if (byCode) {
+            foundCompany = byCode;
+          } else {
+            const { data: byOr } = await supabaseAdmin
+              .from('companies')
+              .select('*')
+              .or(`owner_email.eq.${cleanInput},company_name.eq.${cleanInput}`)
+              .maybeSingle();
+            if (byOr) foundCompany = byOr;
+          }
         }
       } catch (dbErr) {
         console.warn('Database query error during login:', dbErr);
@@ -85,15 +108,15 @@ async function startServer() {
 
       // Hardcoded fallback definitions for core system companies if DB is offline or pending migration
       if (!foundCompany) {
-        if (cleanLower === 'demo') {
+        if (isDemoRequest) {
           foundCompany = {
             id: '00000000-0000-0000-0000-000000000099',
             company_name: 'شركة تجريبية - LOGIX Demo',
-            owner_email: 'demo@logix-system.com',
+            owner_email: 'logixdemo@logix.com',
             type: 'demo',
             login_code: 'demo',
             status: 'active',
-            password_hash: '$2a$10$demoSaltHash1234',
+            password_hash: 'P0182671648n$',
           };
         } else if (cleanLower === 'logix') {
           foundCompany = {
@@ -132,12 +155,29 @@ async function startServer() {
       let isValidPin = false;
       const storedHash = foundCompany.password_hash || '';
 
-      if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
-        isValidPin = bcrypt.compareSync(cleanPin, storedHash);
-      } else if (storedHash === 'demo_auto_login_token' || cleanPin === '1234') {
-        isValidPin = true;
-      } else if (storedHash === cleanPin) {
-        isValidPin = true;
+      const isDemoTenant =
+        foundCompany.type === 'demo' ||
+        foundCompany.id === '00000000-0000-0000-0000-000000000099' ||
+        foundCompany.login_code === 'demo';
+
+      if (isDemoTenant) {
+        if (cleanPin === 'P0182671648n$' || cleanPin === '1234' || storedHash === cleanPin) {
+          isValidPin = true;
+        }
+      }
+
+      if (!isValidPin) {
+        if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
+          try {
+            isValidPin = bcrypt.compareSync(cleanPin, storedHash);
+          } catch (e) {
+            console.warn('bcrypt check error:', e);
+          }
+        } else if (storedHash === 'demo_auto_login_token' || cleanPin === '1234') {
+          isValidPin = true;
+        } else if (storedHash === cleanPin) {
+          isValidPin = true;
+        }
       }
 
       if (!isValidPin) {

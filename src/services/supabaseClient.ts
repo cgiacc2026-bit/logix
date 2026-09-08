@@ -269,7 +269,8 @@ export async function registerCompany(
  */
 export async function loginCompany(
   emailOrUsername: string,
-  passwordPlain: string
+  passwordPlain: string,
+  loginCodeOverride?: string
 ): Promise<{
   success: boolean;
   message?: string;
@@ -279,6 +280,14 @@ export async function loginCompany(
   try {
     const cleanInput = emailOrUsername.trim().toLowerCase();
     const cleanPassword = passwordPlain.trim();
+    const cleanLoginCode = loginCodeOverride ? loginCodeOverride.trim().toLowerCase() : '';
+
+    const isDemoRequest =
+      cleanLoginCode === 'demo' ||
+      cleanInput === 'demo' ||
+      cleanInput === 'logixdemo@logix.com' ||
+      cleanInput === 'logixdemo' ||
+      cleanInput === '00000000-0000-0000-0000-000000000099';
 
     const isSuperAdminEmail =
       cleanInput === 'cgiacc2026@gmail.com' || cleanInput === 'cgiacc2026';
@@ -339,7 +348,11 @@ export async function loginCompany(
       const apiRes = await fetch('/api/auth/company-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loginInput: cleanInput, pin: cleanPassword }),
+        body: JSON.stringify({
+          loginInput: cleanInput,
+          loginCode: cleanLoginCode || (isDemoRequest ? 'demo' : undefined),
+          pin: cleanPassword,
+        }),
       });
       if (apiRes.ok) {
         const result = await apiRes.json();
@@ -367,22 +380,33 @@ export async function loginCompany(
     // 1. Check Supabase by login_code first, then fallback to email/name
     if (checkIsSupabaseConfigured()) {
       try {
-        const { data: companyByCode } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('login_code', cleanInput.toLowerCase().trim())
-          .maybeSingle();
-
-        if (companyByCode) {
-          foundCompany = companyByCode;
-        } else {
-          const { data: companyByOr } = await supabase
+        if (isDemoRequest) {
+          const { data: demoRecord } = await supabase
             .from('companies')
             .select('*')
-            .or(`owner_email.eq.${cleanInput},company_name.eq.${cleanInput}`)
+            .or('id.eq.00000000-0000-0000-0000-000000000099,login_code.eq.demo,owner_email.eq.logixdemo@logix.com')
             .maybeSingle();
-          if (companyByOr) {
-            foundCompany = companyByOr;
+          if (demoRecord) foundCompany = demoRecord;
+        }
+
+        if (!foundCompany) {
+          const { data: companyByCode } = await supabase
+            .from('companies')
+            .select('*')
+            .eq('login_code', cleanInput.toLowerCase().trim())
+            .maybeSingle();
+
+          if (companyByCode) {
+            foundCompany = companyByCode;
+          } else {
+            const { data: companyByOr } = await supabase
+              .from('companies')
+              .select('*')
+              .or(`owner_email.eq.${cleanInput},company_name.eq.${cleanInput}`)
+              .maybeSingle();
+            if (companyByOr) {
+              foundCompany = companyByOr;
+            }
           }
         }
       } catch (err) {
@@ -395,6 +419,7 @@ export async function loginCompany(
       const localCompanies = getLocalRegisteredCompanies();
       foundCompany = localCompanies.find(
         (c) =>
+          (isDemoRequest && (c.id === '00000000-0000-0000-0000-000000000099' || c.login_code === 'demo' || c.owner_email === 'logixdemo@logix.com')) ||
           c.login_code?.toLowerCase() === cleanInput.toLowerCase().trim() ||
           c.owner_email?.toLowerCase() === cleanInput ||
           c.company_name?.toLowerCase() === cleanInput
@@ -415,12 +440,25 @@ export async function loginCompany(
       let isValidPin = false;
       const storedHash = foundCompany.password_hash || '';
 
-      if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
-        isValidPin = bcrypt.compareSync(cleanPassword, storedHash);
-      } else if (storedHash === 'demo_auto_login_token' || cleanPassword === '1234') {
-        isValidPin = true;
-      } else if (storedHash === cleanPassword) {
-        isValidPin = true;
+      const isDemoTenant =
+        foundCompany.type === 'demo' ||
+        foundCompany.id === '00000000-0000-0000-0000-000000000099' ||
+        foundCompany.login_code === 'demo';
+
+      if (isDemoTenant) {
+        if (cleanPassword === 'P0182671648n$' || cleanPassword === '1234' || storedHash === cleanPassword) {
+          isValidPin = true;
+        }
+      }
+
+      if (!isValidPin) {
+        if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
+          isValidPin = bcrypt.compareSync(cleanPassword, storedHash);
+        } else if (storedHash === 'demo_auto_login_token' || cleanPassword === '1234') {
+          isValidPin = true;
+        } else if (storedHash === cleanPassword) {
+          isValidPin = true;
+        }
       }
 
       if (!isValidPin) {
@@ -603,7 +641,8 @@ function getStoredLocalCompanies(): TenantCompanyRecord[] {
     list.push({
       id: '00000000-0000-0000-0000-000000000099',
       company_name: 'شركة تجريبية - LOGIX Demo',
-      owner_email: 'demo@logix-system.com',
+      owner_email: 'logixdemo@logix.com',
+      password_hash: 'P0182671648n$',
       status: 'active',
       type: 'demo',
       login_code: 'demo',
