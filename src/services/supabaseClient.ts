@@ -499,23 +499,117 @@ function getStoredLocalCompanies(): TenantCompanyRecord[] {
     }
   } catch {}
 
-  // Ensure default company is always available
-  if (!list.some((c) => c.owner_email === 'cgiacc2026@gmail.com')) {
+  // Ensure real company is always available
+  if (!list.some((c) => c.owner_email === 'cgiacc2026@gmail.com' || c.id === '00000000-0000-0000-0000-000000000001')) {
     list.unshift({
       id: '00000000-0000-0000-0000-000000000001',
       company_name: 'مطحنة الوليد المتحده',
       owner_email: 'cgiacc2026@gmail.com',
       status: 'active',
-      created_at: new Date().toISOString(),
+      created_at: '2026-01-01T00:00:00.000Z',
       profile_data: {
+        id: '00000000-0000-0000-0000-000000000001',
         nameAr: 'مطحنة الوليد المتحده',
-        nameEn: 'Al-Waleed United Mill',
+        nameEn: 'Al-Waleed United Mill & Food Industries',
+        tradeName: 'مطحنة الوليد للبهارات والمواد التموينية',
+        legalForm: 'شركة ذات مسؤولية محدودة',
         taxNumber: '300012345600003',
         crNumber: '450912',
+        chamberNumber: '78214',
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'الكويت',
+        country: 'دولة الكويت',
+        streetName: 'شارع الغزالي',
+        buildingNo: 'قسيمة 42',
+        district: 'الشويخ الصناعية',
+        phone: '+965 6571 0278',
+        email: 'cgiacc2026@gmail.com',
+        generalManager: 'د. خالد بن عبد العزيز السليمان',
+        financialManager: 'أ. محمد بن عبد الله الشمري',
+        chiefAccountant: 'أ. أحمد علي المصطفى',
+      },
+    });
+  }
+
+  // Ensure Demo Company named after the system is always available
+  if (!list.some((c) => c.id === '00000000-0000-0000-0000-000000000002' || c.company_name?.includes('LOGIX'))) {
+    list.push({
+      id: '00000000-0000-0000-0000-000000000002',
+      company_name: 'شركة لوجيكس العالمية السحابية (LOGIX Demo System)',
+      owner_email: 'demo@logixerp.cloud',
+      status: 'active',
+      created_at: '2026-01-01T00:00:00.000Z',
+      profile_data: {
+        id: '00000000-0000-0000-0000-000000000002',
+        nameAr: 'شركة لوجيكس العالمية السحابية (LOGIX Demo System)',
+        nameEn: 'LOGIX Cloud ERP Enterprise (Demo)',
+        tradeName: 'نظام لوجيكس السحابي لإدارة وتخطيط الموارد',
+        legalForm: 'شركة مساهمة مقفلة',
+        taxNumber: '310098765400003',
+        crNumber: '1010998877',
+        chamberNumber: '88200',
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'مدينة الكويت',
+        country: 'دولة الكويت',
+        streetName: 'شارع أحمد الجابر - برج الراية',
+        buildingNo: 'طابق 22',
+        district: 'شرق',
+        phone: '+965 2299 1100',
+        email: 'demo@logixerp.cloud',
+        generalManager: 'م. فهد السالم (مدير عام تجريبي)',
+        financialManager: 'أ. ريم المطيري (المدير المالي)',
+        chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
+        headerNotes: 'شركة تجريبية لاختبار دورات التصنيع وإدارة سلاسل الإمداد السحابية',
       },
     });
   }
 
   return list;
 }
+
+/**
+ * Test live connection to Supabase
+ */
+export async function testSupabaseConnection(url?: string, anonKey?: string): Promise<{ success: boolean; message: string; tableCount?: number }> {
+  try {
+    const targetUrl = url || getSupabaseConfig().url;
+    const targetKey = anonKey || getSupabaseConfig().key;
+
+    if (!targetUrl || !targetKey) {
+      return { success: false, message: 'يرجى إدخال رابط المشروع ومفتاح API السحابي (Anon Key)' };
+    }
+
+    const testClient = createClient(targetUrl, targetKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // Quick lightweight ping
+    const { count, error } = await testClient
+      .from('companies')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      // If table doesn't exist yet, it's connected to Supabase but schema needs to run
+      if (error.code === '42P01' || error.message.includes('relation "companies" does not exist')) {
+        return {
+          success: true,
+          message: 'الاتصال بمشروع Supabase سليم 100%! ولكن جدول الشركات (companies) يحتاج لتنفيذ سكريبت SQL المرفق في لوحة Supabase.',
+          tableCount: 0,
+        };
+      }
+      return { success: false, message: `فشل الاتصال: ${error.message} (كود: ${error.code})` };
+    }
+
+    return {
+      success: true,
+      message: 'تم الاتصال بقاعدة بيانات Supabase السحابية بنجاح تام وجدول الشركات جاهز!',
+      tableCount: count ?? 0,
+    };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'تعذر الوصول إلى سيرفر Supabase السحابي' };
+  }
+}
+
 

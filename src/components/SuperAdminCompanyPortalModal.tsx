@@ -7,6 +7,8 @@ import {
   setCurrentCompanyId,
   isSupabaseConfigured,
   getSupabaseConfig,
+  saveSupabaseCredentials,
+  testSupabaseConnection,
 } from '../services/supabaseClient.ts';
 import {
   Building2,
@@ -26,7 +28,13 @@ import {
   User,
   Sparkles,
   X,
-  Layers
+  Layers,
+  Key,
+  Copy,
+  Check,
+  HelpCircle,
+  Cpu,
+  Globe
 } from 'lucide-react';
 
 interface SuperAdminCompanyPortalModalProps {
@@ -54,6 +62,41 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
   const [newOwnerEmail, setNewOwnerEmail] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('1234');
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
+
+  // Cloud DB Modal state
+  const [showCloudModal, setShowCloudModal] = useState<boolean>(false);
+  const [cloudUrl, setCloudUrl] = useState<string>(getSupabaseConfig().url || 'https://gzoncsbxfdnfellspgke.supabase.co');
+  const [cloudKey, setCloudKey] = useState<string>(getSupabaseConfig().key || '');
+  const [isTestingCloud, setIsTestingCloud] = useState<boolean>(false);
+  const [cloudTestResult, setCloudTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
+
+  const handleTestAndSaveCloud = async (save: boolean = false) => {
+    setIsTestingCloud(true);
+    setCloudTestResult(null);
+    try {
+      const res = await testSupabaseConnection(cloudUrl.trim(), cloudKey.trim());
+      setCloudTestResult(res);
+      if (res.success && save) {
+        saveSupabaseCredentials(cloudUrl.trim(), cloudKey.trim());
+        setActionMessage({
+          type: 'success',
+          text: 'تم تفعيل وربط قاعدة بيانات Supabase السحابية بنجاح! تم التحول إلى السحابة الدائمة.',
+        });
+        setTimeout(() => {
+          fetchCompanies();
+          setShowCloudModal(false);
+        }, 1200);
+      }
+    } catch (err: any) {
+      setCloudTestResult({
+        success: false,
+        message: err?.message || 'فشل فحص الاتصال',
+      });
+    } finally {
+      setIsTestingCloud(false);
+    }
+  };
 
   const fetchCompanies = async () => {
     setIsLoading(true);
@@ -233,11 +276,22 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
               <span className="text-base font-black text-emerald-600">{activeCount} شركة</span>
             </div>
 
-            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] text-slate-500 block">قاعدة البيانات:</span>
-              <span className="text-xs font-bold text-indigo-700 flex items-center gap-1 mt-1">
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500 block">قاعدة البيانات:</span>
+                <button
+                  type="button"
+                  onClick={() => setShowCloudModal(true)}
+                  className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1 cursor-pointer transition-colors"
+                  title="إعداد وربط قاعدة Supabase السحابية"
+                >
+                  <Key className="w-3 h-3" />
+                  <span>ربط وتفعيل السحابة</span>
+                </button>
+              </div>
+              <span className={`text-xs font-bold flex items-center gap-1 mt-1 ${isSupabaseConfigured ? 'text-emerald-700' : 'text-amber-700'}`}>
                 <Database className="w-3.5 h-3.5" />
-                {isSupabaseConfigured ? 'Supabase سحابي متصل' : 'تخزين محلي مؤقت'}
+                {isSupabaseConfigured ? '🟢 Supabase سحابي متصل' : '🟡 تخزين محلي مؤقت'}
               </span>
             </div>
           </div>
@@ -319,9 +373,19 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                     return (
                       <tr key={comp.id} className="hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-4">
-                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <div className="font-bold text-slate-900 flex flex-wrap items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
                             <span>{comp.company_name}</span>
+                            {comp.id === '00000000-0000-0000-0000-000000000001' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200">
+                                المنشأة الفعلية المعتمدة
+                              </span>
+                            )}
+                            {comp.id === '00000000-0000-0000-0000-000000000002' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200">
+                                ديمو النظام (System Demo)
+                              </span>
+                            )}
                           </div>
                           <div className="text-[10px] text-slate-400 font-mono">{comp.id}</div>
                         </td>
@@ -428,7 +492,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                 <Plus className="w-4 h-4 text-emerald-600" />
                 تسجيل وتفعيل منشأة جديدة مباشرة
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -489,6 +553,134 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cloud Database Connection Modal */}
+      {showCloudModal && (
+        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-50 rounded-xl text-indigo-700">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    ربط وتفعيل قاعدة بيانات Supabase السحابية
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    حفظ ومزامنة بيانات الشركات والأصناف والمستخدمين سحابياً بدلاً من التخزين المحلي
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCloudModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Non-coder visual instructions */}
+            <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                <HelpCircle className="w-4 h-4 text-blue-600" />
+                <span>طريقة الحصول على المفتاح في دقيقة واحدة (بدون خبرة برمجية):</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-[11px] text-blue-800 leading-relaxed">
+                <li>افتح لوحة مشروعك في Supabase (المشروع: <strong className="font-mono text-slate-900">gzoncsbxfdnfellspgke</strong>).</li>
+                <li>من القائمة الجانبية اليسرى، اضغط على <strong>Project Settings ⚙️</strong> ثم اختر <strong>API</strong>.</li>
+                <li>انسخ القيمة الموجودة تحت خانة <strong>Project API keys (anon / public)</strong>.</li>
+                <li>الصق المفتاح في الحقل أدناه واضغط <strong>"فحص وحفظ السحابة"</strong>.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">رابط المشروع السحابي (Project URL):</label>
+                <input
+                  type="text"
+                  value={cloudUrl}
+                  onChange={(e) => setCloudUrl(e.target.value)}
+                  placeholder="https://gzoncsbxfdnfellspgke.supabase.co"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 dir-ltr text-left"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>مفتاح الوصول السحابي العام (Anon Public Key):</span>
+                  <span className="text-[10px] text-slate-400 font-normal">يبدأ بـ eyJhbGciOi...</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={cloudKey}
+                  onChange={(e) => setCloudKey(e.target.value)}
+                  placeholder="الصق هنا مفتاح anon public key..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono text-[11px] text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 dir-ltr text-left"
+                />
+              </div>
+
+              {/* Live Test Feedback */}
+              {cloudTestResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                    cloudTestResult.success
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}
+                >
+                  {cloudTestResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="leading-relaxed">{cloudTestResult.message}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(
+                    `-- سكريبت إنشاء جداول LOGIX Cloud ERP في Supabase SQL Editor\n-- تجده كاملاً في ملف: supabase_schema.sql بجذر المشروع`
+                  );
+                  setCopiedSql(true);
+                  setTimeout(() => setCopiedSql(false), 2000);
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                title="نسخ سكريبت الجداول"
+              >
+                {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-600" />}
+                <span>{copiedSql ? 'تم نسخ التنبيه' : 'سكريبت الجداول (SQL)'}</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleTestAndSaveCloud(false)}
+                  disabled={isTestingCloud || !cloudKey.trim()}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTestingCloud ? 'animate-spin' : ''}`} />
+                  <span>فحص الاتصال فقط</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTestAndSaveCloud(true)}
+                  disabled={isTestingCloud || !cloudKey.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 shadow-xs"
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-300" />
+                  <span>{isTestingCloud ? 'جارٍ الفحص...' : 'فحص وحفظ السحابة فوراً'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

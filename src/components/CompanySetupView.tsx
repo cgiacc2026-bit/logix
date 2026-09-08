@@ -29,7 +29,10 @@ import {
   Key,
   Wand2,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Image as ImageIcon,
+  Trash2,
+  Plus
 } from 'lucide-react';
 import { CompanyProfile } from '../types.js';
 import { DatabaseWizardModal } from './DatabaseWizardModal';
@@ -822,11 +825,93 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
           <div className="bg-white border border-[#E5E1DA] rounded-lg p-6 shadow-xs space-y-6">
             <div className="border-b border-[#E5E1DA] pb-3">
               <h3 className="text-base font-serif font-bold text-[#1A1A1A] flex items-center gap-2">
-                <PenTool className="w-4 h-4 text-[#B8860B]" /> الموقّعون المفوضون وتنسيق المطبوعات الرسمية
+                <PenTool className="w-4 h-4 text-[#B8860B]" /> الموقّعون المفوضون وتنسيق المطبوعات وشعار المنشأة والعملاء
               </h3>
               <p className="text-xs text-[#8C8273] mt-0.5">
-                تحديد أسماء الإدارة التنفيذية والمالية لإغلاق القيود وتفعيل التوقيع والختم الإلكتروني على الفواتير والسندات.
+                تحديد أسماء الإدارة، رفع شعار المنشأة، تخصيص ترويسات المطبوعات الرسمية وتفعيل الختم الإلكتروني.
               </p>
+            </div>
+
+            {/* LOGO UPLOAD & BRANDING SECTION */}
+            <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#E5E1DA] pb-2">
+                <div>
+                  <h4 className="font-bold text-sm text-[#1A1A1A] flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-blue-600" />
+                    شعار المنشأة والمطبوعات (Entity Logo)
+                  </h4>
+                  <p className="text-[11px] text-[#6E6659]">
+                    رفع لوجو المنشأة بدقة عالية ليظهر في ترويسة الفواتير، بطاقات حركة المخزون، وسندات الصرف والقبض
+                  </p>
+                </div>
+                {formData.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => handleChange('logoUrl', '')}
+                    className="text-xs text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> حذف الشعار
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                {/* Logo Preview box */}
+                <div className="w-28 h-28 rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
+                  {formData.logoUrl ? (
+                    <img
+                      src={formData.logoUrl}
+                      alt="Company Logo"
+                      className="w-full h-full object-contain p-2"
+                    />
+                  ) : (
+                    <div className="text-center p-2 text-slate-400">
+                      <ImageIcon className="w-8 h-8 mx-auto mb-1 opacity-50" />
+                      <span className="text-[10px] font-bold block">لا يوجد شعار</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload Buttons & Options */}
+                <div className="flex-1 space-y-3 w-full">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-2">
+                      <Upload className="w-4 h-4 text-emerald-400" />
+                      <span>اختيار ملف لوجو من جهازك (PNG / JPG / SVG / WebP)</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (uploadEvt) => {
+                              if (uploadEvt.target?.result) {
+                                handleChange('logoUrl', uploadEvt.target.result as string);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <span className="text-xs text-slate-400 font-bold">أو</span>
+
+                    <input
+                      type="text"
+                      value={formData.logoUrl || ''}
+                      onChange={(e) => handleChange('logoUrl', e.target.value)}
+                      placeholder="لصق رابط مباشر لصورة الشعار (URL)..."
+                      className="flex-1 min-w-[220px] bg-white border border-[#E5E1DA] rounded-xl px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    يتم تحويل الشعار وتخزينه كبيانات Base64 متوافقة سحابياً ومحلياً ليطبع في كل فاتورة وسند ومستند.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
@@ -899,6 +984,98 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </div>
             </div>
 
+            {/* CUSTOMER-SPECIFIC BRAND HEADERS */}
+            <div className="bg-white border border-[#E5E1DA] rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#E5E1DA] pb-2">
+                <div>
+                  <h4 className="font-bold text-sm text-[#1A1A1A] flex items-center gap-2">
+                    <FileCheck2 className="w-4 h-4 text-emerald-600" />
+                    ترويسات خاصة بأسماء العملاء والجمعيات (Customer Co-Branded Headers)
+                  </h4>
+                  <p className="text-[11px] text-[#6E6659]">
+                    تخصيص ترويسة وشعار خاص بكل عميل (مثل جمعية الشامية، جمعية الروضة، لولو هايبر) للطباعة المشتركة
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const existing = formData.customerBrandHeaders || [];
+                    const updated = [
+                      ...existing,
+                      {
+                        id: `cbh-${Date.now()}`,
+                        customerId: '',
+                        customerNameAr: 'جمعية تعاونية جديدة',
+                        customHeaderTitle: 'توريد معتمد ومخصص لصالح الجمعية',
+                        coBrandLogoUrl: '',
+                        notes: 'ترويسة رسمية مخصصة لأوامر توريد الجمعيات وسلاسل التجزئة',
+                      },
+                    ];
+                    handleChange('customerBrandHeaders', updated);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> إضافة ترويسة عميل مخصصة
+                </button>
+              </div>
+
+              {(!formData.customerBrandHeaders || formData.customerBrandHeaders.length === 0) ? (
+                <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-500 font-bold">
+                  لم يتم إضافة ترويسات خاصة بالعملاء بعد. انقر على «إضافة ترويسة عميل مخصصة» لتسجيل ترويسة جمعية أو موزع.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {formData.customerBrandHeaders.map((cbh, idx) => (
+                    <div key={cbh.id || idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">ترويسة العميل #{idx + 1}: {cbh.customerNameAr}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = (formData.customerBrandHeaders || []).filter((_, i) => i !== idx);
+                            handleChange('customerBrandHeaders', updated);
+                          }}
+                          className="text-rose-600 hover:text-rose-800 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> حذف الترويسة
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم العميل / الجمعية:</label>
+                          <input
+                            type="text"
+                            value={cbh.customerNameAr}
+                            onChange={(e) => {
+                              const updated = [...(formData.customerBrandHeaders || [])];
+                              updated[idx].customerNameAr = e.target.value;
+                              handleChange('customerBrandHeaders', updated);
+                            }}
+                            className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold"
+                            placeholder="مثال: جمعية الروضة وحولي التعاونية"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-0.5">نص الترويسة المطبوعة بالوثائق:</label>
+                          <input
+                            type="text"
+                            value={cbh.customHeaderTitle}
+                            onChange={(e) => {
+                              const updated = [...(formData.customerBrandHeaders || [])];
+                              updated[idx].customHeaderTitle = e.target.value;
+                              handleChange('customerBrandHeaders', updated);
+                            }}
+                            className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold"
+                            placeholder="مثال: التوريد الحصري لمنتجات مطحنة الوليد المتحدة"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* LIVE DOCUMENT LETTERHEAD PREVIEW */}
             <div className="border border-[#E5E1DA] rounded-lg p-6 bg-[#FDFCFB] space-y-4">
               <div className="flex items-center justify-between border-b border-[#E5E1DA] pb-2 text-xs font-serif font-bold text-[#8C8273]">
@@ -911,15 +1088,24 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               <div className="bg-white p-6 rounded-md border border-[#E5E1DA] shadow-xs space-y-6">
                 {/* Letterhead Header */}
                 <div className="flex justify-between items-start border-b-2 border-[#1A1A1A] pb-4">
-                  <div className="space-y-1">
-                    <div className="text-lg font-serif font-bold text-[#1A1A1A]">
-                      {formData.nameAr || 'اسم الشركة بالعربية'}
-                    </div>
-                    <div className="text-xs font-mono text-[#6E6659] dir-ltr text-right">
-                      {formData.nameEn || 'Company English Name'}
-                    </div>
-                    <div className="text-[11px] text-[#8C8273]">
-                      س.ت: {formData.crNumber || '450912'} • غرفة التجارة: {formData.chamberNumber || '112890'}
+                  <div className="flex items-center gap-4">
+                    {formData.logoUrl && (
+                      <img
+                        src={formData.logoUrl}
+                        alt="Logo"
+                        className="w-14 h-14 object-contain rounded-lg border border-slate-200 p-1 bg-white shrink-0"
+                      />
+                    )}
+                    <div className="space-y-1">
+                      <div className="text-lg font-serif font-bold text-[#1A1A1A]">
+                        {formData.nameAr || 'اسم الشركة بالعربية'}
+                      </div>
+                      <div className="text-xs font-mono text-[#6E6659] dir-ltr text-right">
+                        {formData.nameEn || 'Company English Name'}
+                      </div>
+                      <div className="text-[11px] text-[#8C8273]">
+                        س.ت: {formData.crNumber || '450912'} • غرفة التجارة: {formData.chamberNumber || '112890'}
+                      </div>
                     </div>
                   </div>
 

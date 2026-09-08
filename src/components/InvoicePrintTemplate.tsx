@@ -279,19 +279,45 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
       >
         {/* Header Section */}
         <div className="flex items-start justify-between border-b-2 border-black pb-5 gap-4">
-          <div className="space-y-1 text-right max-w-md">
-            <h1 className="text-2xl font-black text-black tracking-tight">{company.nameAr || 'مطحنة الوليد المتحدة'}</h1>
-            <p className="text-xs text-neutral-600 font-bold uppercase tracking-wider">{company.nameEn || 'Al-Waleed United Mill'}</p>
-            <div className="text-xs text-neutral-800 space-y-0.5 pt-1.5 font-medium leading-tight">
-              <p>
-                السجل التجاري: <span className="font-bold font-mono text-black">{company.crNumber || '450912'}</span>
-              </p>
-              <p>{company.streetName || 'شارع السور'}، {company.district || 'منطقة القبلة'}، {company.city || 'الكويت'}</p>
-              <p>
-                هاتف: <span className="font-mono font-bold">{company.phone || '65710278'}</span>
-                <span className="mx-2 text-neutral-400">|</span>
-                بريد: <span className="font-mono font-bold">{company.email || 'alwaleedmill@gmail.com'}</span>
-              </p>
+          <div className="flex items-start gap-4 text-right max-w-md">
+            {company.logoUrl && (
+              <img
+                src={company.logoUrl}
+                alt="Logo"
+                className="w-20 h-20 object-contain rounded-lg border border-neutral-300 p-1 bg-white shrink-0"
+              />
+            )}
+            <div className="space-y-1">
+              <h1 className="text-2xl font-black text-black tracking-tight">{company.nameAr || 'مطحنة الوليد المتحدة'}</h1>
+              <p className="text-xs text-neutral-600 font-bold uppercase tracking-wider">{company.nameEn || 'Al-Waleed United Mill'}</p>
+              
+              {/* Customer specific co-branded header if applicable */}
+              {(() => {
+                const matchedHeader = company.customerBrandHeaders?.find(
+                  (h) => (invoice.entityId && h.customerId === invoice.entityId) || 
+                         (invoice.entityNameAr && h.customerNameAr?.trim() === invoice.entityNameAr?.trim())
+                );
+                if (matchedHeader?.customHeaderTitle) {
+                  return (
+                    <div className="mt-1 px-2 py-0.5 rounded-sm bg-neutral-100 border border-neutral-300 text-[10px] font-bold text-neutral-900">
+                      🏷️ {matchedHeader.customHeaderTitle}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              <div className="text-xs text-neutral-800 space-y-0.5 pt-1 font-medium leading-tight">
+                <p>
+                  السجل التجاري: <span className="font-bold font-mono text-black">{company.crNumber || '450912'}</span>
+                </p>
+                <p>{company.streetName || 'شارع السور'}، {company.district || 'منطقة القبلة'}، {company.city || 'الكويت'}</p>
+                <p>
+                  هاتف: <span className="font-mono font-bold">{company.phone || '65710278'}</span>
+                  <span className="mx-2 text-neutral-400">|</span>
+                  بريد: <span className="font-mono font-bold">{company.email || 'alwaleedmill@gmail.com'}</span>
+                </p>
+              </div>
             </div>
           </div>
 

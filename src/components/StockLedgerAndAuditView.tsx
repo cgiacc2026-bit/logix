@@ -29,7 +29,11 @@ import {
   Boxes,
   ClipboardList,
   Sparkles,
-  X
+  X,
+  FileCheck2,
+  Tag,
+  Award,
+  Check
 } from 'lucide-react';
 
 interface StockLedgerAndAuditViewProps {
@@ -47,12 +51,28 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   currency,
   onRefreshData,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'audit' | 'ledger' | 'reconcile'>('audit');
+  const [activeSubTab, setActiveSubTab] = useState<'audit' | 'ledger' | 'item_card' | 'qc_release' | 'reconcile'>('audit');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'LOW' | 'OUT' | 'SAFE' | 'EXCESS'>('ALL');
   const [movementTypeFilter, setMovementTypeFilter] = useState<string>('ALL');
   const [inspectedItem, setInspectedItem] = useState<InventoryItem | null>(null);
+
+  // Item Card & QC States
+  const [selectedCardItemId, setSelectedCardItemId] = useState<string>(inventory[0]?.id || '');
+  const [selectedQcItemId, setSelectedQcItemId] = useState<string>(inventory[0]?.id || '');
+  const [qcReleaseStatus, setQcReleaseStatus] = useState<'RELEASED' | 'QUARANTINE' | 'REJECTED'>('RELEASED');
+  const [qcInstructions, setQcInstructions] = useState<string>(
+    'يخزن في مكان جاف وبارد تحت 25 مئوية، بعيداً عن الرطوبة وأشعة الشمس، الصلاحية سنتان من تاريخ الإنتاج، معتمد للتوريد لسلاسل الجمعيات التعاونية.'
+  );
+  const [certificateNo, setCertificateNo] = useState<string>('COA-2026-0891');
+  const [selectedItemForPrintCard, setSelectedItemForPrintCard] = useState<InventoryItem | null>(null);
+  const [selectedQcForPrint, setSelectedQcForPrint] = useState<{
+    item: InventoryItem;
+    status: string;
+    instructions: string;
+    certNo: string;
+  } | null>(null);
 
   // Reconciliation States
   const [reconcileItemId, setReconcileItemId] = useState<string>('');
@@ -209,6 +229,30 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
           >
             <ClipboardList className="w-4 h-4" />
             <span>دفتر أستاذ المخزون (Ledger)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('item_card')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeSubTab === 'item_card'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            <span>كارت حركة الصنف التفصيلي</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('qc_release')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeSubTab === 'qc_release'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            <span>ضبط الجودة وإذن الإطلاق</span>
           </button>
 
           <button
@@ -536,7 +580,341 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
         </div>
       )}
 
-      {/* VIEW 3: RECONCILIATION */}
+      {/* VIEW 3: ITEM CARD (حركة مخزنية لكل صنف) */}
+      {activeSubTab === 'item_card' && (
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-amber-600" />
+                  بطاقة حركة الصنف التفصيلية (Item Stock Movement Card)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  دفتر أستاذ تحليلي مخصص لكل صنف يعرض الأرصدة الافتتاحية والوارد والمنصرف والرصيد اللحظي التراكمي
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <select
+                  value={selectedCardItemId}
+                  onChange={(e) => setSelectedCardItemId(e.target.value)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 w-full sm:w-72"
+                >
+                  {inventory.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.nameAr} ({it.sku})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const it = inventory.find((i) => i.id === selectedCardItemId) || inventory[0];
+                    setSelectedItemForPrintCard(it);
+                  }}
+                  className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-xs transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة كارت الصنف</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Item Card Overview Box */}
+            {(() => {
+              const currentItem = inventory.find((i) => i.id === selectedCardItemId) || inventory[0];
+              if (!currentItem) return null;
+
+              const itemMvs = movements.filter((m) => m.itemId === currentItem.id);
+              const totalIn = itemMvs.reduce((acc, m) => acc + (m.quantityIn || 0), 0);
+              const totalOut = itemMvs.reduce((acc, m) => acc + (m.quantityOut || 0), 0);
+              const runningBal = currentItem.quantityOnHand;
+
+              return (
+                <div className="space-y-4">
+                  {/* Detailed Specs Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block font-bold">اسم الصنف:</span>
+                      <span className="text-xs font-black text-slate-900 truncate block mt-0.5">{currentItem.nameAr}</span>
+                      <span className="text-[10px] font-mono text-slate-400 block">{currentItem.sku}</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block font-bold">التصنيف والوحدة:</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-0.5">{currentItem.category || 'مواد غذائية'}</span>
+                      <span className="text-[10px] text-slate-500 block">وحدة القياس: {currentItem.unit || 'حبة'}</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block font-bold">إجمالي الوارد (+):</span>
+                      <span className="text-xs font-black text-emerald-700 block mt-0.5">
+                        +{totalIn.toLocaleString()} {currentItem.unit}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block font-bold">إجمالي المنصرف (-):</span>
+                      <span className="text-xs font-black text-rose-700 block mt-0.5">
+                        -{totalOut.toLocaleString()} {currentItem.unit}
+                      </span>
+                    </div>
+
+                    <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200">
+                      <span className="text-[10px] text-amber-800 block font-bold">الرصيد اللحظي بالمستودع:</span>
+                      <span className="text-sm font-black text-amber-900 block mt-0.5">
+                        {runningBal.toLocaleString()} {currentItem.unit}
+                      </span>
+                    </div>
+
+                    <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-200">
+                      <span className="text-[10px] text-indigo-800 block font-bold">إجمالي التقييم المالي:</span>
+                      <span className="text-xs font-black text-indigo-900 block mt-0.5">
+                        {formatCurrency(runningBal * currentItem.purchasePrice, currency)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Movements Table for this specific item */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>سجل حركات الصنف ({itemMvs.length} حركة مسجلة)</span>
+                      <span className="text-[11px] text-slate-500 font-normal">مرتبة ترتيباً زمنياً تصاعدياً</span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-right text-xs">
+                        <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-3">التاريخ</th>
+                            <th className="py-2.5 px-3">نوع الحركة</th>
+                            <th className="py-2.5 px-3">رقم المستند</th>
+                            <th className="py-2.5 px-3 text-center text-emerald-700">وارد (+)</th>
+                            <th className="py-2.5 px-3 text-center text-rose-700">منصرف (-)</th>
+                            <th className="py-2.5 px-3 text-center font-black bg-slate-200/50">الرصيد التراكمي</th>
+                            <th className="py-2.5 px-3">سعر الوحدة</th>
+                            <th className="py-2.5 px-3">إجمالي القيمة</th>
+                            <th className="py-2.5 px-3">البيان والملاحظات</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {itemMvs.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} className="p-6 text-center text-slate-400 font-sans font-bold">
+                                لا توجد حركات مسجلة لهذا الصنف حتى الآن.
+                              </td>
+                            </tr>
+                          ) : (
+                            itemMvs.map((m) => (
+                              <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{m.date}</td>
+                                <td className="py-2.5 px-3 font-sans">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      m.quantityIn > 0
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    }`}
+                                  >
+                                    {m.typeTitleAr}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-indigo-700 font-bold whitespace-nowrap">
+                                  {m.referenceDocNumber}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
+                                  {m.quantityIn > 0 ? `+${m.quantityIn}` : '-'}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-bold text-rose-600">
+                                  {m.quantityOut > 0 ? `-${m.quantityOut}` : '-'}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-black text-slate-900 bg-slate-50">
+                                  {m.balanceAfter} {m.unit}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-600">{formatCurrency(m.unitCost, currency)}</td>
+                                <td className="py-2.5 px-3 font-bold text-slate-800">
+                                  {formatCurrency(m.totalCostValue, currency)}
+                                </td>
+                                <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px]">{m.notes || '-'}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 4: QUALITY CONTROL & FINAL RELEASE (ضبط الجودة وتعليمات الإطلاق النهائي) */}
+      {activeSubTab === 'qc_release' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Award className="w-4 h-4 text-emerald-600" />
+                  مركز ضبط الجودة وإذن الإطلاق النهائي للتداول (QC & Final Stock Release)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  إصدار شهادات المطابقة والتحليل المخبري (COA) وتعليمات التخزين والتوريد لسلاسل الجمعيات التعاونية
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const it = inventory.find((i) => i.id === selectedQcItemId) || inventory[0];
+                    setSelectedQcForPrint({
+                      item: it,
+                      status: qcReleaseStatus,
+                      instructions: qcInstructions,
+                      certNo: certificateNo,
+                    });
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة إذن الإطلاق المخزني وشهادة الجودة</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Form Controls */}
+              <div className="lg:col-span-2 space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">اختر الصنف أو الدفعة المراد فحصها واعتمادها:</label>
+                  <select
+                    value={selectedQcItemId}
+                    onChange={(e) => setSelectedQcItemId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {inventory.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.nameAr} ({item.sku}) - الرصيد بالمستودع: {item.quantityOnHand} {item.unit || 'حبة'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">رقم شهادة التحليل المخبري (COA No):</label>
+                    <input
+                      type="text"
+                      value={certificateNo}
+                      onChange={(e) => setCertificateNo(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">قرار وحالة إفراج الجودة:</label>
+                    <select
+                      value={qcReleaseStatus}
+                      onChange={(e) => setQcReleaseStatus(e.target.value as any)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="RELEASED">✅ إفراج وإطلاق نهائي للتداول والبيع (RELEASED)</option>
+                      <option value="QUARANTINE">⏳ محتجز تحت الفحص المخبري (QUARANTINE)</option>
+                      <option value="REJECTED">❌ غير مطابق للمواصفات - مرفوض (REJECTED)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Industrial Test Metrics Checklist */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <span className="font-bold text-slate-800 block">نتائج الفحص والتحاليل الفيزيائية والكيميائية:</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">نسبة النقاء:</span>
+                      <span className="font-bold text-emerald-700 block mt-0.5">99.8% (مطابق)</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">نسبة الرطوبة:</span>
+                      <span className="font-bold text-emerald-700 block mt-0.5">7.4% (&lt; 10% قياسي)</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">الكاشف المغناطيسي:</span>
+                      <span className="font-bold text-emerald-700 block mt-0.5">خالٍ تماماً 0.0 ppm</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">درجة النعومة:</span>
+                      <span className="font-bold text-emerald-700 block mt-0.5">60 Mesh متجانس</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">تعليمات الإطلاق النهائي والتخزين والتوريد للعملاء:</label>
+                  <textarea
+                    rows={3}
+                    value={qcInstructions}
+                    onChange={(e) => setQcInstructions(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              {/* Live Certificate Preview Box */}
+              <div className="bg-[#FAF9F6] border-2 border-emerald-300 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+                    <span className="text-[11px] font-black text-emerald-800">شهادة إفراج جودة رسمية</span>
+                    <span className="text-[10px] font-mono text-slate-500">{certificateNo}</span>
+                  </div>
+
+                  <div className="text-center py-2">
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full font-black text-xs ${
+                        qcReleaseStatus === 'RELEASED'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : qcReleaseStatus === 'QUARANTINE'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                          : 'bg-rose-100 text-rose-800 border border-rose-300'
+                      }`}
+                    >
+                      {qcReleaseStatus === 'RELEASED'
+                        ? 'مطلق ومعتمد للتداول والبيع'
+                        : qcReleaseStatus === 'QUARANTINE'
+                        ? 'تحت الحجر المخبري المؤقت'
+                        : 'غير مطابق للمواصفات القياسية'}
+                    </span>
+                  </div>
+
+                  {(() => {
+                    const it = inventory.find((i) => i.id === selectedQcItemId) || inventory[0];
+                    return (
+                      <div className="text-xs space-y-1 text-slate-700">
+                        <div className="font-bold text-slate-900">{it?.nameAr}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">SKU: {it?.sku}</div>
+                        <div className="text-[11px] text-slate-600 mt-2 p-2 bg-white rounded-lg border border-emerald-100">
+                          <strong>تعليمات الإطلاق:</strong> {qcInstructions}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="pt-3 border-t border-emerald-200 text-[10px] text-slate-500 flex items-center justify-between">
+                  <span>المواصفة: GSO 1016 / 2026</span>
+                  <span className="text-emerald-700 font-bold">معتمد إلكترونياً</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 5: RECONCILIATION */}
       {activeSubTab === 'reconcile' && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
           <div className="border-b border-slate-100 pb-4">
@@ -718,6 +1096,249 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
               >
                 إغلاق
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRINTABLE ITEM STOCK CARD MODAL */}
+      {selectedItemForPrintCard && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto p-8 space-y-6 border border-slate-300 shadow-2xl">
+            <div className="flex items-center justify-between border-b pb-4 no-print">
+              <span className="text-xs font-black text-slate-700">معاينة طباعة بطاقة حركة الصنف المخزنية</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-[#D4AF37] hover:bg-[#b8952b] text-black font-black text-xs rounded-lg flex items-center gap-2 cursor-pointer shadow-md"
+                >
+                  <Printer className="w-4 h-4" />
+                  طباعة فورية (Print A4)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItemForPrintCard(null)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Document Body */}
+            <div className="space-y-6 text-black print:p-0">
+              <div className="flex items-start justify-between border-b-2 border-black pb-4">
+                <div className="space-y-1 text-right">
+                  <h2 className="text-2xl font-black">شركة مطحنة الوليد المتحدة ذ.م.م</h2>
+                  <p className="text-xs text-slate-600 font-bold">إدارة المستودعات وسلاسل الإمداد - بطاقة حركة صنف رسمي</p>
+                  <p className="text-xs text-slate-500 font-mono">س.ت: 450912 | الكويت - الشويخ الصناعية</p>
+                </div>
+                <div className="text-left font-mono space-y-1">
+                  <div className="text-sm font-black text-slate-900">ITEM STOCK CARD</div>
+                  <div className="text-xs text-slate-500">تاريخ الطباعة: {new Date().toISOString().split('T')[0]}</div>
+                </div>
+              </div>
+
+              {/* Item Info Box */}
+              <div className="grid grid-cols-3 gap-4 border border-black p-4 rounded-lg bg-slate-50 text-xs">
+                <div>
+                  <span className="text-slate-500 block">اسم الصنف:</span>
+                  <span className="text-base font-black">{selectedItemForPrintCard.nameAr}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">رمز الصنف / SKU:</span>
+                  <span className="text-base font-mono font-bold">{selectedItemForPrintCard.sku}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">الرصيد اللحظي الحالي:</span>
+                  <span className="text-base font-black text-emerald-800">
+                    {selectedItemForPrintCard.quantityOnHand} {selectedItemForPrintCard.unit || 'حبة'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Movements Table */}
+              <table className="w-full text-right text-xs border border-black border-collapse">
+                <thead>
+                  <tr className="bg-slate-200 border-b border-black text-black font-black">
+                    <th className="p-2 border border-black">التاريخ</th>
+                    <th className="p-2 border border-black">نوع الحركة</th>
+                    <th className="p-2 border border-black">رقم المستند</th>
+                    <th className="p-2 border border-black text-center">وارد (+)</th>
+                    <th className="p-2 border border-black text-center">منصرف (-)</th>
+                    <th className="p-2 border border-black text-center">الرصيد التراكمي</th>
+                    <th className="p-2 border border-black">سعر التكلفة</th>
+                    <th className="p-2 border border-black">البيان</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements
+                    .filter((m) => m.itemId === selectedItemForPrintCard.id)
+                    .map((m) => (
+                      <tr key={m.id} className="border-b border-slate-300 font-mono">
+                        <td className="p-2 border border-slate-300">{m.date}</td>
+                        <td className="p-2 border border-slate-300 font-sans font-bold">{m.typeTitleAr}</td>
+                        <td className="p-2 border border-slate-300 font-bold">{m.referenceDocNumber}</td>
+                        <td className="p-2 border border-slate-300 text-center font-bold">
+                          {m.quantityIn > 0 ? `+${m.quantityIn}` : '-'}
+                        </td>
+                        <td className="p-2 border border-slate-300 text-center font-bold">
+                          {m.quantityOut > 0 ? `-${m.quantityOut}` : '-'}
+                        </td>
+                        <td className="p-2 border border-slate-300 text-center font-black bg-slate-100">
+                          {m.balanceAfter}
+                        </td>
+                        <td className="p-2 border border-slate-300">{formatCurrency(m.unitCost, currency)}</td>
+                        <td className="p-2 border border-slate-300 font-sans text-[11px]">{m.notes || '-'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+
+              {/* Signatures */}
+              <div className="grid grid-cols-3 gap-8 pt-8 text-center text-xs font-bold">
+                <div className="border-t border-black pt-2">أمين المستودع (المستلم)</div>
+                <div className="border-t border-black pt-2">مسؤول تدقيق الجرد</div>
+                <div className="border-t border-black pt-2">اعتماد الإدارة العامة</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRINTABLE QC & FINAL RELEASE CERTIFICATE MODAL */}
+      {selectedQcForPrint && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[95vh] overflow-y-auto p-8 space-y-6 border border-slate-300 shadow-2xl">
+            <div className="flex items-center justify-between border-b pb-4 no-print">
+              <span className="text-xs font-black text-slate-700">معاينة شهادة إفراج الجودة وإذن الإطلاق النهائي</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-lg flex items-center gap-2 cursor-pointer shadow-md"
+                >
+                  <Printer className="w-4 h-4" />
+                  طباعة الشهادة (Print COA)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedQcForPrint(null)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+
+            {/* Official Certificate Form */}
+            <div className="border-4 border-double border-emerald-900 p-8 rounded-xl space-y-6 bg-[#FCFDFD] text-black">
+              <div className="flex items-start justify-between border-b-2 border-emerald-900 pb-4">
+                <div className="text-right space-y-1">
+                  <h1 className="text-2xl font-black text-emerald-950">شهادة فحص مخبري وإذن إفراج جودة نهائي</h1>
+                  <p className="text-xs font-bold text-slate-700">CERTIFICATE OF ANALYSIS & FINAL RELEASE APPROVAL</p>
+                  <p className="text-[11px] text-slate-500 font-mono">مطحنة الوليد المتحدة - مختبر فحص الجودة والمطابقة الغذائية</p>
+                </div>
+                <div className="text-left font-mono">
+                  <div className="text-sm font-black text-emerald-900">{selectedQcForPrint.certNo}</div>
+                  <div className="text-xs text-slate-500">التاريخ: {new Date().toISOString().split('T')[0]}</div>
+                </div>
+              </div>
+
+              {/* Status Banner */}
+              <div className="text-center py-3 bg-emerald-50 border-2 border-emerald-600 rounded-xl">
+                <span className="text-base font-black text-emerald-900">
+                  {selectedQcForPrint.status === 'RELEASED'
+                    ? '✅ إذن إفراج رسمي - معتمد ومطابق للتداول والتوريد لسلاسل التجزئة'
+                    : selectedQcForPrint.status === 'QUARANTINE'
+                    ? '⏳ محتجز تحت الحجر المخبري المؤقت'
+                    : '❌ غير مطابق للمواصفات - بضاعة معيبة ومرفوضة'}
+                </span>
+              </div>
+
+              {/* Product Info */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <span className="text-slate-500 block">الصنف المفحوص:</span>
+                  <span className="font-black text-slate-900">{selectedQcForPrint.item.nameAr}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">الرمز / SKU:</span>
+                  <span className="font-mono font-bold">{selectedQcForPrint.item.sku}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">التصنيف:</span>
+                  <span className="font-bold">{selectedQcForPrint.item.category}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">الكمية المفحوصة:</span>
+                  <span className="font-black text-emerald-800">
+                    {selectedQcForPrint.item.quantityOnHand} {selectedQcForPrint.item.unit}
+                  </span>
+                </div>
+              </div>
+
+              {/* Chemical & Physical Specifications */}
+              <div className="space-y-2 text-xs">
+                <h4 className="font-black text-slate-900">نتائج التحليل المخبري والمطابقة (Laboratory Test Results):</h4>
+                <table className="w-full text-right border border-slate-300 border-collapse">
+                  <thead className="bg-slate-100 font-bold border-b border-slate-300">
+                    <tr>
+                      <th className="p-2 border border-slate-300">المعيار الفني</th>
+                      <th className="p-2 border border-slate-300">المواصفة القياسية المعتمدة</th>
+                      <th className="p-2 border border-slate-300">النتيجة الفعلية للمختبر</th>
+                      <th className="p-2 border border-slate-300 text-center">التقييم</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2 border border-slate-300">نسبة النقاء ونظافة الحبوب</td>
+                      <td className="p-2 border border-slate-300">&gt; 99.0%</td>
+                      <td className="p-2 border border-slate-300 font-mono font-bold">99.8%</td>
+                      <td className="p-2 border border-slate-300 text-center font-bold text-emerald-700">مطابق</td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2 border border-slate-300">نسبة الرطوبة (Moisture Content)</td>
+                      <td className="p-2 border border-slate-300">&lt; 10.0%</td>
+                      <td className="p-2 border border-slate-300 font-mono font-bold">7.4%</td>
+                      <td className="p-2 border border-slate-300 text-center font-bold text-emerald-700">مطابق</td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2 border border-slate-300">فحص الكواشف المغناطيسية (Ferrous Metals)</td>
+                      <td className="p-2 border border-slate-300">0.0 ppm (خالٍ تماماً)</td>
+                      <td className="p-2 border border-slate-300 font-mono font-bold">Pass 0.0 ppm</td>
+                      <td className="p-2 border border-slate-300 text-center font-bold text-emerald-700">مطابق</td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2 border border-slate-300">النعومة والتجانس (Mesh Fineness)</td>
+                      <td className="p-2 border border-slate-300">60 Mesh متجانس</td>
+                      <td className="p-2 border border-slate-300 font-mono font-bold">60 Mesh</td>
+                      <td className="p-2 border border-slate-300 text-center font-bold text-emerald-700">مطابق</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Release Instructions */}
+              <div className="p-4 bg-emerald-50/50 border border-emerald-300 rounded-xl space-y-1 text-xs">
+                <span className="font-black text-emerald-950 block">تعليمات التخزين والإفراج النهائي:</span>
+                <p className="text-slate-800 leading-relaxed">{selectedQcForPrint.instructions}</p>
+              </div>
+
+              {/* Signatures and Stamps */}
+              <div className="grid grid-cols-2 gap-8 pt-8 text-center text-xs font-bold">
+                <div className="border-t-2 border-slate-400 pt-2">
+                  <span>مدير معمل الجودة والمطابقة:</span>
+                  <div className="mt-4 font-script text-emerald-900 text-sm">د. حسام الشمري - ضبط الجودة</div>
+                </div>
+                <div className="border-t-2 border-slate-400 pt-2">
+                  <span>الختم الرسمي لإفراج الشحنة:</span>
+                  <div className="mt-3 inline-block px-4 py-1.5 border-2 border-emerald-800 text-emerald-900 rounded-full font-black text-[11px]">
+                    LOGIX QC CERTIFIED 2026
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

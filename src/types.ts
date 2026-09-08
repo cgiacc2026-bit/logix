@@ -353,7 +353,37 @@ export interface ProductionLineItem {
   totalCost: number;
 }
 
-export type ProductionOrderStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type ProductionOrderStatus =
+  | 'DRAFT'
+  | 'PLANNED'
+  | 'MATERIAL_ISSUED'
+  | 'IN_PROGRESS'
+  | 'QC_INSPECTION'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export interface QualityInspection {
+  inspectorName: string;
+  inspectionDate: string;
+  purityPercentage: number; // e.g. 99.5%
+  moisturePercentage: number; // e.g. 10.2%
+  sensoryCheck: 'PASS' | 'FAIL'; // الرائحة واللون والنكهة
+  foreignMatterCheck: 'PASS' | 'FAIL'; // خلو من المعادن والشوائب
+  weightToleranceCheck: 'PASS' | 'FAIL'; // دقة التعبئة
+  status: 'PASSED' | 'REJECTED' | 'CONDITIONAL';
+  coaCertificateNumber?: string; // e.g. "COA-2026-9812"
+  notes?: string;
+}
+
+export interface EngineeringRoutingStep {
+  stepNumber: number;
+  nameAr: string;
+  workstation: string;
+  machineName: string;
+  durationMinutes: number;
+  specifications: string;
+  isCompleted: boolean;
+}
 
 export interface ProductionOrder {
   id: string;
@@ -375,6 +405,18 @@ export interface ProductionOrder {
   journalEntryId?: string;
   createdAt: string;
   completedAt?: string;
+  qualityInspection?: QualityInspection;
+  routingSteps?: EngineeringRoutingStep[];
+}
+
+export interface CustomerBrandHeader {
+  id?: string;
+  customerId: string;
+  customerNameAr: string;
+  customerLogoUrl?: string;
+  headerTitle?: string;
+  customHeaderTitle?: string;
+  customNotes?: string;
 }
 
 export interface FinancialKPIs {
@@ -447,6 +489,7 @@ export interface CompanyProfile {
   headerNotes?: string;
   footerNotes?: string;
   showDigitalStamp: boolean;
+  customerBrandHeaders?: CustomerBrandHeader[];
 }
 
 export type StockMovementType =
