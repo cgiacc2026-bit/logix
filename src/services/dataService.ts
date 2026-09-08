@@ -148,6 +148,17 @@ class LocalDataStore {
     return null;
   }
 
+  public isAlWaleedActive(): boolean {
+    const compId = this.getEffectiveCompanyId();
+    if (!compId) return false;
+    return (
+      compId === '20000000-0000-0000-0000-000000000001' ||
+      compId === 'company-alwaleed-client-003' ||
+      compId.toLowerCase().includes('alwaleed') ||
+      compId === '450912'
+    );
+  }
+
   public getKey(baseKey: string, specificCompanyId?: string): string {
     const compId = specificCompanyId || this.getEffectiveCompanyId();
     if (!compId) {
@@ -156,13 +167,24 @@ class LocalDataStore {
     if (isDemoActive() || compId === '00000000-0000-0000-0000-000000000099' || compId === 'company-demo-clients-002') {
       return `${baseKey}_demo`;
     }
+    if (
+      compId === '20000000-0000-0000-0000-000000000001' ||
+      compId === 'company-alwaleed-client-003' ||
+      compId.toLowerCase().includes('alwaleed') ||
+      compId === '450912'
+    ) {
+      return `${baseKey}_20000000-0000-0000-0000-000000000001`;
+    }
     return `${baseKey}_${compId}`;
   }
 
   public getLocal<T>(key: string, defaultVal: T): T {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const item = window.localStorage.getItem(key);
+        let item = window.localStorage.getItem(key);
+        if (!item && key.includes('20000000-0000-0000-0000-000000000001')) {
+          item = window.localStorage.getItem(key.replace('20000000-0000-0000-0000-000000000001', 'company-alwaleed-client-003'));
+        }
         return safeJsonParse<T>(item, defaultVal);
       }
     } catch (e) {
@@ -419,6 +441,11 @@ class LocalDataStore {
   public getAccounts(): Account[] {
     const list = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
     if (!list || list.length === 0) {
+      if (this.isAlWaleedActive()) {
+        const alwaleedAccounts = JSON.parse(JSON.stringify(INITIAL_ACCOUNTS));
+        this.saveAccounts(alwaleedAccounts);
+        return alwaleedAccounts;
+      }
       // Default zeroed clean opening chart of accounts
       const zeroedAccounts = generateCleanChartOfAccounts(this.getEffectiveCompanyId() || undefined);
       this.saveAccounts(zeroedAccounts);
@@ -432,7 +459,12 @@ class LocalDataStore {
 
   public getCustomers(): Customer[] {
     const list = this.getLocal<Customer[] | null>(this.getKey(STORAGE_KEYS.CUSTOMERS), null);
-    if (!list) {
+    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+      if (this.isAlWaleedActive()) {
+        const alwaleedCustomers = JSON.parse(JSON.stringify(INITIAL_CUSTOMERS));
+        this.saveCustomers(alwaleedCustomers);
+        return alwaleedCustomers;
+      }
       if (isDemoActive()) {
         const zeroedCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
         this.saveCustomers(zeroedCustomers);
@@ -449,7 +481,12 @@ class LocalDataStore {
 
   public getSuppliers(): Supplier[] {
     const list = this.getLocal<Supplier[] | null>(this.getKey(STORAGE_KEYS.SUPPLIERS), null);
-    if (!list) {
+    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+      if (this.isAlWaleedActive()) {
+        const alwaleedSuppliers = JSON.parse(JSON.stringify(INITIAL_SUPPLIERS));
+        this.saveSuppliers(alwaleedSuppliers);
+        return alwaleedSuppliers;
+      }
       if (isDemoActive()) {
         const zeroedSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
         this.saveSuppliers(zeroedSuppliers);
@@ -466,7 +503,12 @@ class LocalDataStore {
 
   public getInventory(): InventoryItem[] {
     const list = this.getLocal<InventoryItem[] | null>(this.getKey(STORAGE_KEYS.INVENTORY), null);
-    if (!list) {
+    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+      if (this.isAlWaleedActive()) {
+        const alwaleedInventory = JSON.parse(JSON.stringify(INITIAL_INVENTORY));
+        this.saveInventory(alwaleedInventory);
+        return alwaleedInventory;
+      }
       this.saveInventory([]);
       return [];
     }
@@ -478,7 +520,12 @@ class LocalDataStore {
 
   public getJournals(): JournalEntry[] {
     const list = this.getLocal<JournalEntry[] | null>(this.getKey(STORAGE_KEYS.JOURNALS), null);
-    if (!list) {
+    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+      if (this.isAlWaleedActive()) {
+        const alwaleedJournals = JSON.parse(JSON.stringify(INITIAL_JOURNALS));
+        this.saveJournals(alwaleedJournals);
+        return alwaleedJournals;
+      }
       this.saveJournals([]);
       return [];
     }
@@ -490,7 +537,12 @@ class LocalDataStore {
 
   public getInvoices(): Invoice[] {
     const list = this.getLocal<Invoice[] | null>(this.getKey(STORAGE_KEYS.INVOICES), null);
-    if (!list) {
+    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+      if (this.isAlWaleedActive()) {
+        const alwaleedInvoices = JSON.parse(JSON.stringify(INITIAL_INVOICES));
+        this.saveInvoices(alwaleedInvoices);
+        return alwaleedInvoices;
+      }
       this.saveInvoices([]);
       return [];
     }
@@ -910,14 +962,18 @@ export class DataService {
   public static async getJournals(): Promise<JournalEntry[]> {
     try {
       const fromSupabase = await SupabaseDataService.getJournals();
-      if (Array.isArray(fromSupabase)) {
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
         localDataStore.saveJournals(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getJournals notice:', e);
     }
-    return localDataStore.getJournals();
+    const localJournals = localDataStore.getJournals();
+    if (isSupabaseConfigured && localJournals.length > 0) {
+      Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
+    }
+    return localJournals;
   }
 
   public static async createJournal(data: Partial<JournalEntry>): Promise<JournalEntry> {
@@ -1175,14 +1231,18 @@ export class DataService {
   public static async getInvoices(): Promise<Invoice[]> {
     try {
       const fromSupabase = await SupabaseDataService.getInvoices();
-      if (Array.isArray(fromSupabase)) {
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
         localDataStore.saveInvoices(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getInvoices notice:', e);
     }
-    return localDataStore.getInvoices();
+    const localInvoices = localDataStore.getInvoices();
+    if (isSupabaseConfigured && localInvoices.length > 0) {
+      Promise.all(localInvoices.map((inv) => SupabaseDataService.saveInvoice(inv))).catch(() => {});
+    }
+    return localInvoices;
   }
 
   public static async createInvoice(data: any): Promise<Invoice> {
@@ -1847,14 +1907,18 @@ export class DataService {
   public static async getCustomers(): Promise<Customer[]> {
     try {
       const fromSupabase = await SupabaseDataService.getCustomers();
-      if (Array.isArray(fromSupabase)) {
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
         localDataStore.saveCustomers(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getCustomers notice:', e);
     }
-    return localDataStore.getCustomers();
+    const localCustomers = localDataStore.getCustomers();
+    if (isSupabaseConfigured && localCustomers.length > 0) {
+      Promise.all(localCustomers.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
+    }
+    return localCustomers;
   }
 
   public static async createCustomer(data: any): Promise<Customer> {
@@ -2022,14 +2086,18 @@ export class DataService {
   public static async getInventory(): Promise<InventoryItem[]> {
     try {
       const fromSupabase = await SupabaseDataService.getItems();
-      if (Array.isArray(fromSupabase)) {
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
         localDataStore.saveInventory(fromSupabase);
         return fromSupabase;
       }
     } catch (e) {
       console.warn('Supabase getInventory notice:', e);
     }
-    return localDataStore.getInventory();
+    const localInventory = localDataStore.getInventory();
+    if (isSupabaseConfigured && localInventory.length > 0) {
+      Promise.all(localInventory.map((item) => SupabaseDataService.saveItem(item))).catch(() => {});
+    }
+    return localInventory;
   }
 
   public static async createInventoryItem(data: any): Promise<InventoryItem> {

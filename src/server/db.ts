@@ -94,16 +94,16 @@ class DatabaseStore {
       company: JSON.parse(JSON.stringify(DEFAULT_COMPANY_PROFILE)),
       users: JSON.parse(JSON.stringify(INITIAL_USERS)),
       accounts: JSON.parse(JSON.stringify(INITIAL_ACCOUNTS)).map((a: any) => ({ ...a, balance: 0 })),
-      customers: [],
-      suppliers: [],
-      inventory: [],
-      journals: [],
-      invoices: [],
+      customers: JSON.parse(JSON.stringify(INITIAL_CUSTOMERS)),
+      suppliers: JSON.parse(JSON.stringify(INITIAL_SUPPLIERS)),
+      inventory: JSON.parse(JSON.stringify(INITIAL_INVENTORY)),
+      journals: JSON.parse(JSON.stringify(INITIAL_JOURNALS)),
+      invoices: JSON.parse(JSON.stringify(INITIAL_INVOICES)),
       vouchers: [],
       units: JSON.parse(JSON.stringify(INITIAL_UNITS)),
     };
     this.save();
-    console.log('🌱 Seeded clean multi-tenant IFRS ERP database.');
+    console.log('🌱 Seeded authentic Al-Waleed ERP database.');
   }
 
   public save() {

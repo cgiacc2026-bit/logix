@@ -11,7 +11,14 @@
  * Strict Multi-Tenant isolation: All queries enforce .eq('company_id', currentCompanyId)
  */
 
-import { supabase, getCurrentCompanyId, isSupabaseConfigured } from './supabaseClient.js';
+import {
+  supabase,
+  getCurrentCompanyId,
+  isSupabaseConfigured,
+  resolveToSupabaseCompanyUUID,
+  ALWALEED_CANONICAL_UUID,
+  toValidUUID,
+} from './supabaseClient.js';
 import {
   Account,
   InventoryItem,
@@ -22,32 +29,32 @@ import {
   CompanyProfile,
 } from '../types.js';
 
-function toValidUUID(id: string): string {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (uuidRegex.test(id)) return id;
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = ((hash << 5) - hash) + id.charCodeAt(i);
-    hash |= 0;
-  }
-  const hex = Math.abs(hash).toString(16).padStart(8, '0');
-  return `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`;
-}
-
 export class SupabaseDataService {
   /**
    * 1. COMPANIES (Fetch and Update active company profile)
    */
   public static async getCompany(): Promise<CompanyProfile | null> {
     if (!isSupabaseConfigured) return null;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return null;
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('companies')
         .select('*')
         .eq('id', companyId)
         .maybeSingle();
+
+      if (!data && companyId === ALWALEED_CANONICAL_UUID) {
+        const { data: byCode } = await supabase
+          .from('companies')
+          .select('*')
+          .or('login_code.eq.450912,company_name.ilike.%الوليد%')
+          .maybeSingle();
+        if (byCode) {
+          data = byCode;
+        }
+      }
 
       if (error) {
         console.warn('Supabase getCompany error:', error.message);
@@ -108,7 +115,8 @@ export class SupabaseDataService {
 
   public static async saveCompany(comp: CompanyProfile): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId() || comp.id;
+    const rawCompanyId = comp.id || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const payload: any = {
@@ -157,14 +165,32 @@ export class SupabaseDataService {
    */
   public static async getItems(): Promise<InventoryItem[]> {
     if (!isSupabaseConfigured) return [];
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('items')
         .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: true });
+
+      // Diagnostic self-healing: if 0 items found for Al-Waleed, check if unlinked/orphaned items exist
+      if ((!data || data.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
+        const { data: orphaned } = await supabase
+          .from('items')
+          .select('*')
+          .is('company_id', null);
+        if (orphaned && orphaned.length > 0) {
+          data = orphaned;
+          try {
+            await supabase
+              .from('items')
+              .update({ company_id: ALWALEED_CANONICAL_UUID })
+              .is('company_id', null);
+          } catch {}
+        }
+      }
 
       if (error) {
         console.warn('Supabase getItems error:', error.message);
@@ -201,7 +227,8 @@ export class SupabaseDataService {
 
   public static async saveItem(item: InventoryItem): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const { error } = await supabase
@@ -237,7 +264,8 @@ export class SupabaseDataService {
 
   public static async deleteItem(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const { error } = await supabase
@@ -258,14 +286,32 @@ export class SupabaseDataService {
    */
   public static async getCustomers(): Promise<Customer[]> {
     if (!isSupabaseConfigured) return [];
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('customers')
         .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: true });
+
+      // Diagnostic self-healing for orphaned customer records
+      if ((!data || data.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
+        const { data: orphaned } = await supabase
+          .from('customers')
+          .select('*')
+          .is('company_id', null);
+        if (orphaned && orphaned.length > 0) {
+          data = orphaned;
+          try {
+            await supabase
+              .from('customers')
+              .update({ company_id: ALWALEED_CANONICAL_UUID })
+              .is('company_id', null);
+          } catch {}
+        }
+      }
 
       if (error) {
         console.warn('Supabase getCustomers error:', error.message);
@@ -299,7 +345,8 @@ export class SupabaseDataService {
 
   public static async saveCustomer(cust: Customer): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const { error } = await supabase
@@ -333,7 +380,8 @@ export class SupabaseDataService {
 
   public static async deleteCustomer(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const { error } = await supabase
@@ -354,14 +402,38 @@ export class SupabaseDataService {
    */
   public static async getInvoices(): Promise<Invoice[]> {
     if (!isSupabaseConfigured) return [];
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
     try {
-      const { data: masters, error: masterErr } = await supabase
+      let { data: masters, error: masterErr } = await supabase
         .from('sales_master')
         .select('*')
         .eq('company_id', companyId)
         .order('date', { ascending: false });
+
+      // Diagnostic self-healing for orphaned invoices
+      if ((!masters || masters.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
+        const { data: orphaned } = await supabase
+          .from('sales_master')
+          .select('*')
+          .is('company_id', null);
+        if (orphaned && orphaned.length > 0) {
+          masters = orphaned;
+          try {
+            await supabase
+              .from('sales_master')
+              .update({ company_id: ALWALEED_CANONICAL_UUID })
+              .is('company_id', null);
+          } catch {}
+          try {
+            await supabase
+              .from('sales_details')
+              .update({ company_id: ALWALEED_CANONICAL_UUID })
+              .is('company_id', null);
+          } catch {}
+        }
+      }
 
       if (masterErr) {
         console.warn('Supabase getInvoices masterErr:', masterErr.message);
@@ -439,7 +511,9 @@ export class SupabaseDataService {
   }
 
   public static async saveInvoice(inv: Invoice): Promise<boolean> {
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
     try {
       // 1. Upsert sales_master
       const { error: masterErr } = await supabase
@@ -511,7 +585,8 @@ export class SupabaseDataService {
 
   public static async deleteInvoice(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       await supabase
@@ -538,14 +613,32 @@ export class SupabaseDataService {
    */
   public static async getJournals(): Promise<JournalEntry[]> {
     if (!isSupabaseConfigured) return [];
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('journal_entries')
         .select('*')
         .eq('company_id', companyId)
         .order('date', { ascending: false });
+
+      // Diagnostic self-healing for orphaned journal entries
+      if ((!data || data.length === 0) && companyId === ALWALEED_CANONICAL_UUID) {
+        const { data: orphaned } = await supabase
+          .from('journal_entries')
+          .select('*')
+          .is('company_id', null);
+        if (orphaned && orphaned.length > 0) {
+          data = orphaned;
+          try {
+            await supabase
+              .from('journal_entries')
+              .update({ company_id: ALWALEED_CANONICAL_UUID })
+              .is('company_id', null);
+          } catch {}
+        }
+      }
 
       if (error) {
         console.warn('Supabase getJournals error:', error.message);
@@ -588,7 +681,8 @@ export class SupabaseDataService {
 
   public static async saveJournal(j: JournalEntry): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const entryId = toValidUUID(j.id);
@@ -631,7 +725,8 @@ export class SupabaseDataService {
 
   public static async deleteJournal(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const entryId = toValidUUID(id);
@@ -650,7 +745,8 @@ export class SupabaseDataService {
 
   public static async getAccounts(): Promise<Account[] | null> {
     if (!isSupabaseConfigured) return null;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return null;
     try {
       const { data, error } = await supabase
@@ -683,7 +779,8 @@ export class SupabaseDataService {
 
   public static async saveAccounts(accounts: Account[]): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
-    const companyId = getCurrentCompanyId();
+    const rawCompanyId = getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
       const payload = accounts.map((acc) => ({

@@ -129,6 +129,58 @@ export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
   },
 });
 
+export const ALWALEED_CANONICAL_UUID = '20000000-0000-0000-0000-000000000001';
+export const DEMO_CANONICAL_UUID = '00000000-0000-0000-0000-000000000099';
+export const OFFICIAL_CANONICAL_UUID = '10000000-0000-0000-0000-000000000001';
+
+export function toValidUUID(id: string): string {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return id;
+  if (id === 'company-alwaleed-client-003' || id.toLowerCase().includes('alwaleed')) {
+    return ALWALEED_CANONICAL_UUID;
+  }
+  if (id === 'company-demo-clients-002' || id.toLowerCase().includes('demo')) {
+    return DEMO_CANONICAL_UUID;
+  }
+  if (id === 'company-logix-official-001') {
+    return OFFICIAL_CANONICAL_UUID;
+  }
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash) + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  return `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`;
+}
+
+export function resolveToSupabaseCompanyUUID(companyId: string | null | undefined): string | null {
+  if (!companyId) return null;
+  const clean = companyId.trim();
+  if (
+    clean === ALWALEED_CANONICAL_UUID ||
+    clean === 'company-alwaleed-client-003' ||
+    clean.toLowerCase().includes('alwaleed') ||
+    clean === '450912'
+  ) {
+    return ALWALEED_CANONICAL_UUID;
+  }
+  if (
+    clean === DEMO_CANONICAL_UUID ||
+    clean === 'company-demo-clients-002' ||
+    clean.toLowerCase().includes('demo')
+  ) {
+    return DEMO_CANONICAL_UUID;
+  }
+  if (
+    clean === OFFICIAL_CANONICAL_UUID ||
+    clean === 'company-logix-official-001'
+  ) {
+    return OFFICIAL_CANONICAL_UUID;
+  }
+  return toValidUUID(clean);
+}
+
 export const STORAGE_KEYS = {
   COMPANY_ID: 'supabase_company_id',
   AUTH_SESSION: 'logix_auth_session',
@@ -137,11 +189,13 @@ export const STORAGE_KEYS = {
 
 /**
  * Get current active company ID from authenticated local session
+ * Always resolves to a canonical valid Supabase UUID to prevent UUID syntax errors
  */
 export function getCurrentCompanyId(): string | null {
   if (typeof window === 'undefined') return null;
   const saved = localStorage.getItem(STORAGE_KEYS.COMPANY_ID);
-  return saved && saved.trim() ? saved : null;
+  if (!saved || !saved.trim()) return null;
+  return resolveToSupabaseCompanyUUID(saved) || saved.trim();
 }
 
 /**
@@ -149,7 +203,11 @@ export function getCurrentCompanyId(): string | null {
  */
 export function setCurrentCompanyId(companyId: string): void {
   if (typeof window !== 'undefined') {
-    localStorage.setItem(STORAGE_KEYS.COMPANY_ID, companyId);
+    const canonical = resolveToSupabaseCompanyUUID(companyId) || companyId;
+    localStorage.setItem(STORAGE_KEYS.COMPANY_ID, canonical);
+    if (canonical !== companyId) {
+      localStorage.setItem('supabase_company_id_alias', companyId);
+    }
   }
 }
 
