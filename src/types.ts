@@ -34,10 +34,12 @@ export interface JournalLine {
   entityType?: 'CUSTOMER' | 'SUPPLIER' | 'NONE';
   entityId?: string;
   entityNameAr?: string;
+  companyId?: string;
 }
 
 export interface JournalEntry {
   id: string;
+  companyId?: string;
   entryNumber: string; // e.g. "JV-2026-0001"
   date: string; // YYYY-MM-DD
   reference: string; // Invoice # or Document ref

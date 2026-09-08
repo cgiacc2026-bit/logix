@@ -13,6 +13,7 @@
 
 import { supabase, getCurrentCompanyId, isSupabaseConfigured } from './supabaseClient.js';
 import {
+  Account,
   InventoryItem,
   Customer,
   Invoice,
@@ -20,6 +21,18 @@ import {
   JournalEntry,
   CompanyProfile,
 } from '../types.js';
+
+function toValidUUID(id: string): string {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return id;
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash) + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  return `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`;
+}
 
 export class SupabaseDataService {
   /**
@@ -543,17 +556,27 @@ export class SupabaseDataService {
 
       return data.map((row: any) => {
         const raw = row.raw_data || {};
+        const lines = row.lines || raw.lines || [];
+        const totalDebit =
+          Number(row.total_debit) ||
+          Number(raw.totalDebit) ||
+          lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+        const totalCredit =
+          Number(row.total_credit) ||
+          Number(raw.totalCredit) ||
+          lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
         return {
           id: row.id,
+          companyId: row.company_id || companyId,
           entryNumber: row.entry_number,
-          date: row.date,
-          reference: row.reference || raw.reference || '',
+          date: row.date || row.entry_date || (row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+          reference: row.reference || row.reference_id || raw.reference || '',
           description: row.description || raw.description || '',
           status: row.status || raw.status || 'POSTED',
-          lines: row.lines || raw.lines || [],
-          totalDebit: raw.totalDebit || 0,
-          totalCredit: raw.totalCredit || 0,
-          createdAt: raw.createdAt || new Date().toISOString(),
+          lines,
+          totalDebit: Math.round(totalDebit * 1000) / 1000,
+          totalCredit: Math.round(totalCredit * 1000) / 1000,
+          createdAt: row.created_at || raw.createdAt || new Date().toISOString(),
           ...raw,
         };
       });
@@ -568,21 +591,30 @@ export class SupabaseDataService {
     const companyId = getCurrentCompanyId();
     if (!companyId) return false;
     try {
+      const entryId = toValidUUID(j.id);
       const { error } = await supabase
         .from('journal_entries')
         .upsert([
           {
-            id: j.id,
+            id: entryId,
             company_id: companyId,
             entry_number: j.entryNumber,
             date: j.date,
             description: j.description,
             status: j.status,
-            reference_type: j.reference || null,
-            reference_id: j.reference || null,
+            reference: j.reference || null,
+            reference_type: j.sourceModule || null,
+            reference_id: j.reference || j.sourceId || null,
+            total_debit: j.totalDebit,
+            total_credit: j.totalCredit,
             lines: j.lines,
-            raw_data: j,
-            created_at: new Date().toISOString(),
+            raw_data: {
+              ...j,
+              id: entryId,
+              companyId,
+            },
+            created_at: j.createdAt || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
         ]);
 
@@ -602,15 +634,79 @@ export class SupabaseDataService {
     const companyId = getCurrentCompanyId();
     if (!companyId) return false;
     try {
+      const entryId = toValidUUID(id);
       const { error } = await supabase
         .from('journal_entries')
         .delete()
         .eq('company_id', companyId)
-        .eq('id', id);
+        .eq('id', entryId);
 
       return !error;
     } catch (err: any) {
       console.warn('Supabase deleteJournal exception:', err?.message);
+      return false;
+    }
+  }
+
+  public static async getAccounts(): Promise<Account[] | null> {
+    if (!isSupabaseConfigured) return null;
+    const companyId = getCurrentCompanyId();
+    if (!companyId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('chart_of_accounts')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('code', { ascending: true });
+
+      if (error || !data || data.length === 0) return null;
+
+      return data.map((row: any) => ({
+        id: row.id,
+        code: row.code,
+        nameAr: row.name_ar,
+        nameEn: row.name_en || '',
+        category: row.category,
+        normalBalance: row.normal_balance || 'DEBIT',
+        level: Number(row.level) || 1,
+        type: row.type || 'DETAIL',
+        parentId: row.parent_id || null,
+        isSystem: !!row.is_system,
+        isActive: row.is_active ?? true,
+        balance: Number(row.balance) || 0,
+        description: row.description || '',
+      }));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  public static async saveAccounts(accounts: Account[]): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
+    try {
+      const payload = accounts.map((acc) => ({
+        id: acc.id,
+        company_id: companyId,
+        code: acc.code,
+        name_ar: acc.nameAr,
+        name_en: acc.nameEn || '',
+        category: acc.category,
+        normal_balance: acc.normalBalance,
+        level: acc.level,
+        type: acc.type || 'DETAIL',
+        parent_id: acc.parentId || null,
+        is_system: !!acc.isSystem,
+        is_active: acc.isActive ?? true,
+        balance: acc.balance || 0,
+        description: acc.description || '',
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase.from('chart_of_accounts').upsert(payload);
+      return !error;
+    } catch (e) {
       return false;
     }
   }

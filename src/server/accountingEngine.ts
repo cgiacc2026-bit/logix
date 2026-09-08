@@ -48,10 +48,16 @@ export class AccountingEngine {
     }
 
     const diff = Math.abs(totalDebit - totalCredit);
-    if (diff > 0.009) {
+    if (totalDebit <= 0) {
       return {
         isValid: false,
-        error: `القيد غير متوازن! إجمالي المدين (${totalDebit.toFixed(2)}) لا يساوي إجمالي الدائن (${totalCredit.toFixed(2)}). الفرق: ${diff.toFixed(2)}`,
+        error: 'لا يمكن حفظ قيد بأرصدة صفرية! يجب إدخال مبالغ أكبر من الصفر.',
+      };
+    }
+    if (diff > 0.005) {
+      return {
+        isValid: false,
+        error: `القيد غير متوازن! إجمالي المدين (${totalDebit.toFixed(3)}) لا يساوي إجمالي الدائن (${totalCredit.toFixed(3)}). الفرق: ${diff.toFixed(3)}`,
       };
     }
 

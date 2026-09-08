@@ -99,7 +99,40 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
   const totalDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
   const totalCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
   const diff = Math.abs(totalDebit - totalCredit);
-  const isBalanced = diff < 0.009 && totalDebit > 0;
+  const isBalanced = diff < 0.005 && totalDebit > 0;
+
+  const handleAutoBalance = () => {
+    if (lines.length === 0) return;
+    const currentDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
+    const currentCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
+    const difference = currentDebit - currentCredit;
+    if (Math.abs(difference) < 0.005) return;
+
+    const updated = [...lines];
+    // Find first line with 0 on both sides, or use the last line
+    let targetIdx = updated.findIndex((l) => Number(l.debit) === 0 && Number(l.credit) === 0);
+    if (targetIdx === -1) {
+      targetIdx = updated.length - 1;
+    }
+
+    if (difference > 0) {
+      // Debit > Credit, balance needs credit on target line
+      updated[targetIdx] = {
+        ...updated[targetIdx],
+        credit: Math.round(difference * 1000) / 1000,
+        debit: 0,
+      };
+    } else {
+      // Credit > Debit, balance needs debit on target line
+      updated[targetIdx] = {
+        ...updated[targetIdx],
+        debit: Math.round(Math.abs(difference) * 1000) / 1000,
+        credit: 0,
+      };
+    }
+    setLines(updated);
+    setErrorMsg('');
+  };
 
   const handleOpenCreateModal = () => {
     setEditingJournalId(null);
@@ -217,8 +250,35 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
 
   const handleSubmitJournal = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg('');
+
+    if (lines.length < 2) {
+      setErrorMsg('لا يمكن حفظ القيد: يجب أن يتكون القيد المحاسبي من طرفين على الأقل (طرف مدين وطرف دائن).');
+      return;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l.accountId || !l.accountId.trim()) {
+        setErrorMsg(`يرجى اختيار الحساب المالي للدليل المحاسبي في السطر رقم (${i + 1}).`);
+        return;
+      }
+      const d = Number(l.debit) || 0;
+      const c = Number(l.credit) || 0;
+      if (d === 0 && c === 0) {
+        setErrorMsg(`السطر رقم (${i + 1}) فارغ من أي مبالغ. يرجى إدخال مبلغ في خانة المدين أو الدائن.`);
+        return;
+      }
+      if (d < 0 || c < 0) {
+        setErrorMsg(`لا يُسمح بإدخال مبالغ سالبة في السطر رقم (${i + 1}).`);
+        return;
+      }
+    }
+
     if (!isBalanced) {
-      setErrorMsg('لا يمكن حفظ القيد قبل أن يتطابق إجمالي الطرف المدين مع إجمالي الطرف الدائن.');
+      setErrorMsg(
+        `القيد غير متوازن! إجمالي الطرف المدين (${formatCurrency(totalDebit, currency)}) لا يساوي إجمالي الطرف الدائن (${formatCurrency(totalCredit, currency)}). فارق عدم التوازن: ${formatCurrency(diff, currency)}`
+      );
       return;
     }
 
@@ -240,7 +300,6 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
     });
 
     setIsSubmitting(true);
-    setErrorMsg('');
     try {
       if (editingJournalId && onUpdateJournal) {
         await onUpdateJournal(editingJournalId, {
@@ -619,10 +678,18 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                                   )
                                   .map((a) => (
                                     <option key={a.id} value={a.id}>
-                                      {a.code} - {a.nameAr}
+                                      {a.code} - {a.nameAr} ({formatCurrency(a.balance, currency)})
                                     </option>
                                   ))}
                               </select>
+                              {selectedAcc && (
+                                <div className="flex items-center justify-between text-[10px] text-[#6E6659] mt-0.5 px-0.5">
+                                  <span>التصنيف: {selectedAcc.category}</span>
+                                  <span className="font-mono text-stone-700">
+                                    الرصيد: {formatCurrency(selectedAcc.balance, currency)}
+                                  </span>
+                                </div>
+                              )}
                             </div>
 
                             {/* Line Memo */}
@@ -773,14 +840,26 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
 
                     <div className="flex items-center gap-2 font-bold">
                       {isBalanced ? (
-                        <span className="text-[#2D6A4F] flex items-center gap-1">
-                          <CheckCircle2 className="w-4 h-4" /> القيد متوازن
+                        <span className="text-[#2D6A4F] flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                          <CheckCircle2 className="w-4 h-4" /> القيد متوازن تماماً
                         </span>
                       ) : (
-                        <span className="text-[#9E2A2B] flex items-center gap-1">
-                          <AlertTriangle className="w-4 h-4" /> فارق التوازن:{' '}
-                          <span className="font-mono">{formatCurrency(diff, currency)}</span>
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#9E2A2B] flex items-center gap-1 bg-rose-50 px-2.5 py-1 rounded border border-rose-200">
+                            <AlertTriangle className="w-4 h-4" /> فارق التوازن:{' '}
+                            <span className="font-mono">{formatCurrency(diff, currency)}</span>
+                          </span>
+                          {diff > 0.001 && (
+                            <button
+                              type="button"
+                              onClick={handleAutoBalance}
+                              className="text-xs bg-[#B8860B] hover:bg-[#D4AF37] text-white px-2.5 py-1 rounded font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                              title="إكمال الطرف المتبقي لموازنة القيد آلياً"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" /> موازنة القيد آلياً
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
