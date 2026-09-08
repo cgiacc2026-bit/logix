@@ -186,53 +186,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       className={`fixed top-0 right-0 bottom-0 bg-[#0B192C] text-white border-l border-[#1E3E62] z-50 flex flex-col transition-all duration-300 shadow-2xl no-print ${
-        collapsed ? 'w-20' : 'w-72'
+        collapsed ? 'w-16' : 'w-64'
       }`}
     >
       {/* Sidebar Header Brand */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-[#1E3E62] bg-[#081322]/80">
+      <div className="h-14 flex items-center justify-between px-3 border-b border-[#1E3E62] bg-[#081322]/80 shrink-0">
         {!collapsed ? (
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold border border-blue-400/40 shadow-sm shrink-0">
-              <span className="text-sm tracking-wider">LX</span>
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold border border-blue-400/40 shadow-xs shrink-0">
+              <span className="text-xs tracking-wider">LX</span>
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm font-bold text-white tracking-tight truncate">
-                {company?.nameAr || 'لوجيكس ERP السحابي'}
+              <h2 className="text-xs font-bold text-white tracking-tight truncate">
+                {company?.nameAr || 'لوجيكس ERP'}
               </h2>
               <div className="flex items-center gap-1 mt-0.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-[10px] text-cyan-300 font-semibold truncate">
-                  لوجيكس ERP • سحابي متصل
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                <span className="text-[9px] text-cyan-300 font-semibold truncate">
+                  سحابي متصل
                 </span>
               </div>
             </div>
           </div>
         ) : (
-          <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold border border-blue-400/40 shadow-sm">
-            <span className="text-xs tracking-wider">LX</span>
+          <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold border border-blue-400/40 shadow-xs">
+            <span className="text-[10px] tracking-wider">LX</span>
           </div>
         )}
 
         <button
           onClick={() => setCollapsed((prev) => !prev)}
           title={collapsed ? 'توسيع القائمة' : 'طي القائمة'}
-          className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+          className="p-1 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer shrink-0"
         >
-          {collapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          {collapsed ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         </button>
       </div>
 
       {/* Navigation List */}
-      <div className="flex-1 overflow-y-auto py-3 px-2.5 space-y-4 scrollbar-thin scrollbar-thumb-slate-700">
+      <div className="flex-1 overflow-y-auto py-2.5 px-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
         {sections.map((section) => (
-          <div key={section.id} className="space-y-1">
+          <div key={section.id} className="space-y-0.5">
             {!collapsed && (
-              <div className="px-3 py-1 text-[11px] font-bold text-slate-400 tracking-wider">
+              <div className="px-2.5 py-0.5 text-[10px] font-bold text-slate-400 tracking-wider">
                 {section.title}
               </div>
             )}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -242,30 +242,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
                     title={collapsed ? item.label : undefined}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer group ${
+                    className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer group ${
                       isActive
-                        ? 'bg-gradient-to-l from-blue-600 to-indigo-600 text-white shadow-lg border border-blue-400/40 translate-x-[-2px]'
+                        ? 'bg-gradient-to-l from-blue-600 to-indigo-600 text-white shadow-md border border-blue-400/40 translate-x-[-1px]'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
-                    } ${collapsed ? 'justify-center px-2' : 'justify-start'}`}
+                    } ${collapsed ? 'justify-center px-1.5' : 'justify-start'}`}
                   >
                     <div
-                      className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                      className={`p-1 rounded-md transition-colors shrink-0 ${
                         isActive
                           ? 'bg-white/20 text-white'
                           : 'bg-slate-800/90 text-slate-400 group-hover:text-cyan-300'
                       }`}
                     >
-                      <Icon className="w-4 h-4" />
+                      <Icon className="w-3.5 h-3.5" />
                     </div>
 
                     {!collapsed && (
-                      <span className="truncate flex-1 text-right font-bold">
+                      <span className="truncate flex-1 text-right font-bold text-xs">
                         {item.label}
                       </span>
                     )}
 
                     {!collapsed && item.badge !== undefined && (
-                      <span className={`px-2 py-0.5 text-[10px] font-black rounded-full shadow-xs ${
+                      <span className={`px-1.5 py-0.2 text-[9px] font-black rounded-full shadow-2xs ${
                         item.badge === 'مقيد'
                           ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
                           : 'bg-rose-600 text-white'
@@ -282,29 +282,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Supabase Cloud Sync Status Widget in Sidebar */}
-      <div className="p-3 border-t border-[#1E3E62] bg-[#081322]">
+      <div className="p-2 border-t border-[#1E3E62] bg-[#081322] shrink-0">
         {!collapsed ? (
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-2.5 rounded-xl border border-blue-500/30 flex items-center justify-between">
+          <div className="bg-slate-900/90 p-2 rounded-lg border border-blue-500/30 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-blue-500/20 text-cyan-300 flex items-center justify-center border border-blue-400/30">
-                <Cloud className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <div className="w-6 h-6 rounded-md bg-blue-500/20 text-cyan-300 flex items-center justify-center border border-blue-400/30 shrink-0">
+                <Cloud className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
               </div>
-              <div>
-                <div className="text-[11px] font-bold text-white flex items-center gap-1">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold text-white flex items-center gap-1 truncate">
                   <span>قاعدة Supabase السحابية</span>
                 </div>
-                <div className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> متصلة وقابلة للتطوير
+                <div className="text-[9px] text-emerald-400 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> متصلة
                 </div>
               </div>
             </div>
           </div>
         ) : (
           <div
-            className="w-10 h-10 mx-auto rounded-xl bg-blue-500/20 text-cyan-300 flex items-center justify-center border border-blue-400/30"
+            className="w-8 h-8 mx-auto rounded-lg bg-blue-500/20 text-cyan-300 flex items-center justify-center border border-blue-400/30"
             title="قاعدة Supabase السحابية متصلة"
           >
-            <Cloud className="w-5 h-5 text-cyan-400 animate-pulse" />
+            <Cloud className="w-4 h-4 text-cyan-400 animate-pulse" />
           </div>
         )}
       </div>

@@ -205,6 +205,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [expandedLiabilityDetails, setExpandedLiabilityDetails] = useState<boolean>(false);
   const [viewingJournalModalCategory, setViewingJournalModalCategory] = useState<'ASSET' | 'LIABILITY' | null>(null);
   const [journalModalSearch, setJournalModalSearch] = useState<string>('');
+  const [showOperationsHub, setShowOperationsHub] = useState<boolean>(true);
 
   const selectedMonthObj = useMemo(() => {
     return availableMonths.find(m => m.code === selectedMonthCode) || availableMonths[0];
@@ -431,311 +432,321 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const isProfitPositive = kpis.netProfit >= 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Top Banner & Quick Action Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 p-6 rounded-xl shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white border border-slate-200 py-3 px-4 rounded-xl shadow-2xs">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            لوحة التخطيط المالي والمحاسبي الموحدة
+          <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+            لوحة التخطيط المالي والمحاسبي
           </h2>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
+          <p className="text-xs text-slate-500 font-medium">
             إدارة العمليات المحاسبية والمخزون والمبيعات والتحصيل بدقة متكاملة.
           </p>
         </div>
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowOperationsHub(!showOperationsHub)}
+            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="إظهار/إخفاء مجموعات المهام والعمليات"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-slate-600" />
+            <span>{showOperationsHub ? 'إخفاء مجموعات العمليات' : 'عرض مجموعات العمليات'}</span>
+          </button>
           <button
             onClick={() => setShowKpiModal(true)}
-            className="px-3.5 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-black flex items-center gap-2 border border-amber-300 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1.5 border border-amber-300 shadow-2xs transition-all active:scale-95 cursor-pointer"
             title="اختيار وترتيب بطاقات المؤشرات المعروضة"
           >
-            <SlidersHorizontal className="w-4 h-4 text-amber-700" />
-            <span>تخصيص بطاقات KPI</span>
+            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-700" />
+            <span>تخصيص KPI</span>
           </button>
           <button
             onClick={onNewJournal}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 border border-blue-500 shadow-sm transition-all active:scale-95 cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 border border-blue-500 shadow-2xs transition-all active:scale-95 cursor-pointer"
           >
-            <PlusCircle className="w-4 h-4 text-cyan-200" />
+            <PlusCircle className="w-3.5 h-3.5 text-cyan-200" />
             <span>قيد يومية جديد</span>
           </button>
           <button
             onClick={onNewInvoice}
-            className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 border border-slate-800 shadow-sm transition-all active:scale-95 cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 border border-slate-800 shadow-2xs transition-all active:scale-95 cursor-pointer"
           >
-            <PlusCircle className="w-4 h-4 text-blue-400" />
-            <span>فاتورة مبيعات جديدة</span>
+            <PlusCircle className="w-3.5 h-3.5 text-blue-400" />
+            <span>فاتورة مبيعات</span>
           </button>
         </div>
       </div>
 
       {/* CATEGORIZED TASK GROUPS HUB (مجموعات مهام وعمليات النظام) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Group 1: Operations & Milling */}
-        <div className="bg-white border border-amber-200/80 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all">
-          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-amber-100">
-            <div className="flex items-center gap-2 text-amber-900 font-black text-xs">
-              <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
-                <Factory className="w-4 h-4" />
+      {showOperationsHub && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Group 1: Operations & Milling */}
+          <div className="bg-white border border-amber-200/80 rounded-xl p-3 shadow-2xs hover:shadow-xs transition-all">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-100">
+              <div className="flex items-center gap-1.5 text-amber-900 font-bold text-xs">
+                <div className="p-1 bg-amber-100 text-amber-800 rounded-md">
+                  <Factory className="w-3.5 h-3.5" />
+                </div>
+                <span>العمليات والإنتاج والمبيعات</span>
               </div>
-              <span>العمليات والإنتاج والمبيعات</span>
+              <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded-full font-bold">
+                ٤ مهام
+              </span>
             </div>
-            <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold">
-              ٥ مهام
-            </span>
+            <div className="grid grid-cols-1 gap-1 text-xs">
+              <button
+                onClick={() => onNavigateTab('invoices')}
+                className="px-2 py-1 bg-slate-50 hover:bg-amber-50 hover:text-amber-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <ShoppingCart className="w-3.5 h-3.5 text-amber-600" />
+                  <span>فواتير المبيعات والمشتريات</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('inventory')}
+                className="px-2 py-1 bg-slate-50 hover:bg-amber-50 hover:text-amber-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-amber-600" />
+                  <span>المخزون والخامات والتسعير</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('production')}
+                className="px-2 py-1 bg-amber-50/70 hover:bg-amber-100 rounded-lg text-amber-900 font-bold text-right flex items-center justify-between transition-all cursor-pointer border border-amber-200/50"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Factory className="w-3.5 h-3.5 text-amber-700" />
+                  <span>أوامر تشغيل المطحنة</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('vouchers')}
+                className="px-2 py-1 bg-slate-50 hover:bg-amber-50 hover:text-amber-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-amber-600" />
+                  <span>سندات القبض والصرف</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-1.5 text-xs">
-            <button
-              onClick={() => onNavigateTab('invoices')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-amber-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <ShoppingCart className="w-3.5 h-3.5 text-amber-600" />
-                <span>فواتير المبيعات والمشتريات</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
 
-            <button
-              onClick={() => onNavigateTab('inventory')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-amber-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Package className="w-3.5 h-3.5 text-amber-600" />
-                <span>المخزون والخامات والتسعير</span>
+          {/* Group 2: Accounting & Journals */}
+          <div className="bg-white border border-blue-200/80 rounded-xl p-3 shadow-2xs hover:shadow-xs transition-all">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-blue-100">
+              <div className="flex items-center gap-1.5 text-blue-900 font-bold text-xs">
+                <div className="p-1 bg-blue-100 text-blue-800 rounded-md">
+                  <FileText className="w-3.5 h-3.5" />
+                </div>
+                <span>المحاسبة والقيود والترحيل</span>
               </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
+              <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded-full font-bold">
+                ٤ مهام
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-1 text-xs">
+              <button
+                onClick={() => onNavigateTab('accounts')}
+                className="px-2 py-1 bg-slate-50 hover:bg-blue-50 hover:text-blue-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <FolderTree className="w-3.5 h-3.5 text-blue-600" />
+                  <span>شجرة الحسابات العامة</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
 
-            <button
-              onClick={() => onNavigateTab('production')}
-              className="px-2.5 py-1.5 bg-amber-50/80 hover:bg-amber-600 hover:text-white rounded-xl text-amber-900 font-black text-right flex items-center justify-between transition-all cursor-pointer border border-amber-200/60"
-            >
-              <div className="flex items-center gap-2">
-                <Factory className="w-3.5 h-3.5 text-amber-700" />
-                <span>أوامر طحن وتشغيل المطحنة</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
+              <button
+                onClick={() => onNavigateTab('journals')}
+                className="px-2 py-1 bg-slate-50 hover:bg-blue-50 hover:text-blue-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-blue-600" />
+                  <span>سجل القيود اليومية</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
 
-            <button
-              onClick={() => onNavigateTab('vouchers')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-amber-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-3.5 h-3.5 text-amber-600" />
-                <span>سندات القبض والصرف والخزينة</span>
+              <button
+                onClick={() => onNavigateTab('ledger')}
+                className="px-2 py-1 bg-slate-50 hover:bg-blue-50 hover:text-blue-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                  <span>دفتر الأستاذ العام</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('trial-balance')}
+                className="px-2 py-1 bg-slate-50 hover:bg-blue-50 hover:text-blue-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Scale className="w-3.5 h-3.5 text-blue-600" />
+                  <span>ميزان المراجعة والأرصدة</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+            </div>
+          </div>
+
+          {/* Group 3: Financial Statements & Reports */}
+          <div className="bg-white border border-emerald-200/80 rounded-xl p-3 shadow-2xs hover:shadow-xs transition-all">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-emerald-100">
+              <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
+                <div className="p-1 bg-emerald-100 text-emerald-800 rounded-md">
+                  <BarChart3 className="w-3.5 h-3.5" />
+                </div>
+                <span>القوائم المالية والختامية</span>
               </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
+              <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded-full font-bold">
+                ختامية
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-1 text-xs">
+              <button
+                onClick={() => onNavigateTab('financials')}
+                className="px-2 py-1 bg-emerald-50/70 hover:bg-emerald-100 rounded-lg text-emerald-950 font-bold text-right flex items-center justify-between transition-all cursor-pointer border border-emerald-200/50"
+              >
+                <div className="flex items-center gap-1.5">
+                  <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>قائمة الدخل (الأرباح والخسائر)</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('financials')}
+                className="px-2 py-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <PieChart className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>الميزانية والمركز المالي</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('financials')}
+                className="px-2 py-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>قائمة التدفقات النقدية</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('dashboard')}
+                className="px-2 py-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>تحليل الأداء والمؤشرات</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+            </div>
+          </div>
+
+          {/* Group 4: Master Entities & System Setup */}
+          <div className="bg-white border border-purple-200/80 rounded-xl p-3 shadow-2xs hover:shadow-xs transition-all">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-purple-100">
+              <div className="flex items-center gap-1.5 text-purple-900 font-bold text-xs">
+                <div className="p-1 bg-purple-100 text-purple-800 rounded-md">
+                  <Building2 className="w-3.5 h-3.5" />
+                </div>
+                <span>البيانات الأساسية والتهيئة</span>
+              </div>
+              <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded-full font-bold">
+                ٤ مهام
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-1 text-xs">
+              <button
+                onClick={() => onNavigateTab('entities')}
+                className="px-2 py-1 bg-slate-50 hover:bg-purple-50 hover:text-purple-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Users2 className="w-3.5 h-3.5 text-purple-600" />
+                  <span>العملاء والجمعيات والموردين</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('units')}
+                className="px-2 py-1 bg-slate-50 hover:bg-purple-50 hover:text-purple-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5 text-purple-600" />
+                  <span>وحدات الوزن والقياس والتعبئة</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('company')}
+                className="px-2 py-1 bg-slate-50 hover:bg-purple-50 hover:text-purple-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-purple-600" />
+                  <span>ملف المطحنة والترخيص</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('users')}
+                className="px-2 py-1 bg-slate-50 hover:bg-purple-50 hover:text-purple-900 rounded-lg text-slate-700 font-medium text-right flex items-center justify-between transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                  <span>المستخدمون ومسؤوليات النظام</span>
+                </div>
+                <ArrowRight className="w-3 h-3 opacity-50 rotate-180" />
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Group 2: Accounting & Journals */}
-        <div className="bg-white border border-blue-200/80 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all">
-          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-blue-100">
-            <div className="flex items-center gap-2 text-blue-900 font-black text-xs">
-              <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg">
-                <FileText className="w-4 h-4" />
-              </div>
-              <span>المحاسبة والقيود والترحيل</span>
-            </div>
-            <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold">
-              ٤ مهام
-            </span>
-          </div>
-          <div className="grid grid-cols-1 gap-1.5 text-xs">
-            <button
-              onClick={() => onNavigateTab('accounts')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <FolderTree className="w-3.5 h-3.5 text-blue-600" />
-                <span>دليل وشجرة الحسابات العامة</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('journals')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="w-3.5 h-3.5 text-blue-600" />
-                <span>سجل القيود اليومية المزدوجة</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('ledger')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                <span>دفتر الأستاذ العام للحسابات</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('trial-balance')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Scale className="w-3.5 h-3.5 text-blue-600" />
-                <span>ميزان المراجعة بالمجاميع والأرصدة</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-          </div>
-        </div>
-
-        {/* Group 3: Financial Statements & Reports */}
-        <div className="bg-white border border-emerald-200/80 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all">
-          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-emerald-100">
-            <div className="flex items-center gap-2 text-emerald-900 font-black text-xs">
-              <div className="p-1.5 bg-emerald-100 text-emerald-800 rounded-lg">
-                <BarChart3 className="w-4 h-4" />
-              </div>
-              <span>القوائم المالية والختامية</span>
-            </div>
-            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
-              ختامية
-            </span>
-          </div>
-          <div className="grid grid-cols-1 gap-1.5 text-xs">
-            <button
-              onClick={() => onNavigateTab('financials')}
-              className="px-2.5 py-1.5 bg-emerald-50/80 hover:bg-emerald-600 hover:text-white rounded-xl text-emerald-950 font-bold text-right flex items-center justify-between transition-all cursor-pointer border border-emerald-200/60"
-            >
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>قائمة الدخل (الأرباح والخسائر)</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('financials')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <PieChart className="w-3.5 h-3.5 text-emerald-600" />
-                <span>الميزانية العمومية والمركز المالي</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('financials')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>قائمة التدفقات النقدية</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('dashboard')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                <span>تحليل الأداء والمؤشرات KPIs</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-          </div>
-        </div>
-
-        {/* Group 4: Master Entities & System Setup */}
-        <div className="bg-white border border-purple-200/80 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all">
-          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-purple-100">
-            <div className="flex items-center gap-2 text-purple-900 font-black text-xs">
-              <div className="p-1.5 bg-purple-100 text-purple-800 rounded-lg">
-                <Building2 className="w-4 h-4" />
-              </div>
-              <span>البيانات الأساسية والتهيئة</span>
-            </div>
-            <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-bold">
-              ٤ مهام
-            </span>
-          </div>
-          <div className="grid grid-cols-1 gap-1.5 text-xs">
-            <button
-              onClick={() => onNavigateTab('entities')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-purple-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Users2 className="w-3.5 h-3.5 text-purple-600" />
-                <span>العملاء والجمعيات والموردين</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('units')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-purple-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Ruler className="w-3.5 h-3.5 text-purple-600" />
-                <span>وحدات الوزن والقياس والتعبئة</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('company')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-purple-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Building2 className="w-3.5 h-3.5 text-purple-600" />
-                <span>ملف المطحنة والترخيص والتوقيعات</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-
-            <button
-              onClick={() => onNavigateTab('users')}
-              className="px-2.5 py-1.5 bg-slate-50 hover:bg-purple-600 hover:text-white rounded-xl text-slate-700 font-bold text-right flex items-center justify-between transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-                <span>المستخدمون ومسؤوليات النظام</span>
-              </div>
-              <ArrowRight className="w-3 h-3 opacity-60 rotate-180" />
-            </button>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* LOW STOCK & REORDER LEVEL ALERTS WIDGET */}
       {lowStockItems.length > 0 && (
-        <div className="bg-white border-2 border-amber-300/80 rounded-2xl p-6 shadow-sm space-y-4 animate-in fade-in duration-300">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-amber-100 pb-3.5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-400/40 flex items-center justify-center text-amber-700 shadow-xs">
-                <AlertTriangle className="w-5 h-5" />
+        <div className="bg-white border border-amber-300/80 rounded-xl p-3.5 sm:p-4 shadow-2xs space-y-3 animate-in fade-in duration-300">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-amber-100 pb-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-400/40 flex items-center justify-center text-amber-700 shadow-2xs">
+                <AlertTriangle className="w-4 h-4" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    تنبيهات المخزون وحد إعادة الطلب (Reorder Level Alerts)
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    تنبيهات المخزون وحد إعادة الطلب
                   </h3>
-                  <span className="px-2.5 py-0.5 text-xs font-extrabold bg-rose-100 text-rose-700 border border-rose-200 rounded-full flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                  <span className="px-2 py-0.2 text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200 rounded-full flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-rose-600" />
                     {lowStockItems.length} صنف بحاجة لتوريد
                   </span>
                   {outOfStockCount > 0 && (
-                    <span className="px-2.5 py-0.5 text-xs font-extrabold bg-rose-600 text-white rounded-full">
-                      {outOfStockCount} نفد تماماً (0)
+                    <span className="px-2 py-0.2 text-[11px] font-bold bg-rose-600 text-white rounded-full">
+                      {outOfStockCount} نفد تماماً
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  قائمة بالأصناف التي انخفض رصيدها عن الحد الأدنى المحدد لإعادة الطلب لتسهيل إجراء أوامر الشراء والتوريد الفوري.
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  قائمة بالأصناف التي انخفض رصيدها عن الحد الأدنى لإعادة الطلب لتسهيل إجراء التوريد الفوري.
                 </p>
               </div>
             </div>
@@ -892,23 +903,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* Interactive Assets & Liabilities Comparison Block */}
-      <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-xs space-y-6">
+      <div className="bg-white border border-slate-200 p-3.5 sm:p-4 rounded-xl shadow-2xs space-y-3.5">
         {/* Section Header & Month Selector Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E5E1DA] pb-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-[#E5E1DA] pb-2.5">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-2 bg-[#D4AF37]/10 text-[#B8860B] rounded-xl border border-[#D4AF37]/30">
-                <Scale className="w-5 h-5" />
+              <span className="p-1.5 bg-[#D4AF37]/10 text-[#B8860B] rounded-lg border border-[#D4AF37]/30">
+                <Scale className="w-4 h-4" />
               </span>
               <div>
-                <h3 className="text-base font-serif font-bold text-[#1A1A1A] flex items-center gap-2">
+                <h3 className="text-sm font-bold text-[#1A1A1A] flex items-center gap-2">
                   مقارنة إجمالي الأصول والالتزامات الحالية بالشهر السابق
-                  <span className="text-[10px] bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-sans font-bold">
+                  <span className="text-[10px] bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30 px-2 py-0.2 rounded-full flex items-center gap-1 font-sans font-bold">
                     <ShieldCheck className="w-3 h-3 text-[#2D6A4F]" />
                     مرحّلة بالدفاتر
                   </span>
                 </h3>
-                <p className="text-xs text-[#8C8273] mt-0.5 font-serif">
+                <p className="text-[11px] text-[#8C8273] mt-0.5">
                   تحليل الحركة التراكمية بناءً على القيود المحاسبية المرحلة للفترة المالية ({selectedMonthObj.label} مقارنة بـ {selectedMonthObj.prevLabel})
                 </p>
               </div>
@@ -916,8 +927,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Interactive Period Filter Bar */}
-          <div className="flex items-center gap-2 bg-[#F9F8F6] p-1.5 rounded-xl border border-[#E5E1DA] text-xs font-bold">
-            <span className="text-[#8C8273] px-2 flex items-center gap-1 font-serif">
+          <div className="flex items-center gap-1.5 bg-[#F9F8F6] p-1 rounded-lg border border-[#E5E1DA] text-xs font-bold">
+            <span className="text-[#8C8273] px-1.5 flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5 text-[#B8860B]" />
               شهر المقارنة:
             </span>
@@ -926,9 +937,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   key={m.code}
                   onClick={() => setSelectedMonthCode(m.code)}
-                  className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                  className={`px-2.5 py-1 rounded-md text-xs cursor-pointer transition-all ${
                     selectedMonthCode === m.code
-                      ? 'bg-[#1A1A1A] text-white shadow-xs font-bold'
+                      ? 'bg-[#1A1A1A] text-white shadow-2xs font-bold'
                       : 'text-[#6E6659] hover:text-[#1A1A1A] hover:bg-white'
                   }`}
                 >
@@ -940,26 +951,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* 4 Interactive Display Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           
           {/* CARD 1: TOTAL ASSETS */}
-          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-5 relative flex flex-col justify-between shadow-2xs hover:border-[#D4AF37] transition-all">
+          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-3.5 relative flex flex-col justify-between shadow-2xs hover:border-[#D4AF37] transition-all">
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-serif font-bold text-[#8C8273] uppercase tracking-wider">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-[#8C8273] uppercase tracking-wider">
                   إجمالي الأصول الحالية
                 </span>
-                <span className="p-2 rounded-lg bg-[#EBF5EE] text-[#2D6A4F]">
-                  <Building className="w-4 h-4" />
+                <span className="p-1.5 rounded-lg bg-[#EBF5EE] text-[#2D6A4F]">
+                  <Building className="w-3.5 h-3.5" />
                 </span>
               </div>
 
-              <div className="mt-1">
-                <div className="text-2xl font-serif font-extrabold text-[#1A1A1A] font-mono">
+              <div className="mt-0.5">
+                <div className="text-lg sm:text-xl font-bold text-[#1A1A1A] font-mono">
                   {formatCurrency(comparisonData.currentSelectedMonthAssets, currency)}
                 </div>
 
-                <div className="text-[11px] text-[#8C8273] mt-1 font-mono">
+                <div className="text-[10px] text-[#8C8273] mt-0.5 font-mono">
                   الشهر السابق ({selectedMonthObj.prevLabel}):{' '}
                   <span className="font-bold text-[#1A1A1A]">
                     {formatCurrency(comparisonData.previousMonthAssets, currency)}
@@ -969,20 +980,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Growth & Actions */}
-            <div className="mt-4 pt-3 border-t border-[#E5E1DA] space-y-3">
+            <div className="mt-3 pt-2.5 border-t border-[#E5E1DA] space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-[#8C8273]">التغير التراكمي:</span>
+                <span className="text-[10px] text-[#8C8273]">التغير التراكمي:</span>
                 <span
-                  className={`px-2.5 py-1 text-[11px] font-bold rounded-full flex items-center gap-1 ${
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded-full flex items-center gap-1 ${
                     comparisonData.assetDiff >= 0
                       ? 'bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30'
                       : 'bg-[#FDF0F0] text-[#9E2A2B] border border-[#9E2A2B]/30'
                   }`}
                 >
                   {comparisonData.assetDiff >= 0 ? (
-                    <TrendingUp className="w-3.5 h-3.5" />
+                    <TrendingUp className="w-3 h-3" />
                   ) : (
-                    <TrendingDown className="w-3.5 h-3.5" />
+                    <TrendingDown className="w-3 h-3" />
                   )}
                   {comparisonData.assetDiff >= 0 ? '+' : ''}
                   {formatCurrency(comparisonData.assetDiff, currency)} ({comparisonData.assetPct >= 0 ? '+' : ''}{comparisonData.assetPct.toFixed(1)}%)
@@ -990,46 +1001,46 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-1.5 pt-0.5">
                 <button
                   onClick={() => setExpandedAssetDetails(!expandedAssetDetails)}
-                  className="flex-1 py-1.5 px-2 bg-white hover:bg-[#F2EFE9] border border-[#E5E1DA] rounded-lg text-[11px] font-bold text-[#1A1A1A] flex items-center justify-center gap-1 cursor-pointer transition-all"
+                  className="flex-1 py-1 px-1.5 bg-white hover:bg-[#F2EFE9] border border-[#E5E1DA] rounded-lg text-[10px] font-bold text-[#1A1A1A] flex items-center justify-center gap-1 cursor-pointer transition-all"
                 >
-                  <Layers className="w-3.5 h-3.5 text-[#B8860B]" />
+                  <Layers className="w-3 h-3 text-[#B8860B]" />
                   <span>{expandedAssetDetails ? 'إخفاء الحسابات' : 'تفاصيل الحسابات'}</span>
                   {expandedAssetDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </button>
 
                 <button
                   onClick={() => setViewingJournalModalCategory('ASSET')}
-                  className="py-1.5 px-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs"
+                  className="py-1 px-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs"
                   title="معاينة القيود المرحلة للأصول"
                 >
-                  <Eye className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <Eye className="w-3 h-3 text-[#D4AF37]" />
                   <span>القيود ({comparisonData.selMonthAssetJournals.length})</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* CARD 2: TOTAL CURRENT LIABILITIES */}
-          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-5 relative flex flex-col justify-between shadow-2xs hover:border-[#9E2A2B] transition-all">
+          {/* CARD 2: TOTAL LIABILITIES */}
+          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-3.5 relative flex flex-col justify-between shadow-2xs hover:border-[#9E2A2B] transition-all">
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-serif font-bold text-[#8C8273] uppercase tracking-wider">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-[#8C8273] uppercase tracking-wider">
                   إجمالي الالتزامات الحالية
                 </span>
-                <span className="p-2 rounded-lg bg-[#FDF0F0] text-[#9E2A2B]">
-                  <Wallet className="w-4 h-4" />
+                <span className="p-1.5 rounded-lg bg-[#FDF0F0] text-[#9E2A2B]">
+                  <Wallet className="w-3.5 h-3.5" />
                 </span>
               </div>
 
-              <div className="mt-1">
-                <div className="text-2xl font-serif font-extrabold text-[#1A1A1A] font-mono">
+              <div className="mt-0.5">
+                <div className="text-lg sm:text-xl font-bold text-[#1A1A1A] font-mono">
                   {formatCurrency(comparisonData.currentSelectedMonthLiabilities, currency)}
                 </div>
 
-                <div className="text-[11px] text-[#8C8273] mt-1 font-mono">
+                <div className="text-[10px] text-[#8C8273] mt-0.5 font-mono">
                   الشهر السابق ({selectedMonthObj.prevLabel}):{' '}
                   <span className="font-bold text-[#1A1A1A]">
                     {formatCurrency(comparisonData.previousMonthLiabilities, currency)}
@@ -1039,20 +1050,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Change & Actions */}
-            <div className="mt-4 pt-3 border-t border-[#E5E1DA] space-y-3">
+            <div className="mt-3 pt-2.5 border-t border-[#E5E1DA] space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-[#8C8273]">تغير الالتزامات:</span>
+                <span className="text-[10px] text-[#8C8273]">تغير الالتزامات:</span>
                 <span
-                  className={`px-2.5 py-1 text-[11px] font-bold rounded-full flex items-center gap-1 ${
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded-full flex items-center gap-1 ${
                     comparisonData.liabilityDiff <= 0
                       ? 'bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30'
                       : 'bg-[#FFFBEB] text-[#B8860B] border border-[#B8860B]/30'
                   }`}
                 >
                   {comparisonData.liabilityDiff <= 0 ? (
-                    <TrendingDown className="w-3.5 h-3.5 text-[#2D6A4F]" />
+                    <TrendingDown className="w-3 h-3 text-[#2D6A4F]" />
                   ) : (
-                    <TrendingUp className="w-3.5 h-3.5 text-[#B8860B]" />
+                    <TrendingUp className="w-3 h-3 text-[#B8860B]" />
                   )}
                   {comparisonData.liabilityDiff > 0 ? '+' : ''}
                   {formatCurrency(comparisonData.liabilityDiff, currency)} ({comparisonData.liabilityPct > 0 ? '+' : ''}{comparisonData.liabilityPct.toFixed(1)}%)
@@ -1060,22 +1071,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-1.5 pt-0.5">
                 <button
                   onClick={() => setExpandedLiabilityDetails(!expandedLiabilityDetails)}
-                  className="flex-1 py-1.5 px-2 bg-white hover:bg-[#F2EFE9] border border-[#E5E1DA] rounded-lg text-[11px] font-bold text-[#1A1A1A] flex items-center justify-center gap-1 cursor-pointer transition-all"
+                  className="flex-1 py-1 px-1.5 bg-white hover:bg-[#F2EFE9] border border-[#E5E1DA] rounded-lg text-[10px] font-bold text-[#1A1A1A] flex items-center justify-center gap-1 cursor-pointer transition-all"
                 >
-                  <Layers className="w-3.5 h-3.5 text-[#9E2A2B]" />
+                  <Layers className="w-3 h-3 text-[#9E2A2B]" />
                   <span>{expandedLiabilityDetails ? 'إخفاء الحسابات' : 'تفاصيل الحسابات'}</span>
                   {expandedLiabilityDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </button>
 
                 <button
                   onClick={() => setViewingJournalModalCategory('LIABILITY')}
-                  className="py-1.5 px-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs"
+                  className="py-1 px-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs"
                   title="معاينة القيود المرحلة للالتزامات"
                 >
-                  <Eye className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <Eye className="w-3 h-3 text-[#D4AF37]" />
                   <span>القيود ({comparisonData.selMonthLiabilityJournals.length})</span>
                 </button>
               </div>
@@ -1083,31 +1094,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* CARD 3: NET ASSETS & WORKING CAPITAL */}
-          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-5 relative flex flex-col justify-between shadow-2xs hover:border-[#2D6A4F] transition-all">
+          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-3.5 relative flex flex-col justify-between shadow-2xs hover:border-[#2D6A4F] transition-all">
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-serif font-bold text-[#8C8273] uppercase tracking-wider">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-[#8C8273] uppercase tracking-wider">
                   صافي الأصول (حقوق المالكين)
                 </span>
-                <span className="p-2 rounded-lg bg-[#EBF5EE] text-[#2D6A4F]">
-                  <Scale className="w-4 h-4" />
+                <span className="p-1.5 rounded-lg bg-[#EBF5EE] text-[#2D6A4F]">
+                  <Scale className="w-3.5 h-3.5" />
                 </span>
               </div>
 
-              <div className="mt-1">
-                <div className="text-2xl font-serif font-extrabold text-[#2D6A4F] font-mono">
+              <div className="mt-0.5">
+                <div className="text-lg sm:text-xl font-bold text-[#2D6A4F] font-mono">
                   {formatCurrency(comparisonData.currentNetAssets, currency)}
                 </div>
 
-                <div className="text-[11px] text-[#8C8273] mt-1 font-mono">
+                <div className="text-[10px] text-[#8C8273] mt-0.5 font-mono">
                   الشهر السابق: <span className="font-bold text-[#1A1A1A]">{formatCurrency(comparisonData.prevNetAssets, currency)}</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-[#E5E1DA] space-y-2">
+            <div className="mt-3 pt-2.5 border-t border-[#E5E1DA] space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-[#8C8273]">نمو حقوق الصافي:</span>
+                <span className="text-[10px] text-[#8C8273]">نمو حقوق الصافي:</span>
                 <span className="text-xs font-bold text-[#2D6A4F]">
                   {comparisonData.netAssetsDiff >= 0 ? '+' : ''}{formatCurrency(comparisonData.netAssetsDiff, currency)}
                 </span>
@@ -1119,37 +1130,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* CARD 4: SOLVENCY RATIO */}
-          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-5 relative flex flex-col justify-between shadow-2xs hover:border-[#1A1A1A] transition-all">
+          <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-3.5 relative flex flex-col justify-between shadow-2xs hover:border-[#1A1A1A] transition-all">
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-serif font-bold text-[#8C8273] uppercase tracking-wider">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-[#8C8273] uppercase tracking-wider">
                   مؤشر الملاءة وتغطية الالتزامات
                 </span>
-                <span className="p-2 rounded-lg bg-[#F2EFE9] text-[#B8860B]">
-                  <PieChart className="w-4 h-4" />
+                <span className="p-1.5 rounded-lg bg-[#F2EFE9] text-[#B8860B]">
+                  <PieChart className="w-3.5 h-3.5" />
                 </span>
               </div>
 
-              <div className="mt-1">
-                <div className="text-2xl font-serif font-extrabold text-[#1A1A1A] font-mono">
+              <div className="mt-0.5">
+                <div className="text-lg sm:text-xl font-bold text-[#1A1A1A] font-mono">
                   {comparisonData.currentSolvency.toFixed(2)}x
                 </div>
 
-                <div className="text-[11px] text-[#8C8273] mt-1 font-mono">
+                <div className="text-[10px] text-[#8C8273] mt-0.5 font-mono">
                   الشهر السابق: <span className="font-bold text-[#1A1A1A]">{comparisonData.prevSolvency.toFixed(2)}x</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-[#E5E1DA] space-y-2">
+            <div className="mt-3 pt-2.5 border-t border-[#E5E1DA] space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-[#8C8273]">التقييم المحاسبي:</span>
-                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30">
+                <span className="text-[10px] text-[#8C8273]">التقييم المحاسبي:</span>
+                <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30">
                   وضع ممتاز (ملاءة مرتفعة)
                 </span>
               </div>
               <p className="text-[10px] text-[#8C8273] leading-relaxed">
-                كل دين بليرة/دينار يقابله أصول جارية بثلاثة أضعاف على الأقل.
+                كل دين يقابله أصول جارية بثلاثة أضعاف على الأقل.
               </p>
             </div>
           </div>
@@ -1234,22 +1245,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* KPI Cards Grid & Customization Header */}
-      <div className="space-y-3.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200 shadow-2xs">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-100/80 text-blue-700 rounded-xl">
-              <LayoutGrid className="w-5 h-5" />
+            <div className="p-1.5 bg-blue-100/80 text-blue-700 rounded-lg">
+              <LayoutGrid className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">
+                <h3 className="text-sm font-bold text-slate-900">
                   مؤشرات الأداء المالي والتشغيلي (KPIs)
                 </h3>
-                <span className="text-xs font-bold px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full">
+                <span className="text-[11px] font-bold px-2 py-0.2 bg-blue-50 text-blue-700 border border-blue-200 rounded-full">
                   {kpiSettings.cardOrder.filter(id => !kpiSettings.hiddenCardIds.includes(id)).length} معروضة
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-[11px] text-slate-500 mt-0.5">
                 يمكنك تخصيص المؤشرات وترتيبها واختيار تخطيط الأعمدة المناسب لاحتياجاتك.
               </p>
             </div>
@@ -1322,7 +1333,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               return (
                 <div
                   key={cardId}
-                  className="bg-white border border-[#E5E1DA] p-5 rounded-2xl relative group overflow-hidden shadow-xs hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between"
+                  className="bg-white border border-[#E5E1DA] p-3.5 sm:p-4 rounded-xl relative group overflow-hidden shadow-2xs hover:border-blue-400 hover:shadow-xs transition-all flex flex-col justify-between"
                 >
                   {/* Card Quick Move Buttons on Hover */}
                   <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg z-10">
