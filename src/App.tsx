@@ -619,57 +619,19 @@ export default function App() {
           )}
 
           {activeTab === 'users' && (
-            isDemo ? (
-              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl mx-auto my-12 text-center shadow-sm">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 border border-blue-200">
-                  <Lock className="w-8 h-8" />
-                </div>
-                <h2 className="text-xl font-bold text-slate-900 mb-2">إدارة المستخدمين مقيدة في الوضع التجريبي</h2>
-                <p className="text-slate-600 text-sm leading-relaxed mb-6">
-                  تم قفل شاشة المستخدمين والصلاحيات في بيئة العرض التشاركية لحماية إعدادات الدخول. يمكنك تجربة كافة دورات المبيعات، المشتريات، المخزون، القيود المحاسبية، والتقارير المالية بحرية كاملة.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('dashboard')}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-sm cursor-pointer"
-                >
-                  العودة للوحة التحكم
-                </button>
-              </div>
-            ) : (
-              <UsersView
-                currentUser={currentUser}
-                setCurrentUser={setCurrentUser}
-              />
-            )
+            <UsersView
+              currentUser={currentUser}
+              setCurrentUser={setCurrentUser}
+            />
           )}
 
           {activeTab === 'system-reset' && (
-            isDemo ? (
-              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl mx-auto my-12 text-center shadow-sm">
-                <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4 border border-amber-200">
-                  <Lock className="w-8 h-8" />
-                </div>
-                <h2 className="text-xl font-bold text-slate-900 mb-2">تصفير النظام العام غير متاح في الوضع التجريبي</h2>
-                <p className="text-slate-600 text-sm leading-relaxed mb-6">
-                  لتصفير بيانات الشركة التجريبية واستعادة العينة الأصلية، يرجى استخدام زر &quot;إعادة ضبط بيانات العرض (Reset Demo)&quot; الموجود في الشريط الأزرق أعلى الشاشة.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('dashboard')}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-sm cursor-pointer"
-                >
-                  العودة للوحة التحكم
-                </button>
-              </div>
-            ) : (
-              <SystemResetPanel
-                currentUser={currentUser}
-                company={activeCompany}
-                currency={currency}
-                onResetComplete={refreshAllData}
-              />
-            )
+            <SystemResetPanel
+              currentUser={currentUser}
+              company={activeCompany}
+              currency={currency}
+              onResetComplete={refreshAllData}
+            />
           )}
 
           {activeTab === 'company' && (

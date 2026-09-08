@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   Sparkles,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  BarChart3
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
 import { CompanyProfile } from '../types.js';
@@ -147,6 +148,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon: LineChart,
           color: 'text-green-400',
         },
+        {
+          id: 'reports',
+          label: 'التقارير التشغيلية والتحليلية',
+          icon: BarChart3,
+          color: 'text-cyan-400',
+        },
       ],
     },
     {
@@ -170,14 +177,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: 'المستخدمون والصلاحيات',
           icon: Users,
           color: 'text-pink-400',
-          badge: isDemoActive() ? 'مقيد' : undefined,
         },
         {
           id: 'system-reset',
           label: 'تصفير النظام وبدء دورة',
           icon: RotateCcw,
           color: 'text-rose-400',
-          badge: isDemoActive() ? 'مقيد' : undefined,
         },
       ],
     },
