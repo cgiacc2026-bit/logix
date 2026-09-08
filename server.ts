@@ -1700,6 +1700,7 @@ async function startServer() {
             owner_email: updated.email || req.body.email || 'admin@logixerp.com',
             status: 'active',
             logo_url: updated.logoUrl || req.body.logoUrl || '',
+            default_accounts: updated.defaultAccounts || req.body.defaultAccounts || {},
             profile_data: updated,
             updated_at: new Date().toISOString(),
           };

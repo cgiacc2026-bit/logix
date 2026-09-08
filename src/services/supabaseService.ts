@@ -83,6 +83,7 @@ export class SupabaseDataService {
         headerNotes: data.profile_data?.headerNotes || 'نظام لوجيكس السحابي لتخطيط الموارد (LOGIX Multi-Tenant ERP)',
         footerNotes: data.profile_data?.footerNotes || 'الدفع خلال 30 يوماً من تاريخ استلام الفاتورة.',
         showDigitalStamp: data.profile_data?.showDigitalStamp ?? true,
+        defaultAccounts: data.default_accounts || data.profile_data?.defaultAccounts || undefined,
       };
 
       return profile;
@@ -103,6 +104,7 @@ export class SupabaseDataService {
         owner_email: comp.email || 'admin@logixerp.com',
         status: 'active',
         logo_url: comp.logoUrl || '',
+        default_accounts: comp.defaultAccounts || {},
         profile_data: comp,
         updated_at: new Date().toISOString(),
       };
@@ -112,7 +114,7 @@ export class SupabaseDataService {
         .upsert([payload], { onConflict: 'id' });
 
       if (error) {
-        console.warn('Supabase saveCompany primary error, attempting fallback without logo_url column:', error.message);
+        console.warn('Supabase saveCompany primary error, attempting fallback without new columns:', error.message);
         const fallbackPayload: any = {
           id: companyId,
           company_name: comp.nameAr,
