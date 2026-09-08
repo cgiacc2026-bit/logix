@@ -84,13 +84,28 @@ export const INITIAL_PRODUCTION_ORDERS: ProductionOrder[] = [
 ];
 
 class LocalDataStore {
+  private memoryFallback: Record<string, string> = {};
+
   public getLocal<T>(key: string, defaultVal: T): T {
-    return safeJsonParse<T>(localStorage.getItem(key), defaultVal);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const item = window.localStorage.getItem(key);
+        return safeJsonParse<T>(item, defaultVal);
+      }
+    } catch (e) {
+      console.warn('LocalStorage get error, using memory fallback:', e);
+    }
+    const memItem = this.memoryFallback[key];
+    return memItem ? safeJsonParse<T>(memItem, defaultVal) : defaultVal;
   }
 
   public setLocal<T>(key: string, value: T): void {
+    const serialized = JSON.stringify(value);
+    this.memoryFallback[key] = serialized;
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, serialized);
+      }
     } catch (e) {
       console.warn('LocalStorage save error:', e);
     }

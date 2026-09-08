@@ -11,7 +11,7 @@
  * Strict Multi-Tenant isolation: All queries enforce .eq('company_id', currentCompanyId)
  */
 
-import { supabase, getCurrentCompanyId } from './supabaseClient.js';
+import { supabase, getCurrentCompanyId, isSupabaseConfigured } from './supabaseClient.js';
 import {
   InventoryItem,
   Customer,
@@ -26,7 +26,9 @@ export class SupabaseDataService {
    * 1. COMPANIES (Fetch and Update active company profile)
    */
   public static async getCompany(): Promise<CompanyProfile | null> {
+    if (!isSupabaseConfigured) return null;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return null;
     try {
       const { data, error } = await supabase
         .from('companies')
@@ -91,7 +93,9 @@ export class SupabaseDataService {
   }
 
   public static async saveCompany(comp: CompanyProfile): Promise<boolean> {
-    const companyId = getCurrentCompanyId();
+    if (!isSupabaseConfigured) return false;
+    const companyId = getCurrentCompanyId() || comp.id;
+    if (!companyId) return false;
     try {
       const { error } = await supabase
         .from('companies')
@@ -121,7 +125,9 @@ export class SupabaseDataService {
    * 2. ITEMS (الأصناف والمخزون)
    */
   public static async getItems(): Promise<InventoryItem[]> {
+    if (!isSupabaseConfigured) return [];
     const companyId = getCurrentCompanyId();
+    if (!companyId) return [];
     try {
       const { data, error } = await supabase
         .from('items')
@@ -163,7 +169,9 @@ export class SupabaseDataService {
   }
 
   public static async saveItem(item: InventoryItem): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
     try {
       const { error } = await supabase
         .from('items')
@@ -197,7 +205,9 @@ export class SupabaseDataService {
   }
 
   public static async deleteItem(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
     try {
       const { error } = await supabase
         .from('items')
@@ -216,7 +226,9 @@ export class SupabaseDataService {
    * 3. CUSTOMERS (العملاء)
    */
   public static async getCustomers(): Promise<Customer[]> {
+    if (!isSupabaseConfigured) return [];
     const companyId = getCurrentCompanyId();
+    if (!companyId) return [];
     try {
       const { data, error } = await supabase
         .from('customers')
@@ -255,7 +267,9 @@ export class SupabaseDataService {
   }
 
   public static async saveCustomer(cust: Customer): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
     try {
       const { error } = await supabase
         .from('customers')
@@ -287,7 +301,9 @@ export class SupabaseDataService {
   }
 
   public static async deleteCustomer(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
     try {
       const { error } = await supabase
         .from('customers')
@@ -306,7 +322,9 @@ export class SupabaseDataService {
    * 4. SALES_MASTER & SALES_DETAILS (الفواتير والمبيعات)
    */
   public static async getInvoices(): Promise<Invoice[]> {
+    if (!isSupabaseConfigured) return [];
     const companyId = getCurrentCompanyId();
+    if (!companyId) return [];
     try {
       const { data: masters, error: masterErr } = await supabase
         .from('sales_master')
@@ -461,7 +479,9 @@ export class SupabaseDataService {
   }
 
   public static async deleteInvoice(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
     try {
       await supabase
         .from('sales_details')
@@ -486,7 +506,9 @@ export class SupabaseDataService {
    * 5. JOURNAL_ENTRIES (قيود اليومية المحاسبية)
    */
   public static async getJournals(): Promise<JournalEntry[]> {
+    if (!isSupabaseConfigured) return [];
     const companyId = getCurrentCompanyId();
+    if (!companyId) return [];
     try {
       const { data, error } = await supabase
         .from('journal_entries')
@@ -524,7 +546,9 @@ export class SupabaseDataService {
   }
 
   public static async saveJournal(j: JournalEntry): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
     try {
       const { error } = await supabase
         .from('journal_entries')
@@ -556,7 +580,9 @@ export class SupabaseDataService {
   }
 
   public static async deleteJournal(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
     const companyId = getCurrentCompanyId();
+    if (!companyId) return false;
     try {
       const { error } = await supabase
         .from('journal_entries')

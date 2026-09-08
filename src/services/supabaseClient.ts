@@ -2,22 +2,69 @@
  * Supabase Client Initializer and Multi-Tenant Auth Manager
  * Direct connection for LOGIX Cloud ERP
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { CompanyProfile, SystemUser } from '../types.js';
 
-export const SUPABASE_URL = (import.meta.env?.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env?.VITE_SUPABASE_URL : '')) as string;
-export const SUPABASE_ANON_KEY = (import.meta.env?.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env?.VITE_SUPABASE_ANON_KEY : '')) as string;
+const getEnvVar = (key: string): string => {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+      return String(import.meta.env[key]).trim();
+    }
+  } catch {}
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return String(process.env[key]).trim();
+    }
+  } catch {}
+  return '';
+};
 
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-    },
-  }
+export const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL');
+export const SUPABASE_ANON_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY');
+
+export const isSupabaseConfigured = Boolean(
+  SUPABASE_URL &&
+  typeof SUPABASE_URL === 'string' &&
+  SUPABASE_URL.startsWith('http') &&
+  !SUPABASE_URL.includes('your-project') &&
+  SUPABASE_ANON_KEY &&
+  typeof SUPABASE_ANON_KEY === 'string' &&
+  SUPABASE_ANON_KEY.length > 10
 );
+
+const createSafeSupabaseClient = (): SupabaseClient => {
+  if (isSupabaseConfigured) {
+    try {
+      return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      });
+    } catch (err) {
+      console.warn('Failed to initialize live Supabase client, falling back to local mode:', err);
+    }
+  }
+
+  // Safe fallback mock client when Supabase URL/Key is not configured
+  const mockFetch = async () => {
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'content-range': '0-0/0' },
+    });
+  };
+
+  return createClient(
+    'https://fallback-supabase.local',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.fallback_token',
+    {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: mockFetch },
+    }
+  );
+};
+
+export const supabase = createSafeSupabaseClient();
 
 export const STORAGE_KEYS = {
   COMPANY_ID: 'supabase_company_id',
@@ -59,6 +106,13 @@ export async function registerCompany(
 
     if (!cleanEmail || !cleanName || !cleanPassword) {
       return { success: false, message: 'يرجى إدخال اسم الشركة، البريد الإلكتروني، وكلمة المرور' };
+    }
+
+    if (!isSupabaseConfigured) {
+      return {
+        success: false,
+        message: 'قاعدة Supabase السحابية غير متصلة حالياً (يرجى تهيئة متغيرات VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY)',
+      };
     }
 
     // Check if company email already exists
@@ -139,6 +193,13 @@ export async function loginCompany(
   try {
     const cleanInput = emailOrUsername.trim().toLowerCase();
     const cleanPassword = passwordPlain.trim();
+
+    if (!isSupabaseConfigured) {
+      return {
+        success: false,
+        message: 'قاعدة Supabase السحابية غير مهيأة بعد، يمكنك الدخول بالحسابات المحلية',
+      };
+    }
 
     // Query Supabase companies table
     const { data: company, error } = await supabase
