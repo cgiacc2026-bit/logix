@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   LogOut,
   User,
+  Compass,
 } from 'lucide-react';
 import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
@@ -20,6 +21,7 @@ interface HeaderProps {
   currency: string;
   setCurrency: (c: string) => void;
   onOpenCompanySetup: () => void;
+  onOpenOnboardingGuide?: () => void;
   onOpenDiagnostics?: () => void;
   onOpenSuperAdminPortal?: () => void;
   onOpenJsonBackup?: () => void;
@@ -32,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   currency,
   setCurrency,
   onOpenCompanySetup,
+  onOpenOnboardingGuide,
   onOpenDiagnostics,
   onOpenSuperAdminPortal,
   onOpenJsonBackup,
@@ -148,6 +151,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
               <span className="hidden sm:inline">تفعيل الشركات</span>
+            </button>
+          )}
+
+          {/* Onboarding Guide Button */}
+          {onOpenOnboardingGuide && (
+            <button
+              onClick={onOpenOnboardingGuide}
+              title="دليل الإرشاد التفاعلي لتهيئة المنشأة خطوة بخطوة"
+              className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold flex items-center gap-1.5 border border-cyan-400/40 shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              <Compass className="w-3.5 h-3.5 text-cyan-200 animate-pulse" />
+              <span className="hidden sm:inline">دليل التهيئة</span>
             </button>
           )}
 

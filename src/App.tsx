@@ -34,6 +34,7 @@ import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
 import { JsonBackupRestoreModal } from './components/JsonBackupRestoreModal.tsx';
+import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
 import {
@@ -88,6 +89,7 @@ export default function App() {
 
   const [isSuperAdminModalOpen, setIsSuperAdminModalOpen] = useState(false);
   const [isJsonBackupModalOpen, setIsJsonBackupModalOpen] = useState(false);
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
 
   const handleLogin = (user: SystemUser, selectedCompany?: CompanyProfile) => {
     setCurrentUser(user);
@@ -101,7 +103,30 @@ export default function App() {
       }
     }
     refreshAllData();
+
+    // Trigger onboarding guide if company hasn't completed or dismissed it
+    const targetCompId = selectedCompany?.id || localStorage.getItem('supabase_company_id') || 'default_tenant';
+    const onboarding = loadOnboardingState(targetCompId);
+    if (!onboarding.isDismissed && onboarding.completedSteps.length < 6) {
+      setTimeout(() => {
+        setIsOnboardingModalOpen(true);
+      }, 500);
+    }
   };
+
+  // Check onboarding on initial authenticated load
+  useEffect(() => {
+    if (isAuthenticated) {
+      const activeId = company?.id || localStorage.getItem('supabase_company_id') || 'default_tenant';
+      const onboarding = loadOnboardingState(activeId);
+      if (!onboarding.isDismissed && onboarding.completedSteps.length < 6) {
+        const timer = setTimeout(() => {
+          setIsOnboardingModalOpen(true);
+        }, 700);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAuthenticated, company?.id]);
 
   const handleLogout = () => {
     setIsAuthenticated(false);
@@ -372,6 +397,7 @@ export default function App() {
           currency={currency}
           setCurrency={handleCurrencyChange}
           onOpenCompanySetup={() => setActiveTab('company')}
+          onOpenOnboardingGuide={() => setIsOnboardingModalOpen(true)}
           onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
           onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
           currentUser={currentUser}
@@ -380,6 +406,21 @@ export default function App() {
 
         {/* Main View Container */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5">
+          {/* Step-by-Step Onboarding Interactive Banner (Prominently on Dashboard) */}
+          {activeTab === 'dashboard' && (
+            <OnboardingBannerWidget
+              company={activeCompany}
+              onOpenFullGuide={() => setIsOnboardingModalOpen(true)}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              accountsCount={accounts.length}
+              customersCount={customers.length}
+              suppliersCount={suppliers.length}
+              inventoryCount={inventory.length}
+              journalsCount={journals.length}
+              invoicesCount={invoices.length}
+            />
+          )}
+
           {activeTab !== 'company' && (
             <AccountingCycleBar
               company={activeCompany}
@@ -614,6 +655,20 @@ export default function App() {
           onDataRestored={() => refreshAllData()}
         />
       )}
+
+      {/* Step-by-Step Onboarding Interactive Guide Modal */}
+      <OnboardingGuideModal
+        isOpen={isOnboardingModalOpen}
+        onClose={() => setIsOnboardingModalOpen(false)}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+        company={activeCompany}
+        accountsCount={accounts.length}
+        customersCount={customers.length}
+        suppliersCount={suppliers.length}
+        inventoryCount={inventory.length}
+        journalsCount={journals.length}
+        invoicesCount={invoices.length}
+      />
     </div>
   );
 }
