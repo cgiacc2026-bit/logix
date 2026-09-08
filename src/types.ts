@@ -414,9 +414,11 @@ export interface CustomerBrandHeader {
   customerId: string;
   customerNameAr: string;
   customerLogoUrl?: string;
+  coBrandLogoUrl?: string;
   headerTitle?: string;
   customHeaderTitle?: string;
   customNotes?: string;
+  notes?: string;
 }
 
 export interface FinancialKPIs {

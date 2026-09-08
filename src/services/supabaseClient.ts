@@ -296,21 +296,29 @@ export async function loginCompany(
       };
 
       const superAdminCompany = {
-        id: '00000000-0000-0000-0000-000000000001',
-        company_name: 'مطحنة الوليد المتحده - الإدارة المركزية',
+        id: 'company-logix-official-001',
+        company_name: 'شركة لوجيكس للأنظمة السحابية ذ.م.م (الرسمية)',
         owner_email: 'cgiacc2026@gmail.com',
         status: 'active',
         profile_data: {
-          id: '00000000-0000-0000-0000-000000000001',
-          nameAr: 'مطحنة الوليد المتحده',
-          nameEn: 'Al-Waleed United Mill & Food Industries',
-          tradeName: 'مطحنة الوليد للبهارات والمواد التموينية',
-          taxNumber: '300012345600003',
-          crNumber: '450912',
-          functionalCurrency: 'SAR',
-          vatRate: 15,
-          city: 'الرياض',
-          country: 'المملكة العربية السعودية',
+          id: 'company-logix-official-001',
+          nameAr: 'شركة لوجيكس للأنظمة السحابية ذ.م.م',
+          nameEn: 'LOGIX Cloud ERP Systems Co. W.L.L',
+          tradeName: 'لوجيكس للحلول السحابية وتخطيط الموارد',
+          legalForm: 'شركة ذات مسؤولية محدودة',
+          taxNumber: '300100200300003',
+          crNumber: '554433',
+          chamberNumber: '99112',
+          functionalCurrency: 'KWD',
+          vatRate: 0,
+          city: 'مدينة الكويت',
+          country: 'دولة الكويت',
+          streetName: 'شارع أحمد الجابر - برج الراية',
+          buildingNo: 'طابق 24',
+          district: 'شرق',
+          phone: '+965 2200 8800',
+          email: 'cgiacc2026@gmail.com',
+          generalManager: 'م. خالد المنصور (المشرف العام)',
         },
       };
 
@@ -499,52 +507,54 @@ function getStoredLocalCompanies(): TenantCompanyRecord[] {
     }
   } catch {}
 
-  // Ensure real company is always available
-  if (!list.some((c) => c.owner_email === 'cgiacc2026@gmail.com' || c.id === '00000000-0000-0000-0000-000000000001')) {
+  // Ensure the 3 canonical companies requested by user are always registered and available
+  // 1. Official LOGIX company (Clean slate for Admin)
+  if (!list.some((c) => c.id === 'company-logix-official-001' || c.owner_email === 'cgiacc2026@gmail.com')) {
     list.unshift({
-      id: '00000000-0000-0000-0000-000000000001',
-      company_name: 'مطحنة الوليد المتحده',
+      id: 'company-logix-official-001',
+      company_name: 'شركة لوجيكس للأنظمة السحابية ذ.م.م (الرسمية)',
       owner_email: 'cgiacc2026@gmail.com',
       status: 'active',
       created_at: '2026-01-01T00:00:00.000Z',
       profile_data: {
-        id: '00000000-0000-0000-0000-000000000001',
-        nameAr: 'مطحنة الوليد المتحده',
-        nameEn: 'Al-Waleed United Mill & Food Industries',
-        tradeName: 'مطحنة الوليد للبهارات والمواد التموينية',
+        id: 'company-logix-official-001',
+        nameAr: 'شركة لوجيكس للأنظمة السحابية ذ.م.م',
+        nameEn: 'LOGIX Cloud ERP Systems Co. W.L.L',
+        tradeName: 'لوجيكس للحلول السحابية وتخطيط الموارد',
         legalForm: 'شركة ذات مسؤولية محدودة',
-        taxNumber: '300012345600003',
-        crNumber: '450912',
-        chamberNumber: '78214',
+        taxNumber: '300100200300003',
+        crNumber: '554433',
+        chamberNumber: '99112',
         functionalCurrency: 'KWD',
         vatRate: 0,
-        city: 'الكويت',
+        city: 'مدينة الكويت',
         country: 'دولة الكويت',
-        streetName: 'شارع الغزالي',
-        buildingNo: 'قسيمة 42',
-        district: 'الشويخ الصناعية',
-        phone: '+965 6571 0278',
+        streetName: 'شارع أحمد الجابر - برج الراية',
+        buildingNo: 'طابق 24',
+        district: 'شرق',
+        phone: '+965 2200 8800',
         email: 'cgiacc2026@gmail.com',
-        generalManager: 'د. خالد بن عبد العزيز السليمان',
-        financialManager: 'أ. محمد بن عبد الله الشمري',
-        chiefAccountant: 'أ. أحمد علي المصطفى',
+        generalManager: 'م. خالد المنصور (المشرف العام)',
+        financialManager: 'أ. عبد العزيز الكندري',
+        chiefAccountant: 'أ. طارق الفهد',
+        headerNotes: 'المنشأة الرسمية لنظام لوجيكس السحابي - بيئة تشغيلية نظيفة خاضعة لإشراف الآدمن',
       },
     });
   }
 
-  // Ensure Demo Company named after the system is always available
-  if (!list.some((c) => c.id === '00000000-0000-0000-0000-000000000002' || c.company_name?.includes('LOGIX'))) {
+  // 2. Demo Company for Clients
+  if (!list.some((c) => c.id === 'company-demo-clients-002' || c.company_name?.includes('ديمو التجريبية للعملاء'))) {
     list.push({
-      id: '00000000-0000-0000-0000-000000000002',
-      company_name: 'شركة لوجيكس العالمية السحابية (LOGIX Demo System)',
+      id: 'company-demo-clients-002',
+      company_name: 'شركة لوجيكس التجريبية للعملاء (LOGIX Demo)',
       owner_email: 'demo@logixerp.cloud',
       status: 'active',
       created_at: '2026-01-01T00:00:00.000Z',
       profile_data: {
-        id: '00000000-0000-0000-0000-000000000002',
-        nameAr: 'شركة لوجيكس العالمية السحابية (LOGIX Demo System)',
-        nameEn: 'LOGIX Cloud ERP Enterprise (Demo)',
-        tradeName: 'نظام لوجيكس السحابي لإدارة وتخطيط الموارد',
+        id: 'company-demo-clients-002',
+        nameAr: 'شركة لوجيكس التجريبية للعملاء (LOGIX Demo)',
+        nameEn: 'LOGIX Demo Company for Prospective Clients',
+        tradeName: 'بيئة تجريبية مخصصة لعروض العملاء',
         legalForm: 'شركة مساهمة مقفلة',
         taxNumber: '310098765400003',
         crNumber: '1010998877',
@@ -561,7 +571,41 @@ function getStoredLocalCompanies(): TenantCompanyRecord[] {
         generalManager: 'م. فهد السالم (مدير عام تجريبي)',
         financialManager: 'أ. ريم المطيري (المدير المالي)',
         chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
-        headerNotes: 'شركة تجريبية لاختبار دورات التصنيع وإدارة سلاسل الإمداد السحابية',
+        headerNotes: 'بيئة تجريبية لاختبار دورات التصنيع وإدارة سلاسل الإمداد وعروض العملاء',
+      },
+    });
+  }
+
+  // 3. Registered Client Company: Al-Waleed Mill (Supports full JSON restore)
+  if (!list.some((c) => c.id === 'company-alwaleed-client-003' || c.company_name?.includes('مطحنة الوليد'))) {
+    list.push({
+      id: 'company-alwaleed-client-003',
+      company_name: 'شركة مطحنة الوليد المتحدة ذ.م.م (شركة عميل مسجل)',
+      owner_email: 'alwaleed.client@logixerp.cloud',
+      status: 'active',
+      created_at: '2026-01-01T00:00:00.000Z',
+      profile_data: {
+        id: 'company-alwaleed-client-003',
+        nameAr: 'شركة مطحنة الوليد المتحدة ذ.م.م',
+        nameEn: 'Al-Waleed United Mill & Food Industries Co. W.L.L',
+        tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
+        legalForm: 'شركة ذات مسؤولية محدودة',
+        taxNumber: '300012345600003',
+        crNumber: '450912',
+        chamberNumber: '78214',
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'الكويت',
+        country: 'دولة الكويت',
+        streetName: 'شارع الغزالي - قسيمة 42',
+        buildingNo: 'مبنى المطحنة الرئيسي',
+        district: 'الشويخ الصناعية',
+        phone: '+965 6571 0278',
+        email: 'alwaleed.client@logixerp.cloud',
+        generalManager: 'د. خالد بن عبد العزيز السليمان',
+        financialManager: 'أ. محمد بن عبد الله الشمري',
+        chiefAccountant: 'أ. أحمد علي المصطفى',
+        headerNotes: 'شركة عميل مسجل • تدعم الاستعادة الكاملة لآخر شغل مدخل عبر ملف JSON',
       },
     });
   }

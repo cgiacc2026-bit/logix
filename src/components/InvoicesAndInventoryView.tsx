@@ -115,6 +115,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     activeSubTab || 'invoices'
   );
   const [inventoryViewMode, setInventoryViewMode] = useState<'catalog' | 'audit_ledger'>('catalog');
+  const [selectedStockAuditItemId, setSelectedStockAuditItemId] = useState<string>('');
 
   React.useEffect(() => {
     if (activeSubTab) {
@@ -1327,6 +1328,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               productionOrders={productionOrders}
               currency={currency}
               onRefreshData={onRefreshAll}
+              initialItemId={selectedStockAuditItemId}
             />
           ) : (
             <div className="bg-white border border-[#E5E1DA] rounded-2xl p-6 shadow-xs space-y-6">
@@ -1472,18 +1474,32 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                       </td>
 
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedStockAuditItemId(item.id);
+                              setInventoryViewMode('audit_ledger');
+                            }}
+                            className="p-1.5 text-amber-700 hover:text-amber-950 hover:bg-amber-100/70 rounded-lg transition-all cursor-pointer"
+                            title="عرض كارت حركة الصنف وضبط الجودة والإطلاق"
+                          >
+                            <Layers className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => openEditItemModal(item)}
-                            className="p-1 text-[#6E6659] hover:text-[#1A1A1A] hover:bg-[#F7F5F0] rounded-lg transition-all"
+                            className="p-1.5 text-[#6E6659] hover:text-[#1A1A1A] hover:bg-[#F7F5F0] rounded-lg transition-all cursor-pointer"
                             title="تعديل الصنف والشد"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => handleDeleteItem(item.id)}
-                            className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
                             title="حذف الصنف"
                           >
                             <Trash2 className="w-4 h-4" />

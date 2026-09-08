@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TenantCompanyRecord, SystemUser, CompanyProfile } from '../types.js';
+import { JsonBackupRestoreModal } from './JsonBackupRestoreModal.js';
 import {
   getAllCompaniesForSuperAdmin,
   updateCompanyStatus,
@@ -55,6 +56,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [selectedBackupCompany, setSelectedBackupCompany] = useState<{ id: string; name: string } | null>(null);
 
   // New Company Modal state
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -224,12 +226,29 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
             </p>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedBackupCompany({
+                  id: 'company-alwaleed-client-003',
+                  name: 'شركة مطحنة الوليد المتحدة ذ.م.م (شركة عميل مسجل)',
+                })
+              }
+              className="px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              title="استعادة آخر شغل مدخل لمطحنة الوليد عبر ملف JSON"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-400" />
+              <span>استعادة شغل مطحنة الوليد (JSON)</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Action Message Alert */}
@@ -460,6 +479,20 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                               <ExternalLink className="w-3 h-3" />
                               <span>دخول</span>
                             </button>
+
+                            <button
+                              onClick={() =>
+                                setSelectedBackupCompany({
+                                  id: comp.id,
+                                  name: comp.company_name,
+                                })
+                              }
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg font-bold text-xs transition-all flex items-center gap-1 cursor-pointer"
+                              title="استعادة آخر شغل مدخل أو تصفير أو تصدير بيانات المنشأة عبر ملف JSON"
+                            >
+                              <Database className="w-3 h-3 text-indigo-600" />
+                              <span>استعادة / نسخ JSON</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -683,6 +716,22 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
             </div>
           </div>
         </div>
+      )}
+      {/* JSON Backup & Restore & Zero-Out Modal */}
+      {selectedBackupCompany && (
+        <JsonBackupRestoreModal
+          isOpen={true}
+          onClose={() => setSelectedBackupCompany(null)}
+          currentCompanyId={selectedBackupCompany.id}
+          currentCompanyName={selectedBackupCompany.name}
+          isSuperAdmin={true}
+          onDataRestored={() => {
+            fetchCompanies();
+            if (onSwitchCompany) {
+              onSwitchCompany(selectedBackupCompany.id);
+            }
+          }}
+        />
       )}
     </div>
   );

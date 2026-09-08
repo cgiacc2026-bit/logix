@@ -1070,6 +1070,65 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                           />
                         </div>
                       </div>
+
+                      {/* Customer Co-Brand Logo Upload */}
+                      <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                          {cbh.coBrandLogoUrl ? (
+                            <img
+                              src={cbh.coBrandLogoUrl}
+                              alt="Customer Logo"
+                              className="w-full h-full object-contain p-1"
+                            />
+                          ) : (
+                            <ImageIcon className="w-5 h-5 text-slate-300" />
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <label className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs">
+                            <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>{cbh.coBrandLogoUrl ? 'تغيير لوجو العميل' : 'رفع لوجو العميل / الجمعية'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (uploadEvt) => {
+                                    if (uploadEvt.target?.result) {
+                                      const updated = [...(formData.customerBrandHeaders || [])];
+                                      updated[idx].coBrandLogoUrl = uploadEvt.target.result as string;
+                                      handleChange('customerBrandHeaders', updated);
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+
+                          {cbh.coBrandLogoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...(formData.customerBrandHeaders || [])];
+                                updated[idx].coBrandLogoUrl = '';
+                                handleChange('customerBrandHeaders', updated);
+                              }}
+                              className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 cursor-pointer"
+                            >
+                              حذف لوجو العميل
+                            </button>
+                          )}
+                        </div>
+
+                        <span className="text-[11px] text-slate-400">
+                          (يظهر لوجو العميل بجوار لوجو المنشأة في الفاتورة والترويسة المشتركة)
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>

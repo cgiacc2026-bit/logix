@@ -97,8 +97,20 @@ export const INITIAL_PRODUCTION_ORDERS: ProductionOrder[] = [
 class LocalDataStore {
   private memoryFallback: Record<string, string> = {};
 
-  private getKey(baseKey: string): string {
-    return isDemoActive() ? `${baseKey}_demo` : baseKey;
+  public getEffectiveCompanyId(): string {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('supabase_company_id');
+      if (saved && saved.trim()) return saved.trim();
+    }
+    return 'company-logix-official-001';
+  }
+
+  public getKey(baseKey: string, specificCompanyId?: string): string {
+    const compId = specificCompanyId || this.getEffectiveCompanyId();
+    if (isDemoActive() || compId === 'company-demo-clients-002') {
+      return `${baseKey}_demo`;
+    }
+    return `${baseKey}_${compId}`;
   }
 
   public getLocal<T>(key: string, defaultVal: T): T {
@@ -127,13 +139,105 @@ class LocalDataStore {
   }
 
   public getCompany(): CompanyProfile {
-    const comp = this.getLocal<CompanyProfile>(STORAGE_KEYS.COMPANY, DEFAULT_COMPANY_PROFILE);
-    if (!comp || !comp.nameAr || comp.nameAr.includes('لوجيكس') || comp.id === 'company-logix-01' || comp.functionalCurrency !== 'KWD') {
-      this.saveCompany(DEFAULT_COMPANY_PROFILE);
-      return DEFAULT_COMPANY_PROFILE;
+    const compId = this.getEffectiveCompanyId();
+    const stored = this.getLocal<CompanyProfile | null>(this.getKey(STORAGE_KEYS.COMPANY), null);
+    if (stored && stored.id === compId && stored.nameAr) {
+      return stored;
     }
-    return comp;
+
+    if (compId === 'company-logix-official-001') {
+      const officialProfile: CompanyProfile = {
+        ...DEFAULT_COMPANY_PROFILE,
+        id: 'company-logix-official-001',
+        nameAr: 'شركة لوجيكس للأنظمة السحابية ذ.م.م (الرسمية)',
+        nameEn: 'LOGIX Cloud ERP Systems Co. W.L.L',
+        tradeName: 'لوجيكس للحلول السحابية وتخطيط الموارد',
+        legalForm: 'شركة ذات مسؤولية محدودة',
+        taxNumber: '300100200300003',
+        crNumber: '554433',
+        chamberNumber: '99112',
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'مدينة الكويت',
+        country: 'دولة الكويت',
+        streetName: 'شارع أحمد الجابر - برج الراية',
+        buildingNo: 'طابق 24',
+        district: 'شرق',
+        phone: '+965 2200 8800',
+        email: 'cgiacc2026@gmail.com',
+        generalManager: 'م. خالد المنصور (المشرف العام)',
+        financialManager: 'أ. عبد العزيز الكندري',
+        chiefAccountant: 'أ. طارق الفهد',
+        headerNotes: 'المنشأة الرسمية لنظام لوجيكس السحابي - بيئة تشغيلية نظيفة خاضعة لإشراف الآدمن',
+        footerNotes: 'نظام لوجيكس السحابي لإدارة وتخطيط موارد المنشآت الصناعية والتجارية',
+      };
+      this.saveCompany(officialProfile);
+      return officialProfile;
+    }
+
+    if (compId === 'company-demo-clients-002') {
+      const demoProfile: CompanyProfile = {
+        ...DEFAULT_COMPANY_PROFILE,
+        id: 'company-demo-clients-002',
+        nameAr: 'شركة لوجيكس التجريبية للعملاء (LOGIX Demo)',
+        nameEn: 'LOGIX Demo Company for Prospective Clients',
+        tradeName: 'بيئة تجريبية مخصصة لعروض العملاء',
+        legalForm: 'شركة مساهمة مقفلة',
+        taxNumber: '310098765400003',
+        crNumber: '1010998877',
+        chamberNumber: '88200',
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'مدينة الكويت',
+        country: 'دولة الكويت',
+        streetName: 'شارع أحمد الجابر - برج الراية',
+        buildingNo: 'طابق 22',
+        district: 'شرق',
+        phone: '+965 2299 1100',
+        email: 'demo@logixerp.cloud',
+        generalManager: 'م. فهد السالم (مدير عام تجريبي)',
+        financialManager: 'أ. ريم المطيري (المدير المالي)',
+        chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
+        headerNotes: 'بيئة تجريبية لاختبار دورات التصنيع وإدارة سلاسل الإمداد وعروض العملاء',
+        footerNotes: 'نسخة تجريبية لعرض إمكانيات نظام لوجيكس السحابي للعملاء المحتملين',
+      };
+      this.saveCompany(demoProfile);
+      return demoProfile;
+    }
+
+    if (compId === 'company-alwaleed-client-003' || compId.includes('alwaleed')) {
+      const alwaleedProfile: CompanyProfile = {
+        ...DEFAULT_COMPANY_PROFILE,
+        id: 'company-alwaleed-client-003',
+        nameAr: 'شركة مطحنة الوليد المتحدة ذ.م.م (شركة عميل مسجل)',
+        nameEn: 'Al-Waleed United Mill & Food Industries Co. W.L.L',
+        tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
+        legalForm: 'شركة ذات مسؤولية محدودة',
+        taxNumber: '300012345600003',
+        crNumber: '450912',
+        chamberNumber: '78214',
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'الكويت',
+        country: 'دولة الكويت',
+        streetName: 'شارع الغزالي - قسيمة 42',
+        buildingNo: 'مبنى المطحنة الرئيسي',
+        district: 'الشويخ الصناعية',
+        phone: '+965 6571 0278',
+        email: 'alwaleed.client@logixerp.cloud',
+        generalManager: 'د. خالد بن عبد العزيز السليمان',
+        financialManager: 'أ. محمد بن عبد الله الشمري',
+        chiefAccountant: 'أ. أحمد علي المصطفى',
+        headerNotes: 'شركة عميل مسجل • تدعم الاستعادة الكاملة لآخر شغل مدخل عبر ملف JSON',
+        footerNotes: 'الدفع خلال 30 يوماً من تاريخ الفاتورة • خاضع للقوانين التجارية بدولة الكويت',
+      };
+      this.saveCompany(alwaleedProfile);
+      return alwaleedProfile;
+    }
+
+    return stored || DEFAULT_COMPANY_PROFILE;
   }
+
   public saveCompany(comp: CompanyProfile): CompanyProfile {
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), comp);
     return comp;
@@ -147,10 +251,12 @@ class LocalDataStore {
   }
 
   public getAccounts(): Account[] {
-    const list = this.getLocal<Account[]>(this.getKey(STORAGE_KEYS.ACCOUNTS), INITIAL_ACCOUNTS);
-    if (!list || list.length === 0) {
-      this.saveAccounts(INITIAL_ACCOUNTS);
-      return INITIAL_ACCOUNTS;
+    const list = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
+    if (!list) {
+      // Default zeroed accounts
+      const zeroedAccounts = INITIAL_ACCOUNTS.map((acc) => ({ ...acc, balance: 0 }));
+      this.saveAccounts(zeroedAccounts);
+      return zeroedAccounts;
     }
     return list;
   }
@@ -159,10 +265,12 @@ class LocalDataStore {
   }
 
   public getCustomers(): Customer[] {
-    const list = this.getLocal<Customer[]>(this.getKey(STORAGE_KEYS.CUSTOMERS), INITIAL_CUSTOMERS);
-    if (!list || list.length === 0) {
-      this.saveCustomers(INITIAL_CUSTOMERS);
-      return INITIAL_CUSTOMERS;
+    const list = this.getLocal<Customer[] | null>(this.getKey(STORAGE_KEYS.CUSTOMERS), null);
+    if (!list) {
+      // Default zeroed customers
+      const zeroedCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
+      this.saveCustomers(zeroedCustomers);
+      return zeroedCustomers;
     }
     return list;
   }
@@ -171,10 +279,12 @@ class LocalDataStore {
   }
 
   public getSuppliers(): Supplier[] {
-    const list = this.getLocal<Supplier[]>(this.getKey(STORAGE_KEYS.SUPPLIERS), INITIAL_SUPPLIERS);
-    if (!list || list.length === 0) {
-      this.saveSuppliers(INITIAL_SUPPLIERS);
-      return INITIAL_SUPPLIERS;
+    const list = this.getLocal<Supplier[] | null>(this.getKey(STORAGE_KEYS.SUPPLIERS), null);
+    if (!list) {
+      // Default zeroed suppliers
+      const zeroedSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
+      this.saveSuppliers(zeroedSuppliers);
+      return zeroedSuppliers;
     }
     return list;
   }
@@ -183,10 +293,10 @@ class LocalDataStore {
   }
 
   public getInventory(): InventoryItem[] {
-    const list = this.getLocal<InventoryItem[]>(this.getKey(STORAGE_KEYS.INVENTORY), INITIAL_INVENTORY);
-    if (!list || list.length === 0) {
-      this.saveInventory(INITIAL_INVENTORY);
-      return INITIAL_INVENTORY;
+    const list = this.getLocal<InventoryItem[] | null>(this.getKey(STORAGE_KEYS.INVENTORY), null);
+    if (!list) {
+      this.saveInventory([]);
+      return [];
     }
     return list;
   }
@@ -195,10 +305,10 @@ class LocalDataStore {
   }
 
   public getJournals(): JournalEntry[] {
-    const list = this.getLocal<JournalEntry[]>(this.getKey(STORAGE_KEYS.JOURNALS), INITIAL_JOURNALS);
-    if (!list || list.length === 0) {
-      this.saveJournals(INITIAL_JOURNALS);
-      return INITIAL_JOURNALS;
+    const list = this.getLocal<JournalEntry[] | null>(this.getKey(STORAGE_KEYS.JOURNALS), null);
+    if (!list) {
+      this.saveJournals([]);
+      return [];
     }
     return list;
   }
@@ -207,10 +317,10 @@ class LocalDataStore {
   }
 
   public getInvoices(): Invoice[] {
-    const list = this.getLocal<Invoice[]>(this.getKey(STORAGE_KEYS.INVOICES), INITIAL_INVOICES);
-    if (!list || list.length === 0) {
-      this.saveInvoices(INITIAL_INVOICES);
-      return INITIAL_INVOICES;
+    const list = this.getLocal<Invoice[] | null>(this.getKey(STORAGE_KEYS.INVOICES), null);
+    if (!list) {
+      this.saveInvoices([]);
+      return [];
     }
     return list;
   }
@@ -219,7 +329,12 @@ class LocalDataStore {
   }
 
   public getVouchers(): PaymentVoucher[] {
-    return this.getLocal<PaymentVoucher[]>(this.getKey(STORAGE_KEYS.VOUCHERS), []);
+    const list = this.getLocal<PaymentVoucher[] | null>(this.getKey(STORAGE_KEYS.VOUCHERS), null);
+    if (!list) {
+      this.saveVouchers([]);
+      return [];
+    }
+    return list;
   }
   public saveVouchers(v: PaymentVoucher[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), v);
@@ -233,10 +348,10 @@ class LocalDataStore {
   }
 
   public getProductionOrders(): ProductionOrder[] {
-    const list = this.getLocal<ProductionOrder[]>(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), INITIAL_PRODUCTION_ORDERS);
-    if (!list || list.length === 0) {
-      this.saveProductionOrders(INITIAL_PRODUCTION_ORDERS);
-      return INITIAL_PRODUCTION_ORDERS;
+    const list = this.getLocal<ProductionOrder[] | null>(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), null);
+    if (!list) {
+      this.saveProductionOrders([]);
+      return [];
     }
     return list;
   }
@@ -245,17 +360,21 @@ class LocalDataStore {
   }
 
   public resetToDefaults(): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), DEFAULT_COMPANY_PROFILE);
+    const cleanAccounts = INITIAL_ACCOUNTS.map((a) => ({ ...a, balance: 0 }));
+    const cleanCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
+    const cleanSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
+
+    this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), this.getCompany());
     this.setLocal(this.getKey(STORAGE_KEYS.USERS), INITIAL_USERS);
-    this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), INITIAL_ACCOUNTS);
-    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), INITIAL_CUSTOMERS);
-    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), INITIAL_SUPPLIERS);
-    this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), INITIAL_INVENTORY);
-    this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), INITIAL_JOURNALS);
-    this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), INITIAL_INVOICES);
+    this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), cleanAccounts);
+    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), cleanCustomers);
+    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), cleanSuppliers);
+    this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), []);
+    this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), []);
+    this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), []);
     this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), []);
     this.setLocal(this.getKey(STORAGE_KEYS.UNITS), INITIAL_UNITS);
-    this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), INITIAL_PRODUCTION_ORDERS);
+    this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), []);
   }
 }
 
@@ -285,10 +404,13 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getCompany notice:', e);
     }
-    const fromApi = await safeApiFetch<CompanyProfile>('/api/company');
-    if (fromApi) {
-      localDataStore.saveCompany(fromApi);
-      return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<CompanyProfile>('/api/company');
+      if (fromApi) {
+        localDataStore.saveCompany(fromApi);
+        return fromApi;
+      }
     }
     return localDataStore.getCompany();
   }
@@ -311,8 +433,11 @@ export class DataService {
 
   // KPIs
   public static async getKPIs(): Promise<FinancialKPIs> {
-    const fromApi = await safeApiFetch<FinancialKPIs>('/api/kpis');
-    if (fromApi) return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<FinancialKPIs>('/api/kpis');
+      if (fromApi) return fromApi;
+    }
 
     const accounts = localDataStore.getAccounts();
     const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
@@ -439,9 +564,14 @@ export class DataService {
 
   public static async getAccounts(): Promise<Account[]> {
     let accounts: Account[] = [];
-    const fromApi = await safeApiFetch<Account[]>('/api/accounts');
-    if (fromApi && Array.isArray(fromApi) && fromApi.length > 0) {
-      accounts = fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<Account[]>('/api/accounts');
+      if (fromApi && Array.isArray(fromApi) && fromApi.length > 0) {
+        accounts = fromApi;
+      } else {
+        accounts = localDataStore.getAccounts();
+      }
     } else {
       accounts = localDataStore.getAccounts();
     }
@@ -512,10 +642,13 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getJournals notice:', e);
     }
-    const fromApi = await safeApiFetch<JournalEntry[]>('/api/journals');
-    if (fromApi) {
-      localDataStore.saveJournals(fromApi);
-      return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<JournalEntry[]>('/api/journals');
+      if (fromApi) {
+        localDataStore.saveJournals(fromApi);
+        return fromApi;
+      }
     }
     return localDataStore.getJournals();
   }
@@ -697,10 +830,13 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getInvoices notice:', e);
     }
-    const fromApi = await safeApiFetch<Invoice[]>('/api/invoices');
-    if (fromApi) {
-      localDataStore.saveInvoices(fromApi);
-      return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<Invoice[]>('/api/invoices');
+      if (fromApi) {
+        localDataStore.saveInvoices(fromApi);
+        return fromApi;
+      }
     }
     return localDataStore.getInvoices();
   }
@@ -1167,10 +1303,13 @@ export class DataService {
 
   // Vouchers
   public static async getVouchers(): Promise<PaymentVoucher[]> {
-    const fromApi = await safeApiFetch<PaymentVoucher[]>('/api/vouchers');
-    if (fromApi) {
-      localDataStore.saveVouchers(fromApi);
-      return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<PaymentVoucher[]>('/api/vouchers');
+      if (fromApi) {
+        localDataStore.saveVouchers(fromApi);
+        return fromApi;
+      }
     }
     return localDataStore.getVouchers();
   }
@@ -1366,10 +1505,13 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getCustomers notice:', e);
     }
-    const fromApi = await safeApiFetch<Customer[]>('/api/customers');
-    if (fromApi) {
-      localDataStore.saveCustomers(fromApi);
-      return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<Customer[]>('/api/customers');
+      if (fromApi) {
+        localDataStore.saveCustomers(fromApi);
+        return fromApi;
+      }
     }
     return localDataStore.getCustomers();
   }
@@ -1461,10 +1603,13 @@ export class DataService {
   }
 
   public static async getSuppliers(): Promise<Supplier[]> {
-    const fromApi = await safeApiFetch<Supplier[]>('/api/suppliers');
-    if (fromApi) {
-      localDataStore.saveSuppliers(fromApi);
-      return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<Supplier[]>('/api/suppliers');
+      if (fromApi) {
+        localDataStore.saveSuppliers(fromApi);
+        return fromApi;
+      }
     }
     return localDataStore.getSuppliers();
   }
@@ -1551,10 +1696,13 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getInventory notice:', e);
     }
-    const fromApi = await safeApiFetch<InventoryItem[]>('/api/inventory');
-    if (fromApi) {
-      localDataStore.saveInventory(fromApi);
-      return fromApi;
+    const currentCompId = localDataStore.getEffectiveCompanyId();
+    if (currentCompId === 'company-kw-01') {
+      const fromApi = await safeApiFetch<InventoryItem[]>('/api/inventory');
+      if (fromApi) {
+        localDataStore.saveInventory(fromApi);
+        return fromApi;
+      }
     }
     return localDataStore.getInventory();
   }

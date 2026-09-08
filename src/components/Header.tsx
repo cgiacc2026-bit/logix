@@ -22,6 +22,7 @@ interface HeaderProps {
   onOpenCompanySetup: () => void;
   onOpenDiagnostics?: () => void;
   onOpenSuperAdminPortal?: () => void;
+  onOpenJsonBackup?: () => void;
   currentUser?: SystemUser | null;
   onLogout?: () => void;
 }
@@ -33,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCompanySetup,
   onOpenDiagnostics,
   onOpenSuperAdminPortal,
+  onOpenJsonBackup,
   currentUser,
   onLogout,
 }) => {
@@ -126,15 +128,15 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="sm:hidden">Excel</span>
           </button>
 
-          {/* Quick Backup Export to JSON */}
+          {/* Quick Backup Export / Restore via JSON */}
           <button
-            onClick={handleQuickBackup}
+            onClick={onOpenJsonBackup || handleQuickBackup}
             disabled={isExporting}
-            title="تحميل وتصدير نسخة احتياطية كاملة من قاعدة البيانات بصيغة JSON"
-            className="hidden md:flex px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold items-center gap-1 border border-slate-600 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
+            title="إدارة واستعادة وتصدير وتصفير بيانات المنشأة بصيغة JSON"
+            className="hidden md:flex px-2 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-200 text-xs font-bold items-center gap-1 border border-indigo-700/60 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
           >
             <Download className={`w-3 h-3 ${isExporting ? 'animate-bounce' : ''}`} />
-            <span>JSON</span>
+            <span>نسخ/استعادة JSON</span>
           </button>
 
           {/* Super Admin Company Activation Portal */}

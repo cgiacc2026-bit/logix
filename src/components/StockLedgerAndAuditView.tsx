@@ -42,6 +42,8 @@ interface StockLedgerAndAuditViewProps {
   productionOrders: ProductionOrder[];
   currency: string;
   onRefreshData?: () => void;
+  initialItemId?: string;
+  initialSubTab?: 'audit' | 'ledger' | 'item_card' | 'qc_release' | 'reconcile';
 }
 
 export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = ({
@@ -50,8 +52,12 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   productionOrders,
   currency,
   onRefreshData,
+  initialItemId,
+  initialSubTab,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'audit' | 'ledger' | 'item_card' | 'qc_release' | 'reconcile'>('audit');
+  const [activeSubTab, setActiveSubTab] = useState<'audit' | 'ledger' | 'item_card' | 'qc_release' | 'reconcile'>(
+    initialSubTab || (initialItemId ? 'item_card' : 'audit')
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'LOW' | 'OUT' | 'SAFE' | 'EXCESS'>('ALL');
@@ -59,8 +65,24 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   const [inspectedItem, setInspectedItem] = useState<InventoryItem | null>(null);
 
   // Item Card & QC States
-  const [selectedCardItemId, setSelectedCardItemId] = useState<string>(inventory[0]?.id || '');
-  const [selectedQcItemId, setSelectedQcItemId] = useState<string>(inventory[0]?.id || '');
+  const [selectedCardItemId, setSelectedCardItemId] = useState<string>(initialItemId || inventory[0]?.id || '');
+  const [selectedQcItemId, setSelectedQcItemId] = useState<string>(initialItemId || inventory[0]?.id || '');
+
+  React.useEffect(() => {
+    if (initialItemId) {
+      setSelectedCardItemId(initialItemId);
+      setSelectedQcItemId(initialItemId);
+      if (!initialSubTab) {
+        setActiveSubTab('item_card');
+      }
+    }
+  }, [initialItemId]);
+
+  React.useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
   const [qcReleaseStatus, setQcReleaseStatus] = useState<'RELEASED' | 'QUARANTINE' | 'REJECTED'>('RELEASED');
   const [qcInstructions, setQcInstructions] = useState<string>(
     'يخزن في مكان جاف وبارد تحت 25 مئوية، بعيداً عن الرطوبة وأشعة الشمس، الصلاحية سنتان من تاريخ الإنتاج، معتمد للتوريد لسلاسل الجمعيات التعاونية.'

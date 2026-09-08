@@ -33,6 +33,7 @@ import { OperationalReportsView } from './components/OperationalReportsView.tsx'
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
+import { JsonBackupRestoreModal } from './components/JsonBackupRestoreModal.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
 import {
@@ -86,6 +87,7 @@ export default function App() {
   });
 
   const [isSuperAdminModalOpen, setIsSuperAdminModalOpen] = useState(false);
+  const [isJsonBackupModalOpen, setIsJsonBackupModalOpen] = useState(false);
 
   const handleLogin = (user: SystemUser, selectedCompany?: CompanyProfile) => {
     setCurrentUser(user);
@@ -371,6 +373,7 @@ export default function App() {
           setCurrency={handleCurrencyChange}
           onOpenCompanySetup={() => setActiveTab('company')}
           onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
+          onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
           currentUser={currentUser}
           onLogout={handleLogout}
         />
@@ -599,6 +602,18 @@ export default function App() {
         currentUser={currentUser}
         onSwitchCompany={() => refreshAllData()}
       />
+
+      {/* Direct JSON Backup & Restore Modal */}
+      {isJsonBackupModalOpen && (
+        <JsonBackupRestoreModal
+          isOpen={true}
+          onClose={() => setIsJsonBackupModalOpen(false)}
+          currentCompanyId={activeCompany.id}
+          currentCompanyName={activeCompany.nameAr}
+          isSuperAdmin={currentUser?.role === 'ADMIN'}
+          onDataRestored={() => refreshAllData()}
+        />
+      )}
     </div>
   );
 }

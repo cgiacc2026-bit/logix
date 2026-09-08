@@ -291,16 +291,32 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
               <h1 className="text-2xl font-black text-black tracking-tight">{company.nameAr || 'مطحنة الوليد المتحدة'}</h1>
               <p className="text-xs text-neutral-600 font-bold uppercase tracking-wider">{company.nameEn || 'Al-Waleed United Mill'}</p>
               
-              {/* Customer specific co-branded header if applicable */}
+              {/* Customer specific co-branded header and customer logo if applicable */}
               {(() => {
                 const matchedHeader = company.customerBrandHeaders?.find(
                   (h) => (invoice.entityId && h.customerId === invoice.entityId) || 
                          (invoice.entityNameAr && h.customerNameAr?.trim() === invoice.entityNameAr?.trim())
                 );
-                if (matchedHeader?.customHeaderTitle) {
+                if (matchedHeader) {
                   return (
-                    <div className="mt-1 px-2 py-0.5 rounded-sm bg-neutral-100 border border-neutral-300 text-[10px] font-bold text-neutral-900">
-                      🏷️ {matchedHeader.customHeaderTitle}
+                    <div className="mt-1.5 p-1.5 rounded bg-neutral-50 border border-neutral-300 text-[10px] text-neutral-900 flex items-center gap-2">
+                      {matchedHeader.coBrandLogoUrl && (
+                        <img
+                          src={matchedHeader.coBrandLogoUrl}
+                          alt="Customer Co-Brand Logo"
+                          className="w-12 h-12 object-contain rounded border border-neutral-300 bg-white p-0.5 shrink-0"
+                        />
+                      )}
+                      <div>
+                        {matchedHeader.customHeaderTitle && (
+                          <div className="font-bold text-neutral-900">
+                            🏷️ {matchedHeader.customHeaderTitle}
+                          </div>
+                        )}
+                        <span className="text-[9px] text-neutral-500 font-semibold block">
+                          اعتماد التوريد والشراكة: {matchedHeader.customerNameAr}
+                        </span>
+                      </div>
                     </div>
                   );
                 }
