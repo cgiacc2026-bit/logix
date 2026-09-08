@@ -315,10 +315,13 @@ class LocalDataStore {
   public getCustomers(): Customer[] {
     const list = this.getLocal<Customer[] | null>(this.getKey(STORAGE_KEYS.CUSTOMERS), null);
     if (!list) {
-      // Default zeroed customers
-      const zeroedCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
-      this.saveCustomers(zeroedCustomers);
-      return zeroedCustomers;
+      if (isDemoActive()) {
+        const zeroedCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
+        this.saveCustomers(zeroedCustomers);
+        return zeroedCustomers;
+      }
+      this.saveCustomers([]);
+      return [];
     }
     return list;
   }
@@ -329,10 +332,13 @@ class LocalDataStore {
   public getSuppliers(): Supplier[] {
     const list = this.getLocal<Supplier[] | null>(this.getKey(STORAGE_KEYS.SUPPLIERS), null);
     if (!list) {
-      // Default zeroed suppliers
-      const zeroedSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
-      this.saveSuppliers(zeroedSuppliers);
-      return zeroedSuppliers;
+      if (isDemoActive()) {
+        const zeroedSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
+        this.saveSuppliers(zeroedSuppliers);
+        return zeroedSuppliers;
+      }
+      this.saveSuppliers([]);
+      return [];
     }
     return list;
   }
@@ -409,14 +415,11 @@ class LocalDataStore {
 
   public resetToDefaults(): void {
     const cleanAccounts = INITIAL_ACCOUNTS.map((a) => ({ ...a, balance: 0 }));
-    const cleanCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
-    const cleanSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
-
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), this.getCompany());
     this.setLocal(this.getKey(STORAGE_KEYS.USERS), INITIAL_USERS);
     this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), cleanAccounts);
-    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), cleanCustomers);
-    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), cleanSuppliers);
+    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), []);
+    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), []);
     this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), []);
     this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), []);
     this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), []);
@@ -452,14 +455,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getCompany notice:', e);
     }
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<CompanyProfile>('/api/company');
-      if (fromApi) {
-        localDataStore.saveCompany(fromApi);
-        return fromApi;
-      }
-    }
     return localDataStore.getCompany();
   }
 
@@ -470,7 +465,7 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase saveCompany notice:', e);
     }
-    syncToFirestore('erp_company', comp.id || 'company-kw-01', comp);
+    syncToFirestore('erp_company', comp.id || localDataStore.getEffectiveCompanyId() || 'company_profile', comp);
     await safeApiFetch<CompanyProfile>('/api/company', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -481,15 +476,12 @@ export class DataService {
 
   // KPIs
   public static async getKPIs(): Promise<FinancialKPIs> {
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<FinancialKPIs>('/api/kpis');
-      if (fromApi) return fromApi;
-    }
-
     const accounts = localDataStore.getAccounts();
     const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
     const invoices = localDataStore.getInvoices();
+    const inventory = localDataStore.getInventory();
+
+    const accountsWithBalances = this.calculateDynamicAccountBalances(accounts, journals);
 
     let totalRevenue = 0;
     let totalExpenses = 0;
@@ -498,49 +490,46 @@ export class DataService {
     let recBalance = 0;
     let payBalance = 0;
     let invBalance = 0;
-
-    const balMap = new Map<string, number>();
-    accounts.forEach((a) => balMap.set(a.id, Number(a.balance) || 0));
-
-    journals.forEach((j) => {
-      j.lines.forEach((l) => {
-        const acc = accounts.find((a) => a.id === l.accountId || a.code === l.accountCode);
-        if (acc) {
-          const cur = balMap.get(acc.id) || 0;
-          const d = Number(l.debit) || 0;
-          const c = Number(l.credit) || 0;
-          balMap.set(acc.id, acc.normalBalance === 'DEBIT' ? cur + (d - c) : cur + (c - d));
-        }
-      });
-    });
-
     let totalAssets = 0;
     let totalLiabilities = 0;
     let totalEquity = 0;
 
-    accounts.forEach((acc) => {
-      const b = balMap.get(acc.id) || 0;
+    accountsWithBalances.forEach((acc) => {
+      const hasChildren = accountsWithBalances.some((child) => child.parentId === acc.id);
+      const isLeaf = !hasChildren;
+      const b = Number(acc.balance) || 0;
       const code = String(acc.code || '');
       const cat = String(acc.category || '');
 
-      const isAsset = cat === 'ASSET' || code.startsWith('1');
-      const isLiability = cat === 'LIABILITY' || code.startsWith('2');
-      const isEquity = cat === 'EQUITY' || code.startsWith('3');
-      const isRevenue = cat === 'REVENUE' || code.startsWith('4');
-      const isExpense = cat === 'EXPENSE' || code.startsWith('5');
-
-      if (isAsset) totalAssets += b;
-      if (isLiability) totalLiabilities += b;
-      if (isEquity) totalEquity += b;
+      if (isLeaf) {
+        if (cat === 'ASSET' || code.startsWith('1')) totalAssets += b;
+        if (cat === 'LIABILITY' || code.startsWith('2')) totalLiabilities += b;
+        if (cat === 'EQUITY' || code.startsWith('3')) totalEquity += b;
+        if (cat === 'REVENUE' || code.startsWith('4')) totalRevenue += b;
+        if (cat === 'EXPENSE' || code.startsWith('5')) totalExpenses += b;
+      }
 
       if (code === '1111') bankBalance += b;
       if (code === '1112') cashBalance += b;
-      if (code === '1120') recBalance += b;
-      if (code === '2110') payBalance += b;
-      if (code === '1130') invBalance += b;
-      if (isRevenue) totalRevenue += b;
-      if (isExpense) totalExpenses += b;
+      if (code === '1120' || (isLeaf && (cat === 'ASSET' || code.startsWith('1')) && (code.startsWith('112') || acc.nameAr.includes('عملاء')))) {
+        recBalance += b;
+      }
+      if (code === '2110' || (isLeaf && (cat === 'LIABILITY' || code.startsWith('2')) && (code.startsWith('211') || acc.nameAr.includes('موردين')))) {
+        payBalance += b;
+      }
+      if (code === '1130' || (isLeaf && (cat === 'ASSET' || code.startsWith('1')) && code.startsWith('113'))) {
+        invBalance += b;
+      }
     });
+
+    // If inventory accounts are 0, also check physical stock valuation
+    const stockValuation = inventory.reduce(
+      (sum, item) => sum + (item.quantityOnHand * (item.purchasePrice || item.salePrice || 0)),
+      0
+    );
+    if (invBalance === 0 && stockValuation > 0) {
+      invBalance = stockValuation;
+    }
 
     const unpaidCount = invoices.filter((i) => i.dueAmount > 0 && i.status !== 'CANCELLED').length;
     const netProfit = totalRevenue - totalExpenses;
@@ -628,18 +617,7 @@ export class DataService {
   }
 
   public static async getAccounts(): Promise<Account[]> {
-    let accounts: Account[] = [];
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<Account[]>('/api/accounts');
-      if (fromApi && Array.isArray(fromApi) && fromApi.length > 0) {
-        accounts = fromApi;
-      } else {
-        accounts = localDataStore.getAccounts();
-      }
-    } else {
-      accounts = localDataStore.getAccounts();
-    }
+    const accounts = localDataStore.getAccounts();
     const journals = localDataStore.getJournals();
     const withBalances = this.calculateDynamicAccountBalances(accounts, journals);
     localDataStore.saveAccounts(withBalances);
@@ -706,14 +684,6 @@ export class DataService {
       }
     } catch (e) {
       console.warn('Supabase getJournals notice:', e);
-    }
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<JournalEntry[]>('/api/journals');
-      if (fromApi) {
-        localDataStore.saveJournals(fromApi);
-        return fromApi;
-      }
     }
     return localDataStore.getJournals();
   }
@@ -894,14 +864,6 @@ export class DataService {
       }
     } catch (e) {
       console.warn('Supabase getInvoices notice:', e);
-    }
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<Invoice[]>('/api/invoices');
-      if (fromApi) {
-        localDataStore.saveInvoices(fromApi);
-        return fromApi;
-      }
     }
     return localDataStore.getInvoices();
   }
@@ -1368,14 +1330,6 @@ export class DataService {
 
   // Vouchers
   public static async getVouchers(): Promise<PaymentVoucher[]> {
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<PaymentVoucher[]>('/api/vouchers');
-      if (fromApi) {
-        localDataStore.saveVouchers(fromApi);
-        return fromApi;
-      }
-    }
     return localDataStore.getVouchers();
   }
 
@@ -1570,14 +1524,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getCustomers notice:', e);
     }
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<Customer[]>('/api/customers');
-      if (fromApi) {
-        localDataStore.saveCustomers(fromApi);
-        return fromApi;
-      }
-    }
     return localDataStore.getCustomers();
   }
 
@@ -1668,14 +1614,6 @@ export class DataService {
   }
 
   public static async getSuppliers(): Promise<Supplier[]> {
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<Supplier[]>('/api/suppliers');
-      if (fromApi) {
-        localDataStore.saveSuppliers(fromApi);
-        return fromApi;
-      }
-    }
     return localDataStore.getSuppliers();
   }
 
@@ -1760,14 +1698,6 @@ export class DataService {
       }
     } catch (e) {
       console.warn('Supabase getInventory notice:', e);
-    }
-    const currentCompId = localDataStore.getEffectiveCompanyId();
-    if (currentCompId === 'company-kw-01') {
-      const fromApi = await safeApiFetch<InventoryItem[]>('/api/inventory');
-      if (fromApi) {
-        localDataStore.saveInventory(fromApi);
-        return fromApi;
-      }
     }
     return localDataStore.getInventory();
   }
@@ -2058,9 +1988,6 @@ export class DataService {
 
   // Financial Reports
   public static async getTrialBalance(asOfDate: string): Promise<TrialBalanceReport> {
-    const fromApi = await safeApiFetch<TrialBalanceReport>(`/api/trial-balance?asOfDate=${asOfDate}`);
-    if (fromApi) return fromApi;
-
     const accounts = localDataStore.getAccounts();
     const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= asOfDate);
 
@@ -2129,11 +2056,6 @@ export class DataService {
   }
 
   public static async getLedger(accountId: string, startDate?: string, endDate?: string): Promise<GeneralLedgerReport | null> {
-    const fromApi = await safeApiFetch<GeneralLedgerReport>(
-      `/api/ledger/${accountId}?startDate=${startDate || ''}&endDate=${endDate || ''}`
-    );
-    if (fromApi) return fromApi;
-
     const accounts = localDataStore.getAccounts();
     const account = accounts.find((a) => a.id === accountId || a.code === accountId);
     if (!account) return null;
@@ -2185,134 +2107,235 @@ export class DataService {
   }
 
   public static async getPnL(startDate: string, endDate: string): Promise<IncomeStatementReport> {
-    const fromApi = await safeApiFetch<IncomeStatementReport>(
-      `/api/financial-statements/pnl?startDate=${startDate}&endDate=${endDate}`
-    );
-    if (fromApi) return fromApi;
+    const start = startDate || '2026-01-01';
+    const end = endDate || '2099-12-31';
+    const accounts = localDataStore.getAccounts();
+    const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
 
-    const kpis = await this.getKPIs();
+    // Aggregate movements in date range
+    const rangeMovementMap = new Map<string, { debit: number; credit: number }>();
+    accounts.forEach((acc) => rangeMovementMap.set(acc.id, { debit: 0, credit: 0 }));
+
+    for (const j of postedJournals) {
+      if (j.date >= start && j.date <= end) {
+        for (const line of j.lines || []) {
+          const accId = line.accountId || accounts.find((a) => a.code === line.accountCode)?.id;
+          if (accId) {
+            const entry = rangeMovementMap.get(accId);
+            if (entry) {
+              entry.debit += Number(line.debit) || 0;
+              entry.credit += Number(line.credit) || 0;
+            }
+          }
+        }
+      }
+    }
+
+    const revenues: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+    const cogs: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+    const expenses: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+
+    let totalRevenue = 0;
+    let totalCogs = 0;
+    let totalExpenses = 0;
+
+    accounts.forEach((acc) => {
+      // Leaf accounts only
+      const hasChildren = accounts.some((child) => child.parentId === acc.id);
+      if (hasChildren && acc.level < 4) return;
+
+      const isRev = acc.category === 'REVENUE' || acc.code.startsWith('4');
+      const isExp = acc.category === 'EXPENSE' || acc.code.startsWith('5');
+      if (!isRev && !isExp) return;
+
+      const { debit: sumDebit, credit: sumCredit } = rangeMovementMap.get(acc.id) || { debit: 0, credit: 0 };
+
+      if (isRev) {
+        const netAmount = sumCredit - sumDebit;
+        if (netAmount !== 0) {
+          revenues.push({
+            accountCode: acc.code,
+            accountNameAr: acc.nameAr,
+            amount: netAmount,
+          });
+          totalRevenue += netAmount;
+        }
+      } else if (isExp) {
+        const netAmount = sumDebit - sumCredit;
+        if (netAmount !== 0) {
+          if (acc.code.startsWith('51') || (acc.category as string) === 'COGS') {
+            cogs.push({
+              accountCode: acc.code,
+              accountNameAr: acc.nameAr,
+              amount: netAmount,
+            });
+            totalCogs += netAmount;
+          } else {
+            expenses.push({
+              accountCode: acc.code,
+              accountNameAr: acc.nameAr,
+              amount: netAmount,
+            });
+            totalExpenses += netAmount;
+          }
+        }
+      }
+    });
+
+    const grossProfit = totalRevenue - totalCogs;
+    const netIncome = grossProfit - totalExpenses;
+
     return {
-      startDate,
-      endDate,
-      revenues: [
-        {
-          accountCode: '4100',
-          accountNameAr: 'إيرادات مبيعات المطحنة والبهارات',
-          amount: kpis.totalRevenue || 12450.0,
-        },
-      ],
-      totalRevenue: kpis.totalRevenue || 12450.0,
-      cogs: [
-        {
-          accountCode: '5100',
-          accountNameAr: 'تكلفة البضاعة المباعة والمواد الخام',
-          amount: (kpis.totalRevenue || 12450.0) * 0.55,
-        },
-      ],
-      totalCogs: (kpis.totalRevenue || 12450.0) * 0.55,
-      grossProfit: (kpis.totalRevenue || 12450.0) * 0.45,
-      expenses: [
-        {
-          accountCode: '5200',
-          accountNameAr: 'المصروفات العمومية والإدارية والتشغيلية',
-          amount: kpis.totalExpenses || 2800.0,
-        },
-      ],
-      totalExpenses: kpis.totalExpenses || 2800.0,
-      netIncome: kpis.netProfit || 4200.0,
+      startDate: start,
+      endDate: end,
+      revenues,
+      totalRevenue,
+      cogs,
+      totalCogs,
+      grossProfit,
+      expenses,
+      totalExpenses,
+      netIncome,
     };
   }
 
   public static async getBalanceSheet(asOfDate: string): Promise<BalanceSheetReport> {
-    const fromApi = await safeApiFetch<BalanceSheetReport>(
-      `/api/financial-statements/balance-sheet?asOfDate=${asOfDate}`
-    );
-    if (fromApi) return fromApi;
+    const cutoff = asOfDate || new Date().toISOString().split('T')[0];
+    const incomeStatement = await this.getPnL('2000-01-01', cutoff);
+    const periodNetIncome = incomeStatement.netIncome;
 
-    const kpis = await this.getKPIs();
+    const accounts = localDataStore.getAccounts();
+    const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= cutoff);
+    const withBalances = this.calculateDynamicAccountBalances(accounts, postedJournals);
+
+    const currentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+    const nonCurrentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+    const currentLiabilitiesItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+    const nonCurrentLiabilitiesItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+    const equityItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+
+    let totalCurrentAssets = 0;
+    let totalNonCurrentAssets = 0;
+    let totalCurrentLiabilities = 0;
+    let totalNonCurrentLiabilities = 0;
+    let totalEquityBase = 0;
+
+    withBalances.forEach((acc) => {
+      const hasChildren = withBalances.some((child) => child.parentId === acc.id);
+      if (hasChildren && acc.level < 4) return;
+
+      const val = acc.balance || 0;
+      if (val === 0) return;
+
+      if (acc.category === 'ASSET' || acc.code.startsWith('1')) {
+        if (acc.code.startsWith('11')) {
+          currentAssetsItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
+          totalCurrentAssets += val;
+        } else {
+          nonCurrentAssetsItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
+          totalNonCurrentAssets += val;
+        }
+      } else if (acc.category === 'LIABILITY' || acc.code.startsWith('2')) {
+        if (acc.code.startsWith('21')) {
+          currentLiabilitiesItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
+          totalCurrentLiabilities += val;
+        } else {
+          nonCurrentLiabilitiesItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
+          totalNonCurrentLiabilities += val;
+        }
+      } else if (acc.category === 'EQUITY' || acc.code.startsWith('3')) {
+        equityItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
+        totalEquityBase += val;
+      }
+    });
+
+    const totalAssets = totalCurrentAssets + totalNonCurrentAssets;
+    const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities;
+    const totalEquity = totalEquityBase + periodNetIncome;
+    const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+
     return {
-      asOfDate,
+      asOfDate: cutoff,
       currentAssets: {
         categoryNameAr: 'الأصول المتداولة',
-        items: [
-          { accountCode: '1111', accountNameAr: 'النقدية بالبنوك والصندوق', amount: kpis.cashAndBankBalance },
-          { accountCode: '1120', accountNameAr: 'العملاء والمدينون', amount: kpis.accountsReceivableTotal },
-          { accountCode: '1130', accountNameAr: 'المخزون السلعي', amount: kpis.inventoryTotalValue },
-        ],
-        totalAmount: kpis.cashAndBankBalance + kpis.accountsReceivableTotal + kpis.inventoryTotalValue,
+        items: currentAssetsItems,
+        totalAmount: totalCurrentAssets,
       },
       nonCurrentAssets: {
         categoryNameAr: 'الأصول غير المتداولة (الثابتة)',
-        items: [
-          { accountCode: '1200', accountNameAr: 'الأصول الثابتة وآلات الطحن والتعبئة', amount: 45000 },
-        ],
-        totalAmount: 45000,
+        items: nonCurrentAssetsItems,
+        totalAmount: totalNonCurrentAssets,
       },
-      totalAssets: kpis.totalAssets,
+      totalAssets,
       currentLiabilities: {
         categoryNameAr: 'الالتزامات المتداولة',
-        items: [
-          { accountCode: '2110', accountNameAr: 'الموردون والدائنون', amount: kpis.accountsPayableTotal },
-        ],
-        totalAmount: kpis.accountsPayableTotal,
+        items: currentLiabilitiesItems,
+        totalAmount: totalCurrentLiabilities,
       },
       nonCurrentLiabilities: {
         categoryNameAr: 'الالتزامات غير المتداولة',
-        items: [],
-        totalAmount: 0,
+        items: nonCurrentLiabilitiesItems,
+        totalAmount: totalNonCurrentLiabilities,
       },
-      totalLiabilities: kpis.totalLiabilities,
+      totalLiabilities,
       equity: {
         categoryNameAr: 'حقوق الملكية',
         items: [
-          { accountCode: '3100', accountNameAr: 'رأس المال المدفوع', amount: 50000 },
-          { accountCode: '3300', accountNameAr: 'أرباح العام الحالية', amount: kpis.netProfit },
+          ...equityItems,
+          ...(periodNetIncome !== 0
+            ? [{ accountCode: 'NET-INC', accountNameAr: 'صافي أرباح/خسائر الفترة الحالية', amount: periodNetIncome }]
+            : []),
         ],
-        totalAmount: kpis.totalEquity,
+        totalAmount: totalEquity,
       },
-      periodNetIncome: kpis.netProfit,
-      totalEquity: kpis.totalEquity,
-      totalLiabilitiesAndEquity: kpis.totalLiabilities + kpis.totalEquity,
-      isBalanced: true,
+      periodNetIncome,
+      totalEquity,
+      totalLiabilitiesAndEquity,
+      isBalanced: Math.abs(totalAssets - totalLiabilitiesAndEquity) < 0.01,
     };
   }
 
   public static async getCashFlow(startDate: string, endDate: string): Promise<CashFlowReport> {
-    const fromApi = await safeApiFetch<CashFlowReport>(
-      `/api/financial-statements/cash-flow?startDate=${startDate}&endDate=${endDate}`
-    );
-    if (fromApi) return fromApi;
+    const start = startDate || '2026-01-01';
+    const end = endDate || new Date().toISOString().split('T')[0];
 
-    const kpis = await this.getKPIs();
+    const income = await this.getPnL(start, end);
+    const accounts = localDataStore.getAccounts();
+    const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= end);
+    const withBalances = this.calculateDynamicAccountBalances(accounts, postedJournals);
+
+    const cashAccount = withBalances.find((a) => a.code === '1111');
+    const cashBoxAccount = withBalances.find((a) => a.code === '1112');
+    const closingCash = (cashAccount?.balance || 0) + (cashBoxAccount?.balance || 0);
+
+    const netIncome = income.netIncome;
+    const totalOperating = netIncome;
+    const totalInvesting = 0;
+    const totalFinancing = 0;
+
     return {
-      startDate,
-      endDate,
+      startDate: start,
+      endDate: end,
       operatingCashFlow: {
-        netIncome: kpis.netProfit,
-        adjustments: [
-          { label: 'التغير في المدينين وحسابات العملاء', amount: -kpis.accountsReceivableTotal * 0.1 },
-          { label: 'التغير في المخزون والمواد الخام', amount: -kpis.inventoryTotalValue * 0.05 },
-        ],
-        totalOperating: kpis.netProfit * 0.85,
+        netIncome,
+        adjustments: [],
+        totalOperating,
       },
       investingCashFlow: {
-        items: [{ label: 'شراء آلات ومعدات طحن وتعبئة', amount: 0 }],
+        items: [],
         totalInvesting: 0,
       },
       financingCashFlow: {
-        items: [{ label: 'توزيعات أرباح أو مسحوبات الشركاء', amount: 0 }],
+        items: [],
         totalFinancing: 0,
       },
-      netCashChange: kpis.netProfit * 0.85,
-      openingCash: kpis.cashAndBankBalance - kpis.netProfit * 0.85,
-      closingCash: kpis.cashAndBankBalance,
+      netCashChange: totalOperating + totalInvesting + totalFinancing,
+      openingCash: closingCash - netIncome,
+      closingCash,
     };
   }
 
   public static async getStatement(customerId: string): Promise<any> {
-    const fromApi = await safeApiFetch<any>(`/api/customers/${customerId}/statement`);
-    if (fromApi) return fromApi;
-
     const customer = localDataStore.getCustomers().find((c) => c.id === customerId);
     const invoices = localDataStore.getInvoices().filter((i) => i.entityId === customerId && i.status !== 'CANCELLED');
     const vouchers = localDataStore.getVouchers().filter((v) => v.entityId === customerId);

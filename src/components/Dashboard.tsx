@@ -423,7 +423,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const totalYearlyInflow = monthlyChartData.reduce((acc, curr) => acc + curr.cashInflow, 0);
   const totalYearlyOutflow = monthlyChartData.reduce((acc, curr) => acc + curr.cashOutflow, 0);
-  const liquidityRatio = totalYearlyOutflow > 0 ? (totalYearlyInflow / totalYearlyOutflow) * 100 : 100;
+  const liquidityRatio = totalYearlyOutflow > 0 ? (totalYearlyInflow / totalYearlyOutflow) * 100 : (totalYearlyInflow > 0 ? 100 : 0);
 
   if (!kpis) {
     return (
@@ -1782,7 +1782,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div>
               <div className="text-[#8C8273]">معدل تغطية السيولة النقدية</div>
               <div className="font-serif font-bold text-[#1A1A1A] text-sm">
-                {liquidityRatio.toFixed(1)}% مؤشر إيجابي
+                {liquidityRatio > 0 ? `${liquidityRatio.toFixed(1)}% مؤشر إيجابي` : '0.0%'}
               </div>
             </div>
           </div>
