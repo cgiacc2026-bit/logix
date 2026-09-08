@@ -36,57 +36,15 @@ import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPort
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
 import {
-  isDemoActive,
-  resetDemoCompanyData,
-  checkAndAutoResetDemo,
-  DEMO_COMPANY,
-} from './services/demoService.js';
-import { RotateCcw, Lock } from 'lucide-react';
+  DEFAULT_COMPANY_PROFILE,
+} from './server/defaultData.js';
+import { Lock } from 'lucide-react';
 
-const DEFAULT_COMPANY: CompanyProfile = {
-  id: 'company-logix-01',
-  nameAr: 'مجموعة لوجيكس لإدارة الموارد السحابية',
-  nameEn: 'LOGIX Cloud ERP Enterprise',
-  tradeName: 'لوجيكس للحلول المالية والمحاسبية (LOGIX ERP)',
-  legalForm: 'شركة مساهمة مقفلة (ش.م.ك)',
-  crNumber: '1010998877',
-  taxNumber: '300012345600003',
-  chamberNumber: '889900',
-  crIssueDate: '2020-01-01',
-  crExpiryDate: '2030-01-01',
-  buildingNo: 'برج لوجيكس للأعمال',
-  streetName: 'طريق الملك فهد',
-  district: 'حي العليا',
-  city: 'الرياض',
-  country: 'المملكة العربية السعودية',
-  postalCode: '11564',
-  additionalNo: '4421',
-  phone: '+966 11 456 7890',
-  mobile: '+966 50 123 4567',
-  email: 'info@logixerp.com',
-  website: 'https://logixerp.com',
-  vatRate: 15,
-  vatType: 'QUARTERLY',
-  zatcaPhase: 'PHASE_2_INTEGRATED',
-  zatcaEnv: 'PRODUCTION',
-  fiscalYearStart: '2026-01-01',
-  fiscalYearEnd: '2026-12-31',
-  accountingBasis: 'ACCRUAL',
-  functionalCurrency: 'SAR',
-  inventoryCosting: 'WEIGHTED_AVERAGE',
-  depreciationMethod: 'STRAIGHT_LINE',
-  decimalPlaces: 2,
-  generalManager: 'م. عبد العزيز بن فهد',
-  financialManager: 'أ. ياسر القحطاني',
-  chiefAccountant: 'أ. عبد الرحمن السعيد',
-  headerNotes: 'نظام لوجيكس لإدارة وتخطيط الموارد السحابي (LOGIX Multi-Tenant ERP)',
-  footerNotes: 'الدفع خلال 30 يوماً من تاريخ الفاتورة.',
-  showDigitalStamp: true,
-};
+const DEFAULT_COMPANY: CompanyProfile = DEFAULT_COMPANY_PROFILE;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [currency, setCurrency] = useState<string>('SAR');
+  const [currency, setCurrency] = useState<string>('KWD');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
   // ERP State Data
@@ -127,25 +85,7 @@ export default function App() {
     return null;
   });
 
-  const [isResettingDemo, setIsResettingDemo] = useState(false);
   const [isSuperAdminModalOpen, setIsSuperAdminModalOpen] = useState(false);
-  const isDemo = isDemoActive();
-
-  const handleResetDemo = async () => {
-    if (!window.confirm('هل تريد إعادة تعيين بيانات الشركة التجريبية وحذف الفواتير والأصناف التي أضفتها أثناء التجربة واستعادة البيانات الأولية؟')) {
-      return;
-    }
-    setIsResettingDemo(true);
-    try {
-      const res = await resetDemoCompanyData();
-      await refreshAllData();
-      alert(res.message);
-    } catch (err: any) {
-      alert(err?.message || 'تعذر إعادة تعيين بيانات الديمو');
-    } finally {
-      setIsResettingDemo(false);
-    }
-  };
 
   const handleLogin = (user: SystemUser, selectedCompany?: CompanyProfile) => {
     setCurrentUser(user);
@@ -214,7 +154,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    checkAndAutoResetDemo();
     refreshAllData();
   }, []);
 
@@ -423,35 +362,7 @@ export default function App() {
           sidebarCollapsed ? 'mr-16' : 'mr-64'
         }`}
       >
-        {/* Persistent Demo Mode Banner */}
-        {isDemo && (
-          <div className="bg-gradient-to-r from-blue-950 via-indigo-950 to-slate-900 text-white px-3 py-1.5 border-b border-blue-500/30 shadow-xs sticky top-0 z-40 no-print">
-            <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="flex h-2 w-2 relative shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                </span>
-                <span className="font-extrabold text-cyan-300 text-xs shrink-0">وضع تجريبي:</span>
-                <span className="text-slate-200 text-xs font-medium truncate">
-                  البيانات هنا للعرض والتجربة فقط ولا يُعتد بها
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleResetDemo}
-                  disabled={isResettingDemo}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-xs border border-blue-400/40 active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
-                  title="إعادة ضبط بيانات الشركة التجريبية واستعادة البيانات الأولية"
-                >
-                  <RotateCcw className={`w-3 h-3 ${isResettingDemo ? 'animate-spin' : ''}`} />
-                  <span>{isResettingDemo ? 'جارٍ الضبط...' : 'إعادة ضبط الديمو (Reset)'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         {/* Top Application Header */}
         <Header

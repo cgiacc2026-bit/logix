@@ -27,12 +27,9 @@ import {
   STORAGE_KEYS,
 } from '../services/supabaseClient.js';
 import {
-  DEMO_COMPANY_ID,
-  DEMO_COMPANY,
-  DEMO_USER,
-  seedDemoCompanyInSupabase,
-  checkAndAutoResetDemo,
-} from '../services/demoService.js';
+  DEFAULT_COMPANY_PROFILE,
+  INITIAL_USERS,
+} from '../server/defaultData.js';
 
 interface LoginViewProps {
   onLogin: (user: SystemUser, selectedCompany?: CompanyProfile) => void;
@@ -59,33 +56,24 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDemoLoading, setIsDemoLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
-  const handleInstantDemoTrial = async () => {
-    setIsDemoLoading(true);
+  const handleCentralAdminLogin = async () => {
+    setIsLoading(true);
     setError(null);
     setSuccessMessage(null);
 
     try {
-      checkAndAutoResetDemo();
-      setCurrentCompanyId(DEMO_COMPANY_ID);
-
-      // Seed Supabase if configured (background task)
-      seedDemoCompanyInSupabase().catch((e) => console.warn('Supabase demo seed warning:', e));
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(DEMO_USER));
-        localStorage.setItem(STORAGE_KEYS.COMPANY_INFO, JSON.stringify(DEMO_COMPANY));
+      const res = await loginCompany('cgiacc2026@gmail.com', '1234');
+      setIsLoading(false);
+      if (res.success && res.user) {
+        onLogin(res.user, res.company?.profile_data || DEFAULT_COMPANY_PROFILE);
+      } else {
+        setError('تعذر تسجيل الدخول للإدارة المركزية');
       }
-
-      setTimeout(() => {
-        setIsDemoLoading(false);
-        onLogin(DEMO_USER, DEMO_COMPANY);
-      }, 350);
-    } catch (err) {
-      setIsDemoLoading(false);
-      onLogin(DEMO_USER, DEMO_COMPANY);
+    } catch (err: any) {
+      setIsLoading(false);
+      setError(err?.message || 'حدث خطأ أثناء تسجيل الدخول');
     }
   };
 
@@ -508,77 +496,90 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </div>
           </div>
 
-          {/* Right Panel: Instant Demo Company Access */}
+          {/* Right Panel: Central Company & Super Admin Access */}
           <div className="lg:col-span-5 bg-gradient-to-b from-[#0F243E] to-[#0A1A2E] p-6 sm:p-8 border-t lg:border-t-0 lg:border-r border-slate-800 flex flex-col justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold mb-4">
-                <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                <span>النسخة التجريبية المباشرة (Demo)</span>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold mb-4">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>المنشأة المعتمدة والإدارة المركزية</span>
               </div>
 
               <h3 className="text-base font-bold text-white mb-2">
-                جرّب النظام فوراً — شركة تجريبية مجهزة
+                مطحنة الوليد المتحده
               </h3>
-              <p className="text-xs text-slate-300 mb-6 leading-relaxed">
-                استكشف كافة مزايا لوجيكس السحابي في بيئة أعمال متكاملة تحتوي على فواتير مبيعات ومشتريات، أصناف مخزنية، حسابات بنكية، وتقارير أرباح وخسائر واقعية.
+              <p className="text-xs text-slate-300 mb-5 leading-relaxed">
+                سجل تجاري: 450912 • دولة الكويت • نظام محاسبي وتشغيلي فعلي متكامل متوافق مع معايير IFRS لإدارة المطاحن والصناعات الغذائية.
               </p>
 
-              {/* Single Prominent Trial Button */}
+              {/* Single Prominent Super Admin Central Login */}
               <button
                 type="button"
-                onClick={handleInstantDemoTrial}
-                disabled={isDemoLoading}
-                id="btn-instant-demo-trial"
-                className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-sm sm:text-base shadow-xl shadow-cyan-950/40 border border-cyan-400/40 flex items-center justify-center gap-3 transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer group"
+                onClick={handleCentralAdminLogin}
+                disabled={isLoading}
+                id="btn-central-admin-login"
+                className="w-full py-3.5 px-5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-sm shadow-xl shadow-emerald-950/40 border border-emerald-400/40 flex items-center justify-center gap-3 transition-all transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer group mb-5"
               >
-                {isDemoLoading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>جارٍ تهيئة بيئة العرض المباشرة...</span>
-                  </div>
-                ) : (
-                  <>
-                    <span className="text-lg">🔍</span>
-                    <span className="font-extrabold tracking-wide">جرّب النظام الآن — بدون تسجيل</span>
-                    <ChevronRight className="w-4 h-4 text-cyan-200 group-hover:translate-x-[-3px] transition-transform rotate-180" />
-                  </>
-                )}
+                <ShieldCheck className="w-5 h-5 text-emerald-200" />
+                <span className="font-extrabold tracking-wide">دخول الإدارة المركزية والمالك (Super Admin)</span>
+                <ChevronRight className="w-4 h-4 text-emerald-200 group-hover:translate-x-[-3px] transition-transform rotate-180" />
               </button>
 
-              {/* Demo Pre-Seeded Features Preview */}
-              <div className="mt-6 space-y-2.5 bg-slate-900/70 p-4 rounded-xl border border-slate-800 text-xs text-slate-300">
-                <div className="font-semibold text-cyan-300 text-[11px] mb-2 flex items-center gap-1.5">
+              {/* Quick Login for Mill Core Staff */}
+              <div className="space-y-2 mb-6">
+                <div className="text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>دخول الكادر الإداري والمحاسبي بالمطحنة:</span>
+                </div>
+                {INITIAL_USERS.slice(0, 3).map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => handleQuickLogin(u)}
+                    className="w-full text-right p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800/90 border border-slate-700/60 text-xs flex items-center justify-between transition-colors group cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-bold text-white group-hover:text-cyan-300 transition-colors">
+                        {u.name}
+                      </div>
+                      <div className="text-[11px] text-slate-400">{u.roleTitleAr}</div>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-cyan-300 border border-blue-500/30 font-mono">
+                      {u.username}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* System Production Capabilities */}
+              <div className="space-y-2 bg-slate-900/70 p-3.5 rounded-xl border border-slate-800 text-xs text-slate-300">
+                <div className="font-semibold text-cyan-300 text-[11px] mb-1.5 flex items-center gap-1.5">
                   <Briefcase className="w-3.5 h-3.5" />
-                  محتويات بيئة العرض المجهزة:
+                  الميزات التشغيلية المعتمدة:
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>شركة تجريبية معتمدة (LOGIX Demo) بحسابات بنكية نشطة</span>
+                  <span>62 صنف بهارات وخامات ومواد غذائية معتمدة بالباركود والأسعار</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>أصناف تموينية وغذائية وفواتير مبيعات ومشتريات حقيقية</span>
+                  <span>دورة كاملة لمشتريات المطاحن ومبيعات الجمعيات التعاونية</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>كشوف حسابات العملاء والموردين ودفتر الأستاذ وميزان المراجعة</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>إمكانية إعادة تعيين البيانات للأصل في أي وقت بنقرة واحدة</span>
+                  <span>نظام الجرد المستمر وتقييم المخزون المرجح مع سندات القيد الآلية</span>
                 </div>
               </div>
             </div>
 
             {/* Architecture Highlights */}
-            <div className="mt-6 pt-5 border-t border-slate-800/80 space-y-2 text-[11px] text-slate-400">
+            <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-1.5 text-[11px] text-slate-400">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>دعم الفوترة الإلكترونية المرحلة الثانية ZATCA والضريبة 15%</span>
+                <span>حساب السوبر أدمن معتمد للتحكم في المنشآت وتفعيل السجلات السحابية</span>
               </div>
               <div className="flex items-center gap-2">
                 <Database className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>عزل كامل ومستقل لبيانات الديمو مع إمكانية تجربة الإضافة الحية</span>
+                <span>تزامن سحابي فوري مع قواعد بيانات PostgreSQL / Supabase</span>
               </div>
             </div>
 

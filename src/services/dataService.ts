@@ -127,21 +127,10 @@ class LocalDataStore {
   }
 
   public getCompany(): CompanyProfile {
-    if (isDemoActive()) {
-      return this.getLocal<CompanyProfile>(this.getKey(STORAGE_KEYS.COMPANY), DEMO_COMPANY);
-    }
     const comp = this.getLocal<CompanyProfile>(STORAGE_KEYS.COMPANY, DEFAULT_COMPANY_PROFILE);
-    let modified = false;
-    if (comp && comp.headerNotes && (comp.headerNotes.includes('شركة متخصصة') || comp.headerNotes.includes('IFRS'))) {
-      comp.headerNotes = '';
-      modified = true;
-    }
-    if (comp && comp.taxNumber === 'KW-8890123') {
-      comp.taxNumber = '';
-      modified = true;
-    }
-    if (modified) {
-      this.saveCompany(comp);
+    if (!comp || !comp.nameAr || comp.nameAr.includes('لوجيكس') || comp.id === 'company-logix-01' || comp.functionalCurrency !== 'KWD') {
+      this.saveCompany(DEFAULT_COMPANY_PROFILE);
+      return DEFAULT_COMPANY_PROFILE;
     }
     return comp;
   }
@@ -151,9 +140,6 @@ class LocalDataStore {
   }
 
   public getUsers(): SystemUser[] {
-    if (isDemoActive()) {
-      return [DEMO_USER];
-    }
     return this.getLocal<SystemUser[]>(this.getKey(STORAGE_KEYS.USERS), INITIAL_USERS);
   }
   public saveUsers(users: SystemUser[]): void {
@@ -161,55 +147,79 @@ class LocalDataStore {
   }
 
   public getAccounts(): Account[] {
-    return this.getLocal<Account[]>(this.getKey(STORAGE_KEYS.ACCOUNTS), INITIAL_ACCOUNTS);
+    const list = this.getLocal<Account[]>(this.getKey(STORAGE_KEYS.ACCOUNTS), INITIAL_ACCOUNTS);
+    if (!list || list.length === 0) {
+      this.saveAccounts(INITIAL_ACCOUNTS);
+      return INITIAL_ACCOUNTS;
+    }
+    return list;
   }
   public saveAccounts(accounts: Account[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), accounts);
   }
 
   public getCustomers(): Customer[] {
-    const def = isDemoActive() ? DEMO_SEED_CUSTOMERS : [];
-    return this.getLocal<Customer[]>(this.getKey(STORAGE_KEYS.CUSTOMERS), def);
+    const list = this.getLocal<Customer[]>(this.getKey(STORAGE_KEYS.CUSTOMERS), INITIAL_CUSTOMERS);
+    if (!list || list.length === 0) {
+      this.saveCustomers(INITIAL_CUSTOMERS);
+      return INITIAL_CUSTOMERS;
+    }
+    return list;
   }
   public saveCustomers(customers: Customer[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), customers);
   }
 
   public getSuppliers(): Supplier[] {
-    const def = isDemoActive() ? DEMO_SEED_SUPPLIERS : [];
-    return this.getLocal<Supplier[]>(this.getKey(STORAGE_KEYS.SUPPLIERS), def);
+    const list = this.getLocal<Supplier[]>(this.getKey(STORAGE_KEYS.SUPPLIERS), INITIAL_SUPPLIERS);
+    if (!list || list.length === 0) {
+      this.saveSuppliers(INITIAL_SUPPLIERS);
+      return INITIAL_SUPPLIERS;
+    }
+    return list;
   }
   public saveSuppliers(suppliers: Supplier[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), suppliers);
   }
 
   public getInventory(): InventoryItem[] {
-    const def = isDemoActive() ? DEMO_SEED_ITEMS : [];
-    return this.getLocal<InventoryItem[]>(this.getKey(STORAGE_KEYS.INVENTORY), def);
+    const list = this.getLocal<InventoryItem[]>(this.getKey(STORAGE_KEYS.INVENTORY), INITIAL_INVENTORY);
+    if (!list || list.length === 0) {
+      this.saveInventory(INITIAL_INVENTORY);
+      return INITIAL_INVENTORY;
+    }
+    return list;
   }
   public saveInventory(inv: InventoryItem[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), inv);
   }
 
   public getJournals(): JournalEntry[] {
-    const def = isDemoActive() ? DEMO_SEED_JOURNALS : [];
-    return this.getLocal<JournalEntry[]>(this.getKey(STORAGE_KEYS.JOURNALS), def);
+    const list = this.getLocal<JournalEntry[]>(this.getKey(STORAGE_KEYS.JOURNALS), INITIAL_JOURNALS);
+    if (!list || list.length === 0) {
+      this.saveJournals(INITIAL_JOURNALS);
+      return INITIAL_JOURNALS;
+    }
+    return list;
   }
   public saveJournals(j: JournalEntry[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), j);
   }
 
   public getInvoices(): Invoice[] {
-    const def = isDemoActive() ? DEMO_SEED_INVOICES : [];
-    return this.getLocal<Invoice[]>(this.getKey(STORAGE_KEYS.INVOICES), def);
+    const list = this.getLocal<Invoice[]>(this.getKey(STORAGE_KEYS.INVOICES), INITIAL_INVOICES);
+    if (!list || list.length === 0) {
+      this.saveInvoices(INITIAL_INVOICES);
+      return INITIAL_INVOICES;
+    }
+    return list;
   }
   public saveInvoices(inv: Invoice[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), inv);
   }
 
   public getVouchers(): PaymentVoucher[] {
-    const def = isDemoActive() ? DEMO_SEED_VOUCHERS : [];
-    return this.getLocal<PaymentVoucher[]>(this.getKey(STORAGE_KEYS.VOUCHERS), def);
+    return this.getLocal<PaymentVoucher[]>(this.getKey(STORAGE_KEYS.VOUCHERS), []);
   }
   public saveVouchers(v: PaymentVoucher[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), v);
@@ -223,7 +233,12 @@ class LocalDataStore {
   }
 
   public getProductionOrders(): ProductionOrder[] {
-    return this.getLocal<ProductionOrder[]>(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), []);
+    const list = this.getLocal<ProductionOrder[]>(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), INITIAL_PRODUCTION_ORDERS);
+    if (!list || list.length === 0) {
+      this.saveProductionOrders(INITIAL_PRODUCTION_ORDERS);
+      return INITIAL_PRODUCTION_ORDERS;
+    }
+    return list;
   }
   public saveProductionOrders(orders: ProductionOrder[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), orders);
@@ -231,16 +246,16 @@ class LocalDataStore {
 
   public resetToDefaults(): void {
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), DEFAULT_COMPANY_PROFILE);
-    this.setLocal(this.getKey(STORAGE_KEYS.USERS), []);
+    this.setLocal(this.getKey(STORAGE_KEYS.USERS), INITIAL_USERS);
     this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), INITIAL_ACCOUNTS);
-    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), []);
-    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), []);
-    this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), []);
-    this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), []);
-    this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), []);
+    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), INITIAL_CUSTOMERS);
+    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), INITIAL_SUPPLIERS);
+    this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), INITIAL_INVENTORY);
+    this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), INITIAL_JOURNALS);
+    this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), INITIAL_INVOICES);
     this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), []);
     this.setLocal(this.getKey(STORAGE_KEYS.UNITS), INITIAL_UNITS);
-    this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), []);
+    this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), INITIAL_PRODUCTION_ORDERS);
   }
 }
 
