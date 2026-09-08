@@ -5,66 +5,109 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { CompanyProfile, SystemUser } from '../types.js';
 
-const getEnvVar = (key: string): string => {
+export const getEnvVar = (key: string): string => {
   try {
     if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
-      return String(import.meta.env[key]).trim();
+      const val = String(import.meta.env[key]).trim();
+      if (val) return val;
     }
   } catch {}
   try {
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return String(process.env[key]).trim();
+      const val = String(process.env[key]).trim();
+      if (val) return val;
+    }
+  } catch {}
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const val = window.localStorage.getItem(key);
+      if (val) return val.trim();
     }
   } catch {}
   return '';
 };
 
-export const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL');
-export const SUPABASE_ANON_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY');
+export const getSupabaseConfig = () => {
+  const url = getEnvVar('VITE_SUPABASE_URL') || 'https://gzoncsbxfdnfellspgke.supabase.co';
+  const key = getEnvVar('VITE_SUPABASE_ANON_KEY');
+  return { url, key };
+};
 
-export const isSupabaseConfigured = Boolean(
-  SUPABASE_URL &&
-  typeof SUPABASE_URL === 'string' &&
-  SUPABASE_URL.startsWith('http') &&
-  !SUPABASE_URL.includes('your-project') &&
-  SUPABASE_ANON_KEY &&
-  typeof SUPABASE_ANON_KEY === 'string' &&
-  SUPABASE_ANON_KEY.length > 10
-);
-
-const createSafeSupabaseClient = (): SupabaseClient => {
-  if (isSupabaseConfigured) {
-    try {
-      return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-        },
-      });
-    } catch (err) {
-      console.warn('Failed to initialize live Supabase client, falling back to local mode:', err);
-    }
-  }
-
-  // Safe fallback mock client when Supabase URL/Key is not configured
-  const mockFetch = async () => {
-    return new Response(JSON.stringify([]), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', 'content-range': '0-0/0' },
-    });
-  };
-
-  return createClient(
-    'https://fallback-supabase.local',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.fallback_token',
-    {
-      auth: { persistSession: false, autoRefreshToken: false },
-      global: { fetch: mockFetch },
-    }
+export const checkIsSupabaseConfigured = (): boolean => {
+  const { url, key } = getSupabaseConfig();
+  return Boolean(
+    url &&
+    typeof url === 'string' &&
+    url.startsWith('http') &&
+    !url.includes('your-project') &&
+    key &&
+    typeof key === 'string' &&
+    key.length > 10
   );
 };
 
-export const supabase = createSafeSupabaseClient();
+export const SUPABASE_URL = getSupabaseConfig().url;
+export const SUPABASE_ANON_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY');
+
+export const isSupabaseConfigured = checkIsSupabaseConfigured();
+
+let activeClientInstance: SupabaseClient | null = null;
+let activeClientUrl: string = '';
+let activeClientKey: string = '';
+
+const fallbackMockFetch = async () => {
+  return new Response(JSON.stringify([]), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'content-range': '0-0/0' },
+  });
+};
+
+const fallbackMockClient = createClient(
+  'https://fallback-supabase.local',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.fallback_token',
+  {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: fallbackMockFetch },
+  }
+);
+
+export const getActiveSupabaseClient = (): SupabaseClient => {
+  const { url, key } = getSupabaseConfig();
+  if (checkIsSupabaseConfigured()) {
+    if (!activeClientInstance || activeClientUrl !== url || activeClientKey !== key) {
+      try {
+        activeClientInstance = createClient(url, key, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+          },
+        });
+        activeClientUrl = url;
+        activeClientKey = key;
+      } catch (err) {
+        console.warn('Failed to initialize live Supabase client, falling back to local mode:', err);
+      }
+    }
+    if (activeClientInstance) return activeClientInstance;
+  }
+  return fallbackMockClient;
+};
+
+export const saveSupabaseCredentials = (url: string, anonKey: string): void => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    if (url) window.localStorage.setItem('VITE_SUPABASE_URL', url.trim());
+    if (anonKey) window.localStorage.setItem('VITE_SUPABASE_ANON_KEY', anonKey.trim());
+    activeClientInstance = null; // Force client refresh
+  }
+};
+
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getActiveSupabaseClient();
+    const value = (client as any)[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 export const STORAGE_KEYS = {
   COMPANY_ID: 'supabase_company_id',
@@ -108,10 +151,10 @@ export async function registerCompany(
       return { success: false, message: 'يرجى إدخال اسم الشركة، البريد الإلكتروني، وكلمة المرور' };
     }
 
-    if (!isSupabaseConfigured) {
+    if (!checkIsSupabaseConfigured()) {
       return {
         success: false,
-        message: 'قاعدة Supabase السحابية غير متصلة حالياً (يرجى تهيئة متغيرات VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY)',
+        message: 'قاعدة Supabase السحابية غير متصلة حالياً (يرجى إدخال مفتاح VITE_SUPABASE_ANON_KEY في ملف .env أو في إعدادات الاتصال)',
       };
     }
 
