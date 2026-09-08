@@ -92,9 +92,6 @@ export class CompanyJsonBackupService {
       try {
         const item = window.localStorage.getItem(getPartitionKey(baseKey, companyId));
         if (item) return safeJsonParse<T>(item, fallback);
-        // Fallback to legacy un-suffixed key if this is Al-Waleed or default
-        const legacyItem = window.localStorage.getItem(baseKey);
-        if (legacyItem) return safeJsonParse<T>(legacyItem, fallback);
       } catch (err) {
         console.warn('Error reading key for export:', baseKey, err);
       }

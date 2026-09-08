@@ -140,12 +140,13 @@ export default function App() {
   const refreshAllData = async () => {
     setIsLoadingData(true);
     try {
-      const [compData, kpisData, accsData, jData, invData, vData, cData, sData, iData, uData, prdData, usersData] =
+      const compData = await DataService.getCompany();
+      const jData = await DataService.getJournals();
+      const accsData = await DataService.getAccounts();
+      const kpisData = await DataService.getKPIs();
+
+      const [invData, vData, cData, sData, iData, uData, prdData, usersData] =
         await Promise.all([
-          DataService.getCompany(),
-          DataService.getKPIs(),
-          DataService.getAccounts(),
-          DataService.getJournals(),
           DataService.getInvoices(),
           DataService.getVouchers(),
           DataService.getCustomers(),

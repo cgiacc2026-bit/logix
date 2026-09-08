@@ -131,19 +131,21 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="sm:hidden">Excel</span>
           </button>
 
-          {/* Quick Backup Export / Restore via JSON */}
-          <button
-            onClick={onOpenJsonBackup || handleQuickBackup}
-            disabled={isExporting}
-            title="إدارة واستعادة وتصدير وتصفير بيانات المنشأة بصيغة JSON"
-            className="hidden md:flex px-2 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-200 text-xs font-bold items-center gap-1 border border-indigo-700/60 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
-          >
-            <Download className={`w-3 h-3 ${isExporting ? 'animate-bounce' : ''}`} />
-            <span>نسخ/استعادة JSON</span>
-          </button>
+          {/* Quick Backup Export / Restore via JSON - Restricted to Super Admin Only */}
+          {Boolean(currentUser?.isPlatformAdmin || currentUser?.role === 'SUPER_ADMIN' || currentUser?.email === 'cgiacc2026@gmail.com') && (
+            <button
+              onClick={onOpenJsonBackup || handleQuickBackup}
+              disabled={isExporting}
+              title="إدارة واستعادة وتصدير وتصفير بيانات المنشأة بصيغة JSON (خاص بالمشرف العام)"
+              className="hidden md:flex px-2 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-200 text-xs font-bold items-center gap-1 border border-indigo-700/60 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <Download className={`w-3 h-3 ${isExporting ? 'animate-bounce' : ''}`} />
+              <span>نسخ/استعادة JSON</span>
+            </button>
+          )}
 
-          {/* Super Admin Company Activation Portal */}
-          {onOpenSuperAdminPortal && (currentUser?.email === 'cgiacc2026@gmail.com' || currentUser?.role === 'ADMIN') && (
+          {/* Super Admin Company Activation Portal - Strictly Restricted to Super Admin */}
+          {onOpenSuperAdminPortal && Boolean(currentUser?.isPlatformAdmin || currentUser?.role === 'SUPER_ADMIN' || currentUser?.email === 'cgiacc2026@gmail.com') && (
             <button
               onClick={onOpenSuperAdminPortal}
               title="لوحة المشرف العام لاعتماد وتفعيل الشركات السحابية المسجلة"

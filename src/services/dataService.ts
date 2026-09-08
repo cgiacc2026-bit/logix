@@ -36,6 +36,7 @@ import {
 } from '../server/defaultData.js';
 import { safeJsonParse, safeApiFetch } from '../utils/safeJson.js';
 import { SupabaseDataService } from './supabaseService.js';
+import { isSupabaseConfigured } from './supabaseClient.js';
 import {
   DEMO_COMPANY,
   DEMO_USER,
@@ -828,8 +829,28 @@ export class DataService {
   }
 
   public static async getAccounts(): Promise<Account[]> {
-    const accounts = localDataStore.getAccounts();
-    const journals = localDataStore.getJournals();
+    let accounts: Account[] = [];
+    try {
+      const fromSupabase = await SupabaseDataService.getAccounts();
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+        accounts = fromSupabase;
+      }
+    } catch (e) {
+      console.warn('Supabase getAccounts notice:', e);
+    }
+
+    if (!accounts || accounts.length === 0) {
+      accounts = localDataStore.getAccounts();
+      if (!accounts || accounts.length === 0) {
+        accounts = generateCleanChartOfAccounts(localDataStore.getEffectiveCompanyId() || undefined);
+        localDataStore.saveAccounts(accounts);
+        if (isSupabaseConfigured) {
+          SupabaseDataService.saveAccounts(accounts).catch(() => {});
+        }
+      }
+    }
+
+    const journals = await this.getJournals();
     const withBalances = this.calculateDynamicAccountBalances(accounts, journals);
     localDataStore.saveAccounts(withBalances);
     return withBalances;
@@ -1154,7 +1175,7 @@ export class DataService {
   public static async getInvoices(): Promise<Invoice[]> {
     try {
       const fromSupabase = await SupabaseDataService.getInvoices();
-      if (fromSupabase && fromSupabase.length > 0) {
+      if (Array.isArray(fromSupabase)) {
         localDataStore.saveInvoices(fromSupabase);
         return fromSupabase;
       }
@@ -1826,7 +1847,7 @@ export class DataService {
   public static async getCustomers(): Promise<Customer[]> {
     try {
       const fromSupabase = await SupabaseDataService.getCustomers();
-      if (fromSupabase && fromSupabase.length > 0) {
+      if (Array.isArray(fromSupabase)) {
         localDataStore.saveCustomers(fromSupabase);
         return fromSupabase;
       }
@@ -2001,7 +2022,7 @@ export class DataService {
   public static async getInventory(): Promise<InventoryItem[]> {
     try {
       const fromSupabase = await SupabaseDataService.getItems();
-      if (fromSupabase && fromSupabase.length > 0) {
+      if (Array.isArray(fromSupabase)) {
         localDataStore.saveInventory(fromSupabase);
         return fromSupabase;
       }
@@ -2683,6 +2704,31 @@ export class DataService {
   }
 
   public static async syncSystemIntegrity(): Promise<any> {
+    if (isSupabaseConfigured) {
+      try {
+        const [customers, inventory, journals] = await Promise.all([
+          SupabaseDataService.getCustomers(),
+          SupabaseDataService.getItems(),
+          SupabaseDataService.getJournals(),
+        ]);
+        if (Array.isArray(customers)) localDataStore.saveCustomers(customers);
+        if (Array.isArray(inventory)) localDataStore.saveInventory(inventory);
+        if (Array.isArray(journals)) localDataStore.saveJournals(journals);
+
+        let accounts = await SupabaseDataService.getAccounts();
+        if (!accounts || accounts.length === 0) {
+          accounts = localDataStore.getAccounts();
+        }
+        if (Array.isArray(accounts)) {
+          const withBal = this.calculateDynamicAccountBalances(accounts, journals || []);
+          localDataStore.saveAccounts(withBal);
+        }
+        return { success: true, source: 'supabase' };
+      } catch (err) {
+        console.warn('Sync integrity Supabase warning:', err);
+      }
+    }
+
     const apiRes = await safeApiFetch<any>('/api/system/integrity-sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

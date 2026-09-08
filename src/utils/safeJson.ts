@@ -35,7 +35,17 @@ export async function safeApiFetch<T>(
   fallback: T | null = null
 ): Promise<T | null> {
   try {
-    const res = await fetch(url, options);
+    const opts: RequestInit = { ...options };
+    if (typeof window !== 'undefined') {
+      const activeCompanyId = window.localStorage.getItem('supabase_company_id');
+      if (activeCompanyId) {
+        opts.headers = {
+          'x-company-id': activeCompanyId,
+          ...(opts.headers || {}),
+        };
+      }
+    }
+    const res = await fetch(url, opts);
     if (!res.ok) {
       return fallback;
     }
