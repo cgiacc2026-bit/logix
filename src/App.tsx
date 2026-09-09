@@ -150,8 +150,10 @@ export default function App() {
   };
 
   // Fetch all ERP system data from Supabase / DataService
-  const refreshAllData = async () => {
-    setIsLoadingData(true);
+  const refreshAllData = async (silent: boolean = false) => {
+    if (!silent) {
+      setIsLoadingData(true);
+    }
     try {
       const compData = await DataService.getCompany();
       const jData = await DataService.getJournals();
@@ -190,7 +192,9 @@ export default function App() {
     } catch (err) {
       console.error('Error fetching ERP data:', err);
     } finally {
-      setIsLoadingData(false);
+      if (!silent) {
+        setIsLoadingData(false);
+      }
     }
   };
 
@@ -263,22 +267,34 @@ export default function App() {
 
   const handleCreateInvoice = async (invoiceData: any) => {
     await DataService.createInvoice(invoiceData);
-    await refreshAllData();
+    setInvoices(DataService.getLocalInvoices());
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setInventory(DataService.getLocalInventory());
+    refreshAllData(true);
   };
 
   const handlePostInvoice = async (id: string) => {
     await DataService.postInvoice(id);
-    await refreshAllData();
+    setInvoices(DataService.getLocalInvoices());
+    refreshAllData(true);
   };
 
   const handleDeleteInvoice = async (id: string) => {
     await DataService.deleteInvoice(id);
-    await refreshAllData();
+    setInvoices(DataService.getLocalInvoices());
+    refreshAllData(true);
   };
 
   const handleCancelInvoice = async (id: string, reason?: string) => {
     await DataService.cancelInvoice(id, reason);
-    await refreshAllData();
+    setInvoices(DataService.getLocalInvoices());
+    setJournals(DataService.getLocalJournals());
+    setInventory(DataService.getLocalInventory());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    refreshAllData(true);
   };
 
   // Units Handlers
@@ -299,17 +315,26 @@ export default function App() {
 
   const handleCreateVoucher = async (voucherData: any) => {
     await DataService.createVoucher(voucherData);
-    await refreshAllData();
+    setVouchers(DataService.getLocalVouchers());
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    refreshAllData(true);
   };
 
   const handleCancelVoucher = async (id: string, reason: string) => {
     await DataService.cancelVoucher(id, reason);
-    await refreshAllData();
+    setVouchers(DataService.getLocalVouchers());
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    refreshAllData(true);
   };
 
   const handleDeleteVoucher = async (id: string) => {
     await DataService.deleteVoucher(id);
-    await refreshAllData();
+    setVouchers(DataService.getLocalVouchers());
+    refreshAllData(true);
   };
 
   const handleCreateCustomer = async (data: any) => {

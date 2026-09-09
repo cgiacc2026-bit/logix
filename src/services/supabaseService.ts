@@ -898,6 +898,21 @@ export class SupabaseDataService {
         };
       });
 
+      // --- FAST-PATH: ATOMIC DATABASE RPC (PostgreSQL Stored Procedure) ---
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('save_invoice_atomic', {
+          p_company_id: companyId,
+          p_invoice: invoicePayload,
+          p_items: invoiceItemRows,
+        });
+
+        if (!rpcErr && rpcRes && (rpcRes as any).success) {
+          return true;
+        }
+      } catch (rpcEx: any) {
+        // Graceful fallback to direct table write if RPC not yet installed on server
+      }
+
       // --- EXECUTE UPSERT ON INVOICES & INVOICE_ITEMS ---
       try {
         let { error: invErr } = await supabase
@@ -1176,6 +1191,20 @@ export class SupabaseDataService {
         },
         created_at: v.createdAt || new Date().toISOString(),
       };
+
+      // --- FAST-PATH: ATOMIC DATABASE RPC (PostgreSQL Stored Procedure) ---
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('save_voucher_atomic', {
+          p_company_id: companyId,
+          p_voucher: payload,
+        });
+
+        if (!rpcErr && rpcRes && (rpcRes as any).success) {
+          return true;
+        }
+      } catch (rpcEx: any) {
+        // Graceful fallback
+      }
 
       const { error } = await supabase
         .from('payment_vouchers')

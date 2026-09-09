@@ -49,6 +49,8 @@ import {
   isDemoActive,
 } from './demoService.js';
 import { ThemeService } from './themeService.ts';
+import { cacheService } from './cacheService.ts';
+import { backgroundSync } from './backgroundSyncService.ts';
 
 const STORAGE_KEYS = {
   COMPANY: 'alwaleed_erp_company',
@@ -1713,18 +1715,24 @@ export class DataService {
     newInvoice.journalEntryId = jEntry.id;
     invoices.unshift(newInvoice);
     localDataStore.saveInvoices(invoices);
-    try {
-      await SupabaseDataService.saveInvoice(newInvoice);
-    } catch (e) {
-      console.warn('Supabase saveInvoice notice:', e);
-    }
-    syncToFirestore('erp_invoices', newInvoice.id, newInvoice);
 
-    await safeApiFetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    // Smart Caching update
+    const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
+    if (isSales && newInvoice.entityId) {
+      cacheService.updateCustomerBalance(newInvoice.entityId, dueAmount);
+    } else if (!isSales && newInvoice.entityId) {
+      cacheService.updateSupplierBalance(newInvoice.entityId, dueAmount);
+    }
+    for (const line of lines) {
+      if (line.itemId) {
+        const delta = isSales ? -line.quantity : line.quantity;
+        cacheService.updateInventoryStock(line.itemId, delta);
+      }
+    }
+
+    // High-Performance Optimistic UI: Background Non-Blocking Persistence
+    backgroundSync.enqueueInvoiceCreate(newInvoice, data, activeCompanyId);
+    syncToFirestore('erp_invoices', newInvoice.id, newInvoice);
 
     return newInvoice;
   }
@@ -1894,7 +1902,7 @@ export class DataService {
     deleteFromFirestore('erp_invoices', id);
 
     await safeApiFetch(`/api/invoices/${id}`, { method: 'DELETE' });
-    await this.syncSystemIntegrity();
+    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return true;
   }
 
@@ -1916,7 +1924,7 @@ export class DataService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    await this.syncSystemIntegrity();
+    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return apiRes || (idx !== -1 ? invoices[idx] : null);
   }
 
@@ -2078,20 +2086,24 @@ export class DataService {
     newVoucher.journalEntryId = jEntry.id;
     vouchers.unshift(newVoucher);
     localDataStore.saveVouchers(vouchers);
-    if (isSupabaseConfigured) {
-      SupabaseDataService.saveVoucher(newVoucher).catch((err) =>
-        console.warn('Supabase saveVoucher notice:', err)
-      );
+
+    // Smart Caching update
+    const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
+    if (isReceipt && newVoucher.entityId) {
+      cacheService.updateCustomerBalance(newVoucher.entityId, -amount);
+    } else if (!isReceipt && newVoucher.entityId) {
+      cacheService.updateSupplierBalance(newVoucher.entityId, -amount);
     }
+
+    // High-Performance Optimistic UI: Background Non-Blocking Persistence
+    backgroundSync.enqueueVoucherCreate(newVoucher, data, activeCompanyId);
     syncToFirestore('erp_vouchers', newVoucher.id, newVoucher);
 
-    await safeApiFetch('/api/vouchers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    // Non-blocking background integrity check
+    setTimeout(() => {
+      this.syncSystemIntegrity().catch(() => {});
+    }, 1000);
 
-    await this.syncSystemIntegrity();
     return newVoucher;
   }
 
@@ -2101,18 +2113,16 @@ export class DataService {
     if (v) {
       v.status = 'CANCELLED';
       localDataStore.saveVouchers(vouchers);
-      if (isSupabaseConfigured) {
-        SupabaseDataService.saveVoucher(v).catch(() => {});
-      }
+      const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
+      backgroundSync.enqueueVoucherCancel(v, reason, activeCompanyId);
       syncToFirestore('erp_vouchers', id, v);
     }
-    const apiRes = await safeApiFetch<PaymentVoucher>(`/api/vouchers/${id}/cancel`, {
+    safeApiFetch<PaymentVoucher>(`/api/vouchers/${id}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason }),
-    });
-    await this.syncSystemIntegrity();
-    return apiRes || v || null;
+    }).catch(() => {});
+    return v || null;
   }
 
   public static async updateVoucher(id: string, data: any): Promise<PaymentVoucher | null> {
@@ -2131,7 +2141,7 @@ export class DataService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    await this.syncSystemIntegrity();
+    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return apiRes || (idx !== -1 ? vouchers[idx] : null);
   }
 
@@ -2146,34 +2156,49 @@ export class DataService {
     }
     deleteFromFirestore('erp_vouchers', id);
     await safeApiFetch(`/api/vouchers/${id}`, { method: 'DELETE' });
-    await this.syncSystemIntegrity();
+    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return true;
   }
 
   // Customers & Suppliers
   public static async getCustomers(): Promise<Customer[]> {
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    const cached = cacheService.getCustomers(compId);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+
     const localCustomers = localDataStore.getCustomers();
+    if (localCustomers.length > 0) {
+      cacheService.setCustomers(compId, localCustomers);
+    }
     const isLocked = localDataStore.isRestoreLocked();
 
-    try {
-      const fromSupabase = await SupabaseDataService.getCustomers();
-      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        if (localCustomers.length > 0 && (isLocked || fromSupabase.length < localCustomers.length)) {
-          if (isSupabaseConfigured) {
-            Promise.all(localCustomers.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
+    const fetchRemote = async () => {
+      try {
+        const fromSupabase = await SupabaseDataService.getCustomers();
+        if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+          if (localCustomers.length > 0 && (isLocked || fromSupabase.length < localCustomers.length)) {
+            if (isSupabaseConfigured) {
+              Promise.all(localCustomers.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
+            }
+            return localCustomers;
           }
-          return localCustomers;
+          localDataStore.saveCustomers(fromSupabase);
+          cacheService.setCustomers(compId, fromSupabase);
+          return fromSupabase;
         }
-        localDataStore.saveCustomers(fromSupabase);
-        return fromSupabase;
+      } catch (e) {
+        console.warn('Supabase getCustomers notice:', e);
       }
-    } catch (e) {
-      console.warn('Supabase getCustomers notice:', e);
+      return localCustomers;
+    };
+
+    if (localCustomers.length > 0) {
+      fetchRemote().catch(() => {});
+      return localCustomers;
     }
-    if (isSupabaseConfigured && localCustomers.length > 0) {
-      Promise.all(localCustomers.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
-    }
-    return localCustomers;
+    return await fetchRemote();
   }
 
   public static async createCustomer(data: any): Promise<Customer> {
@@ -2200,6 +2225,8 @@ export class DataService {
     };
     list.push(newCust);
     localDataStore.saveCustomers(list);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setCustomers(compId, list);
     try {
       await SupabaseDataService.saveCustomer(newCust);
     } catch (e) {
@@ -2235,6 +2262,8 @@ export class DataService {
       currentBalance: updatedBalance,
     };
     localDataStore.saveCustomers(list);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setCustomers(compId, list);
     try {
       await SupabaseDataService.saveCustomer(list[idx]);
     } catch (e) {
@@ -2249,6 +2278,7 @@ export class DataService {
     if (apiRes && apiRes.customer) {
       list[idx] = { ...list[idx], ...apiRes.customer };
       localDataStore.saveCustomers(list);
+      cacheService.setCustomers(compId, list);
     }
     return list[idx];
   }
@@ -2257,6 +2287,8 @@ export class DataService {
     const list = localDataStore.getCustomers();
     const filtered = list.filter((c) => c.id !== id);
     localDataStore.saveCustomers(filtered);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setCustomers(compId, filtered);
     try {
       await SupabaseDataService.deleteCustomer(id);
     } catch (e) {
@@ -2268,28 +2300,43 @@ export class DataService {
   }
 
   public static async getSuppliers(): Promise<Supplier[]> {
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    const cached = cacheService.getSuppliers(compId);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+
     const localSuppliers = localDataStore.getSuppliers();
+    if (localSuppliers.length > 0) {
+      cacheService.setSuppliers(compId, localSuppliers);
+    }
     const isLocked = localDataStore.isRestoreLocked();
 
-    try {
-      const fromSupabase = await SupabaseDataService.getSuppliers();
-      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        if (localSuppliers.length > 0 && (isLocked || fromSupabase.length < localSuppliers.length)) {
-          if (isSupabaseConfigured) {
-            Promise.all(localSuppliers.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
+    const fetchRemote = async () => {
+      try {
+        const fromSupabase = await SupabaseDataService.getSuppliers();
+        if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+          if (localSuppliers.length > 0 && (isLocked || fromSupabase.length < localSuppliers.length)) {
+            if (isSupabaseConfigured) {
+              Promise.all(localSuppliers.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
+            }
+            return localSuppliers;
           }
-          return localSuppliers;
+          localDataStore.saveSuppliers(fromSupabase);
+          cacheService.setSuppliers(compId, fromSupabase);
+          return fromSupabase;
         }
-        localDataStore.saveSuppliers(fromSupabase);
-        return fromSupabase;
+      } catch (e) {
+        console.warn('Supabase getSuppliers notice:', e);
       }
-    } catch (e) {
-      console.warn('Supabase getSuppliers notice:', e);
+      return localSuppliers;
+    };
+
+    if (localSuppliers.length > 0) {
+      fetchRemote().catch(() => {});
+      return localSuppliers;
     }
-    if (isSupabaseConfigured && localSuppliers.length > 0) {
-      Promise.all(localSuppliers.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
-    }
-    return localSuppliers;
+    return await fetchRemote();
   }
 
   public static async createSupplier(data: any): Promise<Supplier> {
@@ -2311,6 +2358,8 @@ export class DataService {
     };
     list.push(newSupp);
     localDataStore.saveSuppliers(list);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setSuppliers(compId, list);
     try {
       await SupabaseDataService.saveSupplier(newSupp);
     } catch (e) {
@@ -2346,6 +2395,8 @@ export class DataService {
       currentBalance: updatedBalance,
     };
     localDataStore.saveSuppliers(list);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setSuppliers(compId, list);
     try {
       await SupabaseDataService.saveSupplier(list[idx]);
     } catch (e) {
@@ -2360,6 +2411,7 @@ export class DataService {
     if (apiRes && apiRes.supplier) {
       list[idx] = { ...list[idx], ...apiRes.supplier };
       localDataStore.saveSuppliers(list);
+      cacheService.setSuppliers(compId, list);
     }
     return list[idx];
   }
@@ -2368,6 +2420,8 @@ export class DataService {
     const list = localDataStore.getSuppliers();
     const filtered = list.filter((s) => s.id !== id);
     localDataStore.saveSuppliers(filtered);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setSuppliers(compId, filtered);
     try {
       await SupabaseDataService.deleteSupplier(id);
     } catch (e) {
@@ -2380,28 +2434,43 @@ export class DataService {
 
   // Inventory
   public static async getInventory(): Promise<InventoryItem[]> {
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    const cached = cacheService.getItems(compId);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+
     const localInventory = localDataStore.getInventory();
+    if (localInventory.length > 0) {
+      cacheService.setItems(compId, localInventory);
+    }
     const isLocked = localDataStore.isRestoreLocked();
 
-    try {
-      const fromSupabase = await SupabaseDataService.getItems();
-      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        if (localInventory.length > 0 && (isLocked || fromSupabase.length < localInventory.length)) {
-          if (isSupabaseConfigured) {
-            Promise.all(localInventory.map((item) => SupabaseDataService.saveItem(item))).catch(() => {});
+    const fetchRemote = async () => {
+      try {
+        const fromSupabase = await SupabaseDataService.getItems();
+        if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+          if (localInventory.length > 0 && (isLocked || fromSupabase.length < localInventory.length)) {
+            if (isSupabaseConfigured) {
+              Promise.all(localInventory.map((item) => SupabaseDataService.saveItem(item))).catch(() => {});
+            }
+            return localInventory;
           }
-          return localInventory;
+          localDataStore.saveInventory(fromSupabase);
+          cacheService.setItems(compId, fromSupabase);
+          return fromSupabase;
         }
-        localDataStore.saveInventory(fromSupabase);
-        return fromSupabase;
+      } catch (e) {
+        console.warn('Supabase getInventory notice:', e);
       }
-    } catch (e) {
-      console.warn('Supabase getInventory notice:', e);
+      return localInventory;
+    };
+
+    if (localInventory.length > 0) {
+      fetchRemote().catch(() => {});
+      return localInventory;
     }
-    if (isSupabaseConfigured && localInventory.length > 0) {
-      Promise.all(localInventory.map((item) => SupabaseDataService.saveItem(item))).catch(() => {});
-    }
-    return localInventory;
+    return await fetchRemote();
   }
 
   public static async createInventoryItem(data: any): Promise<InventoryItem> {
@@ -2424,6 +2493,8 @@ export class DataService {
     };
     list.push(newItem);
     localDataStore.saveInventory(list);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setItems(compId, list);
     try {
       await SupabaseDataService.saveItem(newItem);
     } catch (e) {
@@ -2444,6 +2515,8 @@ export class DataService {
     if (idx === -1) return null;
     list[idx] = { ...list[idx], ...data };
     localDataStore.saveInventory(list);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setItems(compId, list);
     try {
       await SupabaseDataService.saveItem(list[idx]);
     } catch (e) {
@@ -2462,6 +2535,8 @@ export class DataService {
     const list = localDataStore.getInventory();
     const filtered = list.filter((i) => i.id !== id);
     localDataStore.saveInventory(filtered);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setItems(compId, filtered);
     try {
       await SupabaseDataService.deleteItem(id);
     } catch (e) {
@@ -2470,6 +2545,35 @@ export class DataService {
     deleteFromFirestore('erp_inventory', id);
     await safeApiFetch(`/api/inventory/${id}`, { method: 'DELETE' });
     return true;
+  }
+
+  // Fast local O(1) synchronous getters for ultra-high-speed UI responsiveness
+  public static getLocalInvoices(): Invoice[] {
+    return localDataStore.getInvoices();
+  }
+
+  public static getLocalVouchers(): PaymentVoucher[] {
+    return localDataStore.getVouchers();
+  }
+
+  public static getLocalCustomers(): Customer[] {
+    return localDataStore.getCustomers();
+  }
+
+  public static getLocalSuppliers(): Supplier[] {
+    return localDataStore.getSuppliers();
+  }
+
+  public static getLocalInventory(): InventoryItem[] {
+    return localDataStore.getInventory();
+  }
+
+  public static getLocalJournals(): JournalEntry[] {
+    return localDataStore.getJournals();
+  }
+
+  public static getLocalAccounts(): Account[] {
+    return localDataStore.getAccounts();
   }
 
   // Units
