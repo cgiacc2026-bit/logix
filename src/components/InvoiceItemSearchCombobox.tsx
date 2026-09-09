@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, Package, Check, ChevronDown, Sparkles, Barcode } from 'lucide-react';
 import { InventoryItem, InvoiceType } from '../types.js';
 import { filterAndRankEntities } from '../utils/searchUtils.ts';
@@ -32,8 +33,15 @@ export const InvoiceItemSearchCombobox: React.FC<InvoiceItemSearchComboboxProps>
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState<number>(0);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number; width: number }>({
+    top: 0,
+    right: 0,
+    width: 520,
+  });
+
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const selectedItem = useMemo(() => {
     return inventory.find((i) => i.id === selectedItemId) || null;
@@ -69,10 +77,60 @@ export const InvoiceItemSearchCombobox: React.FC<InvoiceItemSearchComboboxProps>
     setHighlightedIndex(0);
   }, [query]);
 
-  // Click outside to close
+  // Update fixed portal position based on input bounding client rect
+  const updateDropdownPosition = () => {
+    if (!inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+    const dropdownWidth = Math.min(Math.max(rect.width, 520), window.innerWidth - 16);
+    
+    // In RTL, align right edge of dropdown with right edge of input, ensuring it stays on screen
+    let right = window.innerWidth - rect.right;
+    if (right < 8) right = 8;
+    if (window.innerWidth - right < dropdownWidth) {
+      right = Math.max(8, window.innerWidth - dropdownWidth - 8);
+    }
+
+    // Vertical positioning: default below input, or above if near screen bottom
+    const spaceBelow = window.innerHeight - rect.bottom;
+    let top = rect.bottom + 4;
+    if (spaceBelow < 280 && rect.top > 300) {
+      top = Math.max(10, rect.top - 324);
+    }
+
+    setDropdownPos({
+      top,
+      right,
+      width: dropdownWidth,
+    });
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updateDropdownPosition();
+
+    const handleScrollOrResize = () => {
+      updateDropdownPosition();
+    };
+
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
+    return () => {
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [isOpen]);
+
+  // Click outside to close (checks both input container and portal menu)
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
+      ) {
         setIsOpen(false);
         setQuery('');
       }
@@ -200,9 +258,19 @@ export const InvoiceItemSearchCombobox: React.FC<InvoiceItemSearchComboboxProps>
         </div>
       </div>
 
-      {/* Floating Suggestions Dropdown */}
-      {isOpen && (
-        <div className="absolute z-50 mt-1 right-0 w-80 sm:w-[480px] md:w-[520px] bg-white border border-[#E5E1DA] rounded-xl shadow-2xl max-h-80 overflow-y-auto divide-y divide-[#F1EFEA] animate-in fade-in zoom-in-95 duration-100 text-xs">
+      {/* Floating Suggestions Dropdown rendered via Portal to prevent table clipping */}
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: `${dropdownPos.top}px`,
+            right: `${dropdownPos.right}px`,
+            width: `${dropdownPos.width}px`,
+            zIndex: 999999,
+          }}
+          className="bg-white border-2 border-[#D4AF37] rounded-xl shadow-2xl max-h-80 overflow-y-auto divide-y divide-[#F1EFEA] animate-in fade-in zoom-in-95 duration-100 text-xs text-right dir-rtl"
+        >
           {/* Header with scope and count */}
           <div className="p-2 bg-[#FAF9F6] border-b border-[#E5E1DA] text-[10px] font-bold text-neutral-600 flex items-center justify-between sticky top-0 z-10">
             <div className="flex items-center gap-1.5">
@@ -234,9 +302,9 @@ export const InvoiceItemSearchCombobox: React.FC<InvoiceItemSearchComboboxProps>
                   <button
                     type="button"
                     onClick={handleCustomItemSelect}
-                    className="w-full py-1.5 px-3 bg-amber-50 hover:bg-amber-100 border border-[#D4AF37] text-[#8C6D1F] rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2 px-3 bg-amber-50 hover:bg-amber-100 border border-[#D4AF37] text-[#8C6D1F] rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <span>+ استخدام &ldquo;{query}&rdquo; كبند مخصص للفاتورة</span>
+                    <span>+ اعتماد &ldquo;{query}&rdquo; كبند مخصص للفاتورة</span>
                   </button>
                 </div>
               )}
@@ -303,7 +371,7 @@ export const InvoiceItemSearchCombobox: React.FC<InvoiceItemSearchComboboxProps>
                           </span>
                         )}
                         {item.description && (
-                          <span className="text-[10px] text-neutral-400 truncate max-w-[180px]">
+                          <span className="text-[10px] text-neutral-400 truncate max-w-[200px]">
                             • {item.description}
                           </span>
                         )}
@@ -335,7 +403,8 @@ export const InvoiceItemSearchCombobox: React.FC<InvoiceItemSearchComboboxProps>
               );
             })
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

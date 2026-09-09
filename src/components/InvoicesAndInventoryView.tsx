@@ -44,7 +44,9 @@ import {
   TrendingUp,
   Calculator,
   FileSpreadsheet,
-  Calendar
+  Calendar,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 
 interface InvoicesProps {
@@ -181,6 +183,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
   // Modals State
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [isInvoiceModalExpanded, setIsInvoiceModalExpanded] = useState<boolean>(true);
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
   const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -1673,10 +1676,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         const calculatedGrandTotal = Math.max(0, grossSubtotal - totalDiscount);
 
         return (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto dir-rtl text-right">
-            <div className="bg-white border border-[#E5E1DA] w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[95vh] overflow-hidden my-auto">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-1 sm:p-3 overflow-y-auto dir-rtl text-right">
+            <div
+              className={`bg-white border border-[#E5E1DA] w-full transition-all duration-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden my-auto ${
+                isInvoiceModalExpanded
+                  ? 'max-w-[98vw] h-[97vh]'
+                  : 'max-w-7xl max-h-[95vh]'
+              }`}
+            >
               {/* Header */}
-              <div className="bg-[#1A1A1A] text-white px-6 py-4 flex items-center justify-between border-b border-black">
+              <div className="bg-[#1A1A1A] text-white px-5 py-3.5 flex items-center justify-between border-b border-black">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-[#D4AF37]/20 rounded-xl border border-[#D4AF37]/40">
                     <ShoppingBag className="w-6 h-6 text-[#D4AF37]" />
@@ -1692,12 +1701,35 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setIsInvoiceModalOpen(false)}
-                  className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsInvoiceModalExpanded(!isInvoiceModalExpanded)}
+                    className="p-1.5 text-neutral-300 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer flex items-center gap-1.5 text-xs bg-neutral-800/80 px-2.5 py-1.5 transition-colors"
+                    title={isInvoiceModalExpanded ? 'تصغير العرض' : 'توسيع كامل الشاشة'}
+                  >
+                    {isInvoiceModalExpanded ? (
+                      <>
+                        <Minimize2 className="w-4 h-4 text-[#D4AF37]" />
+                        <span className="hidden sm:inline font-bold text-[11px]">تصغير العرض</span>
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="w-4 h-4 text-[#D4AF37]" />
+                        <span className="hidden sm:inline font-bold text-[11px]">توسيع كامل الشاشة</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsInvoiceModalOpen(false)}
+                    className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
+                    title="إغلاق"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* Form Body */}
@@ -1855,21 +1887,21 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   </div>
 
                   {/* Desktop Table View */}
-                  <div className="overflow-x-auto border border-[#E5E1DA] rounded-xl min-h-[280px]">
-                    <table className="w-full text-xs text-right border-collapse min-w-[760px]">
+                  <div className="overflow-x-auto border border-[#E5E1DA] rounded-xl min-h-[340px] bg-white shadow-2xs">
+                    <table className="w-full text-xs text-right border-collapse min-w-[1240px]">
                       <thead>
                         <tr className="bg-[#1A1A1A] text-white text-[11px] font-bold">
-                          <th className="py-2.5 px-2 text-center w-8 border-l border-neutral-700">م</th>
-                          <th className="py-2.5 px-2 w-28 border-l border-neutral-700">رقم الصنف</th>
-                          <th className="py-2.5 px-2 border-l border-neutral-700">اسم الصنف والبيان</th>
-                          <th className="py-2.5 px-2 text-center w-20 border-l border-neutral-700">الكمية</th>
-                          <th className="py-2.5 px-2 text-center w-16 border-l border-neutral-700">الوحدة</th>
-                          <th className="py-2.5 px-2 text-center w-16 border-l border-neutral-700">الشد</th>
-                          <th className="py-2.5 px-2 text-center w-20 border-l border-neutral-700">كراتين (شد)</th>
-                          <th className="py-2.5 px-2 text-left w-24 border-l border-neutral-700">السعر</th>
-                          <th className="py-2.5 px-2 text-left w-32 border-l border-neutral-700">الخصم (نسبة/مبلغ)</th>
-                          <th className="py-2.5 px-2 text-left w-24 border-l border-neutral-700">السعر الإجمالي</th>
-                          <th className="py-2.5 px-2 text-center w-10">إجراء</th>
+                          <th className="py-3 px-2 text-center w-12 border-l border-neutral-700">م</th>
+                          <th className="py-3 px-2 w-36 min-w-[130px] border-l border-neutral-700">رقم الصنف / الباركود</th>
+                          <th className="py-3 px-3 min-w-[380px] border-l border-neutral-700">اسم الصنف والبيان التفصيلي</th>
+                          <th className="py-3 px-2 text-center w-24 min-w-[85px] border-l border-neutral-700">الكمية</th>
+                          <th className="py-3 px-2 text-center w-20 min-w-[75px] border-l border-neutral-700">الوحدة</th>
+                          <th className="py-3 px-2 text-center w-20 min-w-[75px] border-l border-neutral-700">معامل الشد</th>
+                          <th className="py-3 px-2 text-center w-24 min-w-[85px] border-l border-neutral-700">كراتين (شد)</th>
+                          <th className="py-3 px-2 text-left w-28 min-w-[105px] border-l border-neutral-700">السعر</th>
+                          <th className="py-3 px-2 text-left w-36 min-w-[140px] border-l border-neutral-700">الخصم (نسبة/مبلغ)</th>
+                          <th className="py-3 px-2 text-left w-32 min-w-[115px] border-l border-neutral-700">السعر الإجمالي</th>
+                          <th className="py-3 px-2 text-center w-12">إجراء</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#E5E1DA] bg-white">
@@ -1913,12 +1945,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                       setInvLines(updated);
                                     }
                                   }}
-                                  className="w-full bg-[#FAF9F6] border border-[#E5E1DA] rounded-lg px-2 py-1 font-mono text-[11px] font-bold text-black"
+                                  className="w-full bg-[#FAF9F6] border border-[#E5E1DA] rounded-lg px-2 py-1.5 font-mono text-[11px] font-bold text-black"
                                 />
                               </td>
 
                               {/* اسم الصنف والبيان - بحث مزدوج فوري بالكود والاسم */}
-                              <td className="py-2 px-2 border-l border-[#E5E1DA] min-w-[240px]">
+                              <td className="py-2 px-2 border-l border-[#E5E1DA] min-w-[380px]">
                                 <InvoiceItemSearchCombobox
                                   inventory={scopedInventory}
                                   selectedItemId={line.itemId}
