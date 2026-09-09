@@ -226,6 +226,7 @@ export class SupabaseDataService {
             company_id: companyId,
             code: item.sku || (item as any).code || item.id,
             name: item.nameAr || (item as any).name || 'صنف',
+            item_name: item.nameAr || (item as any).name || 'صنف',
             name_ar: item.nameAr,
             name_en: item.nameEn || '',
             category: item.category || 'عام',
@@ -267,6 +268,7 @@ export class SupabaseDataService {
         company_id: companyId,
         code: item.sku || (item as any).code || item.id,
         name: item.nameAr || (item as any).name || 'صنف',
+        item_name: item.nameAr || (item as any).name || 'صنف',
         name_ar: item.nameAr,
         name_en: item.nameEn || '',
         category: item.category || 'عام',
@@ -844,6 +846,8 @@ export class SupabaseDataService {
         payment_status: paymentStatus,
         status: inv.status || 'POSTED',
         payment_method: inv.paymentTerms || 'CASH',
+        invoice_type: inv.type || 'SALES',
+        items: inv.lines || [],
         customer_snapshot: customerSnapshot,
         raw_data: {
           ...inv,
@@ -1075,10 +1079,40 @@ export class SupabaseDataService {
 
       if (error) {
         console.warn('Supabase getVouchers error:', error.message);
-        return [];
       }
 
-      if (!data || data.length === 0) return [];
+      if (!data || data.length === 0) {
+        // Fallback to vouchers table if payment_vouchers is empty
+        try {
+          const { data: vData } = await supabase
+            .from('vouchers')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false });
+          if (vData && vData.length > 0) {
+            return vData.map((row: any) => ({
+              id: row.id,
+              companyId: row.company_id || companyId,
+              voucherNumber: row.voucher_number || row.id,
+              type: (row.voucher_type || row.type || 'RECEIPT') as 'RECEIPT' | 'PAYMENT',
+              date: row.date || (row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+              amount: Number(row.amount || 0),
+              paymentMethod: 'CASH' as const,
+              entityType: 'CUSTOMER' as const,
+              entityId: '',
+              entityNameAr: row.entity_name || '',
+              bankAccountId: row.account_id || '',
+              reference: '',
+              notes: row.description || '',
+              status: 'POSTED' as const,
+              createdAt: row.created_at || new Date().toISOString(),
+            }));
+          }
+        } catch (fErr) {
+          // ignore
+        }
+        return [];
+      }
 
       return data.map((row: any) => {
         const raw = row.raw_data || {};
@@ -1143,6 +1177,23 @@ export class SupabaseDataService {
         .from('payment_vouchers')
         .upsert([payload]);
 
+      // Dual-write to vouchers table for multi-tenant schema compatibility
+      try {
+        await supabase.from('vouchers').upsert([
+          {
+            id: String(voucherUuid),
+            company_id: String(companyId),
+            voucher_type: v.type || 'RECEIPT',
+            amount: Number(v.amount || 0),
+            account_id: v.bankAccountId || (v as any).accountId || null,
+            description: v.notes || (v as any).description || '',
+            created_at: v.createdAt || new Date().toISOString(),
+          },
+        ]);
+      } catch (vErr: any) {
+        // Safe fallback if vouchers table is not yet created
+      }
+
       if (error) {
         console.warn('Supabase saveVoucher error:', error.message);
         return false;
@@ -1190,6 +1241,23 @@ export class SupabaseDataService {
           console.warn('Supabase saveVouchers batch error:', error.message);
         }
       }
+
+      // Dual-write batch to vouchers table
+      try {
+        const simpleVouchers = rows.map((r) => ({
+          id: String(r.id),
+          company_id: String(r.company_id),
+          voucher_type: r.type,
+          amount: r.amount,
+          account_id: r.account_id,
+          description: r.description,
+          created_at: r.created_at,
+        }));
+        await supabase.from('vouchers').upsert(simpleVouchers);
+      } catch (vErr: any) {
+        // Safe fallback
+      }
+
       return true;
     } catch (err: any) {
       console.warn('Supabase saveVouchers exception:', err?.message);
@@ -1209,6 +1277,16 @@ export class SupabaseDataService {
         .delete()
         .eq('company_id', companyId)
         .or(`id.eq.${voucherUuid},voucher_number.eq.${id}`);
+
+      try {
+        await supabase
+          .from('vouchers')
+          .delete()
+          .eq('company_id', companyId)
+          .eq('id', voucherUuid);
+      } catch (vErr: any) {
+        // Safe fallback
+      }
 
       return !error;
     } catch (err: any) {

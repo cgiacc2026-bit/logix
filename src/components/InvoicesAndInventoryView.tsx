@@ -1855,7 +1855,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   </div>
 
                   {/* Desktop Table View */}
-                  <div className="overflow-x-auto border border-[#E5E1DA] rounded-xl">
+                  <div className="overflow-x-auto border border-[#E5E1DA] rounded-xl min-h-[280px]">
                     <table className="w-full text-xs text-right border-collapse min-w-[760px]">
                       <thead>
                         <tr className="bg-[#1A1A1A] text-white text-[11px] font-bold">

@@ -171,5 +171,47 @@ EXCEPTION
 END $$;
 
 -- ==============================================================================
+-- 5) التمديدات الإضافية لجدول الشركات وسندات vouchers وفهارس البحث السريع
+-- ==============================================================================
+ALTER TABLE IF EXISTS public.companies 
+    ADD COLUMN IF NOT EXISTS cash_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS bank_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS inventory_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS pnl_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS company_logo TEXT;
+
+ALTER TABLE IF EXISTS public.items
+    ADD COLUMN IF NOT EXISTS item_name TEXT,
+    ADD COLUMN IF NOT EXISTS name TEXT;
+
+ALTER TABLE IF EXISTS public.customers
+    ADD COLUMN IF NOT EXISTS name TEXT;
+
+UPDATE public.items SET item_name = COALESCE(name_ar, name, 'صنف') WHERE item_name IS NULL;
+UPDATE public.customers SET name = COALESCE(name_ar, 'عميل') WHERE name IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.vouchers (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    voucher_type TEXT,
+    amount NUMERIC DEFAULT 0,
+    account_id TEXT,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS voucher_type TEXT;
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS amount NUMERIC DEFAULT 0;
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS account_id TEXT;
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS description TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_items_company_id ON public.items(company_id);
+CREATE INDEX IF NOT EXISTS idx_customers_company_id ON public.customers(company_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_company_id ON public.invoices(company_id);
+CREATE INDEX IF NOT EXISTS idx_vouchers_company_id ON public.vouchers(company_id);
+CREATE INDEX IF NOT EXISTS idx_items_name_search ON public.items(company_id, item_name);
+CREATE INDEX IF NOT EXISTS idx_customers_name_search ON public.customers(company_id, name);
+
+-- ==============================================================================
 -- نهاية السكريبت الآمن: تم ضبط الهيكل وحماية البيانات وتفعيل ON DELETE CASCADE بنجاح
 -- ==============================================================================

@@ -875,7 +875,35 @@ BEGIN
     CREATE POLICY "invoice_items_full_access" ON public.invoice_items FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION 
     WHEN others THEN NULL;
-END $$;`;
+END $$;
+
+-- تمديد جدول الشركات وسندات vouchers وفهارس البحث السريع
+ALTER TABLE IF EXISTS companies 
+    ADD COLUMN IF NOT EXISTS cash_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS bank_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS inventory_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS pnl_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS company_logo TEXT;
+
+ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS item_name TEXT;
+ALTER TABLE IF EXISTS customers ADD COLUMN IF NOT EXISTS name TEXT;
+
+CREATE TABLE IF NOT EXISTS vouchers (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    voucher_type TEXT,
+    amount NUMERIC DEFAULT 0,
+    account_id TEXT,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_items_company_id ON items(company_id);
+CREATE INDEX IF NOT EXISTS idx_customers_company_id ON customers(company_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_company_id ON invoices(company_id);
+CREATE INDEX IF NOT EXISTS idx_vouchers_company_id ON vouchers(company_id);
+CREATE INDEX IF NOT EXISTS idx_items_name_search ON items(company_id, item_name);
+CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers(company_id, name);`;
                     navigator.clipboard?.writeText(sqlScript);
                     setCopiedInvoiceSql(true);
                     setTimeout(() => setCopiedInvoiceSql(false), 2000);
