@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/server/db.js';
 import { AccountingEngine } from './src/server/accountingEngine.js';
@@ -1837,6 +1838,35 @@ async function startServer() {
     try {
       const result = db.wizardInitializeDatabase(req.body);
       res.status(201).json({ success: true, ...result, message: 'تم إنشاء وتهيئة قاعدة البيانات الجديدة بنجاح' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Enterprise SQL Migration Script API
+  app.get('/api/database/migration-script', (req, res) => {
+    try {
+      const sqlPath = path.join(process.cwd(), 'supabase_enterprise_upgrade_v2.sql');
+      if (fs.existsSync(sqlPath)) {
+        const sql = fs.readFileSync(sqlPath, 'utf8');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.send(sql);
+      } else {
+        res.status(404).json({ error: 'ملف التحديث غير موجود' });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/database/migration-script/download', (req, res) => {
+    try {
+      const sqlPath = path.join(process.cwd(), 'supabase_enterprise_upgrade_v2.sql');
+      if (fs.existsSync(sqlPath)) {
+        res.download(sqlPath, 'supabase_enterprise_upgrade_v2.sql');
+      } else {
+        res.status(404).json({ error: 'ملف التحديث غير موجود' });
+      }
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

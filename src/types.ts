@@ -608,3 +608,188 @@ export interface TenantCompanyRecord {
   updated_at?: string;
 }
 
+// ==========================================
+// ENTERPRISE EXTENSIONS (جداول وترابطات متقدمة)
+// ==========================================
+
+export interface Warehouse {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn?: string;
+  location?: string;
+  keeperName?: string;
+  phone?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ItemWarehouseStock {
+  id: string;
+  warehouseId: string;
+  itemId: string;
+  quantityOnHand: number;
+  reservedQuantity?: number;
+  minAlertQty?: number;
+  maxCapacity?: number;
+  shelfLocation?: string;
+  lastCountedAt?: string;
+}
+
+export interface StockTransferLine {
+  id: string;
+  itemId: string;
+  itemNameAr?: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  notes?: string;
+}
+
+export interface StockTransfer {
+  id: string;
+  transferNumber: string;
+  transferDate: string;
+  fromWarehouseId: string;
+  fromWarehouseName?: string;
+  toWarehouseId: string;
+  toWarehouseName?: string;
+  status: 'DRAFT' | 'IN_TRANSIT' | 'COMPLETED' | 'CANCELLED';
+  lines: StockTransferLine[];
+  totalCostValue: number;
+  driverName?: string;
+  approvedBy?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CostCenter {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn?: string;
+  parentId?: string;
+  level: number;
+  category: 'OPERATIONAL' | 'ADMINISTRATIVE' | 'SALES' | 'PROJECT';
+  managerName?: string;
+  allocatedBudget?: number;
+  isActive: boolean;
+  createdAt?: string;
+}
+
+export interface MasterPriceListItem {
+  id: string;
+  priceListId: string;
+  itemId: string;
+  itemNameAr?: string;
+  customSalePrice: number;
+  minOrderQuantity?: number;
+  discountRate?: number;
+  notes?: string;
+}
+
+export interface MasterPriceList {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn?: string;
+  currency: string;
+  isDefault?: boolean;
+  defaultDiscountPercent?: number;
+  validFrom?: string;
+  validTo?: string;
+  isActive: boolean;
+  items?: MasterPriceListItem[];
+  createdAt?: string;
+}
+
+export interface FiscalPeriod {
+  id: string;
+  fiscalYearId: string;
+  periodNumber: number;
+  nameAr: string;
+  startDate: string;
+  endDate: string;
+  isClosed: boolean;
+  closedAt?: string;
+}
+
+export interface FiscalYear {
+  id: string;
+  yearCode: string;
+  nameAr: string;
+  startDate: string;
+  endDate: string;
+  isClosed: boolean;
+  closedAt?: string;
+  closedBy?: string;
+  retainedEarningsAccountId?: string;
+  periods?: FiscalPeriod[];
+  createdAt?: string;
+}
+
+export interface SalesOrderLine {
+  id: string;
+  itemId: string;
+  itemNameAr?: string;
+  unit: string;
+  quantity: number;
+  deliveredQuantity: number;
+  unitPrice: number;
+  discountAmount: number;
+  total: number;
+  notes?: string;
+}
+
+export interface SalesOrder {
+  id: string;
+  orderNumber: string;
+  orderDate: string;
+  expectedDeliveryDate?: string;
+  customerId: string;
+  customerNameAr?: string;
+  customerBranchId?: string;
+  customerBranchName?: string;
+  warehouseId?: string;
+  priceListId?: string;
+  status: 'PENDING' | 'APPROVED' | 'PARTIALLY_DELIVERED' | 'COMPLETED' | 'CANCELLED';
+  lines: SalesOrderLine[];
+  subtotal: number;
+  discountTotal: number;
+  grandTotal: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PurchaseOrderLine {
+  id: string;
+  itemId: string;
+  itemNameAr?: string;
+  unit: string;
+  quantity: number;
+  receivedQuantity: number;
+  unitPrice: number;
+  total: number;
+  notes?: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  orderNumber: string;
+  orderDate: string;
+  expectedDeliveryDate?: string;
+  supplierId: string;
+  supplierNameAr?: string;
+  warehouseId?: string;
+  status: 'PENDING' | 'APPROVED' | 'RECEIVED' | 'CANCELLED';
+  lines: PurchaseOrderLine[];
+  grandTotal: number;
+  notes?: string;
+  createdAt: string;
+}
+
+

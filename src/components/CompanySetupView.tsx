@@ -28,6 +28,7 @@ import {
   FolderUp,
   Key,
   Wand2,
+  Package,
   Layers,
   ArrowRight,
   Image as ImageIcon,
@@ -135,6 +136,32 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   const [restoreSuccess, setRestoreSuccess] = useState('');
   const [isResettingDb, setIsResettingDb] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+
+  // Enterprise SQL Migration Script States
+  const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
+  const [sqlScriptContent, setSqlScriptContent] = useState<string>('');
+  const [isLoadingSql, setIsLoadingSql] = useState(false);
+  const [isSqlCopied, setIsSqlCopied] = useState(false);
+
+  const handleOpenSqlModal = async () => {
+    setIsSqlModalOpen(true);
+    if (!sqlScriptContent) {
+      setIsLoadingSql(true);
+      try {
+        const res = await fetch('/api/database/migration-script');
+        if (res.ok) {
+          const text = await res.text();
+          setSqlScriptContent(text);
+        } else {
+          setSqlScriptContent('-- تعذر جلب ملف الاسكربت من الخادم');
+        }
+      } catch {
+        setSqlScriptContent('-- حدث خطأ أثناء الاتصال بالخادم لجلب الاسكربت');
+      } finally {
+        setIsLoadingSql(false);
+      }
+    }
+  };
 
   // Update internal form data when prop changes
   React.useEffect(() => {
@@ -2148,6 +2175,100 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </div>
             </div>
 
+            {/* ENTERPRISE SQL MIGRATION V2 CARD */}
+            <div className="bg-gradient-to-br from-[#111827] via-[#1E293B] to-[#0F172A] text-white rounded-2xl p-6 shadow-lg border border-slate-700 space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-bold text-white flex items-center gap-2">
+                        <span>اسكربت ترقية قاعدة البيانات المؤسسية (Enterprise SQL Migration V2)</span>
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-mono">
+                          v2.0 Production Ready
+                        </span>
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        حزمة تحديث شاملة لـ PostgreSQL / Supabase تضيف 12 جدولاً وعلاقات متقدمة مع المفاتيح الأجنبية والقيود المحاسبية.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleOpenSqlModal}
+                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+                  >
+                    <Sliders className="w-4 h-4 text-cyan-300" />
+                    <span>عرض ونسخ كود الاسكربت</span>
+                  </button>
+                  <a
+                    href="/api/database/migration-script/download"
+                    download="supabase_enterprise_upgrade_v2.sql"
+                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-slate-950" />
+                    <span>تحميل ملف SQL المعتمد</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* 6 Modules Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-3 border-t border-slate-700/80 text-xs">
+                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px]">
+                    <Package className="w-3.5 h-3.5" />
+                    <span>المستودعات المتعددة</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">تحويلات مخزنية وأرصدة لكل مخزن</p>
+                </div>
+
+                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-[11px]">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>مراكز التكلفة</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">توجيه تحليلي للفواتير والقيود</p>
+                </div>
+
+                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-emerald-300 font-bold text-[11px]">
+                    <Receipt className="w-3.5 h-3.5" />
+                    <span>قوائم الأسعار</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">تسعير شرائحي وخصومات معتمدة</p>
+                </div>
+
+                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-purple-300 font-bold text-[11px]">
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>فروع العملاء</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">مواقع تسليم وفواتير لكل فرع</p>
+                </div>
+
+                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-rose-300 font-bold text-[11px]">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>الفترات المالية</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">إغلاق الدفاتر وحماية القيود</p>
+                </div>
+
+                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-sky-300 font-bold text-[11px]">
+                    <FileCheck2 className="w-3.5 h-3.5" />
+                    <span>أوامر البيع والشراء</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">دورة مستندية تجارية متكاملة</p>
+                </div>
+              </div>
+            </div>
+
             {/* ACTION CARDS GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Export Backup Card */}
@@ -2310,6 +2431,104 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
             if (onRefreshData) onRefreshData();
           }}
         />
+      )}
+
+      {/* Render Enterprise SQL Migration Modal */}
+      {isSqlModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-100">
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                    <span>اسكربت ترقية قاعدة البيانات المؤسسية (Enterprise SQL Migration V2)</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono border border-emerald-500/40">
+                      PostgreSQL / Supabase
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    12 جدولاً جديداً مع كافة الترابطات والمفاتيح الأجنبية، المشغلات (Triggers)، والعروض التحليلية المجمعة.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSqlModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-all cursor-pointer"
+              >
+                <Sliders className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick How-To Instructions */}
+            <div className="bg-slate-800/50 p-3 px-5 border-b border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>طريقة التشغيل: افتح <b>Supabase SQL Editor</b> أو <b>pgAdmin</b>، الصق الكود، واضغط <b>Run (Ctrl + Enter)</b>.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (sqlScriptContent) {
+                      await navigator.clipboard.writeText(sqlScriptContent);
+                      setIsSqlCopied(true);
+                      setTimeout(() => setIsSqlCopied(false), 3000);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+                    isSqlCopied
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white'
+                  }`}
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  <span>{isSqlCopied ? 'تم نسخ الاسكربت بالكامل!' : 'نسخ كود الاسكربت'}</span>
+                </button>
+                <a
+                  href="/api/database/migration-script/download"
+                  download="supabase_enterprise_upgrade_v2.sql"
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>تحميل (.sql)</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Script Code Viewer */}
+            <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-300 bg-[#0B1120] select-all leading-relaxed whitespace-pre" dir="ltr">
+              {isLoadingSql ? (
+                <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin text-amber-400" />
+                  <span>جاري تحميل نص الاسكربت...</span>
+                </div>
+              ) : (
+                sqlScriptContent || '-- اضغط زر التحميل أو النسخ للبدء'
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 px-5 bg-slate-800 border-t border-slate-700 flex items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <BadgeCheck className="w-4 h-4" />
+                <span>آمن 100% ولا يحذف أي جداول أو بيانات قديمة (Non-Destructive Safe Schema)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsSqlModalOpen(false)}
+                className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-bold cursor-pointer"
+              >
+                إغلاق النافذة
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
