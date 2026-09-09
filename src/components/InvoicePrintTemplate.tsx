@@ -395,18 +395,18 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
 
         {/* Table of Items - Clean and responsive */}
         <div className="overflow-x-auto print:overflow-visible">
-          <table className="w-full text-xs sm:text-sm text-right border-collapse border border-neutral-300 print:border-neutral-400">
+          <table className="w-full text-xs sm:text-sm text-right border-collapse border border-neutral-300 print:table-fixed print:w-full print:border print:border-black">
             <thead>
-              <tr className="bg-[#1A1A1A] print:bg-neutral-900 text-white text-xs font-bold">
-                <th className="py-2.5 px-2 text-center w-8 border-b border-neutral-300">م</th>
-                <th className="py-2.5 px-2.5 text-center w-24 border-b border-neutral-300">رقم الصنف (SKU)</th>
-                <th className="py-2.5 px-3 text-right border-b border-neutral-300 min-w-[200px]">بيان الصنف والمواصفات</th>
-                <th className="py-2.5 px-2 text-center w-16 border-b border-neutral-300">الكمية</th>
-                <th className="py-2.5 px-2 text-center w-14 border-b border-neutral-300">الوحدة</th>
-                <th className="py-2.5 px-2 text-center w-14 border-b border-neutral-300">الشد</th>
-                <th className="py-2.5 px-2.5 text-left w-24 border-b border-neutral-300">سعر الوحدة</th>
-                <th className="py-2.5 px-2.5 text-left w-20 border-b border-neutral-300">الخصم</th>
-                <th className="py-2.5 px-3 text-left w-24 border-b border-neutral-300">الإجمالي</th>
+              <tr className="bg-[#1A1A1A] print:bg-neutral-900 text-white text-xs font-bold print:text-[10px]">
+                <th className="py-2.5 px-2 text-center w-8 print:w-[4%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1">م</th>
+                <th className="py-2.5 px-2.5 text-center w-24 print:w-[13%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">رقم الصنف (SKU)</th>
+                <th className="py-2.5 px-3 text-right print:w-[31%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1.5">بيان الصنف والمواصفات</th>
+                <th className="py-2.5 px-2 text-center w-16 print:w-[8%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الكمية</th>
+                <th className="py-2.5 px-2 text-center w-14 print:w-[7%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1">الوحدة</th>
+                <th className="py-2.5 px-2 text-center w-14 print:w-[7%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الشد</th>
+                <th className="py-2.5 px-2.5 text-left w-24 print:w-[10%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">سعر الوحدة</th>
+                <th className="py-2.5 px-2.5 text-left w-20 print:w-[8%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الخصم</th>
+                <th className="py-2.5 px-3 text-left w-24 print:w-[12%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الإجمالي</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 print:divide-neutral-300">
@@ -416,56 +416,56 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
 
                 return (
                   <tr key={line.id || line.idx} className="hover:bg-neutral-50 print:hover:bg-transparent">
-                    <td className="py-2.5 px-2 text-center font-bold text-neutral-600">
+                    <td className="py-2.5 px-2 text-center font-bold text-neutral-600 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
                       {line.idx}
                     </td>
-                    <td className="py-2.5 px-2.5 text-center font-mono font-bold text-black">
+                    <td className="py-2.5 px-2.5 text-center font-mono font-bold text-black print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
                       {line.itemSku || line.barcode || '-'}
                     </td>
-                    <td className="py-2.5 px-3 font-bold text-black">
-                      <div>{line.itemNameAr}</div>
-                      {line.notes && <div className="text-[11px] text-neutral-500 font-normal">{line.notes}</div>}
+                    <td className="py-2.5 px-3 font-bold text-black print:py-1.5 print:px-1.5 print:border print:border-black print:text-[10px]">
+                      <div className="print:leading-tight">{line.itemNameAr}</div>
+                      {line.notes && <div className="text-[11px] text-neutral-500 print:text-[8.5px] font-normal mt-0.5">{line.notes}</div>}
                     </td>
-                    <td className="py-2.5 px-2 text-center font-mono font-black text-black">
+                    <td className="py-2.5 px-2 text-center font-mono font-black text-black print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
                       {line.quantity}
                     </td>
-                    <td className="py-2.5 px-2 text-center font-bold text-neutral-800">
+                    <td className="py-2.5 px-2 text-center font-bold text-neutral-800 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
                       {line.unit || 'حبة'}
                     </td>
-                    <td className="py-2.5 px-2 text-center font-mono font-bold text-neutral-800">
+                    <td className="py-2.5 px-2 text-center font-mono font-bold text-neutral-800 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
                       {unitsPerPack > 1 ? `شد ${unitsPerPack}` : '1'}
                     </td>
-                    <td className="py-2.5 px-2.5 text-left font-mono font-bold text-[#1A1A1A]">
+                    <td className="py-2.5 px-2.5 text-left font-mono font-bold text-[#1A1A1A] print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
                       {formattedCurrency(line.unitPrice)}
                     </td>
-                    <td className="py-2.5 px-2.5 text-left font-mono text-neutral-700">
+                    <td className="py-2.5 px-2.5 text-left font-mono text-neutral-700 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
                       {hasDiscount ? (
-                        <span className="font-bold text-amber-900">
+                        <span className="font-bold text-amber-900 print:text-black">
                           -{formattedCurrency(line.lineDiscAmt)}
                         </span>
                       ) : (
-                        <span className="text-neutral-400">-</span>
+                        <span className="text-neutral-400 print:text-neutral-600">-</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-left font-mono font-black text-black">
+                    <td className="py-2.5 px-3 text-left font-mono font-black text-black print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
                       {formattedCurrency(line.lineNet)}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
-            <tfoot className="bg-[#FAF9F6] border-t-2 border-black text-xs sm:text-sm font-bold">
+            <tfoot className="bg-[#FAF9F6] border-t-2 border-black text-xs sm:text-sm font-bold print:bg-neutral-100 print:text-[10px]">
               <tr>
-                <td colSpan={3} className="py-2.5 px-3 text-right">
+                <td colSpan={3} className="py-2.5 px-3 text-right print:py-1.5 print:px-1.5 print:border print:border-black">
                   عدد الأصناف: <span className="font-black font-mono">{processedLines.length}</span> | إجمالي الكمية:{' '}
                   <span className="font-black font-mono">
                     {processedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)}
                   </span>
                 </td>
-                <td colSpan={4} className="py-2.5 px-3 text-left text-neutral-700">
+                <td colSpan={4} className="py-2.5 px-3 text-left text-neutral-700 print:py-1.5 print:px-1 print:border print:border-black print:text-black">
                   المجموع قبل الخصومات:
                 </td>
-                <td colSpan={2} className="py-2.5 px-3 text-left font-mono text-black font-black">
+                <td colSpan={2} className="py-2.5 px-3 text-left font-mono text-black font-black print:py-1.5 print:px-1 print:border print:border-black print:text-[11px]">
                   {formattedCurrency(grossItemsTotal)}
                 </td>
               </tr>
