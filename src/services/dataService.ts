@@ -1411,7 +1411,9 @@ export class DataService {
 
     const discountTotal = lineDiscountsSum + invDiscAmt;
     const grandTotal = Math.max(0, grossSubtotal - discountTotal);
-    const paidAmount = Number(data.paidAmount) || 0;
+    const paidAmount = data.paidAmount !== undefined
+      ? Math.max(0, Number(data.paidAmount))
+      : (data.paymentTerms === 'CASH' ? grandTotal : 0);
     const dueAmount = Math.max(0, grandTotal - paidAmount);
 
     let entityNameAr = data.entityNameAr || data.entityName || '';
@@ -1465,7 +1467,7 @@ export class DataService {
     } else if (isSalesReturn && newInvoice.entityId) {
       const cust = customers.find((c) => c.id === newInvoice.entityId);
       if (cust) {
-        cust.balance -= dueAmount;
+        cust.balance = Math.max(0, cust.balance - dueAmount);
         localDataStore.saveCustomers(customers);
         syncToFirestore('erp_customers', cust.id, cust);
       }
@@ -1479,7 +1481,7 @@ export class DataService {
     } else if (isPurchaseReturn && newInvoice.entityId) {
       const supp = suppliers.find((s) => s.id === newInvoice.entityId);
       if (supp) {
-        supp.balance -= dueAmount;
+        supp.balance = Math.max(0, supp.balance - dueAmount);
         localDataStore.saveSuppliers(suppliers);
         syncToFirestore('erp_suppliers', supp.id, supp);
       }
@@ -1503,14 +1505,31 @@ export class DataService {
     localDataStore.saveInventory(inventory);
 
     const resolved = this.getResolvedAccounts();
-    const isPaid = paidAmount >= grandTotal;
-    const paymentAcc = isPaid ? resolved.cash : resolved.receivable;
-    const purchasePaymentAcc = isPaid ? resolved.cash : resolved.payable;
 
     let jLines = [];
     if (isSales) {
-      jLines = [
-        {
+      if (paidAmount > 0 && dueAmount > 0) {
+        jLines.push({
+          id: 'jl-1',
+          accountId: resolved.cash.id,
+          accountCode: resolved.cash.code,
+          accountNameAr: resolved.cash.nameAr,
+          debit: paidAmount,
+          credit: 0,
+          memo: `دفعة نقدية مسددة - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+        });
+        jLines.push({
+          id: 'jl-2',
+          accountId: resolved.receivable.id,
+          accountCode: resolved.receivable.code,
+          accountNameAr: resolved.receivable.nameAr,
+          debit: dueAmount,
+          credit: 0,
+          memo: `المبلغ الآجل المستحق - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+        });
+      } else {
+        const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
+        jLines.push({
           id: 'jl-1',
           accountId: paymentAcc.id,
           accountCode: paymentAcc.code,
@@ -1518,29 +1537,49 @@ export class DataService {
           debit: grandTotal,
           credit: 0,
           memo: `فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
-        },
-        {
-          id: 'jl-2',
-          accountId: resolved.sales.id,
-          accountCode: resolved.sales.code,
-          accountNameAr: resolved.sales.nameAr,
-          debit: 0,
-          credit: grandTotal,
-          memo: `إيراد مبيعات فاتورة ${invoiceNumber}`,
-        },
-      ];
+        });
+      }
+      jLines.push({
+        id: `jl-${jLines.length + 1}`,
+        accountId: resolved.sales.id,
+        accountCode: resolved.sales.code,
+        accountNameAr: resolved.sales.nameAr,
+        debit: 0,
+        credit: grandTotal,
+        memo: `إيراد مبيعات فاتورة ${invoiceNumber}`,
+      });
     } else if (isSalesReturn) {
-      jLines = [
-        {
-          id: 'jl-1',
-          accountId: resolved.sales.id,
-          accountCode: resolved.sales.code,
-          accountNameAr: resolved.sales.nameAr,
-          debit: grandTotal,
-          credit: 0,
-          memo: `مردودات ومسموحات المبيعات ${invoiceNumber} - ${entityNameAr}`,
-        },
-        {
+      jLines.push({
+        id: 'jl-1',
+        accountId: resolved.sales.id,
+        accountCode: resolved.sales.code,
+        accountNameAr: resolved.sales.nameAr,
+        debit: grandTotal,
+        credit: 0,
+        memo: `مردودات ومسموحات المبيعات ${invoiceNumber} - ${entityNameAr}`,
+      });
+      if (paidAmount > 0 && dueAmount > 0) {
+        jLines.push({
+          id: 'jl-2',
+          accountId: resolved.cash.id,
+          accountCode: resolved.cash.code,
+          accountNameAr: resolved.cash.nameAr,
+          debit: 0,
+          credit: paidAmount,
+          memo: `رد نقدي مسدد للعميل - مرتجع مبيعات ${invoiceNumber}`,
+        });
+        jLines.push({
+          id: 'jl-3',
+          accountId: resolved.receivable.id,
+          accountCode: resolved.receivable.code,
+          accountNameAr: resolved.receivable.nameAr,
+          debit: 0,
+          credit: dueAmount,
+          memo: `تخفيض حساب العميل الآجل ${entityNameAr}`,
+        });
+      } else {
+        const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
+        jLines.push({
           id: 'jl-2',
           accountId: paymentAcc.id,
           accountCode: paymentAcc.code,
@@ -1548,20 +1587,40 @@ export class DataService {
           debit: 0,
           credit: grandTotal,
           memo: `تخفيض حساب العميل ${entityNameAr}`,
-        },
-      ];
+        });
+      }
     } else if (isPurchase) {
-      jLines = [
-        {
-          id: 'jl-1',
-          accountId: resolved.inventory.id,
-          accountCode: resolved.inventory.code,
-          accountNameAr: resolved.inventory.nameAr,
-          debit: grandTotal,
-          credit: 0,
-          memo: `فاتورة مشتريات ${invoiceNumber} - ${entityNameAr}`,
-        },
-        {
+      jLines.push({
+        id: 'jl-1',
+        accountId: resolved.inventory.id,
+        accountCode: resolved.inventory.code,
+        accountNameAr: resolved.inventory.nameAr,
+        debit: grandTotal,
+        credit: 0,
+        memo: `فاتورة مشتريات ${invoiceNumber} - ${entityNameAr}`,
+      });
+      if (paidAmount > 0 && dueAmount > 0) {
+        jLines.push({
+          id: 'jl-2',
+          accountId: resolved.cash.id,
+          accountCode: resolved.cash.code,
+          accountNameAr: resolved.cash.nameAr,
+          debit: 0,
+          credit: paidAmount,
+          memo: `سداد نقدي فوري لمشتريات فاتورة ${invoiceNumber}`,
+        });
+        jLines.push({
+          id: 'jl-3',
+          accountId: resolved.payable.id,
+          accountCode: resolved.payable.code,
+          accountNameAr: resolved.payable.nameAr,
+          debit: 0,
+          credit: dueAmount,
+          memo: `استحقاق آجل للمورد ${entityNameAr} - فاتورة ${invoiceNumber}`,
+        });
+      } else {
+        const purchasePaymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.payable;
+        jLines.push({
           id: 'jl-2',
           accountId: purchasePaymentAcc.id,
           accountCode: purchasePaymentAcc.code,
@@ -1569,12 +1628,32 @@ export class DataService {
           debit: 0,
           credit: grandTotal,
           memo: `استحقاق مشتريات فاتورة ${invoiceNumber}`,
-        },
-      ];
+        });
+      }
     } else {
       // PURCHASE_RETURN
-      jLines = [
-        {
+      if (paidAmount > 0 && dueAmount > 0) {
+        jLines.push({
+          id: 'jl-1',
+          accountId: resolved.cash.id,
+          accountCode: resolved.cash.code,
+          accountNameAr: resolved.cash.nameAr,
+          debit: paidAmount,
+          credit: 0,
+          memo: `استرداد نقدي من المورد - مرتجع مشتريات ${invoiceNumber}`,
+        });
+        jLines.push({
+          id: 'jl-2',
+          accountId: resolved.payable.id,
+          accountCode: resolved.payable.code,
+          accountNameAr: resolved.payable.nameAr,
+          debit: dueAmount,
+          credit: 0,
+          memo: `تخفيض حساب المورد الآجل ${entityNameAr}`,
+        });
+      } else {
+        const purchasePaymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.payable;
+        jLines.push({
           id: 'jl-1',
           accountId: purchasePaymentAcc.id,
           accountCode: purchasePaymentAcc.code,
@@ -1582,17 +1661,17 @@ export class DataService {
           debit: grandTotal,
           credit: 0,
           memo: `تخفيض حساب المورد ${entityNameAr} - مرتجع مشتريات`,
-        },
-        {
-          id: 'jl-2',
-          accountId: resolved.inventory.id,
-          accountCode: resolved.inventory.code,
-          accountNameAr: resolved.inventory.nameAr,
-          debit: 0,
-          credit: grandTotal,
-          memo: `تخفيض المخزون لمرتجع المشتريات ${invoiceNumber}`,
-        },
-      ];
+        });
+      }
+      jLines.push({
+        id: `jl-${jLines.length + 1}`,
+        accountId: resolved.inventory.id,
+        accountCode: resolved.inventory.code,
+        accountNameAr: resolved.inventory.nameAr,
+        debit: 0,
+        credit: grandTotal,
+        memo: `تخفيض المخزون لمرتجع المشتريات ${invoiceNumber}`,
+      });
     }
 
     const jEntry: JournalEntry = {
@@ -1735,14 +1814,15 @@ export class DataService {
       localDataStore.saveInventory(inventory);
 
       // 3. Reverse Customer/Supplier Balances
+      const effectiveDue = inv.dueAmount !== undefined ? inv.dueAmount : inv.grandTotal;
       if ((inv.type === 'SALES' || inv.type === 'SALES_RETURN') && inv.entityId) {
         const customers = localDataStore.getCustomers();
         const cust = customers.find((c) => c.id === inv.entityId);
         if (cust) {
           if (inv.type === 'SALES') {
-            cust.balance = Math.max(0, cust.balance - inv.grandTotal);
+            cust.balance = Math.max(0, cust.balance - effectiveDue);
           } else {
-            cust.balance = cust.balance + inv.grandTotal;
+            cust.balance = cust.balance + effectiveDue;
           }
           localDataStore.saveCustomers(customers);
           syncToFirestore('erp_customers', cust.id, cust);
@@ -1752,9 +1832,9 @@ export class DataService {
         const supp = suppliers.find((s) => s.id === inv.entityId);
         if (supp) {
           if (inv.type === 'PURCHASE') {
-            supp.balance = Math.max(0, supp.balance - inv.grandTotal);
+            supp.balance = Math.max(0, supp.balance - effectiveDue);
           } else {
-            supp.balance = supp.balance + inv.grandTotal;
+            supp.balance = supp.balance + effectiveDue;
           }
           localDataStore.saveSuppliers(suppliers);
           syncToFirestore('erp_suppliers', supp.id, supp);

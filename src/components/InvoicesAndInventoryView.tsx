@@ -210,6 +210,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [invNotes, setInvNotes] = useState('');
   const [invDiscountType, setInvDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
   const [invDiscountValue, setInvDiscountValue] = useState<number>(0);
+  const [invPaidAmount, setInvPaidAmount] = useState<number>(0);
   const [invLines, setInvLines] = useState<
     {
       itemId: string;
@@ -489,11 +490,25 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       ? scopedCustomers.find((c) => c.id === invEntityId)
       : null;
 
+    const grossSubtotal = processedLines.reduce((acc, l) => acc + (l.quantity * l.unitPrice), 0);
+    const lineDiscountsTotal = processedLines.reduce((acc, l) => acc + (l.discountAmount || 0), 0);
+    const subtotalAfterLines = Math.max(0, grossSubtotal - lineDiscountsTotal);
+    const invDiscountAmount = invDiscountType === 'PERCENT'
+      ? (subtotalAfterLines * (Number(invDiscountValue) || 0)) / 100
+      : (Number(invDiscountValue) || 0);
+    const totalDiscount = lineDiscountsTotal + Math.min(subtotalAfterLines, invDiscountAmount);
+    const calculatedGrandTotal = Math.max(0, grossSubtotal - totalDiscount);
+
+    const effectivePaidAmount = invPaymentTerms === 'CASH'
+      ? (invPaidAmount > 0 ? invPaidAmount : calculatedGrandTotal)
+      : (invPaidAmount > 0 ? invPaidAmount : 0);
+
     await onCreateInvoice({
       type: invType,
       date: invDate || new Date().toISOString().split('T')[0],
       dueDate: invDueDate || invDate || new Date().toISOString().split('T')[0],
       paymentTerms: invPaymentTerms,
+      paidAmount: effectivePaidAmount,
       salesPerson: invSalesPerson,
       receiverName: invReceiverName,
       customerBranchId: invCustomerBranchId || undefined,
@@ -514,6 +529,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setIsNegativeStockModalOpen(false);
     setInvCustomerBranchId('');
     setInvCustomerBranchName('');
+    setInvPaidAmount(0);
   };
 
   const handleSaveInvoice = async (e: React.FormEvent, autoPost: boolean = true) => {
@@ -2006,7 +2022,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     <div className="grid grid-cols-2 gap-2 h-10">
                       <button
                         type="button"
-                        onClick={() => setInvPaymentTerms('CASH')}
+                        onClick={() => {
+                          setInvPaymentTerms('CASH');
+                          setInvPaidAmount(0);
+                        }}
                         className={`rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 border cursor-pointer transition-all ${
                           invPaymentTerms === 'CASH'
                             ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
@@ -2018,7 +2037,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setInvPaymentTerms('CREDIT')}
+                        onClick={() => {
+                          setInvPaymentTerms('CREDIT');
+                          setInvPaidAmount(0);
+                        }}
                         className={`rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 border cursor-pointer transition-all ${
                           invPaymentTerms === 'CREDIT'
                             ? 'bg-[#1A1A1A] text-white border-black shadow-xs'
@@ -2029,6 +2051,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                         آجل (ذمم / حساب)
                       </button>
                     </div>
+                    {invPaymentTerms === 'CASH' && (
+                      <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-[11px]">
+                        <span className="text-emerald-800 font-bold">حالة السداد النقدي:</span>
+                        <span className="text-emerald-700 font-bold">مسددة بالكامل فورياً في الصندوق النقدية</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="sm:col-span-2">
