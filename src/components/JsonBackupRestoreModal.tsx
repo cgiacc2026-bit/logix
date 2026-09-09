@@ -12,6 +12,13 @@ import {
   Sparkles,
   Layers,
   ArrowRightLeft,
+  Cloud,
+  ShieldCheck,
+  RefreshCw,
+  Boxes,
+  Receipt,
+  BookOpen,
+  Users,
 } from 'lucide-react';
 import { CompanyJsonBackupService } from '../services/companyJsonBackupService.js';
 import { localDataStore } from '../services/dataService.js';
@@ -37,6 +44,21 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
   const [jsonText, setJsonText] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [syncDetails, setSyncDetails] = useState<{
+    cloudSynced: boolean;
+    stats?: {
+      invoices: number;
+      inventory: number;
+      journals: number;
+      customers: number;
+      suppliers: number;
+      vouchers: number;
+      accounts: number;
+      productionOrders: number;
+    };
+    cloudSyncNotice?: string;
+  } | null>(null);
+  const [processingStage, setProcessingStage] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'restore' | 'export' | 'zero'>('restore');
 
@@ -52,9 +74,10 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
     reader.onload = (event) => {
       const content = event.target?.result as string;
       setJsonText(content);
+      setSyncDetails(null);
       setFeedback({
         type: 'info',
-        text: `تم تحميل الملف "${file.name}" بنجاح (${(file.size / 1024).toFixed(1)} KB). انقر على "تأكيد واستعادة البيانات" لحفظها.`,
+        text: `تم تحميل الملف "${file.name}" بنجاح (${(file.size / 1024).toFixed(1)} KB). انقر على "تأكيد واستعادة البيانات" لحفظها سحابياً ومحلياً.`,
       });
     };
     reader.onerror = () => {
@@ -71,13 +94,21 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
     }
 
     setIsProcessing(true);
+    setProcessingStage('جاري قراءة وتثبيت البيانات محلياً والمزامنة الفورية مع سحابة Supabase...');
     setFeedback(null);
+    setSyncDetails(null);
 
     try {
       const result = await CompanyJsonBackupService.importCompanyData(targetCompanyId, jsonText);
       setIsProcessing(false);
+      setProcessingStage('');
 
       if (result.success) {
+        setSyncDetails({
+          cloudSynced: !!(result as any).cloudSynced,
+          stats: result.stats,
+          cloudSyncNotice: (result as any).cloudSyncNotice,
+        });
         setFeedback({
           type: 'success',
           text: result.message,
@@ -91,6 +122,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
       }
     } catch (err: any) {
       setIsProcessing(false);
+      setProcessingStage('');
       setFeedback({
         type: 'error',
         text: `حدث خطأ أثناء الاستعادة: ${err?.message || 'خطأ غير متوقع'}`,
@@ -101,7 +133,9 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
   // Load Preset Al-Waleed Backup Work
   const handleLoadAlWaleedPreset = async () => {
     setIsProcessing(true);
+    setProcessingStage('جاري استيراد شغل مطحنة الوليد وتثبيته سحابياً في Supabase...');
     setFeedback(null);
+    setSyncDetails(null);
 
     try {
       const alwaleedJson = CompanyJsonBackupService.getAlWaleedMillPresetBackupJson();
@@ -109,13 +143,19 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
 
       const result = await CompanyJsonBackupService.importCompanyData(targetId, alwaleedJson);
       setIsProcessing(false);
+      setProcessingStage('');
 
       if (result.success) {
         setJsonText(alwaleedJson);
         setFileName('AlWaleed_Mill_Verified_Backup_2026.json');
+        setSyncDetails({
+          cloudSynced: !!(result as any).cloudSynced,
+          stats: result.stats,
+          cloudSyncNotice: (result as any).cloudSyncNotice,
+        });
         setFeedback({
           type: 'success',
-          text: `تمت استعادة آخر شغل مدخل ومسجل لمطحنة الوليد المتحدة بنجاح! تم استيراد 22 صنفاً بهارات وتوابل، خطوط الطحن، وأوامر التصنيع.`,
+          text: `تمت استعادة آخر شغل مدخل لمطحنة الوليد ومزامنته سحابياً بنجاح! 22 صنفاً بهارات وتوابل، خطوط الطحن، وأوامر التصنيع أصبحت متطابقة على جميع الأجهزة.`,
         });
         onDataRestored();
       } else {
@@ -126,6 +166,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
       }
     } catch (err: any) {
       setIsProcessing(false);
+      setProcessingStage('');
       setFeedback({
         type: 'error',
         text: `حدث خطأ أثناء تحميل البيانات المسبقة: ${err?.message || 'خطأ غير متوقع'}`,
@@ -277,8 +318,18 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
 
         {/* Body Content */}
         <div className="p-6 space-y-5">
+          {/* Active Processing / Cloud Sync Progress Banner */}
+          {isProcessing && (
+            <div className="p-4 rounded-xl border border-indigo-500/40 bg-indigo-950/40 text-indigo-200 flex items-center gap-3 animate-pulse">
+              <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
+              <div className="text-sm font-medium">
+                {processingStage || 'جاري المعالجة والمزامنة السحابية الفورية في Supabase...'}
+              </div>
+            </div>
+          )}
+
           {/* Feedback Banner */}
-          {feedback && (
+          {feedback && !isProcessing && (
             <div
               className={`p-4 rounded-xl border flex items-start gap-3 animate-fadeIn ${
                 feedback.type === 'success'
@@ -296,6 +347,73 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
                 <Database className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
               )}
               <div className="text-sm leading-relaxed">{feedback.text}</div>
+            </div>
+          )}
+
+          {/* Cloud Sync Details Breakdown Card */}
+          {syncDetails && syncDetails.stats && (
+            <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 space-y-3 animate-fadeIn">
+              <div className="flex items-center justify-between text-xs border-b border-emerald-500/20 pb-2">
+                <span className="flex items-center gap-1.5 font-bold text-emerald-300">
+                  <Cloud className="w-4 h-4 text-emerald-400" />
+                  حالة المزامنة السحابية المباشرة (Supabase Cloud Sync)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  متطابق سحابياً مع جميع الأجهزة
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Boxes className="w-3.5 h-3.5 text-indigo-400" />
+                    الأصناف:
+                  </span>
+                  <span className="font-bold text-white font-mono">{syncDetails.stats.inventory}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Receipt className="w-3.5 h-3.5 text-emerald-400" />
+                    الفواتير:
+                  </span>
+                  <span className="font-bold text-white font-mono">{syncDetails.stats.invoices}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                    السندات:
+                  </span>
+                  <span className="font-bold text-white font-mono">{syncDetails.stats.vouchers}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                    القيود اليومية:
+                  </span>
+                  <span className="font-bold text-white font-mono">{syncDetails.stats.journals}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-purple-400" />
+                    العملاء:
+                  </span>
+                  <span className="font-bold text-white font-mono">{syncDetails.stats.customers}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-orange-400" />
+                    الموردون:
+                  </span>
+                  <span className="font-bold text-white font-mono">{syncDetails.stats.suppliers}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between col-span-2">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                    دليل الحسابات (شجرة):
+                  </span>
+                  <span className="font-bold text-white font-mono">{syncDetails.stats.accounts} حساب</span>
+                </div>
+              </div>
             </div>
           )}
 

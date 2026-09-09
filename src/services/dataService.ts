@@ -982,6 +982,11 @@ export class DataService {
     };
     accounts.push(newAcc);
     localDataStore.saveAccounts(accounts);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveAccounts(accounts).catch((err) =>
+        console.warn('Supabase createAccount notice:', err)
+      );
+    }
     syncToFirestore('erp_accounts', newAcc.id, newAcc);
     await safeApiFetch('/api/accounts', {
       method: 'POST',
@@ -997,6 +1002,11 @@ export class DataService {
     if (idx === -1) return null;
     accounts[idx] = { ...accounts[idx], ...accData };
     localDataStore.saveAccounts(accounts);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveAccounts(accounts).catch((err) =>
+        console.warn('Supabase updateAccount notice:', err)
+      );
+    }
     syncToFirestore('erp_accounts', id, accounts[idx]);
     await safeApiFetch(`/api/accounts/${id}`, {
       method: 'PUT',
@@ -1010,6 +1020,11 @@ export class DataService {
     const accounts = localDataStore.getAccounts();
     const filtered = accounts.filter((a) => a.id !== id);
     localDataStore.saveAccounts(filtered);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.deleteAccount(id).catch((err) =>
+        console.warn('Supabase deleteAccount notice:', err)
+      );
+    }
     deleteFromFirestore('erp_accounts', id);
     await safeApiFetch(`/api/accounts/${id}`, { method: 'DELETE' });
     return true;
@@ -1227,6 +1242,11 @@ export class DataService {
         journals.unshift(apiRes.journal);
       }
       localDataStore.saveJournals(journals);
+      if (isSupabaseConfigured) {
+        SupabaseDataService.saveJournal(apiRes.journal).catch((err) =>
+          console.warn('Supabase rebuildOpeningJournal notice:', err)
+        );
+      }
       syncToFirestore('erp_journals', apiRes.journal.id, apiRes.journal);
     }
     return apiRes;
@@ -1239,6 +1259,11 @@ export class DataService {
 
     orig.status = 'CANCELLED';
     localDataStore.saveJournals(journals);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveJournal(orig).catch((err) =>
+        console.warn('Supabase reverseJournal orig notice:', err)
+      );
+    }
     syncToFirestore('erp_journals', orig.id, orig);
 
     const revLines = orig.lines.map((l, i) => ({
@@ -1267,6 +1292,11 @@ export class DataService {
 
     journals.unshift(revEntry);
     localDataStore.saveJournals(journals);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveJournal(revEntry).catch((err) =>
+        console.warn('Supabase reverseJournal revEntry notice:', err)
+      );
+    }
     syncToFirestore('erp_journals', revEntry.id, revEntry);
 
     await safeApiFetch(`/api/journals/${id}/reverse`, {
@@ -1609,6 +1639,11 @@ export class DataService {
     if (!inv) return null;
     inv.status = 'POSTED';
     localDataStore.saveInvoices(invoices);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveInvoice(inv).catch((err) =>
+        console.warn('Supabase postInvoice notice:', err)
+      );
+    }
     syncToFirestore('erp_invoices', id, inv);
     await safeApiFetch(`/api/invoices/${id}/post`, { method: 'POST' });
     return inv;
@@ -1627,6 +1662,11 @@ export class DataService {
     inv.status = 'CANCELLED';
     inv.notes = (inv.notes ? inv.notes + '\n' : '') + `[ملغاة بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason || 'إلغاء بطلب المستخدم'}]`;
     localDataStore.saveInvoices(invoices);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveInvoice(inv).catch((err) =>
+        console.warn('Supabase cancelInvoice notice:', err)
+      );
+    }
     syncToFirestore('erp_invoices', id, inv);
 
     // If the invoice was posted or paid, perform complete atomic accounting & inventory rollback:
@@ -2002,6 +2042,11 @@ export class DataService {
     const vouchers = localDataStore.getVouchers();
     const filtered = vouchers.filter((v) => v.id !== id);
     localDataStore.saveVouchers(filtered);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.deleteVoucher(id).catch((err) =>
+        console.warn('Supabase deleteVoucher notice:', err)
+      );
+    }
     deleteFromFirestore('erp_vouchers', id);
     await safeApiFetch(`/api/vouchers/${id}`, { method: 'DELETE' });
     await this.syncSystemIntegrity();

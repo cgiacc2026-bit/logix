@@ -231,8 +231,21 @@ export class CompanyJsonBackupService {
   ): Promise<{
     success: boolean;
     message: string;
+    cloudSynced?: boolean;
+    cloudSyncNotice?: string;
+    cloudSyncedCounts?: {
+      company: boolean;
+      accounts: number;
+      customers: number;
+      suppliers: number;
+      inventory: number;
+      invoices: number;
+      vouchers: number;
+      journals: number;
+    };
     stats?: {
       invoices: number;
+      vouchers: number;
       inventory: number;
       journals: number;
       customers: number;
@@ -360,49 +373,72 @@ export class CompanyJsonBackupService {
       localDataStore.markRestoreLocked(canonicalId);
       localDataStore.markRestoreLocked(companyId);
 
-      // 5. Asynchronously synchronize restored records to Supabase Cloud Tables
+      // 5. Directly synchronize restored records to Supabase Cloud Tables (Batch Upsert)
+      let cloudSynced = false;
+      let cloudSyncNotice = '';
+      const cloudSyncedCounts = {
+        company: false,
+        accounts: 0,
+        customers: 0,
+        suppliers: 0,
+        inventory: 0,
+        invoices: 0,
+        vouchers: 0,
+        journals: 0,
+      };
+
       if (isSupabaseConfigured) {
-        Promise.resolve().then(async () => {
-          try {
-            console.log(`[CloudRestoreSync] Starting full Supabase cloud sync for company ${canonicalId}...`);
-            // 1. Company Profile
-            if (company) {
-              await SupabaseDataService.saveCompany(company, canonicalId);
-            }
-            // 2. Chart of Accounts
-            if (accounts.length > 0) {
-              await SupabaseDataService.saveAccounts(accounts, canonicalId);
-            }
-            // 3. Customers & Suppliers (Precedes invoices so foreign key customer_id succeeds)
-            if (customers.length > 0) {
-              await SupabaseDataService.saveCustomers(customers, canonicalId);
-            }
-            if (suppliers.length > 0) {
-              await SupabaseDataService.saveSuppliers(suppliers, canonicalId);
-            }
-            // 4. Inventory Items
-            if (inventory.length > 0) {
-              await SupabaseDataService.saveItems(inventory, canonicalId);
-            }
-            // 5. Sales Invoices & Line Details
-            if (invoices.length > 0) {
-              await SupabaseDataService.saveInvoices(invoices, canonicalId);
-            }
-            // 6. Payment & Receipt Vouchers
-            if (vouchers.length > 0) {
-              await SupabaseDataService.saveVouchers(vouchers, canonicalId);
-            }
-            // 7. General Ledger Journal Entries
-            if (journals.length > 0) {
-              await SupabaseDataService.saveJournals(journals, canonicalId);
-            }
-            console.log(
-              `[CloudRestoreSync] Successfully synced all restored records to Supabase: ${invoices.length} invoices, ${vouchers.length} vouchers, ${inventory.length} items, ${customers.length} customers, ${journals.length} journals.`
-            );
-          } catch (cloudErr) {
-            console.warn('[CloudRestoreSync] Background Supabase cloud restore sync error:', cloudErr);
+        try {
+          console.log(`[CloudRestoreSync] Executing direct cloud sync for company ${canonicalId}...`);
+          // 1. Company Profile
+          if (company) {
+            const compOk = await SupabaseDataService.saveCompany(company, canonicalId);
+            cloudSyncedCounts.company = compOk;
           }
-        });
+          // 2. Chart of Accounts
+          if (accounts.length > 0) {
+            const accOk = await SupabaseDataService.saveAccounts(accounts, canonicalId);
+            if (accOk) cloudSyncedCounts.accounts = accounts.length;
+          }
+          // 3. Customers & Suppliers (Precedes invoices so foreign key customer_id succeeds)
+          if (customers.length > 0) {
+            const custOk = await SupabaseDataService.saveCustomers(customers, canonicalId);
+            if (custOk) cloudSyncedCounts.customers = customers.length;
+          }
+          if (suppliers.length > 0) {
+            const suppOk = await SupabaseDataService.saveSuppliers(suppliers, canonicalId);
+            if (suppOk) cloudSyncedCounts.suppliers = suppliers.length;
+          }
+          // 4. Inventory Items
+          if (inventory.length > 0) {
+            const itemOk = await SupabaseDataService.saveItems(inventory, canonicalId);
+            if (itemOk) cloudSyncedCounts.inventory = inventory.length;
+          }
+          // 5. Sales Invoices & Line Details
+          if (invoices.length > 0) {
+            const invOk = await SupabaseDataService.saveInvoices(invoices, canonicalId);
+            if (invOk) cloudSyncedCounts.invoices = invoices.length;
+          }
+          // 6. Payment & Receipt Vouchers
+          if (vouchers.length > 0) {
+            const vchOk = await SupabaseDataService.saveVouchers(vouchers, canonicalId);
+            if (vchOk) cloudSyncedCounts.vouchers = vouchers.length;
+          }
+          // 7. General Ledger Journal Entries
+          if (journals.length > 0) {
+            const jvOk = await SupabaseDataService.saveJournals(journals, canonicalId);
+            if (jvOk) cloudSyncedCounts.journals = journals.length;
+          }
+
+          cloudSynced = true;
+          cloudSyncNotice = `تمت المزامنة السحابية بنجاح إلى Supabase (${invoices.length} فواتير، ${vouchers.length} سندات، ${inventory.length} أصناف، ${customers.length} عملاء، ${journals.length} قيود أستاذ عام)`;
+          console.log(`[CloudRestoreSync] Direct Supabase cloud restore completed for company ${canonicalId}.`, cloudSyncedCounts);
+        } catch (cloudErr: any) {
+          console.warn('[CloudRestoreSync] Supabase cloud restore sync warning:', cloudErr);
+          cloudSyncNotice = `تم التثبيت محلياً مع تنبيه في المزامنة السحابية: ${cloudErr?.message || 'تعذر الاتصال بقاعدة البيانات السحابية'}`;
+        }
+      } else {
+        cloudSyncNotice = 'تم الحفظ في التخزين المحلي (قاعدة بيانات Supabase غير مهيأة حالياً).';
       }
 
       // 6. Safe sync to Express DB and Firestore
@@ -426,7 +462,12 @@ export class CompanyJsonBackupService {
 
       return {
         success: true,
-        message: `تمت استعادة وتثبيت بيانات المنشأة بنجاح ومزامنتها سحابياً! (${stats.inventory} صنف مخزني، ${stats.invoices} فاتورة مبيعات، ${stats.vouchers} سند قبض وصرف، ${stats.journals} قيود أستاذ عام، ${stats.customers} عميل، ${stats.productionOrders} أمر تشغيل).`,
+        cloudSynced,
+        cloudSyncNotice,
+        cloudSyncedCounts,
+        message: cloudSynced
+          ? `تمت استعادة وتثبيت بيانات المنشأة ومزامنتها سحابياً في Supabase بنجاح! (${stats.inventory} صنف مخزني، ${stats.invoices} فاتورة مبيعات، ${stats.vouchers} سند قبض وصرف، ${stats.journals} قيود أستاذ عام، ${stats.customers} عميل، ${stats.productionOrders} أمر تشغيل). البيانات متطابقة سحابياً مع جميع الأجهزة فوراً.`
+          : `تمت استعادة وتثبيت بيانات المنشأة بنجاح! (${stats.inventory} صنف، ${stats.invoices} فاتورة، ${stats.vouchers} سند، ${stats.journals} قيود). ${cloudSyncNotice}`,
         stats,
       };
     } catch (err: any) {

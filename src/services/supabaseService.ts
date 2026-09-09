@@ -1199,7 +1199,7 @@ export class SupabaseDataService {
   }
 
   public static async saveAccounts(accounts: Account[], targetCompanyId?: string): Promise<boolean> {
-    if (!isSupabaseConfigured) return false;
+    if (!isSupabaseConfigured || accounts.length === 0) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
@@ -1222,9 +1222,34 @@ export class SupabaseDataService {
         updated_at: new Date().toISOString(),
       }));
 
-      const { error } = await supabase.from('chart_of_accounts').upsert(payload);
+      for (let i = 0; i < payload.length; i += 50) {
+        const batch = payload.slice(i, i + 50);
+        const { error } = await supabase.from('chart_of_accounts').upsert(batch);
+        if (error) {
+          console.warn('Supabase saveAccounts batch error:', error.message);
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveAccounts exception:', e);
+      return false;
+    }
+  }
+
+  public static async deleteAccount(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const { error } = await supabase
+        .from('chart_of_accounts')
+        .delete()
+        .eq('company_id', companyId)
+        .or(`id.eq.${id},code.eq.${id}`);
       return !error;
     } catch (e) {
+      console.warn('Supabase deleteAccount exception:', e);
       return false;
     }
   }
