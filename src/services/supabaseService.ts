@@ -608,14 +608,94 @@ export class SupabaseDataService {
   }
 
   /**
-   * 4. SALES_MASTER & SALES_DETAILS (الفواتير والمبيعات)
+   * 4. INVOICES & INVOICE_ITEMS (الفواتير وبنودها مع التوافق التبادلي الكامل)
    */
   public static async getInvoices(targetCompanyId?: string): Promise<Invoice[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
+
     try {
+      // 1. First attempt: Query modern 'invoices' table
+      const { data: invTableData, error: invErr } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('invoice_date', { ascending: false });
+
+      if (!invErr && invTableData && invTableData.length > 0) {
+        // Query related invoice_items
+        const { data: itemRows } = await supabase
+          .from('invoice_items')
+          .select('*')
+          .eq('company_id', companyId);
+
+        const itemsByInvoice: Record<string, InvoiceLine[]> = {};
+        if (itemRows) {
+          itemRows.forEach((it: any) => {
+            const raw = it.raw_data || {};
+            const snapshot = it.item_snapshot || {};
+            const qty = Number(it.quantity ?? raw.quantity ?? 1);
+            const unitPrice = Number(it.unit_price ?? raw.unitPrice ?? 0);
+            const total = Number(it.total_price ?? raw.total ?? (qty * unitPrice));
+            const line: InvoiceLine = {
+              id: raw.id || it.id,
+              itemId: it.item_id || raw.itemId || snapshot.itemId || '',
+              itemSku: raw.itemSku || snapshot.sku || '',
+              barcode: raw.barcode || snapshot.barcode || '',
+              itemNameAr: it.item_name || raw.itemNameAr || snapshot.nameAr || 'صنف',
+              itemNameEn: raw.itemNameEn || '',
+              unit: raw.unit || snapshot.unit || 'حبة',
+              unitsPerPack: raw.unitsPerPack || snapshot.unitsPerPack || 1,
+              quantity: qty,
+              unitPrice: unitPrice,
+              subtotal: Number(raw.subtotal ?? (qty * unitPrice)),
+              vatRate: Number(it.tax_rate ?? raw.vatRate ?? 0),
+              vatAmount: Number(it.tax_amount ?? raw.vatAmount ?? 0),
+              discountAmount: Number(raw.discountAmount ?? 0),
+              discountPercent: Number(raw.discountPercent ?? 0),
+              total: total,
+              ...raw,
+            };
+
+            const key = it.invoice_id;
+            if (key) {
+              if (!itemsByInvoice[key]) itemsByInvoice[key] = [];
+              itemsByInvoice[key].push(line);
+            }
+          });
+        }
+
+        return invTableData.map((inv: any) => {
+          const raw = inv.raw_data || {};
+          const snapshot = inv.customer_snapshot || {};
+          const lines = itemsByInvoice[inv.id] || raw.lines || [];
+          return {
+            id: raw.id || inv.id,
+            invoiceNumber: inv.invoice_number || raw.invoiceNumber || inv.id,
+            type: raw.type || 'SALES',
+            paymentTerms: raw.paymentTerms || (inv.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
+            entityId: inv.customer_id || snapshot.id || raw.entityId || '',
+            entityNameAr: inv.customer_name || snapshot.nameAr || raw.entityNameAr || '',
+            entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
+            date: inv.invoice_date || inv.date || raw.date,
+            dueDate: raw.dueDate || inv.invoice_date || inv.date,
+            status: inv.payment_status || inv.status || raw.status || 'POSTED',
+            lines,
+            subtotal: Number(inv.subtotal ?? raw.subtotal ?? 0),
+            vatTotal: Number(inv.tax_amount ?? inv.vat_amount ?? raw.vatTotal ?? 0),
+            discountTotal: Number(raw.discountTotal ?? 0),
+            grandTotal: Number(inv.total_amount ?? raw.grandTotal ?? 0),
+            paidAmount: Number(inv.paid_amount ?? raw.paidAmount ?? 0),
+            dueAmount: Number(inv.due_amount ?? raw.dueAmount ?? 0),
+            createdAt: raw.createdAt || inv.created_at || new Date().toISOString(),
+            ...raw,
+          };
+        });
+      }
+
+      // 2. Fallback attempt: Query legacy 'sales_master' & 'sales_details'
       let { data: masters, error: masterErr } = await supabase
         .from('sales_master')
         .select('*')
@@ -629,7 +709,6 @@ export class SupabaseDataService {
 
       if (!masters || masters.length === 0) return [];
 
-      // Fetch sales_details for this company
       const { data: details, error: detailsErr } = await supabase
         .from('sales_details')
         .select('*')
@@ -643,6 +722,9 @@ export class SupabaseDataService {
       if (details) {
         details.forEach((d: any) => {
           const raw = d.raw_data || {};
+          const qty = Number(d.quantity ?? d.qty ?? raw.quantity ?? 1);
+          const unitPrice = Number(d.unit_price ?? raw.unitPrice ?? 0);
+          const total = Number(d.total_price ?? d.total ?? d.line_total ?? raw.total ?? (qty * unitPrice));
           const line: InvoiceLine = {
             id: raw.id || d.id,
             itemId: raw.itemId || d.item_id || '',
@@ -652,14 +734,14 @@ export class SupabaseDataService {
             itemNameEn: raw.itemNameEn || raw.nameEn || '',
             unit: raw.unit || 'حبة',
             unitsPerPack: raw.unitsPerPack || 1,
-            quantity: Number(d.quantity ?? d.qty ?? raw.quantity ?? 1),
-            unitPrice: Number(d.unit_price ?? raw.unitPrice ?? 0),
-            subtotal: Number(raw.subtotal ?? (Number(d.unit_price || 0) * Number(d.quantity || d.qty || 1))),
+            quantity: qty,
+            unitPrice: unitPrice,
+            subtotal: Number(raw.subtotal ?? (unitPrice * qty)),
             vatRate: Number(d.vat_rate ?? raw.vatRate ?? 15),
             vatAmount: Number(d.vat_amount ?? raw.vatAmount ?? 0),
             discountAmount: Number(raw.discountAmount ?? 0),
             discountPercent: Number(raw.discountPercent ?? 0),
-            total: Number(d.total ?? d.line_total ?? raw.total ?? 0),
+            total: total,
             ...raw,
           };
 
@@ -675,21 +757,22 @@ export class SupabaseDataService {
 
       return masters.map((m: any) => {
         const raw = m.raw_data || {};
+        const snapshot = m.customer_snapshot || {};
         const lines = detailsByInvoice[m.id] || raw.lines || [];
         return {
           id: raw.id || m.id,
           invoiceNumber: m.invoice_number || raw.invoiceNumber || m.id,
           type: raw.type || 'SALES',
           paymentTerms: raw.paymentTerms || (m.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
-          entityId: raw.entityId || m.customer_id || '',
-          entityNameAr: m.customer_name || raw.entityNameAr || '',
-          entityNameEn: raw.entityNameEn || '',
+          entityId: raw.entityId || m.customer_id || snapshot.id || '',
+          entityNameAr: m.customer_name || snapshot.nameAr || raw.entityNameAr || '',
+          entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
           date: m.date || raw.date,
           dueDate: raw.dueDate || m.date,
-          status: m.status || raw.status || 'POSTED',
+          status: m.payment_status || m.status || raw.status || 'POSTED',
           lines,
           subtotal: Number(m.subtotal ?? raw.subtotal ?? 0),
-          vatTotal: Number(m.vat_amount ?? raw.vatTotal ?? 0),
+          vatTotal: Number(m.tax_amount ?? m.vat_amount ?? raw.vatTotal ?? 0),
           discountTotal: Number(raw.discountTotal ?? 0),
           grandTotal: Number(m.total_amount ?? raw.grandTotal ?? 0),
           paidAmount: Number(m.paid_amount ?? raw.paidAmount ?? 0),
@@ -708,6 +791,7 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || (inv as any).companyId || (inv as any).company_id || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
+
     try {
       const invUuid = toValidUUID(inv.id);
 
@@ -717,6 +801,130 @@ export class SupabaseDataService {
         customerIdCandidate = toValidUUID(inv.entityId);
       }
 
+      const subtotal = Number(inv.subtotal || 0);
+      const taxAmount = Number(inv.vatTotal ?? (inv as any).taxAmount ?? (inv as any).tax_amount ?? 0);
+      const totalAmount = Number(inv.grandTotal ?? (inv as any).totalAmount ?? (inv as any).total_amount ?? (subtotal + taxAmount));
+      const paidAmount = Number(inv.paidAmount || 0);
+      const dueAmount = Number(inv.dueAmount || Math.max(0, totalAmount - paidAmount));
+
+      const paymentStatus = (paidAmount >= totalAmount && totalAmount > 0)
+        ? 'PAID'
+        : (paidAmount > 0)
+        ? 'PARTIAL'
+        : (inv.status || 'POSTED');
+
+      // Flexible JSONB snapshot of customer data
+      const customerSnapshot = {
+        id: inv.entityId || '',
+        nameAr: inv.entityNameAr || (inv as any).entityName || '',
+        nameEn: (inv as any).entityNameEn || '',
+        phone: (inv as any).customerPhone || (inv as any).phone || '',
+        address: (inv as any).customerAddress || (inv as any).address || '',
+        taxNumber: (inv as any).customerTaxNumber || (inv as any).taxNumber || '',
+        balance: Number((inv as any).customerBalance ?? 0),
+      };
+
+      // 1. Prepare modern invoices table payload
+      const invoicePayload: any = {
+        id: invUuid,
+        company_id: companyId,
+        invoice_number: inv.invoiceNumber || inv.id,
+        invoice_date: inv.date || new Date().toISOString().split('T')[0],
+        date: inv.date || new Date().toISOString().split('T')[0],
+        customer_id: customerIdCandidate,
+        customer_name: inv.entityNameAr || (inv as any).entityName || 'عميل نقدي',
+        subtotal: subtotal,
+        tax_amount: taxAmount,
+        vat_amount: taxAmount,
+        total_amount: totalAmount,
+        paid_amount: paidAmount,
+        due_amount: dueAmount,
+        payment_status: paymentStatus,
+        status: inv.status || 'POSTED',
+        payment_method: inv.paymentTerms || 'CASH',
+        customer_snapshot: customerSnapshot,
+        raw_data: {
+          ...inv,
+          id: inv.id,
+          companyId,
+          customerSnapshot,
+        },
+        created_at: inv.createdAt || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // 2. Prepare modern invoice_items table rows
+      const invoiceItemRows = (inv.lines || []).map((it, idx) => {
+        const detailUuid = toValidUUID(it.id || `${inv.id}-item-${idx}`);
+        const qty = Number(it.quantity ?? (it as any).qty ?? 1);
+        const unitPrice = Number(it.unitPrice ?? (it as any).unit_price ?? 0);
+        const totalPrice = Number(it.total ?? (it as any).total_price ?? (it as any).line_total ?? (qty * unitPrice));
+        const itemUuidCandidate = it.itemId ? toValidUUID(it.itemId) : null;
+
+        return {
+          id: detailUuid,
+          invoice_id: invUuid,
+          company_id: companyId,
+          item_id: itemUuidCandidate,
+          item_name: it.itemNameAr || (it as any).itemName || 'صنف',
+          quantity: qty,
+          unit_price: unitPrice,
+          total_price: totalPrice,
+          tax_rate: Number(it.vatRate ?? 0),
+          tax_amount: Number(it.vatAmount ?? 0),
+          item_snapshot: {
+            itemId: it.itemId || '',
+            sku: it.itemSku || '',
+            barcode: it.barcode || '',
+            nameAr: it.itemNameAr || '',
+            unit: it.unit || 'حبة',
+            unitsPerPack: it.unitsPerPack || 1,
+          },
+          raw_data: {
+            ...it,
+            id: it.id || `${inv.id}-item-${idx}`,
+          },
+          created_at: new Date().toISOString(),
+        };
+      });
+
+      // --- EXECUTE UPSERT ON INVOICES & INVOICE_ITEMS ---
+      try {
+        let { error: invErr } = await supabase
+          .from('invoices')
+          .upsert([invoicePayload]);
+
+        if (invErr && (invErr.message.includes('foreign key') || invErr.message.includes('fkey'))) {
+          console.warn('Foreign key customer_id candidate failed in invoices table, retrying with null...');
+          invoicePayload.customer_id = null;
+          const retry = await supabase.from('invoices').upsert([invoicePayload]);
+          invErr = retry.error;
+        }
+
+        if (!invErr || !invErr.message.includes('relation "public.invoices" does not exist')) {
+          // Delete old items for this invoice
+          await supabase
+            .from('invoice_items')
+            .delete()
+            .eq('invoice_id', invUuid);
+
+          if (invoiceItemRows.length > 0) {
+            let { error: itemErr } = await supabase
+              .from('invoice_items')
+              .insert(invoiceItemRows);
+
+            if (itemErr && (itemErr.message.includes('foreign key') || itemErr.message.includes('fkey'))) {
+              console.warn('Foreign key item_id candidate failed in invoice_items, inserting with item_id null...');
+              const safeRows = invoiceItemRows.map((r) => ({ ...r, item_id: null }));
+              await supabase.from('invoice_items').insert(safeRows);
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('Supabase invoices table write notice:', err?.message);
+      }
+
+      // --- EXECUTE BACKWARD-COMPATIBLE UPSERT ON SALES_MASTER & SALES_DETAILS ---
       const masterPayload: any = {
         id: invUuid,
         company_id: companyId,
@@ -724,28 +932,30 @@ export class SupabaseDataService {
         date: inv.date || new Date().toISOString().split('T')[0],
         customer_id: customerIdCandidate,
         customer_name: inv.entityNameAr || (inv as any).entityName || 'عميل نقدي',
-        subtotal: Number(inv.subtotal || 0),
-        vat_amount: Number(inv.vatTotal || 0),
-        total_amount: Number(inv.grandTotal || 0),
-        paid_amount: Number(inv.paidAmount || 0),
-        due_amount: Number(inv.dueAmount || 0),
+        subtotal: subtotal,
+        vat_amount: taxAmount,
+        tax_amount: taxAmount,
+        total_amount: totalAmount,
+        paid_amount: paidAmount,
+        due_amount: dueAmount,
+        payment_status: paymentStatus,
         status: inv.status || 'POSTED',
         payment_method: inv.paymentTerms || 'CASH',
+        customer_snapshot: customerSnapshot,
         raw_data: {
           ...inv,
           id: inv.id,
           companyId,
+          customerSnapshot,
         },
         created_at: inv.createdAt || new Date().toISOString(),
       };
 
-      // 1. Upsert sales_master (with foreign key retry if customer not present)
       let { error: masterErr } = await supabase
         .from('sales_master')
         .upsert([masterPayload]);
 
       if (masterErr && masterErr.message.includes('sales_master_customer_id_fkey')) {
-        console.warn('Foreign key customer_id not found in DB, falling back to null customer_id for invoice:', inv.id);
         masterPayload.customer_id = null;
         const retryResult = await supabase
           .from('sales_master')
@@ -753,53 +963,36 @@ export class SupabaseDataService {
         masterErr = retryResult.error;
       }
 
-      if (masterErr) {
-        console.warn('Supabase saveInvoice masterErr:', masterErr.message);
-        return false;
-      }
-
-      // 2. Delete existing sales_details for this invoice
+      // Sync sales_details
       await supabase
         .from('sales_details')
         .delete()
         .eq('company_id', companyId)
         .or(`sales_master_id.eq.${invUuid},invoice_id.eq.${invUuid}`);
 
-      // 3. Insert new sales_details
       if (inv.lines && inv.lines.length > 0) {
-        const detailRows = inv.lines.map((it, idx) => {
-          const detailUuid = toValidUUID(it.id || `${inv.id}-item-${idx}`);
-          const qty = Number(it.quantity || 1);
-          const unitPrice = Number(it.unitPrice || 0);
-          const total = Number(it.total || (qty * unitPrice));
-          return {
-            id: detailUuid,
-            company_id: companyId,
-            sales_master_id: invUuid,
-            invoice_id: invUuid,
-            item_id: null, // Avoid FK constraints on items; item info is preserved in item_name and raw_data
-            item_name: it.itemNameAr || (it as any).itemName || 'صنف',
-            quantity: qty,
-            qty: qty,
-            unit_price: unitPrice,
-            vat_rate: Number(it.vatRate ?? 15),
-            vat_amount: Number(it.vatAmount ?? 0),
-            line_total: total,
-            total: total,
-            raw_data: {
-              ...it,
-              id: it.id || `${inv.id}-item-${idx}`,
-            },
-          };
-        });
+        const detailRows = invoiceItemRows.map((it) => ({
+          id: it.id,
+          company_id: companyId,
+          sales_master_id: invUuid,
+          invoice_id: invUuid,
+          item_id: null, // item_id is safely kept in item_snapshot and raw_data to avoid FK issues
+          item_name: it.item_name,
+          quantity: it.quantity,
+          qty: it.quantity,
+          unit_price: it.unit_price,
+          total_price: it.total_price,
+          vat_rate: it.tax_rate,
+          vat_amount: it.tax_amount,
+          line_total: it.total_price,
+          total: it.total_price,
+          item_snapshot: it.item_snapshot,
+          raw_data: it.raw_data,
+        }));
 
-        const { error: detailErr } = await supabase
+        await supabase
           .from('sales_details')
           .insert(detailRows);
-
-        if (detailErr) {
-          console.warn('Supabase saveInvoice detailErr:', detailErr.message);
-        }
       }
 
       return true;
@@ -826,6 +1019,24 @@ export class SupabaseDataService {
     if (!companyId) return false;
     try {
       const invUuid = toValidUUID(id);
+
+      // 1. Delete from modern invoice_items & invoices (CASCADE takes care of items, but explicit delete for safety)
+      try {
+        await supabase
+          .from('invoice_items')
+          .delete()
+          .eq('invoice_id', invUuid);
+
+        await supabase
+          .from('invoices')
+          .delete()
+          .eq('company_id', companyId)
+          .or(`id.eq.${invUuid},invoice_number.eq.${id}`);
+      } catch (err: any) {
+        console.warn('Supabase delete invoices table notice:', err?.message);
+      }
+
+      // 2. Delete from legacy sales_details & sales_master
       await supabase
         .from('sales_details')
         .delete()

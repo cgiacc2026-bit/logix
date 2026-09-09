@@ -260,7 +260,127 @@ CREATE INDEX IF NOT EXISTS idx_vouchers_company_id ON public.payment_vouchers(co
 CREATE INDEX IF NOT EXISTS idx_vouchers_date ON public.payment_vouchers(company_id, date);
 
 -- ==============================================================================
--- 8) الفواتير ورؤوس المبيعات (sales_master)
+-- 8) جدول الفواتير الرئيسي (invoices)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.invoices (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    invoice_number TEXT,
+    invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    date DATE DEFAULT CURRENT_DATE,
+    customer_id TEXT,
+    customer_name TEXT,
+    subtotal NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    vat_amount NUMERIC(18, 4) DEFAULT 0,
+    total_amount NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    paid_amount NUMERIC(18, 4) DEFAULT 0,
+    due_amount NUMERIC(18, 4) DEFAULT 0,
+    payment_status TEXT NOT NULL DEFAULT 'POSTED',
+    status TEXT DEFAULT 'POSTED',
+    payment_method TEXT DEFAULT 'CREDIT',
+    customer_snapshot JSONB DEFAULT '{}'::jsonb,
+    raw_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_number TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_id TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_name TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS subtotal NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS total_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS due_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'POSTED';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'POSTED';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'CREDIT';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_snapshot JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+CREATE INDEX IF NOT EXISTS idx_invoices_company_id ON public.invoices(company_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date ON public.invoices(company_id, invoice_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON public.invoices(company_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_payment_status ON public.invoices(company_id, payment_status);
+
+-- ==============================================================================
+-- 8.1) جدول بنود الفواتير (invoice_items) مع ON DELETE CASCADE
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.invoice_items (
+    id TEXT PRIMARY KEY,
+    invoice_id TEXT NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    item_id TEXT,
+    item_name TEXT,
+    quantity NUMERIC(18, 4) NOT NULL DEFAULT 1,
+    unit_price NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    total_price NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    tax_rate NUMERIC(5, 2) DEFAULT 0,
+    tax_amount NUMERIC(18, 4) DEFAULT 0,
+    item_snapshot JSONB DEFAULT '{}'::jsonb,
+    raw_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS invoice_id TEXT;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_id TEXT;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_name TEXT;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS quantity NUMERIC(18, 4) DEFAULT 1;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS unit_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS total_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_snapshot JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'fk_invoice_items_invoices_cascade' 
+          AND table_name = 'invoice_items'
+    ) THEN
+        BEGIN
+            ALTER TABLE public.invoice_items 
+            ADD CONSTRAINT fk_invoice_items_invoices_cascade 
+            FOREIGN KEY (invoice_id) REFERENCES public.invoices(id) ON DELETE CASCADE;
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+            WHEN others THEN NULL;
+        END;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'fk_invoice_items_company_cascade' 
+          AND table_name = 'invoice_items'
+    ) THEN
+        BEGIN
+            ALTER TABLE public.invoice_items 
+            ADD CONSTRAINT fk_invoice_items_company_cascade 
+            FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+            WHEN others THEN NULL;
+        END;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON public.invoice_items(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_items_company_id ON public.invoice_items(company_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_items_item_id ON public.invoice_items(item_id);
+
+-- ==============================================================================
+-- 8.2) الفواتير ورؤوس المبيعات (sales_master) - توافق تبادلي آمن
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.sales_master (
     id TEXT PRIMARY KEY,
@@ -271,11 +391,14 @@ CREATE TABLE IF NOT EXISTS public.sales_master (
     customer_name TEXT,
     payment_method TEXT DEFAULT 'CREDIT', -- CASH, CREDIT, BANK
     status TEXT DEFAULT 'POSTED', -- DRAFT, POSTED, CANCELLED
+    payment_status TEXT DEFAULT 'POSTED',
     subtotal NUMERIC(18, 4) DEFAULT 0,
     vat_amount NUMERIC(18, 4) DEFAULT 0,
+    tax_amount NUMERIC(18, 4) DEFAULT 0,
     total_amount NUMERIC(18, 4) DEFAULT 0,
     paid_amount NUMERIC(18, 4) DEFAULT 0,
     due_amount NUMERIC(18, 4) DEFAULT 0,
+    customer_snapshot JSONB DEFAULT '{}'::jsonb,
     raw_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
@@ -289,11 +412,14 @@ ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS customer_id TEXT;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS customer_name TEXT;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'CREDIT';
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'POSTED';
+ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'POSTED';
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS subtotal NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS total_amount NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS due_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS customer_snapshot JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
 
@@ -302,12 +428,13 @@ CREATE INDEX IF NOT EXISTS idx_sales_master_date ON public.sales_master(company_
 CREATE INDEX IF NOT EXISTS idx_sales_master_customer ON public.sales_master(company_id, customer_id);
 
 -- ==============================================================================
--- 9) بنود وتفاصيل الفواتير (sales_details)
+-- 9) بنود وتفاصيل الفواتير (sales_details) - توافق تبادلي آمن
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.sales_details (
     id TEXT PRIMARY KEY,
     company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
     invoice_id TEXT NOT NULL,
+    sales_master_id TEXT,
     item_id TEXT,
     item_name TEXT,
     quantity NUMERIC(18, 4) DEFAULT 1,
@@ -315,6 +442,8 @@ CREATE TABLE IF NOT EXISTS public.sales_details (
     vat_rate NUMERIC(5, 2) DEFAULT 0,
     vat_amount NUMERIC(18, 4) DEFAULT 0,
     total NUMERIC(18, 4) DEFAULT 0,
+    total_price NUMERIC(18, 4) DEFAULT 0,
+    item_snapshot JSONB DEFAULT '{}'::jsonb,
     raw_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
@@ -330,7 +459,9 @@ ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS unit_price NUMERIC(18,
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5, 2) DEFAULT 0;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS total NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS total_price NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS line_total NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS item_snapshot JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_sales_details_company ON public.sales_details(company_id);

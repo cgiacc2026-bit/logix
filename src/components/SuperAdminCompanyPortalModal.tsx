@@ -76,6 +76,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
   const [isTestingCloud, setIsTestingCloud] = useState<boolean>(false);
   const [cloudTestResult, setCloudTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState<boolean>(false);
+  const [copiedInvoiceSql, setCopiedInvoiceSql] = useState<boolean>(false);
 
   const handleTestAndSaveCloud = async (save: boolean = false) => {
     setIsTestingCloud(true);
@@ -761,21 +762,147 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard?.writeText(
-                    `-- سكريبت إنشاء جداول LOGIX Cloud ERP في Supabase SQL Editor\n-- تجده كاملاً في ملف: supabase_schema.sql بجذر المشروع`
-                  );
-                  setCopiedSql(true);
-                  setTimeout(() => setCopiedSql(false), 2000);
-                }}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                title="نسخ سكريبت الجداول"
-              >
-                {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-600" />}
-                <span>{copiedSql ? 'تم نسخ التنبيه' : 'سكريبت الجداول (SQL)'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sqlScript = `-- ==============================================================================
+-- سكريبت التحديث الآمن لهيكل جداول الفواتير والبنود في Supabase (Schema Fix)
+-- Safe Schema Update Script for Invoices & Invoice Items (Multi-Tenancy & Integrity)
+-- ==============================================================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS public.invoices (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    invoice_number TEXT,
+    invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    date DATE DEFAULT CURRENT_DATE,
+    customer_id TEXT,
+    customer_name TEXT,
+    subtotal NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    vat_amount NUMERIC(18, 4) DEFAULT 0,
+    total_amount NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    paid_amount NUMERIC(18, 4) DEFAULT 0,
+    due_amount NUMERIC(18, 4) DEFAULT 0,
+    payment_status TEXT NOT NULL DEFAULT 'POSTED',
+    status TEXT DEFAULT 'POSTED',
+    payment_method TEXT DEFAULT 'CREDIT',
+    customer_snapshot JSONB DEFAULT '{}'::jsonb,
+    raw_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_number TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_id TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_name TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS subtotal NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS total_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS due_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'POSTED';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'POSTED';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'CREDIT';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_snapshot JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS public.invoice_items (
+    id TEXT PRIMARY KEY,
+    invoice_id TEXT NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    item_id TEXT,
+    item_name TEXT,
+    quantity NUMERIC(18, 4) NOT NULL DEFAULT 1,
+    unit_price NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    total_price NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    tax_rate NUMERIC(5, 2) DEFAULT 0,
+    tax_amount NUMERIC(18, 4) DEFAULT 0,
+    item_snapshot JSONB DEFAULT '{}'::jsonb,
+    raw_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS invoice_id TEXT;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_id TEXT;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_name TEXT;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS quantity NUMERIC(18, 4) DEFAULT 1;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS unit_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS total_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5, 2) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_snapshot JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'fk_invoice_items_invoices_cascade' 
+          AND table_name = 'invoice_items'
+    ) THEN
+        BEGIN
+            ALTER TABLE public.invoice_items 
+            ADD CONSTRAINT fk_invoice_items_invoices_cascade 
+            FOREIGN KEY (invoice_id) REFERENCES public.invoices(id) ON DELETE CASCADE;
+        EXCEPTION
+            WHEN others THEN NULL;
+        END;
+    END IF;
+END $$;
+
+ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS customer_snapshot JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.sales_master ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'POSTED';
+ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS total_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS item_snapshot JSONB DEFAULT '{}'::jsonb;
+
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
+
+DO $$ 
+BEGIN
+    DROP POLICY IF EXISTS "invoices_full_access" ON public.invoices;
+    CREATE POLICY "invoices_full_access" ON public.invoices FOR ALL USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "invoice_items_full_access" ON public.invoice_items;
+    CREATE POLICY "invoice_items_full_access" ON public.invoice_items FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION 
+    WHEN others THEN NULL;
+END $$;`;
+                    navigator.clipboard?.writeText(sqlScript);
+                    setCopiedInvoiceSql(true);
+                    setTimeout(() => setCopiedInvoiceSql(false), 2000);
+                  }}
+                  className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                  title="نسخ كود تحديث جداول الفواتير (Schema Fix)"
+                >
+                  {copiedInvoiceSql ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-amber-700" />}
+                  <span>{copiedInvoiceSql ? 'تم نسخ كود الفواتير!' : 'كود إصلاح الفواتير (SQL)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(
+                      `-- سكريبت إنشاء جداول LOGIX Cloud ERP في Supabase SQL Editor\n-- تجده كاملاً في ملف: supabase_accounting_safe_schema.sql بجذر المشروع`
+                    );
+                    setCopiedSql(true);
+                    setTimeout(() => setCopiedSql(false), 2000);
+                  }}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                  title="نسخ سكريبت الجداول"
+                >
+                  {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-600" />}
+                  <span>{copiedSql ? 'تم نسخ التنبيه' : 'المخطط الشامل'}</span>
+                </button>
+              </div>
 
               <div className="flex items-center gap-2">
                 <button
