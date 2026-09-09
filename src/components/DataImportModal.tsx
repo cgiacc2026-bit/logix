@@ -10,9 +10,16 @@ import {
   HelpCircle,
   Layers,
   ArrowRight,
-  Database
+  Database,
+  Trash2,
+  RefreshCw,
+  Sparkles,
+  Settings2,
+  Check
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { formatCurrency } from '../utils/formatters.ts';
+import { DataService } from '../services/dataService.ts';
 
 interface DataImportModalProps {
   isOpen: boolean;
@@ -32,6 +39,7 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
   const [pasteText, setPasteText] = useState('');
   const [parsedRows, setParsedRows] = useState<any[]>([]);
   const [createOpeningJournal, setCreateOpeningJournal] = useState(true);
+  const [importMode, setImportMode] = useState<'upsert' | 'append' | 'update_only'>('upsert');
   const [isProcessing, setIsProcessing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [step, setStep] = useState<'INPUT' | 'PREVIEW'>('INPUT');
@@ -45,23 +53,74 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
       case 'SUPPLIERS':
         return 'استيراد دليل الموردين مع أرصدة أول المدة';
       case 'INVENTORY':
-        return 'استيراد بطاقات الأصناف والمخزون مع التكلفة وأسعار البيع ورصيد أول المدة';
+        return 'استيراد بطاقات الأصناف والمخزون بكافة الخيارات (Full Options)';
     }
   };
 
-  const getSampleTemplate = () => {
+  const getSampleTemplateText = () => {
     switch (importType) {
       case 'CUSTOMERS':
         return `كود العميل\tاسم العميل بالعربي\tالهاتف\tالرقم الضريبي/المدني\tرصيد أول المدة\nC-101\tشركة النور للتجارة\t96599887766\t123456789\t1500.000\nC-102\tجمعية الروضة التعاونية\t96599112233\t987654321\t3250.500\nC-103\tمؤسسة الفهد للمقاولات\t96566554433\t456123789\t850.000`;
       case 'SUPPLIERS':
         return `كود المورد\tاسم المورد بالعربي\tالهاتف\tالرقم الضريبي\tرصيد أول المدة\nS-201\tشركة الألبان الكويتية الدنماركية (KDD)\t96522334455\t112233445\t4500.000\nS-202\tشركة المطاحن والدقيق الكويتية\t96522446688\t556677889\t6200.000\nS-203\tمؤسسة الخليج للتوريدات\t96599775533\t998877665\t1800.000`;
       case 'INVENTORY':
-        return `كود الصنف SKU\tاسم الصنف بالعربي\tالتصنيف\tالوحدة\tسعر التكلفة (الشراء)\tسعر البيع\tكمية أول المدة\tحد إعادة الطلب\nSKU-1001\tطحين فاخر كويتي 10 كجم\tالمواد الغذائية\tكيس\t3.250\t4.500\t120\t20\nSKU-1002\tزيت ذرة نقي 5 لتر\tالزيوت\tحبة\t2.100\t2.950\t85\t15\nSKU-1003\tأرز بسمتي درجة أولى 20 كجم\tالحبوب\tكيس\t6.800\t8.750\t50\t10\nSKU-1004\tسكر ناعم 5 كجم\tالمواد الغذائية\tكيس\t1.400\t1.900\t200\t30`;
+        return `كود الصنف SKU\tالباركود\tاسم الصنف بالعربي\tاسم الصنف بالإنجليزي\tالتصنيف\tالوحدة الأساسية\tوحدة الشد\tسعة الشد\tسعر التكلفة (الشراء)\tسعر البيع\tرصيد أول المدة\tحد إعادة الطلب\nSKU-1001\t628100123456\tطحين فاخر كويتي 10 كجم\tKuwaiti Flour 10kg\tالمواد الغذائية\tكيس\tكرتون\t4\t3.250\t4.500\t120\t20\nSKU-1002\t628100234567\tزيت ذرة نقي 5 لتر\tPure Corn Oil 5L\tالزيوت\tحبة\tكرتون\t4\t2.100\t2.950\t85\t15\nSKU-1003\t628100345678\tأرز بسمتي درجة أولى 20 كجم\tBasmati Rice 20kg\tالحبوب\tكيس\tطرد\t1\t6.800\t8.750\t50\t10\nSKU-1004\t628100456789\tسكر ناعم 5 كجم\tFine Sugar 5kg\tالمواد الغذائية\tكيس\tكرتون\t6\t1.400\t1.900\t200\t30`;
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const templateContent = getSampleTemplate();
+  // Download Excel (.xlsx) Template
+  const handleDownloadTemplateExcel = () => {
+    let headers: string[] = [];
+    let sampleData: any[][] = [];
+    let fileName = `template_${importType.toLowerCase()}.xlsx`;
+
+    if (importType === 'INVENTORY') {
+      headers = [
+        'كود الصنف SKU',
+        'الباركود Barcode',
+        'اسم الصنف بالعربي Name Ar',
+        'اسم الصنف بالإنجليزي Name En',
+        'التصنيف Category',
+        'الوحدة الأساسية Basic Unit',
+        'وحدة الشد Pack Unit',
+        'سعة الشد Units Per Pack',
+        'سعر التكلفة Cost Price',
+        'سعر البيع Sale Price',
+        'رصيد أول المدة Opening Qty',
+        'حد إعادة الطلب Min Alert',
+      ];
+      sampleData = [
+        ['SKU-1001', '628100123456', 'طحين فاخر كويتي 10 كجم', 'Kuwaiti Flour 10kg', 'المواد الغذائية', 'كيس', 'كرتون', 4, 3.250, 4.500, 120, 20],
+        ['SKU-1002', '628100234567', 'زيت ذرة نقي 5 لتر', 'Pure Corn Oil 5L', 'الزيوت', 'حبة', 'كرتون', 4, 2.100, 2.950, 85, 15],
+        ['SKU-1003', '628100345678', 'أرز بسمتي درجة أولى 20 كجم', 'Basmati Rice 20kg', 'الحبوب', 'كيس', 'طرد', 1, 6.800, 8.750, 50, 10],
+        ['SKU-1004', '628100456789', 'سكر ناعم 5 كجم', 'Fine Sugar 5kg', 'المواد الغذائية', 'كيس', 'كرتون', 6, 1.400, 1.900, 200, 30],
+      ];
+    } else if (importType === 'CUSTOMERS') {
+      headers = ['كود العميل', 'اسم العميل بالعربي', 'الهاتف', 'الرقم الضريبي/المدني', 'رصيد أول المدة'];
+      sampleData = [
+        ['C-101', 'شركة النور للتجارة', '96599887766', '123456789', 1500.0],
+        ['C-102', 'جمعية الروضة التعاونية', '96599112233', '987654321', 3250.5],
+        ['C-103', 'مؤسسة الفهد للمقاولات', '96566554433', '456123789', 850.0],
+      ];
+    } else {
+      headers = ['كود المورد', 'اسم المورد بالعربي', 'الهاتف', 'الرقم الضريبي', 'رصيد أول المدة'];
+      sampleData = [
+        ['S-201', 'شركة الألبان الكويتية الدنماركية (KDD)', '96522334455', '112233445', 4500.0],
+        ['S-202', 'شركة المطاحن والدقيق الكويتية', '96522446688', '556677889', 6200.0],
+        ['S-203', 'مؤسسة الخليج للتوريدات', '96599775533', '998877665', 1800.0],
+      ];
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+    ws['!cols'] = headers.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'البيانات');
+    XLSX.writeFile(wb, fileName);
+  };
+
+  // Download TSV / CSV Template
+  const handleDownloadTemplateCsv = () => {
+    const templateContent = getSampleTemplateText();
     const blob = new Blob(['\uFEFF' + templateContent], { type: 'text/tab-separated-values;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -70,19 +129,164 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Smart column mapping from Array of Arrays (XLSX or CSV)
+  const parseAoaData = (aoa: any[][]) => {
+    if (!aoa || aoa.length === 0) {
+      setParseError('لم يتم العثور على صفوف في الملف المحدد.');
+      return;
+    }
+
+    const firstRow = aoa[0].map((c) => String(c || '').trim().toLowerCase().replace(/[\s_\-()]/g, ''));
+    let hasHeader = false;
+
+    // Check if first row contains column headers
+    if (
+      firstRow.some(
+        (cell) =>
+          cell.includes('sku') ||
+          cell.includes('كود') ||
+          cell.includes('code') ||
+          cell.includes('اسم') ||
+          cell.includes('name') ||
+          cell.includes('باركود') ||
+          cell.includes('barcode') ||
+          cell.includes('رصيد')
+      )
+    ) {
+      hasHeader = true;
+    }
+
+    const dataRows = hasHeader ? aoa.slice(1) : aoa;
+    const headerRow = hasHeader ? firstRow : [];
+
+    // Detect column indexes for Inventory
+    const findColIdx = (keywords: string[], fallbackIdx: number) => {
+      if (!hasHeader) return fallbackIdx;
+      const idx = headerRow.findIndex((h) => keywords.some((kw) => h.includes(kw)));
+      return idx !== -1 ? idx : fallbackIdx;
+    };
+
+    const results: any[] = [];
+
+    dataRows.forEach((row, index) => {
+      if (!row || row.length === 0 || row.every((c) => c === undefined || c === null || String(c).trim() === '')) {
+        return;
+      }
+
+      if (importType === 'CUSTOMERS') {
+        const cCode = row[findColIdx(['كود', 'code', 'رقم'], 0)] || `C-${index + 1}`;
+        const cName = row[findColIdx(['اسم', 'name', 'عميل'], 1)] || `عميل ${index + 1}`;
+        const cPhone = row[findColIdx(['هاتف', 'phone', 'موبايل', 'جوال'], 2)] || '';
+        const cTax = row[findColIdx(['ضريب', 'مدني', 'tax', 'civil'], 3)] || '';
+        const cBal = Number(row[findColIdx(['رصيد', 'balance', 'اول'], 4)]) || 0;
+        results.push({
+          code: String(cCode).trim(),
+          nameAr: String(cName).trim(),
+          phone: String(cPhone).trim(),
+          taxNumber: String(cTax).trim(),
+          openingBalance: cBal,
+        });
+      } else if (importType === 'SUPPLIERS') {
+        const sCode = row[findColIdx(['كود', 'code', 'رقم'], 0)] || `S-${index + 1}`;
+        const sName = row[findColIdx(['اسم', 'name', 'مورد'], 1)] || `مورد ${index + 1}`;
+        const sPhone = row[findColIdx(['هاتف', 'phone', 'موبايل', 'جوال'], 2)] || '';
+        const sTax = row[findColIdx(['ضريب', 'tax'], 3)] || '';
+        const sBal = Number(row[findColIdx(['رصيد', 'balance', 'اول'], 4)]) || 0;
+        results.push({
+          code: String(sCode).trim(),
+          nameAr: String(sName).trim(),
+          phone: String(sPhone).trim(),
+          taxNumber: String(sTax).trim(),
+          openingBalance: sBal,
+        });
+      } else if (importType === 'INVENTORY') {
+        const skuIdx = findColIdx(['sku', 'كود', 'رمز', 'رقم'], 0);
+        const barcodeIdx = findColIdx(['باركود', 'barcode', 'qr'], 1);
+        const nameArIdx = findColIdx(['اسمعرب', 'اسم', 'namear', 'name', 'صنف'], 2);
+        const nameEnIdx = findColIdx(['اسمانجليز', 'انجليز', 'nameen', 'english'], 3);
+        const catIdx = findColIdx(['تصنيف', 'category', 'قسم', 'مجموع'], 4);
+        const unitIdx = findColIdx(['وحدةاساس', 'وحدة', 'unit', 'حبة'], 5);
+        const packUnitIdx = findColIdx(['وحدةشد', 'كرتون', 'packunit', 'شد'], 6);
+        const unitsPerPackIdx = findColIdx(['سعةشد', 'سعةالكرتون', 'unitsperpack', 'حباتفيالكرتون', 'سعة'], 7);
+        const costIdx = findColIdx(['تكلف', 'شراء', 'cost', 'purchase', 'سعرالتكلفة'], 8);
+        const saleIdx = findColIdx(['بيع', 'sale', 'price', 'سعرالبيع'], 9);
+        const qtyIdx = findColIdx(['كمية', 'رصيد', 'qty', 'stock', 'اولالمدة'], 10);
+        const minAlertIdx = findColIdx(['حد', 'طلب', 'alert', 'min', 'حدادنى'], 11);
+
+        const sku = String(row[skuIdx] !== undefined ? row[skuIdx] : `SKU-${Date.now().toString().slice(-4)}-${index + 1}`).trim();
+        const barcode = row[barcodeIdx] !== undefined ? String(row[barcodeIdx]).trim() : '';
+        const nameAr = String(row[nameArIdx] !== undefined ? row[nameArIdx] : `صنف مخزني ${index + 1}`).trim();
+        const nameEn = row[nameEnIdx] !== undefined ? String(row[nameEnIdx]).trim() : '';
+        const category = String(row[catIdx] !== undefined ? row[catIdx] : 'عام').trim();
+        const unit = String(row[unitIdx] !== undefined ? row[unitIdx] : 'حبة').trim();
+        const packUnit = String(row[packUnitIdx] !== undefined ? row[packUnitIdx] : 'كرتون').trim();
+        const unitsPerPack = Number(row[unitsPerPackIdx]) > 0 ? Number(row[unitsPerPackIdx]) : 1;
+        const purchasePrice = Number(row[costIdx]) || 0;
+        const salePrice = Number(row[saleIdx]) || 0;
+        const quantityOnHand = Number(row[qtyIdx]) || 0;
+        const minQuantityAlert = row[minAlertIdx] !== undefined && row[minAlertIdx] !== '' ? Number(row[minAlertIdx]) : 5;
+
+        results.push({
+          sku,
+          barcode,
+          nameAr,
+          nameEn,
+          category,
+          unit,
+          packUnit,
+          unitsPerPack,
+          purchasePrice,
+          salePrice,
+          quantityOnHand,
+          minQuantityAlert,
+          isActive: true,
+        });
+      }
+    });
+
+    if (results.length === 0) {
+      setParseError('لم يتم العثور على سجلات صالحة للاستيراد في البيانات المقدمة.');
+      return;
+    }
+
+    setParsedRows(results);
+    setStep('PREVIEW');
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setPasteText(content);
-      parseRawData(content);
-    };
-    reader.readAsText(file);
+    setParseError(null);
+    const fileName = file.name.toLowerCase();
+
+    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const aoa = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          parseAoaData(aoa);
+        } catch (err: any) {
+          setParseError(`خطأ أثناء قراءة ملف Excel: ${err.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        setPasteText(content);
+        parseRawData(content);
+      };
+      reader.readAsText(file);
+    }
   };
 
   const parseRawData = (textToParse: string) => {
@@ -120,65 +324,18 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
       else if (firstLine.includes(',')) sep = ',';
       else if (firstLine.includes(';')) sep = ';';
 
-      // Check if first line is a header
-      let dataLines = lines;
-      const lowerHeader = firstLine.toLowerCase();
-      if (
-        lowerHeader.includes('كود') ||
-        lowerHeader.includes('اسم') ||
-        lowerHeader.includes('sku') ||
-        lowerHeader.includes('code') ||
-        lowerHeader.includes('name') ||
-        lowerHeader.includes('رصيد')
-      ) {
-        dataLines = lines.slice(1);
-      }
-
-      const results: any[] = [];
-
-      dataLines.forEach((line, index) => {
-        const parts = line.split(sep).map((p) => p.replace(/^["']|["']$/g, '').trim());
-        if (parts.length === 0 || parts.every((p) => p === '')) return;
-
-        if (importType === 'CUSTOMERS') {
-          results.push({
-            code: parts[0] || `C-${index + 1}`,
-            nameAr: parts[1] || `عميل ${index + 1}`,
-            phone: parts[2] || '',
-            taxNumber: parts[3] || '',
-            openingBalance: Number(parts[4]) || 0,
-          });
-        } else if (importType === 'SUPPLIERS') {
-          results.push({
-            code: parts[0] || `S-${index + 1}`,
-            nameAr: parts[1] || `مورد ${index + 1}`,
-            phone: parts[2] || '',
-            taxNumber: parts[3] || '',
-            openingBalance: Number(parts[4]) || 0,
-          });
-        } else if (importType === 'INVENTORY') {
-          results.push({
-            sku: parts[0] || `SKU-${Date.now().toString().slice(-4)}-${index + 1}`,
-            nameAr: parts[1] || `صنف ${index + 1}`,
-            category: parts[2] || 'عام',
-            unit: parts[3] || 'حبة',
-            purchasePrice: Number(parts[4]) || 0,
-            salePrice: Number(parts[5]) || 0,
-            quantityOnHand: Number(parts[6]) || 0,
-            minQuantityAlert: Number(parts[7]) || 5,
-          });
-        }
-      });
-
-      if (results.length === 0) {
-        setParseError('لم نتمكن من قراءة الأعمدة بشكل صحيح، تأكد من مطابقة التنسيق.');
-        return;
-      }
-
-      setParsedRows(results);
-      setStep('PREVIEW');
+      const aoa = lines.map((line) => line.split(sep).map((p) => p.replace(/^["']|["']$/g, '').trim()));
+      parseAoaData(aoa);
     } catch (err: any) {
       setParseError(`خطأ أثناء تحليل البيانات: ${err.message}`);
+    }
+  };
+
+  const handleRemoveRow = (index: number) => {
+    const updated = parsedRows.filter((_, idx) => idx !== index);
+    setParsedRows(updated);
+    if (updated.length === 0) {
+      setStep('INPUT');
     }
   };
 
@@ -186,6 +343,23 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
     if (parsedRows.length === 0) return;
     setIsProcessing(true);
     try {
+      if (importType === 'INVENTORY') {
+        const res = await DataService.bulkImportInventory(parsedRows, {
+          mode: importMode,
+          createOpeningJournal,
+        });
+        const detailsMsg =
+          res.updatedCount > 0 && res.newCount > 0
+            ? `(تمت إضافة ${res.newCount} جديد وتحديث ${res.updatedCount})`
+            : res.updatedCount > 0
+            ? `(تم تحديث ${res.updatedCount} صنف)`
+            : `(تمت إضافة ${res.newCount} صنف جديد)`;
+        alert(`✅ تم استيراد ومعالجة ${res.count} صنف مخزني بنجاح ${detailsMsg}`);
+        onSuccess();
+        onClose();
+        return;
+      }
+
       let endpoint = '';
       let payload: any = {};
 
@@ -195,9 +369,6 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
       } else if (importType === 'SUPPLIERS') {
         endpoint = '/api/import/suppliers';
         payload = { suppliers: parsedRows, createOpeningJournal };
-      } else if (importType === 'INVENTORY') {
-        endpoint = '/api/import/inventory';
-        payload = { items: parsedRows, createOpeningJournal };
       }
 
       const res = await fetch(endpoint, {
@@ -228,14 +399,28 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
       return sum + (Number(r.openingBalance) || 0);
     }
     if (importType === 'INVENTORY') {
-      return sum + ((Number(r.quantityOnHand) || 0) * (Number(r.purchasePrice) || 0));
+      return sum + (Number(r.quantityOnHand) || 0) * (Number(r.purchasePrice) || 0);
+    }
+    return sum;
+  }, 0);
+
+  const totalSaleAmount = parsedRows.reduce((sum, r) => {
+    if (importType === 'INVENTORY') {
+      return sum + (Number(r.quantityOnHand) || 0) * (Number(r.salePrice) || 0);
+    }
+    return sum;
+  }, 0);
+
+  const totalStockQty = parsedRows.reduce((sum, r) => {
+    if (importType === 'INVENTORY') {
+      return sum + (Number(r.quantityOnHand) || 0);
     }
     return sum;
   }, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[94vh] flex flex-col overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="bg-[#0F2942] text-white p-5 flex items-center justify-between border-b border-blue-900">
           <div className="flex items-center gap-3">
@@ -245,7 +430,7 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
             <div>
               <h3 className="text-base font-bold text-white">{getTitle()}</h3>
               <p className="text-xs text-slate-300 mt-0.5">
-                استيراد جماعي مباشر من ملفات Excel أو جداول البيانات مع إثبات أرصدة أول المدة
+                استيراد جماعي مرن من ملفات Excel (.xlsx) أو CSV أو بنسخ ولصق البيانات مع كافة الخيارات
               </p>
             </div>
           </div>
@@ -262,35 +447,125 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
           {step === 'INPUT' ? (
             <div className="space-y-4">
               {/* Instructions and Download Template Strip */}
-              <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="flex items-start gap-2.5">
                   <FileSpreadsheet className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
                   <div className="text-xs text-blue-900 leading-relaxed">
-                    <span className="font-bold block mb-0.5">طريقة الاستيراد السريع:</span>
-                    انسخ الأعمدة والصفوف مباشرة من ملف Excel أو جداول البيانات الإلكترونية والصقها في المربع أدناه، أو قم برفع ملف CSV / TSV.
+                    <span className="font-bold block mb-0.5">طريقة الاستيراد:</span>
+                    يمكنك رفع ملف <span className="font-bold text-emerald-800">Excel (.xlsx/.xls)</span> مباشرة، أو ملف <span className="font-bold text-blue-800">CSV/TSV</span>، أو لصق الأعمدة والصفوف مباشرة من ملف إكسل في الحقل أدناه.
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={handleDownloadTemplate}
+                    onClick={handleDownloadTemplateExcel}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                    title="تحميل نموذج جدول إكسل جاهز بأسماء الأعمدة والبيانات التجريبية"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>نموذج Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplateCsv}
                     className="px-3 py-1.5 rounded-lg bg-white hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-300 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                    title="تحميل نموذج نصي مفصول بجدولة CSV/TSV"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>تحميل نموذج فارغ (Template)</span>
+                    <span>نموذج CSV (.csv)</span>
                   </button>
                   <label className="px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>رفع ملف (CSV/TSV)</span>
+                    <span>رفع ملف (Excel / CSV)</span>
                     <input
                       type="file"
-                      accept=".csv,.tsv,.txt,.json"
+                      accept=".xlsx,.xls,.csv,.tsv,.txt,.json"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
                   </label>
                 </div>
               </div>
+
+              {/* Advanced Options for Inventory */}
+              {importType === 'INVENTORY' && (
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    <Settings2 className="w-4 h-4 text-blue-700" />
+                    <span>خيارات استيراد ومعالجة الأصناف (Import Strategy & Options):</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                    <label
+                      onClick={() => setImportMode('upsert')}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-2 ${
+                        importMode === 'upsert'
+                          ? 'bg-blue-50 border-blue-500 text-blue-950 font-bold shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="importMode"
+                        checked={importMode === 'upsert'}
+                        onChange={() => setImportMode('upsert')}
+                        className="mt-0.5 accent-blue-600"
+                      />
+                      <div>
+                        <span className="block font-bold">دمج وتحديث (Upsert - مستحسن)</span>
+                        <span className="text-[11px] text-slate-500 block font-normal mt-0.5">
+                          تحديث الصنف إذا كان SKU أو الباركود مسجلاً مسبقاً، وإضافته كصنف جديد إذا لم يكن موجوداً.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label
+                      onClick={() => setImportMode('append')}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-2 ${
+                        importMode === 'append'
+                          ? 'bg-blue-50 border-blue-500 text-blue-950 font-bold shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="importMode"
+                        checked={importMode === 'append'}
+                        onChange={() => setImportMode('append')}
+                        className="mt-0.5 accent-blue-600"
+                      />
+                      <div>
+                        <span className="block font-bold">إضافة فقط (Append Only)</span>
+                        <span className="text-[11px] text-slate-500 block font-normal mt-0.5">
+                          إضافة كافة الصفوف كسجلات جديدة، وتوليد معرفات فريدة دون تعديل الأصناف الحالية.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label
+                      onClick={() => setImportMode('update_only')}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-2 ${
+                        importMode === 'update_only'
+                          ? 'bg-blue-50 border-blue-500 text-blue-950 font-bold shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="importMode"
+                        checked={importMode === 'update_only'}
+                        onChange={() => setImportMode('update_only')}
+                        className="mt-0.5 accent-blue-600"
+                      />
+                      <div>
+                        <span className="block font-bold">تحديث الأسعار والأرصدة فقط</span>
+                        <span className="text-[11px] text-slate-500 block font-normal mt-0.5">
+                          تحديث أسعار الشراء والبيع ورصيد المخزون للأصناف المطابقة لـ SKU دون إنشاء أصناف جديدة.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {/* Paste Textarea */}
               <div>
@@ -300,25 +575,29 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
                   </label>
                   <button
                     type="button"
-                    onClick={() => setPasteText(getSampleTemplate())}
+                    onClick={() => {
+                      const sample = getSampleTemplateText();
+                      setPasteText(sample);
+                      parseRawData(sample);
+                    }}
                     className="text-xs text-blue-700 hover:text-blue-900 font-semibold underline cursor-pointer"
                   >
-                    تعبئة بيانات تجريبية للتجربة
+                    تعبئة بيانات تجريبية للتجربة فوراً
                   </button>
                 </div>
                 <textarea
-                  rows={9}
+                  rows={8}
                   dir="ltr"
                   value={pasteText}
                   onChange={(e) => setPasteText(e.target.value)}
-                  placeholder={getSampleTemplate()}
+                  placeholder={getSampleTemplateText()}
                   className="w-full font-mono text-xs p-3.5 bg-slate-900 text-emerald-400 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed"
                 />
               </div>
 
               {parseError && (
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
                   <span>{parseError}</span>
                 </div>
               )}
@@ -326,31 +605,44 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
           ) : (
             /* PREVIEW STEP */
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
-                <div className="flex items-center gap-4">
-                  <span className="font-bold text-slate-900">
-                    عدد السجلات الجاهزة للاستيراد: <span className="text-blue-700 font-extrabold text-sm">{parsedRows.length}</span>
-                  </span>
-                  <span className="text-slate-600">
-                    إجمالي أرصدة وقيم البداية:{' '}
-                    <span className="font-mono font-extrabold text-slate-900 text-sm">
-                      {formatCurrency(totalOpeningAmount, currency)}
-                    </span>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-xl">
+                  <span className="text-xs text-blue-800 block">إجمالي السجلات المقروءة</span>
+                  <span className="text-xl font-bold text-blue-950 font-mono mt-0.5 block">
+                    {parsedRows.length} <span className="text-xs font-normal text-blue-700">سجل</span>
                   </span>
                 </div>
-                <button
-                  onClick={() => setStep('INPUT')}
-                  className="text-xs text-blue-700 hover:text-blue-900 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <ArrowRight className="w-3.5 h-3.5" />
-                  <span>تعديل البيانات المدخلة</span>
-                </button>
+                {importType === 'INVENTORY' ? (
+                  <>
+                    <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl">
+                      <span className="text-xs text-emerald-800 block">إجمالي رصيد الكميات (وحدات)</span>
+                      <span className="text-xl font-bold text-emerald-950 font-mono mt-0.5 block">
+                        {totalStockQty.toLocaleString()}{' '}
+                        <span className="text-xs font-normal text-emerald-700">قطعة/حبة</span>
+                      </span>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-xl">
+                      <span className="text-xs text-amber-800 block">إجمالي قيمة التكلفة الافتتاحية</span>
+                      <span className="text-xl font-bold text-amber-950 font-mono mt-0.5 block">
+                        {formatCurrency(totalOpeningAmount, currency)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl col-span-2">
+                    <span className="text-xs text-emerald-800 block">إجمالي أرصدة أول المدة</span>
+                    <span className="text-xl font-bold text-emerald-950 font-mono mt-0.5 block">
+                      {formatCurrency(totalOpeningAmount, currency)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Data Table Preview */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
                 <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0">
+                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
                     <tr>
                       <th className="p-2.5">#</th>
                       {importType === 'CUSTOMERS' && (
@@ -374,20 +666,23 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
                       {importType === 'INVENTORY' && (
                         <>
                           <th className="p-2.5">SKU</th>
-                          <th className="p-2.5">اسم الصنف</th>
+                          <th className="p-2.5">الباركود</th>
+                          <th className="p-2.5">اسم الصنف بالعربي</th>
                           <th className="p-2.5">التصنيف</th>
                           <th className="p-2.5">الوحدة</th>
-                          <th className="p-2.5 text-left">سعر التكلفة</th>
+                          <th className="p-2.5">الشد / السعة</th>
+                          <th className="p-2.5 text-left">التكلفة</th>
                           <th className="p-2.5 text-left">سعر البيع</th>
-                          <th className="p-2.5 text-left">رصيد أول المدة</th>
-                          <th className="p-2.5 text-left">إجمالي القيمة</th>
+                          <th className="p-2.5 text-left">رصيد المخزون</th>
+                          <th className="p-2.5 text-left">إجمالي التكلفة</th>
                         </>
                       )}
+                      <th className="p-2.5 text-center">حذف</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {parsedRows.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
                         <td className="p-2.5 text-slate-400 font-mono">{idx + 1}</td>
                         {importType === 'CUSTOMERS' && (
                           <>
@@ -414,9 +709,13 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
                         {importType === 'INVENTORY' && (
                           <>
                             <td className="p-2.5 font-mono text-slate-700 font-bold">{row.sku}</td>
+                            <td className="p-2.5 font-mono text-slate-500">{row.barcode || '-'}</td>
                             <td className="p-2.5 font-bold text-slate-900">{row.nameAr}</td>
                             <td className="p-2.5 text-slate-600">{row.category || 'عام'}</td>
                             <td className="p-2.5 text-slate-600">{row.unit || 'حبة'}</td>
+                            <td className="p-2.5 text-slate-600 font-mono">
+                              {row.packUnit || 'كرتون'} ({row.unitsPerPack || 1})
+                            </td>
                             <td className="p-2.5 font-mono text-left text-slate-700">
                               {formatCurrency(Number(row.purchasePrice) || 0, currency)}
                             </td>
@@ -427,10 +726,23 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
                               {row.quantityOnHand} {row.unit || 'حبة'}
                             </td>
                             <td className="p-2.5 font-mono text-left font-bold text-slate-900">
-                              {formatCurrency((Number(row.quantityOnHand) || 0) * (Number(row.purchasePrice) || 0), currency)}
+                              {formatCurrency(
+                                (Number(row.quantityOnHand) || 0) * (Number(row.purchasePrice) || 0),
+                                currency
+                              )}
                             </td>
                           </>
                         )}
+                        <td className="p-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRow(idx)}
+                            className="p-1 hover:bg-rose-100 text-rose-600 rounded-md transition-colors cursor-pointer"
+                            title="حذف هذا السطر"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -451,7 +763,7 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
                     توليد قيد افتتاحي متوازن تلقائياً في اليومية العامة (Opening Balance Journal Entry)
                   </span>
                   <span className="text-emerald-800 text-[11px] leading-relaxed block">
-                    يقوم النظام آلياً بإثبات إجمالي مبالغ أول المدة في الحسابات الرئيسية المعنية (الذمم المدينة / الدائنة / المخزون) مقابل حساب الأرباح المبقاة / رأس المال لضمان دقة وتوازن الميزانية العمومية من اللحظة الأولى.
+                    يقوم النظام آلياً بإثبات إجمالي مبالغ أول المدة في الحسابات الرئيسية المعنية (حساب مخزون البضائع والمنتجات أو الذمم) مقابل حساب الأرباح المبقاة / رأس المال لضمان دقة وتوازن الميزانية العمومية.
                   </span>
                 </label>
               </div>
@@ -473,21 +785,34 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
             <button
               type="button"
               onClick={() => parseRawData(pasteText)}
-              className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+              className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
             >
               <span>معاينة وتحقق من البيانات</span>
               <ArrowRight className="w-4 h-4 rotate-180" />
             </button>
           ) : (
-            <button
-              type="button"
-              disabled={isProcessing || parsedRows.length === 0}
-              onClick={handleExecuteImport}
-              className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{isProcessing ? 'جاري الاستيراد والحفظ...' : `تأكيد استيراد (${parsedRows.length}) سجل`}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setStep('INPUT')}
+                className="px-4 py-2 rounded-lg bg-white hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
+              >
+                رجوع للتعديل
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing || parsedRows.length === 0}
+                onClick={handleExecuteImport}
+                className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>
+                  {isProcessing
+                    ? 'جاري الاستيراد والحفظ في قاعدة البيانات...'
+                    : `تأكيد استيراد ومعالجة (${parsedRows.length}) سجل`}
+                </span>
+              </button>
+            </div>
           )}
         </div>
       </div>

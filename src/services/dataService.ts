@@ -2509,6 +2509,155 @@ export class DataService {
     return newItem;
   }
 
+  public static async bulkImportInventory(
+    items: Partial<InventoryItem>[],
+    options: {
+      mode?: 'upsert' | 'append' | 'update_only';
+      createOpeningJournal?: boolean;
+    } = {}
+  ): Promise<{ count: number; updatedCount: number; newCount: number; totalStockValue: number; journalId?: string }> {
+    const list = localDataStore.getInventory();
+    const mode = options.mode || 'upsert';
+    let totalStockValue = 0;
+    const affectedItems: InventoryItem[] = [];
+    let updatedCount = 0;
+    let newCount = 0;
+
+    items.forEach((it, index) => {
+      const rawSku = (it.sku || '').trim();
+      const rawBarcode = (it.barcode || '').trim();
+      const qty = Number(it.quantityOnHand) || 0;
+      const cost = Number(it.purchasePrice) || 0;
+      const sale = Number(it.salePrice) || 0;
+
+      const existingIdx = list.findIndex(
+        (existing) =>
+          (rawSku && existing.sku.toLowerCase() === rawSku.toLowerCase()) ||
+          (rawBarcode && existing.barcode && existing.barcode === rawBarcode)
+      );
+
+      if (existingIdx !== -1 && mode !== 'append') {
+        const existing = list[existingIdx];
+        const updatedItem: InventoryItem = {
+          ...existing,
+          sku: rawSku || existing.sku,
+          barcode: rawBarcode || existing.barcode || '',
+          nameAr: it.nameAr || existing.nameAr,
+          nameEn: it.nameEn || existing.nameEn,
+          category: it.category || existing.category,
+          unit: it.unit || existing.unit,
+          unitsPerPack: Number(it.unitsPerPack) || existing.unitsPerPack || 1,
+          packUnit: it.packUnit || existing.packUnit || 'كرتون',
+          purchasePrice: cost > 0 ? cost : existing.purchasePrice,
+          salePrice: sale > 0 ? sale : existing.salePrice,
+          quantityOnHand: it.quantityOnHand !== undefined ? qty : existing.quantityOnHand,
+          minQuantityAlert: it.minQuantityAlert !== undefined ? Number(it.minQuantityAlert) : existing.minQuantityAlert,
+          isActive: it.isActive !== undefined ? it.isActive : existing.isActive,
+        };
+        list[existingIdx] = updatedItem;
+        affectedItems.push(updatedItem);
+        updatedCount++;
+        totalStockValue += (updatedItem.quantityOnHand || 0) * (updatedItem.purchasePrice || 0);
+      } else if (mode !== 'update_only') {
+        const id = it.id || 'inv-' + Math.random().toString(36).substr(2, 9);
+        const sku = rawSku || `SKU-${Date.now().toString().slice(-4)}-${index + 1}`;
+
+        const newItem: InventoryItem = {
+          id,
+          sku,
+          barcode: rawBarcode,
+          nameAr: it.nameAr || `صنف مخزني ${index + 1}`,
+          nameEn: it.nameEn || it.nameAr || `Item ${index + 1}`,
+          category: it.category || 'عام',
+          unit: it.unit || 'حبة',
+          unitsPerPack: Number(it.unitsPerPack) || 1,
+          packUnit: it.packUnit || 'كرتون',
+          purchasePrice: cost,
+          salePrice: sale,
+          quantityOnHand: qty,
+          minQuantityAlert: Number(it.minQuantityAlert) !== undefined ? Number(it.minQuantityAlert) : 5,
+          isActive: it.isActive !== undefined ? it.isActive : true,
+        };
+
+        list.push(newItem);
+        affectedItems.push(newItem);
+        newCount++;
+        totalStockValue += qty * cost;
+      }
+    });
+
+    localDataStore.saveInventory(list);
+    const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    cacheService.setItems(compId, list);
+
+    // Sync to Supabase in background
+    if (isSupabaseConfigured) {
+      Promise.all(affectedItems.map((item) => SupabaseDataService.saveItem(item))).catch(console.warn);
+    }
+
+    // Call server API for state synchronization
+    let serverJournalId: string | undefined = undefined;
+    try {
+      const res: any = await safeApiFetch('/api/import/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, createOpeningJournal: !!options.createOpeningJournal, mode }),
+      });
+      if (res && res.openingJournalId) {
+        serverJournalId = res.openingJournalId;
+      }
+    } catch (e) {
+      console.warn('Server import sync notice:', e);
+    }
+
+    // If opening journal requested and not generated on server, create locally
+    let localJournalId: string | undefined = serverJournalId;
+    if (options.createOpeningJournal && totalStockValue > 0 && !serverJournalId) {
+      try {
+        const journal = await this.createJournal({
+          entryNumber: `JV-OPEN-INV-${Date.now().toString().slice(-4)}`,
+          date: new Date().toISOString().split('T')[0],
+          description: `قيد افتتاحي: إثبات قيمة بضاعة ومخزون أول المدة للأصناف المستوردة (عدد ${affectedItems.length})`,
+          reference: 'OPENING-STOCK',
+          status: 'POSTED',
+          totalDebit: totalStockValue,
+          totalCredit: totalStockValue,
+          lines: [
+            {
+              id: 'line-1',
+              accountId: 'acc-1130',
+              accountCode: '1130',
+              accountNameAr: 'مخزون البضائع والمنتجات',
+              debit: totalStockValue,
+              credit: 0,
+              memo: 'إثبات بضاعة ومخزون أول المدة',
+            },
+            {
+              id: 'line-2',
+              accountId: 'acc-3200',
+              accountCode: '3200',
+              accountNameAr: 'الأرباح (الخسائر) المرحلة والمبقاة',
+              debit: 0,
+              credit: totalStockValue,
+              memo: 'رصيد مخزون أول المدة مقابل حقوق الملكية',
+            },
+          ],
+        });
+        localJournalId = journal?.id;
+      } catch (err) {
+        console.warn('Local opening journal creation notice:', err);
+      }
+    }
+
+    return {
+      count: affectedItems.length,
+      updatedCount,
+      newCount,
+      totalStockValue,
+      journalId: localJournalId,
+    };
+  }
+
   public static async updateInventoryItem(id: string, data: any): Promise<InventoryItem | null> {
     const list = localDataStore.getInventory();
     const idx = list.findIndex((i) => i.id === id);

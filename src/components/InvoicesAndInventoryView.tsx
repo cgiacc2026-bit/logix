@@ -52,8 +52,12 @@ import {
   Tag,
   Store,
   MapPin,
-  Sparkles
+  Sparkles,
+  Download,
+  FileText,
+  ChevronDown
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface InvoicesProps {
   company: CompanyProfile;
@@ -811,6 +815,236 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     });
   }, [scopedInventory, selectedCategoryFilter, inventorySearch]);
 
+  // Export Inventory State & Helpers (Excel and CSV)
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportMenuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    if (isExportMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isExportMenuOpen]);
+
+  const exportToCsvFallback = (
+    headers: string[],
+    dataRows: any[][],
+    fileNameBase: string,
+    totalQty: number,
+    totalCostVal: number,
+    totalSaleVal: number
+  ) => {
+    const summaryRow = [
+      'الإجمالي العام',
+      `عدد الأصناف: ${dataRows.length}`,
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      totalQty.toString(),
+      '',
+      '',
+      '',
+      '',
+      totalCostVal.toFixed(3),
+      totalSaleVal.toFixed(3),
+      (totalSaleVal - totalCostVal).toFixed(3),
+      '',
+      '',
+      '',
+    ];
+
+    const allRows = [headers, ...dataRows, summaryRow];
+    const csvContent = allRows
+      .map((row) =>
+        row
+          .map((cell) => {
+            const str = cell !== undefined && cell !== null ? String(cell) : '';
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+          })
+          .join(',')
+      )
+      .join('\r\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${fileNameBase}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportInventory = (format: 'xlsx' | 'csv', exportAll: boolean = false) => {
+    const listToExport = exportAll ? scopedInventory : filteredInventory;
+    if (listToExport.length === 0) {
+      alert('لا توجد أصناف لتصديرها في القائمة المحددة');
+      return;
+    }
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    const timestamp = Date.now().toString().slice(-4);
+    const fileNameBase = exportAll
+      ? `Inventory_All_${dateStr}`
+      : `Inventory_Filtered_${dateStr}_${timestamp}`;
+
+    const headers = [
+      'م',
+      'كود الصنف (SKU)',
+      'الباركود',
+      'اسم الصنف بالعربي',
+      'اسم الصنف بالإنجليزي',
+      'التصنيف',
+      'الوحدة الأساسية',
+      'وحدة الشد / الكرتون',
+      'سعة الشد (حبات)',
+      'الرصيد الفعلي (حبة/وحدة)',
+      'الرصيد بالشد (كرتون)',
+      'المتبقي بالوحدات الفردية',
+      'سعر التكلفة للوحدة',
+      'سعر البيع للوحدة',
+      'إجمالي قيمة التكلفة',
+      'إجمالي القيمة البيعية',
+      'هامش الربح الإجمالي',
+      'نسبة هامش الربح %',
+      'حد إعادة الطلب الأدنى',
+      'حالة توفر المخزون',
+    ];
+
+    let totalQty = 0;
+    let totalCostVal = 0;
+    let totalSaleVal = 0;
+
+    const dataRows = listToExport.map((item, idx) => {
+      const qty = Number(item.quantityOnHand) || 0;
+      const cost = Number(item.purchasePrice) || 0;
+      const sale = Number(item.salePrice) || 0;
+      const cap = Number(item.unitsPerPack) > 0 ? Number(item.unitsPerPack) : 1;
+      const packs = Math.floor(qty / cap);
+      const rem = qty % cap;
+      const costTotal = qty * cost;
+      const saleTotal = qty * sale;
+      const profitTotal = saleTotal - costTotal;
+      const profitMarginPct = cost > 0 ? (((sale - cost) / cost) * 100).toFixed(1) + '%' : '0%';
+
+      let stockStatus = 'متوفر';
+      if (qty <= 0) stockStatus = 'نفد من المخزون';
+      else if (item.minQuantityAlert !== undefined && qty <= item.minQuantityAlert) stockStatus = 'منخفض (دون الحد الأدنى)';
+
+      totalQty += qty;
+      totalCostVal += costTotal;
+      totalSaleVal += saleTotal;
+
+      return [
+        idx + 1,
+        item.sku || '',
+        item.barcode || '',
+        item.nameAr || '',
+        item.nameEn || '',
+        item.category || 'عام',
+        item.unit || 'حبة',
+        item.packUnit || 'كرتون',
+        cap,
+        qty,
+        packs,
+        rem,
+        cost.toFixed(3),
+        sale.toFixed(3),
+        costTotal.toFixed(3),
+        saleTotal.toFixed(3),
+        profitTotal.toFixed(3),
+        profitMarginPct,
+        item.minQuantityAlert !== undefined ? item.minQuantityAlert : 5,
+        stockStatus,
+      ];
+    });
+
+    if (format === 'xlsx') {
+      try {
+        const summaryRow = [
+          'الإجمالي العام',
+          `عدد الأصناف: ${listToExport.length}`,
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          totalQty,
+          '',
+          '',
+          '',
+          '',
+          Number(totalCostVal.toFixed(3)),
+          Number(totalSaleVal.toFixed(3)),
+          Number((totalSaleVal - totalCostVal).toFixed(3)),
+          '',
+          '',
+          '',
+        ];
+
+        const sheetData = [
+          [`تقرير وقائمة جرد المخزون - ${company?.nameAr || (company as any)?.name || 'النظام المحاسبي'}`],
+          [`تاريخ التصدير: ${dateStr}`, `العملة: ${currency}`, `نطاق التصدير: ${exportAll ? 'كامل المخزون' : 'القائمة المفلترة'}`],
+          [],
+          headers,
+          ...dataRows,
+          summaryRow,
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+        ws['!cols'] = [
+          { wch: 6 },
+          { wch: 18 },
+          { wch: 18 },
+          { wch: 32 },
+          { wch: 24 },
+          { wch: 16 },
+          { wch: 14 },
+          { wch: 14 },
+          { wch: 14 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 14 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 20 },
+          { wch: 20 },
+          { wch: 18 },
+          { wch: 14 },
+          { wch: 14 },
+          { wch: 20 },
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'المخزون');
+        XLSX.writeFile(wb, `${fileNameBase}.xlsx`);
+      } catch (err) {
+        console.error('XLSX export error, falling back to CSV:', err);
+        exportToCsvFallback(headers, dataRows, fileNameBase, totalQty, totalCostVal, totalSaleVal);
+      }
+    } else {
+      exportToCsvFallback(headers, dataRows, fileNameBase, totalQty, totalCostVal, totalSaleVal);
+    }
+  };
+
   const isPrintingModalOpen = !!printDoc || isStatementModalOpen;
 
   return (
@@ -1522,6 +1756,77 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 <Upload className="w-4 h-4 text-cyan-200" />
                 <span>استيراد الأصناف + رصيد وتكلفة</span>
               </button>
+
+              {/* Export Inventory Dropdown Menu */}
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                  title="تصدير قائمة المخزون الحالية إلى ملف Excel أو CSV"
+                >
+                  <Download className="w-4 h-4 text-amber-300" />
+                  <span>تصدير المخزون (Excel / CSV)</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isExportMenuOpen && (
+                  <div className="absolute left-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-right animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
+                      خيارات تصدير القائمة المفلترة ({filteredInventory.length} صنف):
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        handleExportInventory('xlsx', false);
+                      }}
+                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>تصدير المفلتر إلى Excel (.xlsx)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        handleExportInventory('csv', false);
+                      }}
+                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                    >
+                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>تصدير المفلتر إلى CSV (.csv)</span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-100"></div>
+                    <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
+                      خيارات تصدير كامل المخزون ({scopedInventory.length} صنف):
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        handleExportInventory('xlsx', true);
+                      }}
+                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span className="font-semibold">تصدير كامل المخزون Excel (.xlsx)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        handleExportInventory('csv', true);
+                      }}
+                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                    >
+                      <FileText className="w-4 h-4 text-blue-700 shrink-0" />
+                      <span className="font-semibold">تصدير كامل المخزون CSV (.csv)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <button
                 onClick={openAddItemModal}

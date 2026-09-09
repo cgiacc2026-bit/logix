@@ -557,37 +557,80 @@ class DatabaseStore {
   }
 
   // Bulk Import Inventory Items
-  public bulkImportInventory(itemsList: Partial<InventoryItem>[], createOpeningJournal = false): { count: number; openingJournalId?: string; totalStockValue?: number } {
+  public bulkImportInventory(
+    itemsList: Partial<InventoryItem>[],
+    createOpeningJournal = false,
+    mode: 'upsert' | 'append' | 'update_only' = 'upsert'
+  ): { count: number; updatedCount: number; newCount: number; openingJournalId?: string; totalStockValue?: number } {
     let totalStockValue = 0;
-    const createdItems: InventoryItem[] = [];
+    const affectedItems: InventoryItem[] = [];
+    let updatedCount = 0;
+    let newCount = 0;
 
     itemsList.forEach((it, index) => {
-      const id = it.id || 'item-' + Math.random().toString(36).substr(2, 9);
-      const sku = it.sku || `SKU-${Date.now().toString().slice(-4)}-${index + 1}`;
+      const rawSku = (it.sku || '').trim();
+      const rawBarcode = (it.barcode || '').trim();
       const qty = Number(it.quantityOnHand) || 0;
       const cost = Number(it.purchasePrice) || 0;
       const sale = Number(it.salePrice) || 0;
 
-      const newItem: InventoryItem = {
-        id,
-        sku,
-        barcode: it.barcode || '',
-        nameAr: it.nameAr || `صنف مخزني ${index + 1}`,
-        nameEn: it.nameEn || it.nameAr || `Item ${index + 1}`,
-        category: it.category || 'عام',
-        unit: it.unit || 'حبة',
-        unitsPerPack: Number(it.unitsPerPack) || 1,
-        packUnit: it.packUnit || 'كرتون',
-        purchasePrice: cost,
-        salePrice: sale,
-        quantityOnHand: qty,
-        minQuantityAlert: Number(it.minQuantityAlert) !== undefined ? Number(it.minQuantityAlert) : 5,
-        isActive: true,
-      };
+      // Search for existing item by SKU or Barcode
+      const existingIdx = this.data.inventory.findIndex(
+        (existing) =>
+          (rawSku && existing.sku.toLowerCase() === rawSku.toLowerCase()) ||
+          (rawBarcode && existing.barcode && existing.barcode === rawBarcode)
+      );
 
-      this.data.inventory.push(newItem);
-      createdItems.push(newItem);
-      totalStockValue += qty * cost;
+      if (existingIdx !== -1 && mode !== 'append') {
+        // Update existing item
+        const existing = this.data.inventory[existingIdx];
+        const updatedItem: InventoryItem = {
+          ...existing,
+          sku: rawSku || existing.sku,
+          barcode: rawBarcode || existing.barcode || '',
+          nameAr: it.nameAr || existing.nameAr,
+          nameEn: it.nameEn || existing.nameEn,
+          category: it.category || existing.category,
+          unit: it.unit || existing.unit,
+          unitsPerPack: Number(it.unitsPerPack) || existing.unitsPerPack || 1,
+          packUnit: it.packUnit || existing.packUnit || 'كرتون',
+          purchasePrice: cost > 0 ? cost : existing.purchasePrice,
+          salePrice: sale > 0 ? sale : existing.salePrice,
+          quantityOnHand: it.quantityOnHand !== undefined ? qty : existing.quantityOnHand,
+          minQuantityAlert: it.minQuantityAlert !== undefined ? Number(it.minQuantityAlert) : existing.minQuantityAlert,
+          isActive: it.isActive !== undefined ? it.isActive : existing.isActive,
+        };
+        this.data.inventory[existingIdx] = updatedItem;
+        affectedItems.push(updatedItem);
+        updatedCount++;
+        totalStockValue += (updatedItem.quantityOnHand || 0) * (updatedItem.purchasePrice || 0);
+      } else if (mode !== 'update_only') {
+        // Create new item
+        const id = it.id || 'item-' + Math.random().toString(36).substr(2, 9);
+        const sku = rawSku || `SKU-${Date.now().toString().slice(-4)}-${index + 1}`;
+
+        const newItem: InventoryItem = {
+          id,
+          sku,
+          barcode: rawBarcode,
+          nameAr: it.nameAr || `صنف مخزني ${index + 1}`,
+          nameEn: it.nameEn || it.nameAr || `Item ${index + 1}`,
+          category: it.category || 'عام',
+          unit: it.unit || 'حبة',
+          unitsPerPack: Number(it.unitsPerPack) || 1,
+          packUnit: it.packUnit || 'كرتون',
+          purchasePrice: cost,
+          salePrice: sale,
+          quantityOnHand: qty,
+          minQuantityAlert: Number(it.minQuantityAlert) !== undefined ? Number(it.minQuantityAlert) : 5,
+          isActive: it.isActive !== undefined ? it.isActive : true,
+        };
+
+        this.data.inventory.push(newItem);
+        affectedItems.push(newItem);
+        newCount++;
+        totalStockValue += qty * cost;
+      }
     });
 
     let journalId: string | undefined = undefined;
@@ -598,7 +641,7 @@ class DatabaseStore {
         id: 'j-' + Math.random().toString(36).substr(2, 9),
         entryNumber: jNumber,
         date: new Date().toISOString().split('T')[0],
-        description: `قيد افتتاحي: إثبات قيمة بضاعة ومخزون أول المدة للأصناف المستوردة (عدد ${createdItems.length})`,
+        description: `قيد افتتاحي: إثبات قيمة بضاعة ومخزون أول المدة للأصناف المستوردة (عدد ${affectedItems.length})`,
         reference: 'OPENING-STOCK',
         status: 'POSTED',
         totalDebit: totalStockValue,
@@ -630,7 +673,13 @@ class DatabaseStore {
     }
 
     this.save();
-    return { count: createdItems.length, openingJournalId: journalId, totalStockValue };
+    return {
+      count: affectedItems.length,
+      updatedCount,
+      newCount,
+      openingJournalId: journalId,
+      totalStockValue,
+    };
   }
 
   // Batch Update Pricing

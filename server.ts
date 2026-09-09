@@ -1808,12 +1808,21 @@ async function startServer() {
 
   app.post('/api/import/inventory', (req, res) => {
     try {
-      const { items, createOpeningJournal } = req.body;
+      const { items, createOpeningJournal, mode } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: 'قائمة الأصناف فارغة أو غير صالحة' });
       }
-      const result = db.bulkImportInventory(items, !!createOpeningJournal);
-      res.status(201).json({ success: true, ...result, message: `تم استيراد ${result.count} صنف مخزني بنجاح` });
+      const result = db.bulkImportInventory(items, !!createOpeningJournal, mode || 'upsert');
+      const detailsMsg = result.updatedCount > 0 && result.newCount > 0
+        ? `(تمت إضافة ${result.newCount} جديد وتحديث ${result.updatedCount})`
+        : result.updatedCount > 0
+        ? `(تم تحديث ${result.updatedCount} صنف)`
+        : `(تمت إضافة ${result.newCount} صنف جديد)`;
+      res.status(201).json({
+        success: true,
+        ...result,
+        message: `تم استيراد ومعالجة ${result.count} صنف مخزني بنجاح ${detailsMsg}`
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
