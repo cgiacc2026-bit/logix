@@ -364,15 +364,43 @@ export class CompanyJsonBackupService {
       if (isSupabaseConfigured) {
         Promise.resolve().then(async () => {
           try {
-            if (company) await SupabaseDataService.saveCompany(company);
-            if (accounts.length > 0) await SupabaseDataService.saveAccounts(accounts);
-            if (customers.length > 0) await Promise.all(customers.map((c) => SupabaseDataService.saveCustomer(c)));
-            if (suppliers.length > 0) await SupabaseDataService.saveSuppliers(suppliers);
-            if (inventory.length > 0) await Promise.all(inventory.map((it) => SupabaseDataService.saveItem(it)));
-            if (journals.length > 0) await Promise.all(journals.map((j) => SupabaseDataService.saveJournal(j)));
-            if (invoices.length > 0) await Promise.all(invoices.map((inv) => SupabaseDataService.saveInvoice(inv)));
+            console.log(`[CloudRestoreSync] Starting full Supabase cloud sync for company ${canonicalId}...`);
+            // 1. Company Profile
+            if (company) {
+              await SupabaseDataService.saveCompany(company, canonicalId);
+            }
+            // 2. Chart of Accounts
+            if (accounts.length > 0) {
+              await SupabaseDataService.saveAccounts(accounts, canonicalId);
+            }
+            // 3. Customers & Suppliers (Precedes invoices so foreign key customer_id succeeds)
+            if (customers.length > 0) {
+              await SupabaseDataService.saveCustomers(customers, canonicalId);
+            }
+            if (suppliers.length > 0) {
+              await SupabaseDataService.saveSuppliers(suppliers, canonicalId);
+            }
+            // 4. Inventory Items
+            if (inventory.length > 0) {
+              await SupabaseDataService.saveItems(inventory, canonicalId);
+            }
+            // 5. Sales Invoices & Line Details
+            if (invoices.length > 0) {
+              await SupabaseDataService.saveInvoices(invoices, canonicalId);
+            }
+            // 6. Payment & Receipt Vouchers
+            if (vouchers.length > 0) {
+              await SupabaseDataService.saveVouchers(vouchers, canonicalId);
+            }
+            // 7. General Ledger Journal Entries
+            if (journals.length > 0) {
+              await SupabaseDataService.saveJournals(journals, canonicalId);
+            }
+            console.log(
+              `[CloudRestoreSync] Successfully synced all restored records to Supabase: ${invoices.length} invoices, ${vouchers.length} vouchers, ${inventory.length} items, ${customers.length} customers, ${journals.length} journals.`
+            );
           } catch (cloudErr) {
-            console.warn('Background Supabase cloud restore sync notice:', cloudErr);
+            console.warn('[CloudRestoreSync] Background Supabase cloud restore sync error:', cloudErr);
           }
         });
       }
@@ -387,6 +415,7 @@ export class CompanyJsonBackupService {
 
       const stats = {
         invoices: invoices.length,
+        vouchers: vouchers.length,
         inventory: inventory.length,
         journals: journals.length,
         customers: customers.length,
@@ -397,7 +426,7 @@ export class CompanyJsonBackupService {
 
       return {
         success: true,
-        message: `تمت استعادة وتثبيت بيانات المنشأة بنجاح ومزامنتها سحابياً! (${stats.inventory} صنف مخزني، ${stats.invoices} فاتورة، ${stats.journals} قيود أستاذ عام، ${stats.customers} عميل، ${stats.productionOrders} أمر تشغيل).`,
+        message: `تمت استعادة وتثبيت بيانات المنشأة بنجاح ومزامنتها سحابياً! (${stats.inventory} صنف مخزني، ${stats.invoices} فاتورة مبيعات، ${stats.vouchers} سند قبض وصرف، ${stats.journals} قيود أستاذ عام، ${stats.customers} عميل، ${stats.productionOrders} أمر تشغيل).`,
         stats,
       };
     } catch (err: any) {

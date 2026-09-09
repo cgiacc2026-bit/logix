@@ -119,6 +119,11 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
   const isSupplier = entityType === 'SUPPLIER';
   const defaultLabel = isSupplier ? 'المورد / الحساب الدائن *' : 'العميل / الحساب المدين *';
 
+  // Input value display logic:
+  // When dropdown is open: show what the user is currently typing in `query`
+  // When dropdown is closed: show the selected entity's name if present, else empty
+  const displayInputValue = isOpen ? query : selectedEntity ? selectedEntity.nameAr : '';
+
   return (
     <div className="relative w-full text-right dir-rtl" ref={containerRef}>
       {label !== undefined ? (
@@ -127,142 +132,121 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
         <label className="block font-bold text-[#1A1A1A] mb-1 text-xs">{defaultLabel}</label>
       )}
 
-      {/* Selected Entity Card Preview or Search Input */}
-      {selectedEntity && !isOpen ? (
-        <div
-          onClick={() => {
-            setIsOpen(true);
-            setQuery('');
-            setTimeout(() => inputRef.current?.focus(), 50);
-          }}
-          className="flex items-center justify-between p-2.5 bg-amber-50/50 border-2 border-[#D4AF37] rounded-xl cursor-pointer hover:bg-amber-50 transition-all shadow-2xs group"
-          title="انقر لتغيير الاختيار أو عرض كافة الحسابات"
-        >
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/20 flex items-center justify-center shrink-0 text-[#8C6D1F] group-hover:scale-105 transition-transform">
-              {isSupplier ? <Building2 className="w-4 h-4" /> : <User className="w-4 h-4" />}
-            </div>
-            <div className="truncate">
-              <div className="font-extrabold text-xs text-[#1A1A1A] truncate flex items-center gap-1.5">
-                <span>{selectedEntity.nameAr}</span>
-                {(selectedEntity as any).nameEn && (
-                  <span className="text-[10px] text-neutral-400 font-mono">
-                    ({(selectedEntity as any).nameEn})
-                  </span>
-                )}
-                <span className="text-[9px] bg-amber-200/70 text-amber-900 px-1.5 py-0.2 rounded font-bold">
-                  الحساب المختار
-                </span>
-              </div>
-              <div className="text-[10px] text-neutral-500 flex items-center gap-2 mt-0.5">
-                {getBalance ? (
-                  <span>
-                    الرصيد الحالي:{' '}
-                    <strong
-                      className={
-                        getBalance(selectedEntity) > 0
-                          ? 'text-rose-700'
-                          : getBalance(selectedEntity) < 0
-                          ? 'text-emerald-700'
-                          : 'text-neutral-700'
-                      }
-                    >
-                      {formatCurrency(getBalance(selectedEntity), currency)}
-                    </strong>
-                  </span>
-                ) : (
-                  <span>
-                    الرصيد:{' '}
-                    <strong>{formatCurrency(Number(selectedEntity.balance || 0), currency)}</strong>
-                  </span>
-                )}
-                {(selectedEntity as any).phone && (
-                  <span className="font-mono text-[10px] text-neutral-400">
-                    هاتف: {(selectedEntity as any).phone}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleClear}
-              className="p-1 hover:bg-rose-100 text-neutral-400 hover:text-rose-600 rounded-md transition-colors"
-              title="إلغاء الاختيار"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-[10px] bg-white border border-[#E5E1DA] px-2.5 py-1 rounded-lg font-bold text-neutral-700 group-hover:border-[#D4AF37] transition-all">
-              تغيير / عرض الكل
-            </span>
-          </div>
-        </div>
-      ) : (
-        <div className="relative">
-          <div className="relative flex items-center">
-            <input
-              ref={inputRef}
-              type="text"
-              required={required && !selectedId}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                if (!isOpen) setIsOpen(true);
-              }}
-              onFocus={() => {
+      {/* Primary Always-Active Search Input */}
+      <div className="relative">
+        <div className="relative flex items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            required={required && !selectedId}
+            value={displayInputValue}
+            onChange={(e) => {
+              const val = e.target.value;
+              setQuery(val);
+              if (!isOpen) setIsOpen(true);
+            }}
+            onFocus={() => {
+              setIsOpen(true);
+              setQuery('');
+            }}
+            onClick={() => {
+              if (!isOpen) {
                 setIsOpen(true);
-                // Wildcard: keep query empty on focus to display all available entities immediately
-              }}
-              onClick={() => {
-                if (!isOpen) setIsOpen(true);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                selectedEntity
-                  ? `الحساب المختار: ${selectedEntity.nameAr}`
-                  : isSupplier
-                  ? 'ابحث باسم المورد أو اختر من كافة الموردين المتاحين...'
-                  : 'ابحث باسم العميل أو اختر من كافة العملاء المتاحين...'
+                setQuery('');
               }
-              className="w-full bg-[#F9F8F6] border border-[#E5E1DA] focus:border-[#D4AF37] focus:bg-white rounded-xl py-2.5 pr-9 pl-14 font-bold text-[#1A1A1A] text-xs outline-none transition-all shadow-2xs"
-            />
-            <Search className="w-4 h-4 text-neutral-400 absolute right-3 pointer-events-none" />
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              selectedEntity
+                ? `الحساب المختار: ${selectedEntity.nameAr} (انقر للبحث بالاسم أو التغيير)`
+                : isSupplier
+                ? 'ابحث باسم المورد مباشرة (أو انقر لعرض الكل)...'
+                : 'ابحث باسم العميل مباشرة (أو انقر لعرض الكل)...'
+            }
+            className={`w-full border rounded-xl py-2.5 pr-9 pl-14 font-bold text-[#1A1A1A] text-xs outline-none transition-all shadow-2xs ${
+              isOpen
+                ? 'bg-white border-[#D4AF37] ring-2 ring-[#D4AF37]/25'
+                : selectedEntity
+                ? 'bg-amber-50/40 border-[#D4AF37] hover:border-[#D4AF37]'
+                : 'bg-[#F9F8F6] border-[#E5E1DA] hover:border-[#D4AF37]/60'
+            }`}
+          />
+          <Search className="w-4 h-4 text-neutral-400 absolute right-3 pointer-events-none" />
 
-            <div className="absolute left-2 flex items-center gap-1">
-              {query ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    setTimeout(() => inputRef.current?.focus(), 50);
-                  }}
-                  className="text-neutral-400 hover:text-rose-600 p-1 cursor-pointer rounded-md transition-colors"
-                  title="مسح البحث"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              ) : null}
-
+          <div className="absolute left-2 flex items-center gap-1">
+            {(selectedEntity || query) && (
               <button
                 type="button"
-                onClick={() => {
-                  setIsOpen(!isOpen);
-                  if (!isOpen) {
-                    setQuery('');
-                    setTimeout(() => inputRef.current?.focus(), 50);
-                  }
-                }}
-                className="text-neutral-400 hover:text-neutral-700 p-1 cursor-pointer rounded-md transition-colors"
-                title="عرض كافة الحسابات"
+                onClick={handleClear}
+                className="text-neutral-400 hover:text-rose-600 p-1 cursor-pointer rounded-md transition-colors"
+                title="إلغاء الاختيار ومسح البحث لعرض كافة الحسابات"
               >
-                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#D4AF37]' : ''}`} />
+                <X className="w-3.5 h-3.5" />
               </button>
-            </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(!isOpen);
+                if (!isOpen) {
+                  setQuery('');
+                  setTimeout(() => inputRef.current?.focus(), 50);
+                }
+              }}
+              className="text-neutral-400 hover:text-neutral-700 p-1 cursor-pointer rounded-md transition-colors"
+              title="عرض كافة الحسابات"
+            >
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#D4AF37]' : ''}`} />
+            </button>
           </div>
         </div>
-      )}
+
+        {/* Selected Entity Compact Info Bar below input */}
+        {selectedEntity && !isOpen && (
+          <div className="mt-1.5 px-3 py-1.5 bg-amber-50/70 border border-[#D4AF37]/50 rounded-lg flex items-center justify-between text-[11px] text-neutral-700 animate-in fade-in duration-150">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+              <span className="font-bold text-[#1A1A1A] truncate">{selectedEntity.nameAr}</span>
+              {(selectedEntity as any).nameEn && (
+                <span className="text-[10px] text-neutral-400 font-mono truncate">
+                  ({(selectedEntity as any).nameEn})
+                </span>
+              )}
+              <span className="text-[9px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded font-bold shrink-0">
+                الحساب المختار
+              </span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {getBalance ? (
+                <span>
+                  الرصيد:{' '}
+                  <strong
+                    className={
+                      getBalance(selectedEntity) > 0
+                        ? 'text-rose-700'
+                        : getBalance(selectedEntity) < 0
+                        ? 'text-emerald-700'
+                        : 'text-neutral-700'
+                    }
+                  >
+                    {formatCurrency(getBalance(selectedEntity), currency)}
+                  </strong>
+                </span>
+              ) : (
+                <span>
+                  الرصيد: <strong>{formatCurrency(Number(selectedEntity.balance || 0), currency)}</strong>
+                </span>
+              )}
+              {(selectedEntity as any).phone && (
+                <span className="text-neutral-500 font-mono text-[10px]">
+                  هاتف: {(selectedEntity as any).phone}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Floating Dropdown List */}
       {isOpen && (

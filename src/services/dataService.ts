@@ -1785,7 +1785,28 @@ export class DataService {
 
   // Vouchers
   public static async getVouchers(): Promise<PaymentVoucher[]> {
-    return localDataStore.getVouchers();
+    const localVouchers = localDataStore.getVouchers();
+    const isLocked = localDataStore.isRestoreLocked();
+
+    try {
+      const fromSupabase = await SupabaseDataService.getVouchers();
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+        if (localVouchers.length > 0 && (isLocked || fromSupabase.length < localVouchers.length)) {
+          if (isSupabaseConfigured) {
+            SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
+          }
+          return localVouchers;
+        }
+        localDataStore.saveVouchers(fromSupabase);
+        return fromSupabase;
+      }
+    } catch (e) {
+      console.warn('Supabase getVouchers notice:', e);
+    }
+    if (isSupabaseConfigured && localVouchers.length > 0) {
+      SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
+    }
+    return localVouchers;
   }
 
   public static async createVoucher(data: any): Promise<PaymentVoucher> {
@@ -1920,6 +1941,11 @@ export class DataService {
     newVoucher.journalEntryId = jEntry.id;
     vouchers.unshift(newVoucher);
     localDataStore.saveVouchers(vouchers);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveVoucher(newVoucher).catch((err) =>
+        console.warn('Supabase saveVoucher notice:', err)
+      );
+    }
     syncToFirestore('erp_vouchers', newVoucher.id, newVoucher);
 
     await safeApiFetch('/api/vouchers', {
@@ -1938,6 +1964,9 @@ export class DataService {
     if (v) {
       v.status = 'CANCELLED';
       localDataStore.saveVouchers(vouchers);
+      if (isSupabaseConfigured) {
+        SupabaseDataService.saveVoucher(v).catch(() => {});
+      }
       syncToFirestore('erp_vouchers', id, v);
     }
     const apiRes = await safeApiFetch<PaymentVoucher>(`/api/vouchers/${id}/cancel`, {
@@ -1955,6 +1984,9 @@ export class DataService {
     if (idx !== -1) {
       vouchers[idx] = { ...vouchers[idx], ...data };
       localDataStore.saveVouchers(vouchers);
+      if (isSupabaseConfigured) {
+        SupabaseDataService.saveVoucher(vouchers[idx]).catch(() => {});
+      }
       syncToFirestore('erp_vouchers', id, vouchers[idx]);
     }
     const apiRes = await safeApiFetch<PaymentVoucher>(`/api/vouchers/${id}`, {
@@ -2905,16 +2937,21 @@ export class DataService {
 
     if (isSupabaseConfigured) {
       try {
-        const [customers, suppliers, inventory, journals] = await Promise.all([
+        const [customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
           SupabaseDataService.getCustomers(),
           SupabaseDataService.getSuppliers(),
           SupabaseDataService.getItems(),
           SupabaseDataService.getJournals(),
+          SupabaseDataService.getInvoices(),
+          SupabaseDataService.getVouchers(),
         ]);
         const localCust = localDataStore.getCustomers();
         const localSupp = localDataStore.getSuppliers();
         const localInv = localDataStore.getInventory();
         const localJournals = localDataStore.getJournals();
+        const localInvoices = localDataStore.getInvoices();
+        const localVouchers = localDataStore.getVouchers();
+        const isLocked = localDataStore.isRestoreLocked();
 
         if (Array.isArray(customers) && customers.length > 0) {
           localDataStore.saveCustomers(customers);
@@ -2938,6 +2975,28 @@ export class DataService {
           localDataStore.saveJournals(journals);
         } else if (localJournals.length > 0) {
           Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
+        }
+
+        // Invoices cloud sync
+        if (Array.isArray(invoices) && invoices.length > 0) {
+          if (localInvoices.length > 0 && (isLocked || invoices.length < localInvoices.length)) {
+            SupabaseDataService.saveInvoices(localInvoices).catch(() => {});
+          } else {
+            localDataStore.saveInvoices(invoices);
+          }
+        } else if (localInvoices.length > 0) {
+          SupabaseDataService.saveInvoices(localInvoices).catch(() => {});
+        }
+
+        // Vouchers cloud sync
+        if (Array.isArray(vouchers) && vouchers.length > 0) {
+          if (localVouchers.length > 0 && (isLocked || vouchers.length < localVouchers.length)) {
+            SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
+          } else {
+            localDataStore.saveVouchers(vouchers);
+          }
+        } else if (localVouchers.length > 0) {
+          SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
         }
 
         let accounts = await SupabaseDataService.getAccounts();

@@ -249,6 +249,10 @@ ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_type TEXT DE
 ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_id TEXT;
 ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_name TEXT;
 ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS account_id TEXT;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS reference TEXT;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'POSTED';
 ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
 
@@ -317,13 +321,16 @@ CREATE TABLE IF NOT EXISTS public.sales_details (
 
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS invoice_id TEXT;
+ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS sales_master_id TEXT;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS item_id TEXT;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS item_name TEXT;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS quantity NUMERIC(18, 4) DEFAULT 1;
+ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS qty NUMERIC(18, 4) DEFAULT 1;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS unit_price NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5, 2) DEFAULT 0;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS total NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS line_total NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.sales_details ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_sales_details_company ON public.sales_details(company_id);
