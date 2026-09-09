@@ -169,6 +169,33 @@ export interface CashFlowReport {
 }
 
 // Entities & Invoicing
+export interface CustomerBranch {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn?: string;
+  phone?: string;
+  contactPerson?: string;
+  address?: string;
+  city?: string;
+  isDefault?: boolean;
+  notes?: string;
+}
+
+export interface CustomerPriceListItem {
+  itemId: string;
+  customPrice: number;
+  discountPercentage?: number;
+  notes?: string;
+}
+
+export interface CustomerPriceList {
+  id: string;
+  name: string;
+  description?: string;
+  discountPercentage?: number;
+}
+
 export interface Customer {
   id: string;
   code: string;
@@ -187,6 +214,11 @@ export interface Customer {
   openingBalance?: number;
   openingBalanceDate?: string;
   isActive?: boolean;
+  branches?: CustomerBranch[];
+  priceListId?: string;
+  priceListName?: string;
+  customPrices?: CustomerPriceListItem[];
+  defaultDiscountRate?: number;
 }
 
 export interface Supplier {
@@ -304,6 +336,9 @@ export interface Invoice {
   dueAmount: number;
   salesPerson?: string;
   receiverName?: string;
+  customerBranchId?: string;
+  customerBranchName?: string;
+  priceListApplied?: string;
   journalEntryId?: string;
   notes?: string;
   allowNegativeStock?: boolean;

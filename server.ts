@@ -708,7 +708,7 @@ async function startServer() {
 
   app.post('/api/customers', (req, res) => {
     try {
-      const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate } = req.body;
+      const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, branches, priceListId, priceListName, customPrices, defaultDiscountRate } = req.body;
       const customCode = code || `${101 + db.getCustomers().length}`;
       const initialOpening = Number(openingBalance) || 0;
       const customer = {
@@ -725,6 +725,11 @@ async function startServer() {
         balance: initialOpening,
         openingBalance: initialOpening,
         openingBalanceDate: openingBalanceDate || '2026-07-01',
+        branches: branches || [],
+        priceListId: priceListId || 'standard',
+        priceListName: priceListName || '',
+        customPrices: customPrices || [],
+        defaultDiscountRate: defaultDiscountRate !== undefined ? Number(defaultDiscountRate) : 0,
       };
       db.addCustomer(customer);
       res.status(201).json(customer);
@@ -736,7 +741,7 @@ async function startServer() {
   app.put('/api/customers/:id', (req, res) => {
     try {
       const { id } = req.params;
-      const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, balance } = req.body;
+      const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, balance, branches, priceListId, priceListName, customPrices, defaultDiscountRate } = req.body;
       const customer = db.getCustomers().find((c) => c.id === id);
       if (!customer) return res.status(404).json({ error: 'العميل غير موجود' });
 
@@ -812,6 +817,11 @@ async function startServer() {
         openingBalance: updatedOpening,
         openingBalanceDate: openingBalanceDate ?? customer.openingBalanceDate,
         balance: updatedBalance,
+        branches: branches !== undefined ? branches : (customer.branches || []),
+        priceListId: priceListId !== undefined ? priceListId : (customer.priceListId || 'standard'),
+        priceListName: priceListName !== undefined ? priceListName : (customer.priceListName || ''),
+        customPrices: customPrices !== undefined ? customPrices : (customer.customPrices || []),
+        defaultDiscountRate: defaultDiscountRate !== undefined ? Number(defaultDiscountRate) : (customer.defaultDiscountRate || 0),
       });
 
       res.json({ success: true, customer: db.getCustomers().find((c) => c.id === id) });
@@ -1443,6 +1453,12 @@ async function startServer() {
         grandTotal,
         paidAmount: 0,
         dueAmount: grandTotal,
+        paymentTerms: req.body.paymentTerms || 'CREDIT',
+        salesPerson: req.body.salesPerson || '',
+        receiverName: req.body.receiverName || '',
+        customerBranchId: req.body.customerBranchId || undefined,
+        customerBranchName: req.body.customerBranchName || undefined,
+        priceListApplied: req.body.priceListApplied || undefined,
         notes,
         createdAt: new Date().toISOString(),
       };

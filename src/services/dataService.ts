@@ -1444,6 +1444,9 @@ export class DataService {
       paymentTerms: data.paymentTerms || (paidAmount >= grandTotal && grandTotal > 0 ? 'CASH' : 'CREDIT'),
       salesPerson: data.salesPerson || '',
       receiverName: data.receiverName || '',
+      customerBranchId: data.customerBranchId || undefined,
+      customerBranchName: data.customerBranchName || undefined,
+      priceListApplied: data.priceListApplied || undefined,
       notes: data.notes,
       createdAt: new Date().toISOString(),
     };
@@ -2095,6 +2098,11 @@ export class DataService {
       openingBalance: Number(data.openingBalance) || 0,
       openingBalanceDate: data.openingBalanceDate || '2026-07-01',
       isActive: true,
+      branches: data.branches || [],
+      priceListId: data.priceListId || 'standard',
+      priceListName: data.priceListName || '',
+      customPrices: data.customPrices || [],
+      defaultDiscountRate: data.defaultDiscountRate !== undefined ? Number(data.defaultDiscountRate) : 0,
     };
     list.push(newCust);
     localDataStore.saveCustomers(list);

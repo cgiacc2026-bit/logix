@@ -462,6 +462,16 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                         {isSales ? 'السادة / العميل (المشتري):' : 'السادة / المورد:'}
                       </span>
                       <span className="font-black text-base text-black block">{inv.entityNameAr || '-'}</span>
+                      {inv.customerBranchName && (
+                        <span className="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block mt-1 print:border-black print:text-black">
+                          فرع التسليم: {inv.customerBranchName}
+                        </span>
+                      )}
+                      {inv.priceListApplied && (
+                        <span className="text-[10px] text-neutral-500 print:text-black block mt-0.5">
+                          قائمة الأسعار المعتمدة: {inv.priceListApplied}
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1">

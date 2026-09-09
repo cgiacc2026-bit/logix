@@ -21,6 +21,7 @@ import { DataService, localDataStore } from '../services/dataService.ts';
 import { calculateEntityCurrentBalance } from '../services/statementService.ts';
 import { CustomerSearchCombobox } from './CustomerSearchCombobox.tsx';
 import { InvoiceItemSearchCombobox } from './InvoiceItemSearchCombobox.tsx';
+import { CustomerBranchesAndPriceListModal } from './CustomerBranchesAndPriceListModal.tsx';
 import { matchesSearch } from '../utils/searchUtils.ts';
 import {
   ShoppingBag,
@@ -46,7 +47,12 @@ import {
   FileSpreadsheet,
   Calendar,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Building2,
+  Tag,
+  Store,
+  MapPin,
+  Sparkles
 } from 'lucide-react';
 
 interface InvoicesProps {
@@ -198,6 +204,9 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [invReceiverName, setInvReceiverName] = useState('');
   const [invFilterType, setInvFilterType] = useState<'ALL' | 'SALES' | 'PURCHASE' | 'RETURNS'>('ALL');
   const [invEntityId, setInvEntityId] = useState('');
+  const [invCustomerBranchId, setInvCustomerBranchId] = useState('');
+  const [invCustomerBranchName, setInvCustomerBranchName] = useState('');
+  const [selectedCustomerForBranchesAndPrices, setSelectedCustomerForBranchesAndPrices] = useState<Customer | null>(null);
   const [invNotes, setInvNotes] = useState('');
   const [invDiscountType, setInvDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
   const [invDiscountValue, setInvDiscountValue] = useState<number>(0);
@@ -414,7 +423,26 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       updated[index].barcode = item.barcode || '';
       updated[index].unit = item.unit || 'حبة';
       updated[index].unitsPerPack = item.unitsPerPack || 1;
-      updated[index].unitPrice = (invType === 'SALES' || invType === 'SALES_RETURN') ? item.salePrice : item.purchasePrice;
+      
+      if (invType === 'SALES' || invType === 'SALES_RETURN') {
+        const cust = scopedCustomers.find((c) => c.id === invEntityId);
+        const customPriceEntry = cust?.customPrices?.find((p) => p.itemId === item.id);
+        if (customPriceEntry && Number(customPriceEntry.customPrice) >= 0) {
+          updated[index].unitPrice = Number(customPriceEntry.customPrice);
+          updated[index].discountType = 'FIXED';
+          updated[index].discountValue = 0;
+          updated[index].notes = customPriceEntry.notes || 'سعر خاص معتمد للعميل';
+        } else if (cust?.defaultDiscountRate && Number(cust.defaultDiscountRate) > 0) {
+          updated[index].unitPrice = item.salePrice;
+          updated[index].discountType = 'PERCENT';
+          updated[index].discountValue = Number(cust.defaultDiscountRate);
+          updated[index].notes = `خصم قائمة الأسعار (${cust.defaultDiscountRate}%)`;
+        } else {
+          updated[index].unitPrice = item.salePrice;
+        }
+      } else {
+        updated[index].unitPrice = item.purchasePrice;
+      }
     }
     setInvLines(updated);
   };
@@ -457,6 +485,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       };
     });
 
+    const activeCustomer = (invType === 'SALES' || invType === 'SALES_RETURN')
+      ? scopedCustomers.find((c) => c.id === invEntityId)
+      : null;
+
     await onCreateInvoice({
       type: invType,
       date: invDate || new Date().toISOString().split('T')[0],
@@ -464,6 +496,9 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       paymentTerms: invPaymentTerms,
       salesPerson: invSalesPerson,
       receiverName: invReceiverName,
+      customerBranchId: invCustomerBranchId || undefined,
+      customerBranchName: invCustomerBranchName || undefined,
+      priceListApplied: activeCustomer?.priceListName || undefined,
       entityId: invEntityId,
       lines: processedLines,
       notes: invNotes,
@@ -477,6 +512,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     });
     setIsInvoiceModalOpen(false);
     setIsNegativeStockModalOpen(false);
+    setInvCustomerBranchId('');
+    setInvCustomerBranchName('');
   };
 
   const handleSaveInvoice = async (e: React.FormEvent, autoPost: boolean = true) => {
@@ -1241,6 +1278,24 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                           <div className="text-[10px] text-[#9E2A2B] font-semibold mt-1">
                             الرصيد الافتتاحي ({c.openingBalanceDate || '2026-07-01'}): {formatCurrency(c.openingBalance || 0, currency)}
                           </div>
+                          {/* Branches & Price List indicators */}
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                              <Building2 className="w-2.5 h-2.5 text-blue-600" />
+                              {c.branches && c.branches.length > 0 ? `${c.branches.length} فروع ومواقع` : 'بدون أفرع إضافية'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              <Tag className="w-2.5 h-2.5 text-amber-600" />
+                              {c.priceListName || 'قائمة الأسعار القياسية'}
+                              {c.defaultDiscountRate ? ` (خصم ${c.defaultDiscountRate}%)` : ''}
+                            </span>
+                            {c.customPrices && c.customPrices.length > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+                                {c.customPrices.length} صنف مسعر
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="text-left font-black text-sm text-[#B8860B] bg-[#FFFDF0] px-3 py-1.5 rounded-xl border border-[#F3E5AB]">
                           <span className="text-[10px] text-[#8C8273] font-normal block">الرصيد الحالي</span>
@@ -1249,7 +1304,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                       </div>
 
                       {/* Action buttons */}
-                      <div className="flex items-center gap-2 pt-1 border-t border-dashed border-[#F0ECE1]">
+                      <div className="flex items-center gap-2 pt-1 border-t border-dashed border-[#F0ECE1] flex-wrap">
+                        <button
+                          onClick={() => setSelectedCustomerForBranchesAndPrices(c)}
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-blue-200 shadow-xs"
+                          title="إدارة فروع العميل وقائمة الأسعار والتسعيرة الخاصة"
+                        >
+                          <Building2 className="w-3 h-3 text-blue-600" />
+                          الأفرع والتسعيرة ({c.branches?.length || 0})
+                        </button>
                         <button
                           onClick={() => handleOpenStatement(c.id, 'CUSTOMER')}
                           className="px-2.5 py-1 bg-[#1A1A1A] hover:bg-black text-white text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all"
@@ -1765,16 +1828,144 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
                 {/* Payment Terms & Invoice Meta Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-[#E5E1DA]">
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-2 space-y-2">
                     <CustomerSearchCombobox
                       entities={invType === 'SALES' || invType === 'SALES_RETURN' ? scopedCustomers : scopedSuppliers}
                       selectedId={invEntityId}
-                      onSelect={(id) => setInvEntityId(id)}
+                      onSelect={(id) => {
+                        setInvEntityId(id);
+                        if (invType === 'SALES' || invType === 'SALES_RETURN') {
+                          const cust = scopedCustomers.find((c) => c.id === id);
+                          if (cust && cust.branches && cust.branches.length > 0) {
+                            const def = cust.branches.find((b) => b.isDefault) || cust.branches[0];
+                            setInvCustomerBranchId(def.id);
+                            setInvCustomerBranchName(def.nameAr);
+                          } else {
+                            setInvCustomerBranchId('');
+                            setInvCustomerBranchName('');
+                          }
+                          // Apply customer custom prices or default discount to already existing items in invoice lines
+                          if (cust) {
+                            setInvLines((prev) =>
+                              prev.map((l) => {
+                                if (!l.itemId) return l;
+                                const customEntry = cust.customPrices?.find((p) => p.itemId === l.itemId);
+                                if (customEntry && Number(customEntry.customPrice) >= 0) {
+                                  return {
+                                    ...l,
+                                    unitPrice: Number(customEntry.customPrice),
+                                    discountType: 'FIXED',
+                                    discountValue: 0,
+                                    notes: customEntry.notes || 'سعر خاص معتمد للعميل',
+                                  };
+                                } else if (cust.defaultDiscountRate && Number(cust.defaultDiscountRate) > 0) {
+                                  const itm = scopedInventory.find((i) => i.id === l.itemId);
+                                  return {
+                                    ...l,
+                                    unitPrice: itm?.salePrice || l.unitPrice,
+                                    discountType: 'PERCENT',
+                                    discountValue: Number(cust.defaultDiscountRate),
+                                    notes: `خصم قائمة الأسعار (${cust.defaultDiscountRate}%)`,
+                                  };
+                                }
+                                return l;
+                              })
+                            );
+                          }
+                        } else {
+                          setInvCustomerBranchId('');
+                          setInvCustomerBranchName('');
+                        }
+                      }}
                       entityType={invType === 'SALES' || invType === 'SALES_RETURN' ? 'CUSTOMER' : 'SUPPLIER'}
                       currency={currency}
                       getBalance={invType === 'SALES' || invType === 'SALES_RETURN' ? getCustomerCurrentBalance : getSupplierCurrentBalance}
                       required
                     />
+
+                    {/* Customer Branches and Pricing Quick Panel */}
+                    {(invType === 'SALES' || invType === 'SALES_RETURN') && invEntityId && (() => {
+                      const activeCust = scopedCustomers.find((c) => c.id === invEntityId);
+                      if (!activeCust) return null;
+                      return (
+                        <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-2.5 space-y-2 text-xs">
+                          {/* Branch Selection */}
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-bold text-[#1A1A1A] flex items-center gap-1">
+                                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                                <span>فرع وموقع التسليم للعميل:</span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCustomerForBranchesAndPrices(activeCust)}
+                                className="text-[10px] font-bold text-blue-700 hover:text-blue-900 underline flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <span>إدارة فروع العميل</span>
+                                <Plus className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                            {activeCust.branches && activeCust.branches.length > 0 ? (
+                              <select
+                                value={invCustomerBranchId}
+                                onChange={(e) => {
+                                  setInvCustomerBranchId(e.target.value);
+                                  const b = activeCust.branches?.find((x) => x.id === e.target.value);
+                                  setInvCustomerBranchName(b ? b.nameAr : '');
+                                }}
+                                className="w-full bg-white border border-blue-200 rounded-lg p-2 text-xs font-bold text-blue-950 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                              >
+                                <option value="">-- الإدارة العامة / الفرع الرئيسي العام --</option>
+                                {activeCust.branches.map((b) => (
+                                  <option key={b.id} value={b.id}>
+                                    {b.nameAr} {b.code ? `(${b.code})` : ''} {b.city ? `• ${b.city}` : ''} {b.isDefault ? '★ (الافتراضي)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div className="flex items-center justify-between bg-blue-50/60 border border-blue-100 p-2 rounded-lg text-[11px]">
+                                <span className="text-blue-900 font-medium">الفرع الرئيسي العام (لم يتم تحديد أفرع فرعية لهذا العميل بعد)</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedCustomerForBranchesAndPrices(activeCust)}
+                                  className="text-[11px] font-bold text-blue-700 underline cursor-pointer"
+                                >
+                                  + إضافة أفرع ومواقع تسليم
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Applied Price List & Discount info */}
+                          <div className="flex items-center justify-between bg-amber-50/70 border border-amber-200/80 px-2.5 py-1.5 rounded-lg text-[11px]">
+                            <div className="flex items-center gap-1.5 text-amber-950 flex-wrap">
+                              <Tag className="w-3.5 h-3.5 text-amber-600" />
+                              <span className="font-bold">قائمة الأسعار المعتمدة:</span>
+                              <span className="font-extrabold text-black bg-white px-1.5 py-0.5 rounded border border-amber-200">
+                                {activeCust.priceListName || 'قائمة الأسعار القياسية'}
+                              </span>
+                              {activeCust.defaultDiscountRate ? (
+                                <span className="text-[10px] bg-emerald-100 text-emerald-900 font-bold px-1.5 py-0.5 rounded">
+                                  خصم معتمد: {activeCust.defaultDiscountRate}%
+                                </span>
+                              ) : null}
+                              {activeCust.customPrices && activeCust.customPrices.length > 0 && (
+                                <span className="text-[10px] bg-blue-100 text-blue-900 font-bold px-1.5 py-0.5 rounded">
+                                  {activeCust.customPrices.length} أصناف مسعرة
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCustomerForBranchesAndPrices(activeCust)}
+                              className="text-[10px] font-bold text-amber-800 underline hover:text-black cursor-pointer mr-2 shrink-0"
+                            >
+                              تعديل التسعيرة
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Manual Document Date */}
@@ -2650,6 +2841,31 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 </div>
               </div>
 
+              {/* Branches & Price List for Customer */}
+              {entityKind === 'CUSTOMER' && editingEntity && (
+                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-blue-900 font-bold">
+                      <Building2 className="w-4 h-4 text-blue-700" />
+                      <span>فروع العميل وقائمة الأسعار المخصصة</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomerForBranchesAndPrices(editingEntity as Customer);
+                      }}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-300" />
+                      إدارة الأفرع والأسعار ({((editingEntity as Customer).branches?.length || 0)} فرع)
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    يمكنك تحديد أفرع ومواقع تسليم متعددة للعميل مع إصدار فواتير لكل فرع، بالإضافة لتطبيق قائمة أسعار مخصصة ونسب خصم تلقائية عند تحرير فواتير هذا العميل.
+                  </p>
+                </div>
+              )}
+
               {/* Opening Balance Section */}
               <div className="p-3 bg-[#FFFDF0] border border-[#F3E5AB] rounded-xl space-y-2">
                 <span className="font-extrabold text-[#B8860B] block text-xs">
@@ -2874,6 +3090,38 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
           deficitItems={deficitItemsList}
           userRole="ADMIN"
           userName="المدير العام / المسؤول المعتمد"
+        />
+      )}
+
+      {/* Render Customer Branches & Custom Price List Modal */}
+      {selectedCustomerForBranchesAndPrices && (
+        <CustomerBranchesAndPriceListModal
+          isOpen={!!selectedCustomerForBranchesAndPrices}
+          onClose={() => setSelectedCustomerForBranchesAndPrices(null)}
+          customer={selectedCustomerForBranchesAndPrices}
+          inventory={inventory}
+          currency={currency}
+          onSave={async (updatedCustomer) => {
+            await DataService.updateCustomer(updatedCustomer.id, updatedCustomer);
+            if (onRefreshAll) {
+              await onRefreshAll();
+            }
+            setSelectedCustomerForBranchesAndPrices(null);
+            // If current invoice has this customer, sync branch choice
+            if (invEntityId === updatedCustomer.id) {
+              if (updatedCustomer.branches && updatedCustomer.branches.length > 0) {
+                const stillExists = updatedCustomer.branches.some((b) => b.id === invCustomerBranchId);
+                if (!stillExists) {
+                  const def = updatedCustomer.branches.find((b) => b.isDefault) || updatedCustomer.branches[0];
+                  setInvCustomerBranchId(def.id);
+                  setInvCustomerBranchName(def.nameAr);
+                }
+              } else {
+                setInvCustomerBranchId('');
+                setInvCustomerBranchName('');
+              }
+            }
+          }}
         />
       )}
     </div>
