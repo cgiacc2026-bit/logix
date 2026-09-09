@@ -246,6 +246,7 @@ export interface InventoryItem {
   unit: string; // e.g. "حبة", "قطعة", "طقم"
   unitsPerPack: number; // الشد / عدد الحبات في العبوة الكبرى (مثلاً 12 حبة في الكرتون)
   packUnit?: string; // e.g. "كرتون", "شدة", "صندوق"
+  description?: string;
   purchasePrice: number;
   costPrice?: number;
   salePrice: number;
@@ -254,6 +255,8 @@ export interface InventoryItem {
   quantity?: number;
   minQuantityAlert: number;
   isActive: boolean;
+  companyId?: string;
+  company_id?: string;
 }
 
 export type InvoiceType = 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN';

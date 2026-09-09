@@ -37,6 +37,7 @@ import {
   resolveToSupabaseCompanyUUID,
   ALWALEED_CANONICAL_UUID,
   isSupabaseConfigured,
+  checkIsSupabaseConfigured,
 } from './supabaseService.js';
 import { safeApiFetch, safeJsonParse } from '../utils/safeJson.js';
 import { SystemResetService } from './systemResetService.js';
@@ -387,7 +388,7 @@ export class CompanyJsonBackupService {
         journals: 0,
       };
 
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured || checkIsSupabaseConfigured()) {
         try {
           console.log(`[CloudRestoreSync] Executing direct cloud sync for company ${canonicalId}...`);
           // 1. Company Profile

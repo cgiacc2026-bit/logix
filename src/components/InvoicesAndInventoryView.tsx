@@ -1900,34 +1900,31 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                     const val = e.target.value;
                                     const updated = [...invLines];
                                     updated[idx].itemSku = val;
-                                    // Also lookup if matches an item
+                                    const cleanVal = val.trim().toLowerCase();
                                     const matched = scopedInventory.find(
-                                      (i) => i.sku === val || i.barcode === val || i.id === val
+                                      (i) =>
+                                        (i.sku && i.sku.toLowerCase() === cleanVal) ||
+                                        (i.barcode && i.barcode === val.trim()) ||
+                                        i.id === val.trim()
                                     );
                                     if (matched) {
-                                      updated[idx].itemId = matched.id;
-                                      updated[idx].itemNameAr = matched.nameAr;
-                                      updated[idx].itemSku = matched.sku || '';
-                                      updated[idx].barcode = matched.barcode || '';
-                                      updated[idx].unit = matched.unit || 'حبة';
-                                      updated[idx].unitsPerPack = matched.unitsPerPack || 1;
-                                      updated[idx].unitPrice =
-                                        invType === 'SALES' || invType === 'SALES_RETURN'
-                                          ? matched.salePrice
-                                          : matched.purchasePrice;
+                                      handleInvItemSelect(idx, matched.id, matched);
+                                    } else {
+                                      setInvLines(updated);
                                     }
-                                    setInvLines(updated);
                                   }}
                                   className="w-full bg-[#FAF9F6] border border-[#E5E1DA] rounded-lg px-2 py-1 font-mono text-[11px] font-bold text-black"
                                 />
                               </td>
 
-                              {/* اسم الصنف والبيان - بحث فوري وسلس بالاسم */}
-                              <td className="py-2 px-2 border-l border-[#E5E1DA] min-w-[220px]">
+                              {/* اسم الصنف والبيان - بحث مزدوج فوري بالكود والاسم */}
+                              <td className="py-2 px-2 border-l border-[#E5E1DA] min-w-[240px]">
                                 <InvoiceItemSearchCombobox
                                   inventory={scopedInventory}
                                   selectedItemId={line.itemId}
                                   selectedItemName={line.itemNameAr || ''}
+                                  selectedSku={line.itemSku || ''}
+                                  selectedBarcode={line.barcode || ''}
                                   onSelectItem={(item) => handleInvItemSelect(idx, item.id, item)}
                                   onCustomNameChange={(customName) => {
                                     const updated = [...invLines];
@@ -1936,7 +1933,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                   }}
                                   invType={invType}
                                   currency={currency}
-                                  placeholder="ابحث بالاسم (مثال: طحين، سكر، دقيق...)"
+                                  placeholder="انقر لاختيار صنف أو ابحث بالاسم/الكود..."
                                 />
                               </td>
 

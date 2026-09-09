@@ -18,6 +18,7 @@ import {
   resolveToSupabaseCompanyUUID,
   ALWALEED_CANONICAL_UUID,
   toValidUUID,
+  checkIsSupabaseConfigured,
 } from './supabaseClient.js';
 
 export {
@@ -27,6 +28,7 @@ export {
   resolveToSupabaseCompanyUUID,
   ALWALEED_CANONICAL_UUID,
   toValidUUID,
+  checkIsSupabaseConfigured,
 };
 import {
   Account,

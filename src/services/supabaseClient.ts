@@ -69,7 +69,7 @@ export const SUPABASE_URL = getSupabaseConfig().url;
 export const SUPABASE_ANON_KEY = getSupabaseConfig().key;
 export const SUPABASE_SERVICE_KEY = getSupabaseConfig().secret;
 
-export const isSupabaseConfigured = checkIsSupabaseConfigured();
+export let isSupabaseConfigured = checkIsSupabaseConfigured();
 
 let activeClientInstance: SupabaseClient | null = null;
 let activeClientUrl: string = '';
@@ -118,6 +118,7 @@ export const saveSupabaseCredentials = (url: string, anonKey: string): void => {
     if (url) window.localStorage.setItem('VITE_SUPABASE_URL', url.trim());
     if (anonKey) window.localStorage.setItem('VITE_SUPABASE_ANON_KEY', anonKey.trim());
     activeClientInstance = null; // Force client refresh
+    isSupabaseConfigured = checkIsSupabaseConfigured();
   }
 };
 
