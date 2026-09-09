@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
-import { ThemeService, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
+import { ThemeService, THEME_PALETTES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
 
 interface HeaderProps {
   company: CompanyProfile | null;
@@ -32,6 +32,7 @@ interface HeaderProps {
   onOpenJsonBackup?: () => void;
   currentUser?: SystemUser | null;
   onLogout?: () => void;
+  onSaveCompany?: (updated: CompanyProfile) => Promise<void> | void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,37 +46,21 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenJsonBackup,
   currentUser,
   onLogout,
+  onSaveCompany,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
-  const [currentThemeColor, setCurrentThemeColor] = useState<ThemeColor>(() => (company?.themeColor as ThemeColor) || ThemeService.getSavedThemeColor());
-  const [currentThemeMode, setCurrentThemeMode] = useState<ThemeMode>(() => (company?.themeMode as ThemeMode) || ThemeService.getSavedThemeMode());
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const paletteMenuRef = useRef<HTMLDivElement>(null);
 
-  // Sync theme state with service and company
-  useEffect(() => {
-    const handleThemeChange = (e: any) => {
-      if (e.detail) {
-        setCurrentThemeColor(e.detail.themeColor);
-        setCurrentThemeMode(e.detail.themeMode);
-      }
-    };
-    window.addEventListener('logix-theme-changed', handleThemeChange);
-    return () => window.removeEventListener('logix-theme-changed', handleThemeChange);
-  }, []);
-
-  // Sync if company prop changes
-  useEffect(() => {
-    if (company?.themeColor && company.themeColor !== currentThemeColor) {
-      ThemeService.setThemeColor(company.themeColor as ThemeColor);
-      setCurrentThemeColor(company.themeColor as ThemeColor);
-    }
-    if (company?.themeMode && company.themeMode !== currentThemeMode) {
-      ThemeService.applyTheme(undefined, company.themeMode as ThemeMode);
-      setCurrentThemeMode(company.themeMode as ThemeMode);
-    }
-  }, [company?.themeColor, company?.themeMode]);
+  const {
+    themeColor: currentThemeColor,
+    themeMode: currentThemeMode,
+    effectiveMode,
+    activePalette,
+    setThemeColor,
+    toggleThemeMode,
+  } = useTheme(company);
 
   // Close palette menu on outside click
   useEffect(() => {
@@ -90,18 +75,19 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isPaletteOpen]);
 
-  const activePalette = THEME_PALETTES[currentThemeColor] || THEME_PALETTES['blue'];
-  const effectiveMode = ThemeService.getEffectiveThemeMode(currentThemeMode);
-
   const handleToggleThemeMode = () => {
-    const newMode = ThemeService.toggleThemeMode();
-    setCurrentThemeMode(newMode);
+    const newMode = toggleThemeMode();
+    if (company && onSaveCompany) {
+      onSaveCompany({ ...company, themeMode: newMode });
+    }
   };
 
   const handleSelectThemeColor = (colorKey: ThemeColor) => {
-    ThemeService.setThemeColor(colorKey);
-    setCurrentThemeColor(colorKey);
+    setThemeColor(colorKey);
     setIsPaletteOpen(false);
+    if (company && onSaveCompany) {
+      onSaveCompany({ ...company, themeColor: colorKey });
+    }
   };
 
   const handleExcelBackup = async () => {

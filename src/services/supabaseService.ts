@@ -106,6 +106,8 @@ export class SupabaseDataService {
         footerNotes: data.profile_data?.footerNotes || 'الدفع خلال 30 يوماً من تاريخ استلام الفاتورة.',
         showDigitalStamp: data.profile_data?.showDigitalStamp ?? true,
         defaultAccounts: data.default_accounts || data.profile_data?.defaultAccounts || undefined,
+        themeColor: data.profile_data?.themeColor || (data.theme_color as any) || undefined,
+        themeMode: data.profile_data?.themeMode || (data.theme_mode as any) || undefined,
       };
 
       return profile;
@@ -127,6 +129,8 @@ export class SupabaseDataService {
         owner_email: comp.email || 'admin@logixerp.com',
         status: 'active',
         logo_url: comp.logoUrl || '',
+        theme_color: comp.themeColor || 'blue',
+        theme_mode: comp.themeMode || 'light',
         default_accounts: comp.defaultAccounts || {},
         profile_data: comp,
         updated_at: new Date().toISOString(),

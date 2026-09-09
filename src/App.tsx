@@ -395,6 +395,7 @@ export default function App() {
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
         onOpenCompanySetup={() => setActiveTab('company')}
+        onSaveCompany={handleSaveCompany}
       />
 
       {/* Main Content Area Adjusted with Sidebar Margin */}
@@ -416,6 +417,7 @@ export default function App() {
           onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
           currentUser={currentUser}
           onLogout={handleLogout}
+          onSaveCompany={handleSaveCompany}
         />
 
         {/* Main View Container */}

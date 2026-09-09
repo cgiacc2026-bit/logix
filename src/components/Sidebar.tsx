@@ -29,7 +29,7 @@ import { TabType } from './Navigation.tsx';
 import { CompanyProfile } from '../types.js';
 import { isDemoActive } from '../services/demoService.js';
 import { checkIsSupabaseConfigured } from '../services/supabaseClient.ts';
-import { ThemeService, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
+import { ThemeService, THEME_PALETTES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -39,6 +39,7 @@ interface SidebarProps {
   collapsed: boolean;
   setCollapsed: (c: boolean | ((prev: boolean) => boolean)) => void;
   onOpenCompanySetup: () => void;
+  onSaveCompany?: (updated: CompanyProfile) => Promise<void> | void;
 }
 
 interface NavSection {
@@ -61,27 +62,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   setCollapsed,
   onOpenCompanySetup,
+  onSaveCompany,
 }) => {
-  const [currentThemeColor, setCurrentThemeColor] = useState<ThemeColor>(
-    () => (company?.themeColor as ThemeColor) || ThemeService.getSavedThemeColor()
-  );
-  const [currentThemeMode, setCurrentThemeMode] = useState<ThemeMode>(
-    () => (company?.themeMode as ThemeMode) || ThemeService.getSavedThemeMode()
-  );
-
-  useEffect(() => {
-    const handleThemeChange = (e: any) => {
-      if (e.detail) {
-        setCurrentThemeColor(e.detail.themeColor);
-        setCurrentThemeMode(e.detail.themeMode);
-      }
-    };
-    window.addEventListener('logix-theme-changed', handleThemeChange);
-    return () => window.removeEventListener('logix-theme-changed', handleThemeChange);
-  }, []);
-
-  const activePalette = THEME_PALETTES[currentThemeColor] || THEME_PALETTES['blue'];
-  const effectiveMode = ThemeService.getEffectiveThemeMode(currentThemeMode);
+  const {
+    effectiveMode,
+    activePalette,
+    toggleThemeMode,
+  } = useTheme(company);
 
   const sections: NavSection[] = [
     {
@@ -282,9 +269,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
                     title={collapsed ? item.label : undefined}
+                    style={
+                      isActive
+                        ? {
+                            background: activePalette.activeItemGradientStyle,
+                            borderColor: activePalette.activeItemBorderColor,
+                          }
+                        : undefined
+                    }
                     className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer group ${
                       isActive
-                        ? `bg-gradient-to-l ${activePalette.activeItemGradient} text-white shadow-md ${activePalette.activeItemBorder} border translate-x-[-1px]`
+                        ? `text-white shadow-md border translate-x-[-1px]`
                         : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
                     } ${collapsed ? 'justify-center px-1.5' : 'justify-start'}`}
                   >
@@ -370,8 +365,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
-              const next = ThemeService.toggleThemeMode();
-              setCurrentThemeMode(next);
+              const next = toggleThemeMode();
+              if (company && onSaveCompany) {
+                onSaveCompany({ ...company, themeMode: next });
+              }
             }}
             className="w-full flex items-center justify-between px-2 py-1 rounded-lg bg-black/20 hover:bg-black/40 text-xs font-semibold text-slate-300 border border-white/5 transition-all cursor-pointer"
             title={effectiveMode === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
@@ -392,8 +389,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
-              const next = ThemeService.toggleThemeMode();
-              setCurrentThemeMode(next);
+              const next = toggleThemeMode();
+              if (company && onSaveCompany) {
+                onSaveCompany({ ...company, themeMode: next });
+              }
             }}
             className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center bg-black/20 hover:bg-black/40 text-slate-300 border border-white/5 cursor-pointer"
             title={effectiveMode === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}

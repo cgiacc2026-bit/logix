@@ -48,6 +48,7 @@ import {
   DEMO_SEED_VOUCHERS,
   isDemoActive,
 } from './demoService.js';
+import { ThemeService } from './themeService.ts';
 
 const STORAGE_KEYS = {
   COMPANY: 'alwaleed_erp_company',
@@ -410,6 +411,8 @@ class LocalDataStore {
               vatRate: p.vatRate ?? 0,
               crNumber: p.crNumber || found.login_code || '',
               logoUrl: found.logo_url || found.logo || p.logoUrl || dedicatedLogo || '',
+              themeColor: p.themeColor || 'blue',
+              themeMode: p.themeMode || 'light',
             };
             this.saveCompany(createdProfile);
             return createdProfile;
@@ -423,6 +426,12 @@ class LocalDataStore {
     const result = stored || DEFAULT_COMPANY_PROFILE;
     if (dedicatedLogo && !result.logoUrl) {
       result.logoUrl = dedicatedLogo;
+    }
+    if (!result.themeColor) {
+      result.themeColor = ThemeService.getSavedThemeColor();
+    }
+    if (!result.themeMode) {
+      result.themeMode = ThemeService.getSavedThemeMode();
     }
     if (!result.defaultAccounts) {
       const accs = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
@@ -439,6 +448,11 @@ class LocalDataStore {
     const compId = comp.id || this.getEffectiveCompanyId();
     if (compId && !comp.id) {
       comp.id = compId;
+    }
+
+    // Immediately apply and synchronize theme preferences
+    if (comp.themeColor || comp.themeMode) {
+      ThemeService.syncWithCompany(comp);
     }
 
     // Dedicated Logo Storage for Guaranteed Persistence
