@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   FolderTree,
@@ -21,12 +21,15 @@ import {
   Sparkles,
   ShieldCheck,
   RotateCcw,
-  BarChart3
+  BarChart3,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
 import { CompanyProfile } from '../types.js';
 import { isDemoActive } from '../services/demoService.js';
 import { checkIsSupabaseConfigured } from '../services/supabaseClient.ts';
+import { ThemeService, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -59,6 +62,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCollapsed,
   onOpenCompanySetup,
 }) => {
+  const [currentThemeColor, setCurrentThemeColor] = useState<ThemeColor>(
+    () => (company?.themeColor as ThemeColor) || ThemeService.getSavedThemeColor()
+  );
+  const [currentThemeMode, setCurrentThemeMode] = useState<ThemeMode>(
+    () => (company?.themeMode as ThemeMode) || ThemeService.getSavedThemeMode()
+  );
+
+  useEffect(() => {
+    const handleThemeChange = (e: any) => {
+      if (e.detail) {
+        setCurrentThemeColor(e.detail.themeColor);
+        setCurrentThemeMode(e.detail.themeMode);
+      }
+    };
+    window.addEventListener('logix-theme-changed', handleThemeChange);
+    return () => window.removeEventListener('logix-theme-changed', handleThemeChange);
+  }, []);
+
+  const activePalette = THEME_PALETTES[currentThemeColor] || THEME_PALETTES['blue'];
+  const effectiveMode = ThemeService.getEffectiveThemeMode(currentThemeMode);
+
   const sections: NavSection[] = [
     {
       id: 'main',
@@ -191,15 +215,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`fixed top-0 right-0 bottom-0 bg-[#0B192C] text-white border-l border-[#1E3E62] z-50 flex flex-col transition-all duration-300 shadow-2xl no-print ${
+      style={{ backgroundColor: activePalette.sidebarBg, borderColor: activePalette.sidebarBorder }}
+      className={`fixed top-0 right-0 bottom-0 text-white border-l z-50 flex flex-col transition-all duration-300 shadow-2xl no-print ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
       {/* Sidebar Header Brand */}
-      <div className="h-14 flex items-center justify-between px-3 border-b border-[#1E3E62] bg-[#081322]/80 shrink-0">
+      <div
+        style={{ borderColor: activePalette.sidebarBorder }}
+        className="h-14 flex items-center justify-between px-3 border-b bg-black/20 shrink-0"
+      >
         {!collapsed ? (
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold border border-blue-400/40 shadow-xs shrink-0">
+            <div
+              style={{ backgroundColor: activePalette.primaryColor }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold border border-white/20 shadow-xs shrink-0"
+            >
               <span className="text-xs tracking-wider">LX</span>
             </div>
             <div className="min-w-0">
@@ -215,7 +246,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
         ) : (
-          <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold border border-blue-400/40 shadow-xs">
+          <div
+            style={{ backgroundColor: activePalette.primaryColor }}
+            className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center text-white font-bold border border-white/20 shadow-xs"
+          >
             <span className="text-[10px] tracking-wider">LX</span>
           </div>
         )}
@@ -223,7 +257,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={() => setCollapsed((prev) => !prev)}
           title={collapsed ? 'توسيع القائمة' : 'طي القائمة'}
-          className="p-1 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer shrink-0"
+          className="p-1 rounded-md bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white border border-white/10 transition-colors cursor-pointer shrink-0"
         >
           {collapsed ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         </button>
@@ -250,15 +284,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     title={collapsed ? item.label : undefined}
                     className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer group ${
                       isActive
-                        ? 'bg-gradient-to-l from-blue-600 to-indigo-600 text-white shadow-md border border-blue-400/40 translate-x-[-1px]'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                        ? `bg-gradient-to-l ${activePalette.activeItemGradient} text-white shadow-md ${activePalette.activeItemBorder} border translate-x-[-1px]`
+                        : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
                     } ${collapsed ? 'justify-center px-1.5' : 'justify-start'}`}
                   >
                     <div
                       className={`p-1 rounded-md transition-colors shrink-0 ${
                         isActive
                           ? 'bg-white/20 text-white'
-                          : 'bg-slate-800/90 text-slate-400 group-hover:text-cyan-300'
+                          : 'bg-white/5 text-slate-400 group-hover:text-cyan-300'
                       }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
@@ -287,13 +321,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      {/* Supabase Cloud Sync Status Widget in Sidebar */}
-      <div className="p-2 border-t border-[#1E3E62] bg-[#081322] shrink-0">
+      {/* Supabase Cloud Sync Status Widget & Theme Switcher in Sidebar */}
+      <div
+        style={{ borderColor: activePalette.sidebarBorder }}
+        className="p-2 border-t bg-black/20 shrink-0 space-y-1.5"
+      >
         {!collapsed ? (
           <button
             type="button"
             onClick={onOpenCompanySetup}
-            className="w-full text-right bg-slate-900/90 hover:bg-slate-800 p-2 rounded-lg border border-blue-500/30 flex items-center justify-between cursor-pointer transition-colors"
+            className="w-full text-right bg-black/30 hover:bg-black/50 p-2 rounded-lg border border-white/10 flex items-center justify-between cursor-pointer transition-colors"
             title={checkIsSupabaseConfigured() ? "قاعدة Supabase السحابية متصلة" : "النظام يعمل على التخزين المحلي (اضغط للربط بالسحابة)"}
           >
             <div className="flex items-center gap-2">
@@ -325,6 +362,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
             title={checkIsSupabaseConfigured() ? "قاعدة Supabase السحابية متصلة" : "تخزين محلي مؤقت (اضغط للربط)"}
           >
             <Cloud className={`w-4 h-4 ${checkIsSupabaseConfigured() ? 'text-cyan-400 animate-pulse' : 'text-amber-400'}`} />
+          </button>
+        )}
+
+        {/* Day / Night Quick Button in Sidebar Footer */}
+        {!collapsed ? (
+          <button
+            type="button"
+            onClick={() => {
+              const next = ThemeService.toggleThemeMode();
+              setCurrentThemeMode(next);
+            }}
+            className="w-full flex items-center justify-between px-2 py-1 rounded-lg bg-black/20 hover:bg-black/40 text-xs font-semibold text-slate-300 border border-white/5 transition-all cursor-pointer"
+            title={effectiveMode === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
+          >
+            <div className="flex items-center gap-1.5">
+              {effectiveMode === 'dark' ? (
+                <Sun className="w-3.5 h-3.5 text-amber-300" />
+              ) : (
+                <Moon className="w-3.5 h-3.5 text-cyan-300" />
+              )}
+              <span>{effectiveMode === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'}</span>
+            </div>
+            <span className="text-[9px] text-slate-400 font-mono">
+              {effectiveMode === 'dark' ? 'Light' : 'Dark'}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              const next = ThemeService.toggleThemeMode();
+              setCurrentThemeMode(next);
+            }}
+            className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center bg-black/20 hover:bg-black/40 text-slate-300 border border-white/5 cursor-pointer"
+            title={effectiveMode === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
+          >
+            {effectiveMode === 'dark' ? (
+              <Sun className="w-3.5 h-3.5 text-amber-300" />
+            ) : (
+              <Moon className="w-3.5 h-3.5 text-cyan-300" />
+            )}
           </button>
         )}
       </div>

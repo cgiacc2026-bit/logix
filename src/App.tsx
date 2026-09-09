@@ -37,6 +37,7 @@ import { JsonBackupRestoreModal } from './components/JsonBackupRestoreModal.tsx'
 import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
+import { ThemeService, ThemeColor, ThemeMode } from './services/themeService.ts';
 import {
   DEFAULT_COMPANY_PROFILE,
 } from './server/defaultData.js';
@@ -113,6 +114,18 @@ export default function App() {
       }, 500);
     }
   };
+
+  // Initialize ERP Theme and Day/Night mode on startup
+  useEffect(() => {
+    ThemeService.initTheme();
+  }, []);
+
+  // Synchronize theme whenever active company profile changes
+  useEffect(() => {
+    if (company?.themeColor || company?.themeMode) {
+      ThemeService.applyTheme(company.themeColor as ThemeColor, company.themeMode as ThemeMode);
+    }
+  }, [company?.themeColor, company?.themeMode]);
 
   // Check onboarding on initial authenticated load
   useEffect(() => {

@@ -1,14 +1,169 @@
 @import "tailwindcss";
 
 @layer base {
+  :root {
+    --theme-primary: #2563EB;
+    --theme-primary-hover: #1D4ED8;
+    --theme-accent: #38BDF8;
+    --theme-header-bg: #0B192C;
+    --theme-header-border: #1E3E62;
+    --theme-sidebar-bg: #071322;
+    --theme-sidebar-border: #162B45;
+  }
+
   body {
     font-family: 'Cairo', system-ui, sans-serif;
     background-color: #F8FAFC;
     color: #0F172A;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
   .font-serif {
     font-family: 'Cairo', system-ui, sans-serif;
   }
+}
+
+/* ==========================================================================
+   LOGIX ERP Dark Mode (الوضع الليلي عالي الوضوح) & Color Palette Engine
+   ========================================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #090E1A !important;
+  color: #F8FAFC !important;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #090E1A;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #25354E;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3B4F70;
+}
+
+/* Surface backgrounds in Dark Mode */
+html.dark .bg-white,
+html.dark .bg-\[\#FAF9F6\],
+html.dark .bg-\[\#FDFCFB\],
+html.dark .bg-\[\#F7F5F0\],
+html.dark .bg-\[\#F8FAFC\],
+html.dark .bg-\[\#F9F8F6\],
+html.dark .bg-\[\#FAF8F5\],
+html.dark .bg-\[\#FAF3E0\],
+html.dark .bg-\[\#FAFAFA\],
+html.dark .bg-\[\#FBF9F4\],
+html.dark .bg-slate-50,
+html.dark .bg-neutral-50,
+html.dark .bg-slate-100,
+html.dark .bg-neutral-100 {
+  background-color: #111A2B !important;
+}
+
+html.dark .bg-slate-200,
+html.dark .bg-neutral-200 {
+  background-color: #1A263C !important;
+}
+
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-neutral-50:hover,
+html.dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-neutral-100:hover {
+  background-color: #182338 !important;
+}
+
+/* High contrast typography in Dark Mode */
+html.dark .text-\[\#1A1A1A\],
+html.dark .text-slate-900,
+html.dark .text-neutral-900 {
+  color: #F8FAFC !important;
+}
+
+html.dark .text-slate-800,
+html.dark .text-neutral-800 {
+  color: #E2E8F0 !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-neutral-700 {
+  color: #CBD5E1 !important;
+}
+
+html.dark .text-slate-600,
+html.dark .text-neutral-600 {
+  color: #94A3B8 !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-neutral-500,
+html.dark .text-\[\#8C8273\] {
+  color: #94A3B8 !important;
+}
+
+/* Subtle border lines in Dark Mode */
+html.dark .border-slate-200,
+html.dark .border-neutral-200,
+html.dark .border-\[\#E5E1DA\],
+html.dark .border-\[\#E2E8F0\],
+html.dark .border-slate-300,
+html.dark .border-neutral-300 {
+  border-color: #202F47 !important;
+}
+
+html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-neutral-200 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-slate-300 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-neutral-300 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #202F47 !important;
+}
+
+/* Inputs, Textareas, and Dropdown Selects in Dark Mode */
+html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html.dark select,
+html.dark textarea {
+  background-color: #0E1626 !important;
+  color: #F8FAFC !important;
+  border-color: #2A3B57 !important;
+}
+
+html.dark select option {
+  background-color: #0E1626 !important;
+  color: #F8FAFC !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748B !important;
+}
+
+/* Table styling in Dark Mode */
+html.dark thead tr {
+  background-color: #0B1220 !important;
+}
+
+html.dark tbody tr:hover {
+  background-color: #172236 !important;
+}
+
+html.dark tfoot tr {
+  background-color: #0E1626 !important;
+}
+
+/* Footer in Dark Mode */
+html.dark footer {
+  background-color: #070B14 !important;
+  border-color: #162235 !important;
+  color: #94A3B8 !important;
+}
+
+/* Modals & Popups in Dark Mode */
+html.dark .bg-black\/50,
+html.dark .bg-black\/60 {
+  background-color: rgba(3, 7, 18, 0.82) !important;
 }
 
 /* Executive ERP Custom scrollbars */

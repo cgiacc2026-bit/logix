@@ -497,7 +497,8 @@ export interface CompanyProfile {
   decimalPlaces: number;
   allowNegativeInventory?: boolean; // السماح بالبيع بالسالب ونفاد المخزون
   allowNegativeBalance?: boolean; // السماح بالحسابات المكشوفة والأرصدة السالبة
-  themeColor?: 'blue' | 'navy' | 'classic';
+  themeColor?: 'blue' | 'navy' | 'slate' | 'emerald' | 'amber' | 'purple' | 'classic';
+  themeMode?: 'light' | 'dark' | 'system';
   
   // Default Accounts Mapping (الربط المحاسبي الافتراضي بدليل الحسابات)
   defaultAccounts?: DefaultAccountsMapping;
