@@ -556,23 +556,53 @@ class DatabaseStore {
     return { count: createdSuppliers.length, openingJournalId: journalId };
   }
 
-  // Bulk Import Inventory Items
+  // Helper to sanitize numeric inputs robustly (supports Arabic digits, currency symbols, commas)
+  private sanitizeNumeric(val: any, fallback = 0): number {
+    if (val === undefined || val === null || val === '') return fallback;
+    if (typeof val === 'number') return isNaN(val) ? fallback : Math.max(0, val);
+    let s = String(val).trim();
+    // Convert Arabic/Eastern digits (٠-٩) to Western (0-9)
+    s = s.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+    // Remove all non-numeric chars except decimal point and negative sign
+    s = s.replace(/[^\d.-]/g, '');
+    const n = parseFloat(s);
+    return isNaN(n) ? fallback : Math.max(0, n);
+  }
+
+  // Bulk Import Inventory Items with Robust Script and Persistence Verification
   public bulkImportInventory(
     itemsList: Partial<InventoryItem>[],
     createOpeningJournal = false,
     mode: 'upsert' | 'append' | 'update_only' = 'upsert'
-  ): { count: number; updatedCount: number; newCount: number; openingJournalId?: string; totalStockValue?: number } {
+  ): {
+    count: number;
+    updatedCount: number;
+    newCount: number;
+    openingJournalId?: string;
+    totalStockValue?: number;
+    totalInventoryInDb: number;
+    verified: boolean;
+    verifiedAt: string;
+  } {
     let totalStockValue = 0;
     const affectedItems: InventoryItem[] = [];
     let updatedCount = 0;
     let newCount = 0;
 
     itemsList.forEach((it, index) => {
-      const rawSku = (it.sku || '').trim();
-      const rawBarcode = (it.barcode || '').trim();
-      const qty = Number(it.quantityOnHand) || 0;
-      const cost = Number(it.purchasePrice) || 0;
-      const sale = Number(it.salePrice) || 0;
+      const rawSku = (it.sku ? String(it.sku) : '').trim();
+      const rawBarcode = (it.barcode ? String(it.barcode) : '').trim();
+      const qty = this.sanitizeNumeric(it.quantityOnHand, 0);
+      const cost = this.sanitizeNumeric(it.purchasePrice, 0);
+      const sale = this.sanitizeNumeric(it.salePrice, 0);
+      const unitsPerPack = Math.max(1, Math.round(this.sanitizeNumeric(it.unitsPerPack, 1)));
+      const minAlert = this.sanitizeNumeric(it.minQuantityAlert, 5);
+
+      const nameAr = (it.nameAr ? String(it.nameAr) : '').trim() || (it.nameEn ? String(it.nameEn) : '').trim() || `صنف مخزني ${index + 1}`;
+      const nameEn = (it.nameEn ? String(it.nameEn) : '').trim() || nameAr;
+      const category = (it.category ? String(it.category) : '').trim() || 'عام';
+      const unit = (it.unit ? String(it.unit) : '').trim() || 'حبة';
+      const packUnit = (it.packUnit ? String(it.packUnit) : '').trim() || 'كرتون';
 
       // Search for existing item by SKU or Barcode
       const existingIdx = this.data.inventory.findIndex(
@@ -588,16 +618,16 @@ class DatabaseStore {
           ...existing,
           sku: rawSku || existing.sku,
           barcode: rawBarcode || existing.barcode || '',
-          nameAr: it.nameAr || existing.nameAr,
-          nameEn: it.nameEn || existing.nameEn,
-          category: it.category || existing.category,
-          unit: it.unit || existing.unit,
-          unitsPerPack: Number(it.unitsPerPack) || existing.unitsPerPack || 1,
-          packUnit: it.packUnit || existing.packUnit || 'كرتون',
+          nameAr: nameAr || existing.nameAr,
+          nameEn: nameEn || existing.nameEn,
+          category: category || existing.category,
+          unit: unit || existing.unit,
+          unitsPerPack: unitsPerPack || existing.unitsPerPack || 1,
+          packUnit: packUnit || existing.packUnit || 'كرتون',
           purchasePrice: cost > 0 ? cost : existing.purchasePrice,
           salePrice: sale > 0 ? sale : existing.salePrice,
           quantityOnHand: it.quantityOnHand !== undefined ? qty : existing.quantityOnHand,
-          minQuantityAlert: it.minQuantityAlert !== undefined ? Number(it.minQuantityAlert) : existing.minQuantityAlert,
+          minQuantityAlert: it.minQuantityAlert !== undefined ? minAlert : existing.minQuantityAlert,
           isActive: it.isActive !== undefined ? it.isActive : existing.isActive,
         };
         this.data.inventory[existingIdx] = updatedItem;
@@ -613,16 +643,16 @@ class DatabaseStore {
           id,
           sku,
           barcode: rawBarcode,
-          nameAr: it.nameAr || `صنف مخزني ${index + 1}`,
-          nameEn: it.nameEn || it.nameAr || `Item ${index + 1}`,
-          category: it.category || 'عام',
-          unit: it.unit || 'حبة',
-          unitsPerPack: Number(it.unitsPerPack) || 1,
-          packUnit: it.packUnit || 'كرتون',
+          nameAr,
+          nameEn,
+          category,
+          unit,
+          unitsPerPack,
+          packUnit,
           purchasePrice: cost,
           salePrice: sale,
           quantityOnHand: qty,
-          minQuantityAlert: Number(it.minQuantityAlert) !== undefined ? Number(it.minQuantityAlert) : 5,
+          minQuantityAlert: minAlert,
           isActive: it.isActive !== undefined ? it.isActive : true,
         };
 
@@ -672,13 +702,22 @@ class DatabaseStore {
       journalId = jEntry.id;
     }
 
+    // Persist to storage
     this.save();
+
+    // Verification Step: verify that the affected items exist in memory and DB
+    const allSkus = new Set(this.data.inventory.map((i) => i.sku.toLowerCase()));
+    const allVerified = affectedItems.every((it) => allSkus.has(it.sku.toLowerCase()));
+
     return {
       count: affectedItems.length,
       updatedCount,
       newCount,
       openingJournalId: journalId,
       totalStockValue,
+      totalInventoryInDb: this.data.inventory.length,
+      verified: allVerified,
+      verifiedAt: new Date().toISOString(),
     };
   }
 

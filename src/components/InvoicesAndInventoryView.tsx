@@ -1045,6 +1045,68 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
   };
 
+  const handleDownloadBlankInventoryTemplate = async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const headers = [
+        'كود الصنف SKU * (إلزامي)',
+        'الباركود Barcode (اختياري)',
+        'اسم الصنف بالعربي * (إلزامي)',
+        'اسم الصنف بالإنجليزي (اختياري)',
+        'التصنيف Category',
+        'الوحدة الأساسية (حبة/كيس/متر)',
+        'وحدة الشد (كرتون/طرد)',
+        'سعة الشد (عدد الحبات بالكرتون)',
+        'سعر التكلفة (الشراء)',
+        'سعر البيع',
+        'رصيد أول المدة (الكمية بالمستودع)',
+        'حد إعادة الطلب (Reorder Level)',
+      ];
+      const blankRows = [
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+        ['', '', '', '', 'عام', 'حبة', 'كرتون', 1, 0, 0, 0, 5],
+      ];
+      const instructions = [
+        ['دليل وتعليمات تعبئة نموذج إكسل للأصناف والمخزون'],
+        [''],
+        ['الحقل / العمود', 'الأهمية', 'الوصف والتوجيه'],
+        ['كود الصنف SKU', 'إلزامي', 'كود فريد يحدد الصنف (مثال: PRD-001 أو SKU-101)، لا يجوز تكراره'],
+        ['الباركود Barcode', 'اختياري', 'الباركود الدولي أو المحلي المطبوع على الصنف للقراءة بماسح الباركود'],
+        ['اسم الصنف بالعربي', 'إلزامي', 'الاسم التجاري أو الوصف باللغة العربية (مثال: طحين كويتي فاخر 10 كجم)'],
+        ['اسم الصنف بالإنجليزي', 'اختياري', 'الاسم باللغة الإنجليزية'],
+        ['التصنيف Category', 'اختياري', 'القسم أو المجموعة التابع لها الصنف (مثال: المواد الغذائية / المنظفات)'],
+        ['الوحدة الأساسية', 'اختياري', 'وحدة البيع الصغرى (حبة، قطعة، كيس، لتر، علبة) - الافتراضي: حبة'],
+        ['وحدة الشد Pack Unit', 'اختياري', 'وحدة التعبئة الكبرى (كرتون، صندوق، طرد، شدة) - الافتراضي: كرتون'],
+        ['سعة الشد Units/Pack', 'اختياري', 'عدد الوحدات الأساسية داخل الكرتون الواحد (الافتراضي: 1)'],
+        ['سعر التكلفة Cost Price', 'اختياري', 'سعر شراء الصنف للوحدة الأساسية الواحدة (أرقام فقط بدون رموز عملات)'],
+        ['سعر البيع Sale Price', 'اختياري', 'سعر بيع الصنف للوحدة الأساسية الواحدة (أرقام فقط)'],
+        ['رصيد أول المدة Qty', 'اختياري', 'الكمية الفعلية المتوفرة بالمستودع حالياً بالوحدة الأساسية (الحبة)'],
+        ['حد إعادة الطلب Reorder Level', 'اختياري', 'الرصيد الأدنى الذي يطلق عنده النظام تحذيراً وتنبيهاً آلياً لطلب شراء جديد'],
+      ];
+
+      const wb = XLSX.utils.book_new();
+      const wsData = XLSX.utils.aoa_to_sheet([headers, ...blankRows]);
+      wsData['!cols'] = headers.map(() => ({ wch: 26 }));
+      XLSX.utils.book_append_sheet(wb, wsData, 'بيانات الأصناف للتعبئة');
+
+      const wsInst = XLSX.utils.aoa_to_sheet(instructions);
+      wsInst['!cols'] = [{ wch: 30 }, { wch: 15 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, wsInst, 'دليل وشروط التعبئة');
+
+      XLSX.writeFile(wb, 'نموذج_أصناف_المخزون_فارغ_جاهز_للتعبئة.xlsx');
+    } catch (e) {
+      console.error('Error creating blank Excel template:', e);
+    }
+  };
+
   const isPrintingModalOpen = !!printDoc || isStatementModalOpen;
 
   return (
@@ -1749,6 +1811,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               </button>
 
               <button
+                onClick={handleDownloadBlankInventoryTemplate}
+                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all ring-1 ring-emerald-400"
+                title="تنزيل نموذج إكسل فارغ مهيأ بالأعمدة والتعليمات لتعبئة الأصناف ورفعها"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                <span>نموذج Excel فارغ للتعبئة</span>
+              </button>
+
+              <button
                 onClick={() => handleOpenImport('INVENTORY')}
                 className="px-3.5 py-2 bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
                 title="استيراد بطاقات الأصناف مع الأسعار وأرصدة أول المدة"
@@ -1823,6 +1894,22 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     >
                       <FileText className="w-4 h-4 text-blue-700 shrink-0" />
                       <span className="font-semibold">تصدير كامل المخزون CSV (.csv)</span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-100"></div>
+                    <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
+                      قوالب ونماذج الإدخال والتعبئة:
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        handleDownloadBlankInventoryTemplate();
+                      }}
+                      className="w-full px-3.5 py-2 text-xs text-emerald-800 hover:bg-emerald-50 flex items-center gap-2 transition-colors cursor-pointer text-right font-bold"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>تنزيل نموذج Excel فارغ للأصناف (.xlsx)</span>
                     </button>
                   </div>
                 )}

@@ -2515,7 +2515,16 @@ export class DataService {
       mode?: 'upsert' | 'append' | 'update_only';
       createOpeningJournal?: boolean;
     } = {}
-  ): Promise<{ count: number; updatedCount: number; newCount: number; totalStockValue: number; journalId?: string }> {
+  ): Promise<{
+    count: number;
+    updatedCount: number;
+    newCount: number;
+    totalStockValue: number;
+    journalId?: string;
+    verifiedInDb?: boolean;
+    totalInventoryInDb?: number;
+    verifiedAt?: string;
+  }> {
     const list = localDataStore.getInventory();
     const mode = options.mode || 'upsert';
     let totalStockValue = 0;
@@ -2523,12 +2532,30 @@ export class DataService {
     let updatedCount = 0;
     let newCount = 0;
 
+    const sanitizeNum = (val: any, fallback = 0): number => {
+      if (val === undefined || val === null || val === '') return fallback;
+      if (typeof val === 'number') return isNaN(val) ? fallback : Math.max(0, val);
+      let s = String(val).trim();
+      s = s.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+      s = s.replace(/[^\d.-]/g, '');
+      const n = parseFloat(s);
+      return isNaN(n) ? fallback : Math.max(0, n);
+    };
+
     items.forEach((it, index) => {
-      const rawSku = (it.sku || '').trim();
-      const rawBarcode = (it.barcode || '').trim();
-      const qty = Number(it.quantityOnHand) || 0;
-      const cost = Number(it.purchasePrice) || 0;
-      const sale = Number(it.salePrice) || 0;
+      const rawSku = (it.sku ? String(it.sku) : '').trim();
+      const rawBarcode = (it.barcode ? String(it.barcode) : '').trim();
+      const qty = sanitizeNum(it.quantityOnHand, 0);
+      const cost = sanitizeNum(it.purchasePrice, 0);
+      const sale = sanitizeNum(it.salePrice, 0);
+      const unitsPerPack = Math.max(1, Math.round(sanitizeNum(it.unitsPerPack, 1)));
+      const minAlert = sanitizeNum(it.minQuantityAlert, 5);
+
+      const nameAr = (it.nameAr ? String(it.nameAr) : '').trim() || (it.nameEn ? String(it.nameEn) : '').trim() || `صنف مخزني ${index + 1}`;
+      const nameEn = (it.nameEn ? String(it.nameEn) : '').trim() || nameAr;
+      const category = (it.category ? String(it.category) : '').trim() || 'عام';
+      const unit = (it.unit ? String(it.unit) : '').trim() || 'حبة';
+      const packUnit = (it.packUnit ? String(it.packUnit) : '').trim() || 'كرتون';
 
       const existingIdx = list.findIndex(
         (existing) =>
@@ -2542,16 +2569,16 @@ export class DataService {
           ...existing,
           sku: rawSku || existing.sku,
           barcode: rawBarcode || existing.barcode || '',
-          nameAr: it.nameAr || existing.nameAr,
-          nameEn: it.nameEn || existing.nameEn,
-          category: it.category || existing.category,
-          unit: it.unit || existing.unit,
-          unitsPerPack: Number(it.unitsPerPack) || existing.unitsPerPack || 1,
-          packUnit: it.packUnit || existing.packUnit || 'كرتون',
+          nameAr: nameAr || existing.nameAr,
+          nameEn: nameEn || existing.nameEn,
+          category: category || existing.category,
+          unit: unit || existing.unit,
+          unitsPerPack: unitsPerPack || existing.unitsPerPack || 1,
+          packUnit: packUnit || existing.packUnit || 'كرتون',
           purchasePrice: cost > 0 ? cost : existing.purchasePrice,
           salePrice: sale > 0 ? sale : existing.salePrice,
           quantityOnHand: it.quantityOnHand !== undefined ? qty : existing.quantityOnHand,
-          minQuantityAlert: it.minQuantityAlert !== undefined ? Number(it.minQuantityAlert) : existing.minQuantityAlert,
+          minQuantityAlert: it.minQuantityAlert !== undefined ? minAlert : existing.minQuantityAlert,
           isActive: it.isActive !== undefined ? it.isActive : existing.isActive,
         };
         list[existingIdx] = updatedItem;
@@ -2566,16 +2593,16 @@ export class DataService {
           id,
           sku,
           barcode: rawBarcode,
-          nameAr: it.nameAr || `صنف مخزني ${index + 1}`,
-          nameEn: it.nameEn || it.nameAr || `Item ${index + 1}`,
-          category: it.category || 'عام',
-          unit: it.unit || 'حبة',
-          unitsPerPack: Number(it.unitsPerPack) || 1,
-          packUnit: it.packUnit || 'كرتون',
+          nameAr,
+          nameEn,
+          category,
+          unit,
+          unitsPerPack,
+          packUnit,
           purchasePrice: cost,
           salePrice: sale,
           quantityOnHand: qty,
-          minQuantityAlert: Number(it.minQuantityAlert) !== undefined ? Number(it.minQuantityAlert) : 5,
+          minQuantityAlert: minAlert,
           isActive: it.isActive !== undefined ? it.isActive : true,
         };
 
@@ -2595,8 +2622,10 @@ export class DataService {
       Promise.all(affectedItems.map((item) => SupabaseDataService.saveItem(item))).catch(console.warn);
     }
 
-    // Call server API for state synchronization
+    // Call server API for state synchronization and robust persistence
     let serverJournalId: string | undefined = undefined;
+    let serverTotalInDb = list.length;
+    let serverVerified = true;
     try {
       const res: any = await safeApiFetch('/api/import/inventory', {
         method: 'POST',
@@ -2605,6 +2634,12 @@ export class DataService {
       });
       if (res && res.openingJournalId) {
         serverJournalId = res.openingJournalId;
+      }
+      if (res && res.totalInventoryInDb) {
+        serverTotalInDb = res.totalInventoryInDb;
+      }
+      if (res && res.verified !== undefined) {
+        serverVerified = res.verified;
       }
     } catch (e) {
       console.warn('Server import sync notice:', e);
@@ -2655,6 +2690,9 @@ export class DataService {
       newCount,
       totalStockValue,
       journalId: localJournalId,
+      verifiedInDb: serverVerified,
+      totalInventoryInDb: serverTotalInDb,
+      verifiedAt: new Date().toISOString(),
     };
   }
 

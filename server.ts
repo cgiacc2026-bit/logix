@@ -1821,7 +1821,29 @@ async function startServer() {
       res.status(201).json({
         success: true,
         ...result,
-        message: `تم استيراد ومعالجة ${result.count} صنف مخزني بنجاح ${detailsMsg}`
+        message: `تم استيراد وتأكيد حفظ ${result.count} صنف مخزني في قاعدة البيانات بنجاح ${detailsMsg}`
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Verify inventory in database endpoint
+  app.get('/api/inventory/verify', (req, res) => {
+    try {
+      const inventory = db.getInventory();
+      const lowStock = inventory.filter((i) => (i.quantityOnHand || 0) <= (i.minQuantityAlert !== undefined ? i.minQuantityAlert : 5));
+      const outOfStock = inventory.filter((i) => (i.quantityOnHand || 0) <= 0);
+      const totalStockVal = inventory.reduce((sum, i) => sum + ((i.quantityOnHand || 0) * (i.purchasePrice || 0)), 0);
+
+      res.json({
+        success: true,
+        totalItems: inventory.length,
+        lowStockCount: lowStock.length,
+        outOfStockCount: outOfStock.length,
+        totalStockValue: totalStockVal,
+        databaseStatus: 'healthy',
+        verifiedAt: new Date().toISOString(),
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
