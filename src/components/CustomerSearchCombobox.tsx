@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, X, User, Building2, Check, ChevronDown } from 'lucide-react';
+import { Search, X, User, Building2, Check, ChevronDown, Sparkles } from 'lucide-react';
 import { Customer, Supplier } from '../types.js';
 import { filterAndRankEntities } from '../utils/searchUtils.ts';
 import { formatCurrency } from '../utils/formatters.ts';
@@ -37,13 +37,25 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
   }, [entities, selectedId]);
 
   // Filtered list using normalized Arabic & English fuzzy search
+  // When query is empty or whitespace, filterAndRankEntities returns ALL entities!
   const filteredEntities = useMemo(() => {
-    return filterAndRankEntities(entities, query, {
+    const results = filterAndRankEntities(entities, query, {
       primary: (e) => e.nameAr,
       secondary: (e) => (e as any).nameEn,
       fallbackCode: (e) => `${(e as any).code || ''} ${(e as any).phone || ''}`,
     });
-  }, [entities, query]);
+
+    // If query is empty and an entity is selected, keep the selected entity at the top for immediate access
+    if (!query.trim() && selectedId) {
+      const selected = results.find((e) => e.id === selectedId);
+      if (selected) {
+        const others = results.filter((e) => e.id !== selectedId);
+        return [selected, ...others];
+      }
+    }
+
+    return results;
+  }, [entities, query, selectedId]);
 
   // Reset highlight when query changes
   useEffect(() => {
@@ -55,6 +67,7 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
+        setQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -78,7 +91,9 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        e.preventDefault();
         setIsOpen(true);
+        setQuery('');
       }
       return;
     }
@@ -95,7 +110,9 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
         handleSelect(filteredEntities[highlightedIndex]);
       }
     } else if (e.key === 'Escape') {
+      e.preventDefault();
       setIsOpen(false);
+      setQuery('');
     }
   };
 
@@ -115,13 +132,14 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
         <div
           onClick={() => {
             setIsOpen(true);
+            setQuery('');
             setTimeout(() => inputRef.current?.focus(), 50);
           }}
-          className="flex items-center justify-between p-2.5 bg-amber-50/50 border-2 border-[#D4AF37] rounded-xl cursor-pointer hover:bg-amber-50 transition-all shadow-2xs"
-          title="انقر لتغيير الاختيار أو البحث عن اسم آخر"
+          className="flex items-center justify-between p-2.5 bg-amber-50/50 border-2 border-[#D4AF37] rounded-xl cursor-pointer hover:bg-amber-50 transition-all shadow-2xs group"
+          title="انقر لتغيير الاختيار أو عرض كافة الحسابات"
         >
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/20 flex items-center justify-center shrink-0 text-[#8C6D1F]">
+            <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/20 flex items-center justify-center shrink-0 text-[#8C6D1F] group-hover:scale-105 transition-transform">
               {isSupplier ? <Building2 className="w-4 h-4" /> : <User className="w-4 h-4" />}
             </div>
             <div className="truncate">
@@ -132,6 +150,9 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
                     ({(selectedEntity as any).nameEn})
                   </span>
                 )}
+                <span className="text-[9px] bg-amber-200/70 text-amber-900 px-1.5 py-0.2 rounded font-bold">
+                  الحساب المختار
+                </span>
               </div>
               <div className="text-[10px] text-neutral-500 flex items-center gap-2 mt-0.5">
                 {getBalance ? (
@@ -164,17 +185,17 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={handleClear}
-              className="p-1 hover:bg-rose-100 text-rose-600 rounded-md transition-colors"
+              className="p-1 hover:bg-rose-100 text-neutral-400 hover:text-rose-600 rounded-md transition-colors"
               title="إلغاء الاختيار"
             >
               <X className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[10px] bg-white border border-[#E5E1DA] px-2 py-1 rounded-md font-bold text-neutral-600 hover:text-black">
-              تغيير
+            <span className="text-[10px] bg-white border border-[#E5E1DA] px-2.5 py-1 rounded-lg font-bold text-neutral-700 group-hover:border-[#D4AF37] transition-all">
+              تغيير / عرض الكل
             </span>
           </div>
         </div>
@@ -190,51 +211,84 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
                 setQuery(e.target.value);
                 if (!isOpen) setIsOpen(true);
               }}
-              onFocus={() => setIsOpen(true)}
+              onFocus={() => {
+                setIsOpen(true);
+                // Wildcard: keep query empty on focus to display all available entities immediately
+              }}
+              onClick={() => {
+                if (!isOpen) setIsOpen(true);
+              }}
               onKeyDown={handleKeyDown}
               placeholder={
-                isSupplier
-                  ? 'ابحث باسم المورد مباشرة (عربي أو إنجليزي)...'
-                  : 'ابحث باسم العميل مباشرة (عربي أو إنجليزي)...'
+                selectedEntity
+                  ? `الحساب المختار: ${selectedEntity.nameAr}`
+                  : isSupplier
+                  ? 'ابحث باسم المورد أو اختر من كافة الموردين المتاحين...'
+                  : 'ابحث باسم العميل أو اختر من كافة العملاء المتاحين...'
               }
-              className="w-full bg-[#F9F8F6] border border-[#E5E1DA] focus:border-[#D4AF37] focus:bg-white rounded-xl py-2.5 pr-9 pl-8 font-bold text-[#1A1A1A] text-xs outline-none transition-all shadow-2xs"
+              className="w-full bg-[#F9F8F6] border border-[#E5E1DA] focus:border-[#D4AF37] focus:bg-white rounded-xl py-2.5 pr-9 pl-14 font-bold text-[#1A1A1A] text-xs outline-none transition-all shadow-2xs"
             />
             <Search className="w-4 h-4 text-neutral-400 absolute right-3 pointer-events-none" />
 
-            {query ? (
+            <div className="absolute left-2 flex items-center gap-1">
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setTimeout(() => inputRef.current?.focus(), 50);
+                  }}
+                  className="text-neutral-400 hover:text-rose-600 p-1 cursor-pointer rounded-md transition-colors"
+                  title="مسح البحث"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : null}
+
               <button
                 type="button"
-                onClick={() => setQuery('')}
-                className="absolute left-3 text-neutral-400 hover:text-neutral-700 p-0.5"
+                onClick={() => {
+                  setIsOpen(!isOpen);
+                  if (!isOpen) {
+                    setQuery('');
+                    setTimeout(() => inputRef.current?.focus(), 50);
+                  }
+                }}
+                className="text-neutral-400 hover:text-neutral-700 p-1 cursor-pointer rounded-md transition-colors"
+                title="عرض كافة الحسابات"
               >
-                <X className="w-3.5 h-3.5" />
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#D4AF37]' : ''}`} />
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsOpen(!isOpen)}
-                className="absolute left-3 text-neutral-400 hover:text-neutral-700 p-0.5"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-            )}
+            </div>
           </div>
         </div>
       )}
 
       {/* Floating Dropdown List */}
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-[#E5E1DA] rounded-xl shadow-xl max-h-64 overflow-y-auto divide-y divide-[#F1EFEA] animate-in fade-in zoom-in-95 duration-100">
-          <div className="p-2 bg-[#FAF9F6] border-b border-[#E5E1DA] text-[11px] font-bold text-neutral-500 flex items-center justify-between">
-            <span>
-              نتائج البحث بالاسم ({filteredEntities.length} من أصل {entities.length})
+        <div className="absolute z-50 mt-1 w-full bg-white border border-[#E5E1DA] rounded-xl shadow-2xl max-h-72 overflow-y-auto divide-y divide-[#F1EFEA] animate-in fade-in zoom-in-95 duration-100">
+          <div className="p-2 bg-[#FAF9F6] border-b border-[#E5E1DA] text-[11px] font-bold text-neutral-600 flex items-center justify-between sticky top-0 z-10">
+            <div className="flex items-center gap-1.5">
+              <span>
+                {query.trim()
+                  ? `نتائج البحث عن "${query}" (${filteredEntities.length} من أصل ${entities.length})`
+                  : `كافة ${isSupplier ? 'الموردين المتاحين' : 'العملاء المتاحين'} (${entities.length})`}
+              </span>
+              {!query.trim() && (
+                <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                  عرض شامل
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-[#D4AF37] font-bold flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />
+              بحث مرن وتلقائي
             </span>
-            <span className="text-[10px] text-neutral-400">بحث فوري غير حساس لحالة الأحرف</span>
           </div>
 
           {filteredEntities.length === 0 ? (
             <div className="p-4 text-center text-xs text-neutral-500 font-medium">
-              لا يوجد {isSupplier ? 'مورد' : 'عميل'} يطابق الاسم: &ldquo;{query}&rdquo;
+              لا يوجد {isSupplier ? 'مورد' : 'عميل'} يطابق: &ldquo;{query}&rdquo;
             </div>
           ) : (
             filteredEntities.map((entity, idx) => {
@@ -248,36 +302,44 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
                   onClick={() => handleSelect(entity)}
                   onMouseEnter={() => setHighlightedIndex(idx)}
                   className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors ${
-                    isHighlighted ? 'bg-amber-50/70' : isSelected ? 'bg-amber-50/30' : 'hover:bg-[#FAF9F6]'
+                    isHighlighted ? 'bg-amber-50/80' : isSelected ? 'bg-amber-50/40' : 'hover:bg-[#FAF9F6]'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
                     <div
                       className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                         isSelected
-                          ? 'bg-[#D4AF37] text-white'
+                          ? 'bg-[#D4AF37] text-white shadow-xs'
                           : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
-                      {isSupplier ? <Building2 className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                      {isSelected ? <Check className="w-4 h-4 stroke-[2.5]" /> : isSupplier ? <Building2 className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                     </div>
                     <div className="truncate">
                       <div className="font-bold text-xs text-[#1A1A1A] flex items-center gap-1.5 truncate">
                         <span>{entity.nameAr}</span>
                         {(entity as any).nameEn && (
                           <span className="text-[10px] text-neutral-400 font-mono">
-                            {(entity as any).nameEn}
+                            ({(entity as any).nameEn})
+                          </span>
+                        )}
+                        {isSelected && (
+                          <span className="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-bold">
+                            الحساب الحالي
                           </span>
                         )}
                       </div>
                       <div className="text-[10px] text-neutral-500 flex items-center gap-2 mt-0.5">
-                        <span className="font-mono text-[10px] text-neutral-400">
+                        <span className="font-mono text-[10px] text-neutral-500 bg-neutral-100 px-1 rounded">
                           كود: {(entity as any).code || entity.id.slice(0, 6)}
                         </span>
                         {(entity as any).phone && (
-                          <span className="font-mono text-[10px] text-neutral-400">
-                            هاتف: {(entity as any).phone}
-                          </span>
+                          <>
+                            <span className="text-neutral-300">|</span>
+                            <span className="font-mono text-[10px] text-neutral-400">
+                              هاتف: {(entity as any).phone}
+                            </span>
+                          </>
                         )}
                       </div>
                     </div>

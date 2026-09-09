@@ -141,28 +141,34 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const activeCompanyId = company?.id || localDataStore.getEffectiveCompanyId();
 
   const scopedCustomers = useMemo(() => {
+    if (!Array.isArray(customers)) return [];
+    const activeId = String(activeCompanyId || '').trim().toLowerCase();
     return customers.filter((c: any) => {
       if (!c) return false;
-      if (c.company_id && activeCompanyId && c.company_id !== activeCompanyId) return false;
-      if (c.companyId && activeCompanyId && c.companyId !== activeCompanyId) return false;
+      const cCompId = String(c.company_id || c.companyId || '').trim().toLowerCase();
+      if (cCompId && activeId && cCompId !== activeId) return false;
       return true;
     });
   }, [customers, activeCompanyId]);
 
   const scopedSuppliers = useMemo(() => {
+    if (!Array.isArray(suppliers)) return [];
+    const activeId = String(activeCompanyId || '').trim().toLowerCase();
     return suppliers.filter((s: any) => {
       if (!s) return false;
-      if (s.company_id && activeCompanyId && s.company_id !== activeCompanyId) return false;
-      if (s.companyId && activeCompanyId && s.companyId !== activeCompanyId) return false;
+      const sCompId = String(s.company_id || s.companyId || '').trim().toLowerCase();
+      if (sCompId && activeId && sCompId !== activeId) return false;
       return true;
     });
   }, [suppliers, activeCompanyId]);
 
   const scopedInventory = useMemo(() => {
+    if (!Array.isArray(inventory)) return [];
+    const activeId = String(activeCompanyId || '').trim().toLowerCase();
     return inventory.filter((item: any) => {
       if (!item) return false;
-      if (item.company_id && activeCompanyId && item.company_id !== activeCompanyId) return false;
-      if (item.companyId && activeCompanyId && item.companyId !== activeCompanyId) return false;
+      const itemCompId = String(item.company_id || item.companyId || '').trim().toLowerCase();
+      if (itemCompId && activeId && itemCompId !== activeId) return false;
       return true;
     });
   }, [inventory, activeCompanyId]);
@@ -415,7 +421,9 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     allowNegative: boolean = false,
     reason: string = ''
   ) => {
-    const validLines = invLines.filter((l) => l.itemId || l.unitPrice > 0);
+    const validLines = invLines.filter(
+      (l) => l.itemId || l.unitPrice > 0 || (l.itemNameAr && l.itemNameAr.trim())
+    );
     const processedLines = validLines.map((l) => {
       const item = inventory.find((i) => i.id === l.itemId);
       const actualQty = Number(l.quantity) > 0 ? Number(l.quantity) : 1;
@@ -429,7 +437,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         itemId: l.itemId || `custom-item-${Date.now()}`,
         itemSku: item?.sku || l.itemSku || '',
         barcode: item?.barcode || l.barcode || '',
-        itemNameAr: item?.nameAr || 'منتج/خدمة',
+        itemNameAr: item?.nameAr || (l.itemNameAr && l.itemNameAr.trim()) || 'منتج/خدمة',
         unit: l.unit || item?.unit || 'حبة',
         unitsPerPack: Number(l.unitsPerPack) || Number(item?.unitsPerPack) || 1,
         quantity: actualQty,
