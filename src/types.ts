@@ -387,6 +387,7 @@ export interface Invoice {
   deleted_by?: string;
   deletion_reason?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // Quotations & Proposals

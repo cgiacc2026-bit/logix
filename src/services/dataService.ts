@@ -2489,23 +2489,475 @@ export class DataService {
   public static async updateInvoice(id: string, data: any): Promise<Invoice | null> {
     localDataStore.removeTombstone('invoices', id);
     const invoices = localDataStore.getInvoices();
-    const idx = invoices.findIndex((i) => i.id === id);
-    if (idx !== -1) {
-      invoices[idx] = { ...invoices[idx], ...data };
-      localDataStore.saveInvoices(invoices);
-      try {
-        await SupabaseDataService.saveInvoice(invoices[idx]);
-      } catch (e) {
-        console.warn('Supabase updateInvoice notice:', e);
-      }
-      syncToFirestore('erp_invoices', id, invoices[idx]);
+    const original = invoices.find((i) => i.id === id);
+    if (!original) {
+      console.warn(`updateInvoice: Invoice ${id} not found.`);
+      return null;
     }
-    const apiRes = await safeApiFetch<Invoice>(`/api/invoices/${id}`, {
+
+    const customers = localDataStore.getCustomers();
+    const suppliers = localDataStore.getSuppliers();
+    const wasPostedOrPaid = original.status === 'POSTED' || original.status === 'PAID' || original.status === 'PARTIALLY_PAID';
+
+    // 1. If previously posted or paid, roll back original inventory and customer/supplier balances
+    if (wasPostedOrPaid) {
+      // Rollback old stock impact
+      const inventory = localDataStore.getInventory();
+      (original.lines || []).forEach((line: any) => {
+        const invItem = inventory.find((i) => i.id === line.itemId);
+        if (invItem) {
+          const q = Number(line.quantity) || 0;
+          if (original.type === 'SALES') {
+            invItem.quantityOnHand += q;
+          } else if (original.type === 'PURCHASE') {
+            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+          } else if (original.type === 'SALES_RETURN') {
+            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+          } else if (original.type === 'PURCHASE_RETURN') {
+            invItem.quantityOnHand += q;
+          }
+          syncToFirestore('erp_inventory', invItem.id, invItem);
+        }
+      });
+      localDataStore.saveInventory(inventory);
+
+      // Rollback old customer/supplier balance
+      const oldDue = original.dueAmount !== undefined ? original.dueAmount : original.grandTotal;
+      if ((original.type === 'SALES' || original.type === 'SALES_RETURN') && original.entityId) {
+        const oldCust = customers.find((c) => c.id === original.entityId);
+        if (oldCust) {
+          if (original.type === 'SALES') {
+            oldCust.balance = Math.max(0, oldCust.balance - oldDue);
+          } else {
+            oldCust.balance += oldDue;
+          }
+          localDataStore.saveCustomers(customers);
+          syncToFirestore('erp_customers', oldCust.id, oldCust);
+        }
+      } else if ((original.type === 'PURCHASE' || original.type === 'PURCHASE_RETURN') && original.entityId) {
+        const oldSupp = suppliers.find((s) => s.id === original.entityId);
+        if (oldSupp) {
+          if (original.type === 'PURCHASE') {
+            oldSupp.balance = Math.max(0, oldSupp.balance - oldDue);
+          } else {
+            oldSupp.balance += oldDue;
+          }
+          localDataStore.saveSuppliers(suppliers);
+          syncToFirestore('erp_suppliers', oldSupp.id, oldSupp);
+        }
+      }
+    }
+
+    // 2. Recalculate updated lines and discounts
+    const isSales = (data.type || original.type) === 'SALES';
+    const isSalesReturn = (data.type || original.type) === 'SALES_RETURN';
+    const isPurchase = (data.type || original.type) === 'PURCHASE';
+    const isPurchaseReturn = (data.type || original.type) === 'PURCHASE_RETURN';
+
+    const sourceLines = data.lines !== undefined ? data.lines : (data.items !== undefined ? data.items : original.lines);
+    const updatedLines = (sourceLines || []).map((item: any, i: number) => {
+      const q = Number(item.quantity) || 1;
+      const p = Number(item.unitPrice) || 0;
+      const unitsPerPack = Number(item.unitsPerPack) > 0 ? Number(item.unitsPerPack) : 1;
+      const packQuantity = item.packQuantity !== undefined ? Number(item.packQuantity) : (unitsPerPack > 1 ? Math.floor(q / unitsPerPack) : 0);
+      const dType: 'PERCENT' | 'FIXED' = item.discountType === 'PERCENT' ? 'PERCENT' : 'FIXED';
+      const dVal = Number(item.discountValue) || Number(item.discount) || 0;
+
+      const lineGross = q * p;
+      let lineDiscAmt = 0;
+      if (dType === 'PERCENT') {
+        lineDiscAmt = (lineGross * Math.min(100, Math.max(0, dVal))) / 100;
+      } else {
+        lineDiscAmt = Math.min(lineGross, Math.max(0, dVal));
+      }
+      const lineNet = Math.max(0, lineGross - lineDiscAmt);
+
+      return {
+        id: item.id || `item-${i + 1}`,
+        itemId: item.itemId || `inv-item-${i + 1}`,
+        itemSku: item.itemSku || item.sku || '',
+        barcode: item.barcode || '',
+        itemNameAr: item.itemNameAr || item.nameAr || 'صنف',
+        unit: item.unit || 'حبة',
+        unitsPerPack,
+        packQuantity,
+        quantity: q,
+        unitPrice: p,
+        subtotal: lineGross,
+        discountType: dType,
+        discountValue: dVal,
+        discountAmount: lineDiscAmt,
+        vatRate: 0,
+        vatAmount: 0,
+        total: lineNet,
+        notes: item.notes || '',
+      };
+    });
+
+    const grossSubtotal = updatedLines.reduce((s: number, it: any) => s + (it.subtotal || it.quantity * it.unitPrice), 0);
+    const lineDiscountsSum = updatedLines.reduce((s: number, it: any) => s + (it.discountAmount || 0), 0);
+    const subtotalAfterLines = Math.max(0, grossSubtotal - lineDiscountsSum);
+
+    const invDiscType: 'PERCENT' | 'FIXED' = (data.discountType !== undefined ? data.discountType : original.discountType) === 'PERCENT' ? 'PERCENT' : 'FIXED';
+    const invDiscVal = Number(data.discountValue !== undefined ? data.discountValue : original.discountValue) || 0;
+    let invDiscAmt = 0;
+    if (invDiscType === 'PERCENT') {
+      invDiscAmt = (subtotalAfterLines * Math.min(100, Math.max(0, invDiscVal))) / 100;
+    } else {
+      invDiscAmt = Math.min(subtotalAfterLines, Math.max(0, invDiscVal));
+    }
+
+    const discountTotal = lineDiscountsSum + invDiscAmt;
+    const grandTotal = Math.max(0, grossSubtotal - discountTotal);
+
+    const paymentTerms = data.paymentTerms || original.paymentTerms || (data.paidAmount >= grandTotal && grandTotal > 0 ? 'CASH' : 'CREDIT');
+    const paidAmount = data.paidAmount !== undefined
+      ? Math.max(0, Number(data.paidAmount))
+      : (paymentTerms === 'CASH' ? grandTotal : (original.paidAmount || 0));
+    const dueAmount = Math.max(0, grandTotal - paidAmount);
+
+    const newEntityId = data.entityId !== undefined ? data.entityId : original.entityId;
+    let entityNameAr = data.entityNameAr || data.entityName || original.entityNameAr || '';
+    if (isSales || isSalesReturn) {
+      const cust = customers.find((c) => c.id === newEntityId);
+      if (cust) entityNameAr = cust.nameAr;
+    } else {
+      const supp = suppliers.find((s) => s.id === newEntityId);
+      if (supp) entityNameAr = supp.nameAr;
+    }
+
+    const updatedStatus = data.status || original.status || 'POSTED';
+    const invoiceNumber = original.invoiceNumber;
+
+    const updatedInvoice: Invoice = {
+      ...original,
+      ...data,
+      lines: updatedLines,
+      entityId: newEntityId,
+      entityNameAr,
+      subtotal: grossSubtotal,
+      discountType: invDiscType,
+      discountValue: invDiscVal,
+      discountTotal,
+      grandTotal,
+      paidAmount,
+      dueAmount,
+      paymentTerms,
+      status: updatedStatus,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 3. If the invoice is now POSTED or PAID, apply new stock movements, balances and journals
+    const isNowActive = updatedStatus === 'POSTED' || updatedStatus === 'PAID' || updatedStatus === 'PARTIALLY_PAID';
+
+    if (isNowActive) {
+      // Apply new inventory movements
+      const inventory = localDataStore.getInventory();
+      updatedLines.forEach((it: any) => {
+        const invItem = inventory.find((i) => i.id === it.itemId);
+        if (invItem) {
+          const q = Number(it.quantity) || 0;
+          if (isSales) {
+            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+          } else if (isSalesReturn) {
+            invItem.quantityOnHand += q;
+          } else if (isPurchase) {
+            invItem.quantityOnHand += q;
+          } else if (isPurchaseReturn) {
+            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+          }
+          syncToFirestore('erp_inventory', invItem.id, invItem);
+        }
+      });
+      localDataStore.saveInventory(inventory);
+
+      // Apply new customer/supplier balance
+      if ((isSales || isSalesReturn) && newEntityId) {
+        const cust = customers.find((c) => c.id === newEntityId);
+        if (cust) {
+          if (isSales) {
+            cust.balance += dueAmount;
+          } else {
+            cust.balance = Math.max(0, cust.balance - dueAmount);
+          }
+          localDataStore.saveCustomers(customers);
+          syncToFirestore('erp_customers', cust.id, cust);
+        }
+      } else if ((isPurchase || isPurchaseReturn) && newEntityId) {
+        const supp = suppliers.find((s) => s.id === newEntityId);
+        if (supp) {
+          if (isPurchase) {
+            supp.balance += dueAmount;
+          } else {
+            supp.balance = Math.max(0, supp.balance - dueAmount);
+          }
+          localDataStore.saveSuppliers(suppliers);
+          syncToFirestore('erp_suppliers', supp.id, supp);
+        }
+      }
+
+      // Generate or update double-entry journal entry
+      const resolved = this.getResolvedAccounts();
+      let jLines: any[] = [];
+
+      if (isSales) {
+        if (paidAmount > 0 && dueAmount > 0) {
+          jLines.push({
+            id: 'jl-1',
+            accountId: resolved.cash.id,
+            accountCode: resolved.cash.code,
+            accountNameAr: resolved.cash.nameAr,
+            debit: paidAmount,
+            credit: 0,
+            memo: `دفعة نقدية مسددة - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+          });
+          jLines.push({
+            id: 'jl-2',
+            accountId: resolved.receivable.id,
+            accountCode: resolved.receivable.code,
+            accountNameAr: resolved.receivable.nameAr,
+            debit: dueAmount,
+            credit: 0,
+            memo: `المبلغ الآجل المستحق - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+          });
+        } else {
+          const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
+          jLines.push({
+            id: 'jl-1',
+            accountId: paymentAcc.id,
+            accountCode: paymentAcc.code,
+            accountNameAr: paymentAcc.nameAr,
+            debit: grandTotal,
+            credit: 0,
+            memo: `فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+          });
+        }
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: resolved.sales.id,
+          accountCode: resolved.sales.code,
+          accountNameAr: resolved.sales.nameAr,
+          debit: 0,
+          credit: grandTotal,
+          memo: `إيراد مبيعات فاتورة ${invoiceNumber}`,
+        });
+      } else if (isSalesReturn) {
+        jLines.push({
+          id: 'jl-1',
+          accountId: resolved.sales.id,
+          accountCode: resolved.sales.code,
+          accountNameAr: resolved.sales.nameAr,
+          debit: grandTotal,
+          credit: 0,
+          memo: `مردودات ومسموحات المبيعات ${invoiceNumber} - ${entityNameAr}`,
+        });
+        if (paidAmount > 0 && dueAmount > 0) {
+          jLines.push({
+            id: 'jl-2',
+            accountId: resolved.cash.id,
+            accountCode: resolved.cash.code,
+            accountNameAr: resolved.cash.nameAr,
+            debit: 0,
+            credit: paidAmount,
+            memo: `رد نقدي مسدد للعميل - مرتجع مبيعات ${invoiceNumber}`,
+          });
+          jLines.push({
+            id: 'jl-3',
+            accountId: resolved.receivable.id,
+            accountCode: resolved.receivable.code,
+            accountNameAr: resolved.receivable.nameAr,
+            debit: 0,
+            credit: dueAmount,
+            memo: `تخفيض حساب العميل الآجل ${entityNameAr}`,
+          });
+        } else {
+          const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
+          jLines.push({
+            id: 'jl-2',
+            accountId: paymentAcc.id,
+            accountCode: paymentAcc.code,
+            accountNameAr: paymentAcc.nameAr,
+            debit: 0,
+            credit: grandTotal,
+            memo: `تخفيض حساب العميل ${entityNameAr}`,
+          });
+        }
+      } else if (isPurchase) {
+        jLines.push({
+          id: 'jl-1',
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
+          debit: grandTotal,
+          credit: 0,
+          memo: `فاتورة مشتريات ${invoiceNumber} - ${entityNameAr}`,
+        });
+        if (paidAmount > 0 && dueAmount > 0) {
+          jLines.push({
+            id: 'jl-2',
+            accountId: resolved.cash.id,
+            accountCode: resolved.cash.code,
+            accountNameAr: resolved.cash.nameAr,
+            debit: 0,
+            credit: paidAmount,
+            memo: `سداد نقدي فوري لمشتريات فاتورة ${invoiceNumber}`,
+          });
+          jLines.push({
+            id: 'jl-3',
+            accountId: resolved.payable.id,
+            accountCode: resolved.payable.code,
+            accountNameAr: resolved.payable.nameAr,
+            debit: 0,
+            credit: dueAmount,
+            memo: `استحقاق آجل للمورد ${entityNameAr} - فاتورة ${invoiceNumber}`,
+          });
+        } else {
+          const purchasePaymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.payable;
+          jLines.push({
+            id: 'jl-2',
+            accountId: purchasePaymentAcc.id,
+            accountCode: purchasePaymentAcc.code,
+            accountNameAr: purchasePaymentAcc.nameAr,
+            debit: 0,
+            credit: grandTotal,
+            memo: `استحقاق مشتريات فاتورة ${invoiceNumber}`,
+          });
+        }
+      } else {
+        // PURCHASE_RETURN
+        if (paidAmount > 0 && dueAmount > 0) {
+          jLines.push({
+            id: 'jl-1',
+            accountId: resolved.cash.id,
+            accountCode: resolved.cash.code,
+            accountNameAr: resolved.cash.nameAr,
+            debit: paidAmount,
+            credit: 0,
+            memo: `استرداد نقدي من المورد - مرتجع مشتريات ${invoiceNumber}`,
+          });
+          jLines.push({
+            id: 'jl-2',
+            accountId: resolved.payable.id,
+            accountCode: resolved.payable.code,
+            accountNameAr: resolved.payable.nameAr,
+            debit: dueAmount,
+            credit: 0,
+            memo: `تخفيض حساب المورد الآجل ${entityNameAr}`,
+          });
+        } else {
+          const purchasePaymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.payable;
+          jLines.push({
+            id: 'jl-1',
+            accountId: purchasePaymentAcc.id,
+            accountCode: purchasePaymentAcc.code,
+            accountNameAr: purchasePaymentAcc.nameAr,
+            debit: grandTotal,
+            credit: 0,
+            memo: `تخفيض حساب المورد ${entityNameAr} - مرتجع مشتريات`,
+          });
+        }
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
+          debit: 0,
+          credit: grandTotal,
+          memo: `تخفيض المخزون لمرتجع المشتريات ${invoiceNumber}`,
+        });
+      }
+
+      const journals = localDataStore.getJournals();
+      let linkedJournal = journals.find(
+        (j) => j.id === original.journalEntryId || j.sourceId === original.id || j.reference === original.invoiceNumber
+      );
+
+      if (linkedJournal) {
+        linkedJournal.lines = jLines;
+        linkedJournal.totalDebit = grandTotal;
+        linkedJournal.totalCredit = grandTotal;
+        linkedJournal.date = updatedInvoice.date;
+        linkedJournal.description = `قيد ترحيل فاتورة ${isSales ? 'مبيعات' : 'مشتريات'} معدلة رقم (${invoiceNumber}) - ${entityNameAr}`;
+        linkedJournal.status = 'POSTED';
+        linkedJournal.updatedAt = new Date().toISOString();
+        syncToFirestore('erp_journals', linkedJournal.id, linkedJournal);
+        updatedInvoice.journalEntryId = linkedJournal.id;
+      } else {
+        const newJournal: JournalEntry = {
+          id: 'jv-' + Math.random().toString(36).substr(2, 9),
+          entryNumber: `JV-${invoiceNumber}`,
+          date: updatedInvoice.date,
+          reference: invoiceNumber,
+          description: `قيد ترحيل فاتورة ${isSales ? 'مبيعات' : 'مشتريات'} رقم (${invoiceNumber}) - ${entityNameAr}`,
+          status: 'POSTED',
+          lines: jLines,
+          totalDebit: grandTotal,
+          totalCredit: grandTotal,
+          createdAt: new Date().toISOString(),
+          postedAt: new Date().toISOString(),
+          isAutoGenerated: true,
+          sourceModule: isSales ? 'SALES_INVOICE' : 'PURCHASE_INVOICE',
+          sourceId: updatedInvoice.id,
+        };
+        journals.unshift(newJournal);
+        syncToFirestore('erp_journals', newJournal.id, newJournal);
+        updatedInvoice.journalEntryId = newJournal.id;
+        linkedJournal = newJournal;
+      }
+      localDataStore.saveJournals(journals);
+
+      if (isSupabaseConfigured && linkedJournal) {
+        SupabaseDataService.saveJournal(linkedJournal).catch(() => {});
+      }
+    }
+
+    // 4. Update the invoice in invoices list
+    const originalIdx = invoices.findIndex((i) => i.id === id);
+    if (originalIdx !== -1) {
+      invoices[originalIdx] = updatedInvoice;
+    } else {
+      invoices.unshift(updatedInvoice);
+    }
+    localDataStore.saveInvoices(invoices);
+    syncToFirestore('erp_invoices', id, updatedInvoice);
+
+    // 5. Update Bank & Cash balances
+    const updatedAccounts = this.syncAccountBalances();
+
+    // 6. Persist to Supabase
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveInvoice(updatedInvoice).catch((e) =>
+        console.warn('Supabase updateInvoice notice:', e)
+      );
+      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      if (newEntityId) {
+        if (isSales || isSalesReturn) {
+          const c = localDataStore.getCustomers().find((x) => x.id === newEntityId);
+          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+        } else {
+          const s = localDataStore.getSuppliers().find((x) => x.id === newEntityId);
+          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+        }
+      }
+      if (original.entityId && original.entityId !== newEntityId) {
+        if (isSales || isSalesReturn) {
+          const c = localDataStore.getCustomers().find((x) => x.id === original.entityId);
+          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+        } else {
+          const s = localDataStore.getSuppliers().find((x) => x.id === original.entityId);
+          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+        }
+      }
+    }
+
+    // 7. Background API Call
+    safeApiFetch<Invoice>(`/api/invoices/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    });
-    return apiRes || (idx !== -1 ? invoices[idx] : null);
+    }).catch(() => {});
+
+    return updatedInvoice;
   }
 
   // Vouchers

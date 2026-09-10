@@ -75,6 +75,7 @@ interface InvoicesProps {
   onSubTabChange?: (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units') => void;
   onRefreshAll?: () => Promise<void> | void;
   onCreateInvoice: (data: any) => Promise<void>;
+  onUpdateInvoice?: (id: string, data: any) => Promise<void>;
   onPostInvoice: (id: string) => Promise<void>;
   onCancelInvoice?: (id: string, reason?: string) => Promise<void>;
   onCreateVoucher: (data: any) => Promise<void>;
@@ -111,6 +112,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   onSubTabChange,
   onRefreshAll,
   onCreateInvoice,
+  onUpdateInvoice,
   onPostInvoice,
   onCancelInvoice,
   onCreateVoucher,
@@ -200,6 +202,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   // Modals State
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isInvoiceModalExpanded, setIsInvoiceModalExpanded] = useState<boolean>(true);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
   const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -458,6 +461,93 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvLines(updated);
   };
 
+  const handleOpenCreateInvoice = (type: 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN' = 'SALES') => {
+    setEditingInvoice(null);
+    setInvType(type);
+    setInvDate(new Date().toISOString().split('T')[0]);
+    setInvDueDate(new Date().toISOString().split('T')[0]);
+    setInvPaymentTerms('CREDIT');
+    setInvSalesPerson('');
+    setInvReceiverName('');
+    setInvEntityId('');
+    setInvCustomerBranchId('');
+    setInvCustomerBranchName('');
+    setInvNotes('');
+    setInvDiscountType('FIXED');
+    setInvDiscountValue(0);
+    setInvPaidAmount(0);
+    setInvLines([
+      {
+        itemId: '',
+        itemNameAr: '',
+        itemNameEn: '',
+        itemSku: '',
+        barcode: '',
+        unit: 'حبة',
+        unitsPerPack: 1,
+        quantity: 1,
+        packQuantity: 0,
+        unitPrice: 0,
+        discountType: 'FIXED',
+        discountValue: 0,
+      },
+    ]);
+    setIsInvoiceModalOpen(true);
+  };
+
+  const handleOpenEditInvoice = (inv: Invoice) => {
+    setEditingInvoice(inv);
+    setInvType(inv.type);
+    setInvDate(inv.date || new Date().toISOString().split('T')[0]);
+    setInvDueDate(inv.dueDate || inv.date || new Date().toISOString().split('T')[0]);
+    setInvPaymentTerms(inv.paymentTerms || (Number(inv.paidAmount) >= Number(inv.grandTotal) && Number(inv.grandTotal) > 0 ? 'CASH' : 'CREDIT'));
+    setInvPaidAmount(Number(inv.paidAmount) || 0);
+    setInvSalesPerson(inv.salesPerson || '');
+    setInvReceiverName(inv.receiverName || '');
+    setInvEntityId(inv.entityId || '');
+    setInvCustomerBranchId(inv.customerBranchId || '');
+    setInvCustomerBranchName(inv.customerBranchName || '');
+    setInvNotes(inv.notes || '');
+    setInvDiscountType(inv.discountType || 'FIXED');
+    setInvDiscountValue(Number(inv.discountValue) || 0);
+
+    const mappedLines = (inv.lines && inv.lines.length > 0)
+      ? inv.lines.map((l: any) => ({
+          itemId: l.itemId || '',
+          itemNameAr: l.itemNameAr || '',
+          itemNameEn: l.itemNameEn || '',
+          itemSku: l.itemSku || '',
+          barcode: l.barcode || '',
+          unit: l.unit || 'حبة',
+          unitsPerPack: Number(l.unitsPerPack) > 0 ? Number(l.unitsPerPack) : 1,
+          quantity: Number(l.quantity) || 1,
+          packQuantity: Number(l.packQuantity) || 0,
+          unitPrice: Number(l.unitPrice) || 0,
+          discountType: (l.discountType === 'PERCENT' ? 'PERCENT' : 'FIXED') as 'PERCENT' | 'FIXED',
+          discountValue: Number(l.discountValue) || 0,
+          notes: l.notes || '',
+        }))
+      : [
+          {
+            itemId: '',
+            itemNameAr: '',
+            itemNameEn: '',
+            itemSku: '',
+            barcode: '',
+            unit: 'حبة',
+            unitsPerPack: 1,
+            quantity: 1,
+            packQuantity: 0,
+            unitPrice: 0,
+            discountType: 'FIXED' as const,
+            discountValue: 0,
+          },
+        ];
+
+    setInvLines(mappedLines);
+    setIsInvoiceModalOpen(true);
+  };
+
   const executeSaveInvoice = async (
     autoPost: boolean,
     allowNegative: boolean = false,
@@ -513,7 +603,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       ? (invPaidAmount > 0 ? invPaidAmount : calculatedGrandTotal)
       : (invPaidAmount > 0 ? invPaidAmount : 0);
 
-    await onCreateInvoice({
+    const invoicePayload = {
       type: invType,
       date: invDate || new Date().toISOString().split('T')[0],
       dueDate: invDueDate || invDate || new Date().toISOString().split('T')[0],
@@ -534,8 +624,20 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       negativeStockApprovedBy: 'admin',
       negativeStockApprovedByName: 'إدارة النظام المعتمدة',
       negativeStockReason: reason,
-    });
+    };
+
+    if (editingInvoice) {
+      if (onUpdateInvoice) {
+        await onUpdateInvoice(editingInvoice.id, invoicePayload);
+      } else {
+        await DataService.updateInvoice(editingInvoice.id, invoicePayload);
+        if (onRefreshAll) await onRefreshAll();
+      }
+    } else {
+      await onCreateInvoice(invoicePayload);
+    }
     setIsInvoiceModalOpen(false);
+    setEditingInvoice(null);
     setIsNegativeStockModalOpen(false);
     setInvCustomerBranchId('');
     setInvCustomerBranchName('');
@@ -1133,7 +1235,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsInvoiceModalOpen(true)}
+            onClick={() => handleOpenCreateInvoice('SALES')}
             className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
           >
             <Plus className="w-4 h-4 text-[#D4AF37]" /> فاتورة جديدة
@@ -1303,6 +1405,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                             >
                               <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
                               طباعة مفقطة
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenEditInvoice(inv)}
+                              className="px-2.5 py-1 bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#855B00] border border-[#D4AF37]/40 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                              title="تعديل بنود الفاتورة والكميات والأسعار مع تحديث الأرصدة والقيود تلقائياً بدون حذف"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-[#B8860B]" />
+                              تعديل
                             </button>
 
                             {inv.status === 'DRAFT' && (
@@ -2085,16 +2196,44 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               <div className="bg-[#1A1A1A] text-white px-5 py-3.5 flex items-center justify-between border-b border-black">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-[#D4AF37]/20 rounded-xl border border-[#D4AF37]/40">
-                    <ShoppingBag className="w-6 h-6 text-[#D4AF37]" />
+                    {editingInvoice ? (
+                      <Edit2 className="w-6 h-6 text-[#D4AF37]" />
+                    ) : (
+                      <ShoppingBag className="w-6 h-6 text-[#D4AF37]" />
+                    )}
                   </div>
                   <div>
                     <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                      إصدار وترحيل الفواتير والإشعارات المحاسبية
-                      <span className="text-[10px] bg-[#D4AF37] text-black px-2 py-0.5 rounded-full font-bold">
-                        نظام معتمد بدون ضرائب (0%)
-                      </span>
+                      {editingInvoice ? (
+                        <>
+                          <span>تعديل الفاتورة رقم:</span>
+                          <span className="text-[#D4AF37] font-mono tracking-wider">{editingInvoice.invoiceNumber}</span>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              editingInvoice.status === 'POSTED'
+                                ? 'bg-emerald-500 text-white'
+                                : editingInvoice.status === 'PAID'
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-amber-500 text-black'
+                            }`}
+                          >
+                            {editingInvoice.status === 'POSTED' ? 'مرحّلة' : editingInvoice.status === 'PAID' ? 'مدفوعة' : 'مسودة'}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          إصدار وترحيل الفواتير والإشعارات المحاسبية
+                          <span className="text-[10px] bg-[#D4AF37] text-black px-2 py-0.5 rounded-full font-bold">
+                            نظام معتمد بدون ضرائب (0%)
+                          </span>
+                        </>
+                      )}
                     </h3>
-                    <p className="text-xs text-neutral-400">إنشاء وترحيل قيود اليومية، المخزون، وحسابات الذمم المدينة والدائنة تلقائياً</p>
+                    <p className="text-xs text-neutral-400">
+                      {editingInvoice
+                        ? 'تعديل بنود وأسعار وكميات وأطراف الفاتورة مع التحديث التلقائي الفوري لقيود اليومية وأرصدة المخزون والحسابات'
+                        : 'إنشاء وترحيل قيود اليومية، المخزون، وحسابات الذمم المدينة والدائنة تلقائياً'}
+                    </p>
                   </div>
                 </div>
 
@@ -2120,7 +2259,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setIsInvoiceModalOpen(false)}
+                    onClick={() => {
+                      setIsInvoiceModalOpen(false);
+                      setEditingInvoice(null);
+                    }}
                     className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
                     title="إغلاق"
                   >
@@ -2772,29 +2914,45 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               <div className="bg-white px-6 py-4 border-t border-[#E5E1DA] flex items-center justify-between no-print">
                 <button
                   type="button"
-                  onClick={() => setIsInvoiceModalOpen(false)}
+                  onClick={() => {
+                    setIsInvoiceModalOpen(false);
+                    setEditingInvoice(null);
+                  }}
                   className="px-5 py-2.5 border border-[#E5E1DA] text-[#6E6659] font-bold rounded-xl hover:bg-[#F7F5F0] cursor-pointer"
                 >
                   إلغاء
                 </button>
 
                 <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={(e) => handleSaveInvoice(e, false)}
-                    className="px-5 py-2.5 bg-neutral-100 hover:bg-neutral-200 text-black font-extrabold rounded-xl border border-neutral-300 cursor-pointer transition-all"
-                  >
-                    حفظ كمسودة غير مرحلة
-                  </button>
+                  {editingInvoice ? (
+                    <button
+                      type="button"
+                      onClick={(e) => handleSaveInvoice(e, editingInvoice.status !== 'DRAFT')}
+                      className="px-6 py-2.5 bg-[#2D6A4F] hover:bg-[#22533D] text-white font-extrabold rounded-xl shadow-lg flex items-center gap-2 cursor-pointer transition-all"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                      حفظ تعديلات الفاتورة وترحيل الأثر المالي
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => handleSaveInvoice(e, false)}
+                        className="px-5 py-2.5 bg-neutral-100 hover:bg-neutral-200 text-black font-extrabold rounded-xl border border-neutral-300 cursor-pointer transition-all"
+                      >
+                        حفظ كمسودة غير مرحلة
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={(e) => handleSaveInvoice(e, true)}
-                    className="px-6 py-2.5 bg-[#1A1A1A] hover:bg-black text-white font-extrabold rounded-xl shadow-lg flex items-center gap-2 cursor-pointer transition-all"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-[#D4AF37]" />
-                    اصدار الفاتورة وترحيلها مالياً الآن
-                  </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleSaveInvoice(e, true)}
+                        className="px-6 py-2.5 bg-[#1A1A1A] hover:bg-black text-white font-extrabold rounded-xl shadow-lg flex items-center gap-2 cursor-pointer transition-all"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-[#D4AF37]" />
+                        اصدار الفاتورة وترحيلها مالياً الآن
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

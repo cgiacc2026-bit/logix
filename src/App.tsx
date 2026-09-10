@@ -315,6 +315,16 @@ export default function App() {
     refreshAllData(true);
   };
 
+  const handleUpdateInvoice = async (id: string, invoiceData: any) => {
+    await DataService.updateInvoice(id, invoiceData);
+    setInvoices(DataService.getLocalInvoices());
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setInventory(DataService.getLocalInventory());
+    refreshAllData(true);
+  };
+
   const handlePostInvoice = async (id: string) => {
     await DataService.postInvoice(id);
     setInvoices(DataService.getLocalInvoices());
@@ -685,6 +695,7 @@ export default function App() {
               onSubTabChange={(sub) => setActiveTab(sub)}
               accounts={accounts}
               onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
               onCancelInvoice={handleCancelInvoice}
               onDeleteInvoice={handleDeleteInvoice}
