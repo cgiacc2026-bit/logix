@@ -347,6 +347,8 @@ export interface Invoice {
   negativeStockApprovedBy?: string;
   negativeStockApprovedByName?: string;
   negativeStockReason?: string;
+  companyId?: string;
+  company_id?: string;
   createdAt: string;
 }
 

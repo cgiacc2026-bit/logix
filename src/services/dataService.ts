@@ -1707,6 +1707,8 @@ export class DataService {
       customerBranchName: data.customerBranchName || undefined,
       priceListApplied: data.priceListApplied || undefined,
       notes: data.notes,
+      companyId: data.companyId || data.company_id || undefined,
+      company_id: data.company_id || data.companyId || undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -3822,6 +3824,10 @@ export class DataService {
       salesRepName: q.salesRepName,
       date: new Date().toISOString().split('T')[0],
       dueDate: new Date().toISOString().split('T')[0],
+      discountType: q.discountType || 'FIXED',
+      discountValue: q.discountValue || 0,
+      companyId: q.companyId || (q as any).company_id || undefined,
+      company_id: (q as any).company_id || q.companyId || undefined,
       lines: q.lines.map((l) => ({
         itemId: l.itemId,
         itemSku: l.itemSku,
@@ -3834,7 +3840,7 @@ export class DataService {
         discountValue: l.discountValue || 0,
         notes: l.notes || '',
       })),
-      notes: `محولة بضغطة زر تلقائياً من عرض السعر رقم (${q.quotationNumber})`,
+      notes: q.notes ? `${q.notes} (محولة بضغطة زر تلقائياً من عرض السعر ${q.quotationNumber})` : `محولة بضغطة زر تلقائياً من عرض السعر رقم (${q.quotationNumber})`,
     };
 
     const createdInvoice = await this.createInvoice(invData);

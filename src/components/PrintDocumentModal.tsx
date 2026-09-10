@@ -750,8 +750,9 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                     </div>
                     <div className="space-y-6">
                       <span className="font-bold block text-neutral-800">ختم الاعتماد</span>
-                      <div className="w-16 h-16 border-2 border-dashed border-neutral-400 rounded-full mx-auto flex items-center justify-center text-[10px] text-neutral-500 font-bold">
-                        ختم الشركة
+                      <div className="w-20 h-20 border-2 border-dashed border-neutral-400 rounded-full mx-auto flex flex-col items-center justify-center p-1 text-[9px] text-neutral-600 font-bold leading-tight">
+                        <span>ختم اعتماد</span>
+                        <span className="truncate max-w-[65px] text-neutral-800">{activeCompany.nameAr || 'الشركة'}</span>
                       </div>
                     </div>
                     <div className="space-y-6">
