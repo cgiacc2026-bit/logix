@@ -1,3 +1,4 @@
+import { isSupabaseConfigured } from './services/supabaseClient.ts';
 import React, { useState, useEffect } from 'react';
 import {
   Account,
@@ -43,6 +44,7 @@ import { AutoBackupController } from './components/AutoBackupController.tsx';
 import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
+import { DataSyncService } from './services/dataSyncService.ts';
 import { ThemeService, ThemeColor, ThemeMode } from './services/themeService.ts';
 import {
   DEFAULT_COMPANY_PROFILE,
@@ -209,6 +211,15 @@ export default function App() {
     const handleSync = () => {
       refreshAllData(true);
     };
+    
+    // Start Realtime Data Sync
+    if (isSupabaseConfigured) {
+      DataSyncService.startRealtimeSync((tableName) => {
+        // Trigger a background re-fetch for all essential data without showing the loading spinner
+        console.log(`Realtime update received for ${tableName}. Refreshing data...`);
+        refreshAllData(true);
+      });
+    }
 
     window.addEventListener('focus', handleSync);
     const handleVisibility = () => {

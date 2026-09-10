@@ -2276,6 +2276,34 @@ export class DataService {
         credit: grandTotal,
         memo: `إيراد مبيعات فاتورة ${invoiceNumber}`,
       });
+
+      // COGS Journal Entry
+      const totalCost = lines.reduce((sum, line) => {
+        const invItem = inventory.find(i => i.id === line.itemId);
+        const cost = invItem ? (Number(invItem.costPrice || invItem.purchasePrice || 0)) : 0;
+        return sum + (cost * line.quantity);
+      }, 0);
+
+      if (totalCost > 0) {
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: resolved.cogs.id,
+          accountCode: resolved.cogs.code,
+          accountNameAr: resolved.cogs.nameAr,
+          debit: totalCost,
+          credit: 0,
+          memo: `تكلفة بضاعة مباعة - فاتورة ${invoiceNumber}`,
+        });
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
+          debit: 0,
+          credit: totalCost,
+          memo: `تخفيض المخزون المباع - فاتورة ${invoiceNumber}`,
+        });
+      }
     } else if (isSalesReturn) {
       jLines.push({
         id: 'jl-1',
@@ -2315,6 +2343,33 @@ export class DataService {
           debit: 0,
           credit: grandTotal,
           memo: `تخفيض حساب العميل ${entityNameAr}`,
+        });
+      }
+      
+      const totalCost = lines.reduce((sum, line) => {
+        const invItem = inventory.find(i => i.id === line.itemId);
+        const cost = invItem ? (Number(invItem.costPrice || invItem.purchasePrice || 0)) : 0;
+        return sum + (cost * line.quantity);
+      }, 0);
+
+      if (totalCost > 0) {
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: resolved.inventory.id,
+          accountCode: resolved.inventory.code,
+          accountNameAr: resolved.inventory.nameAr,
+          debit: totalCost,
+          credit: 0,
+          memo: `رد بضاعة للمخزون - مرتجع ${invoiceNumber}`,
+        });
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: resolved.cogs.id,
+          accountCode: resolved.cogs.code,
+          accountNameAr: resolved.cogs.nameAr,
+          debit: 0,
+          credit: totalCost,
+          memo: `تخفيض تكلفة بضاعة مباعة - مرتجع ${invoiceNumber}`,
         });
       }
     } else if (isPurchase) {
