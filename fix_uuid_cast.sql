@@ -111,7 +111,7 @@ BEGIN
                 COALESCE(
                     (SELECT SUM(i.total_amount)
                       FROM public.invoices i
-                      WHERE CAST(i.customer_id AS text) = CAST(c.id AS text)
+                      WHERE i.customer_id::text = c.id::text
                         AND i.company_id = p_company_id
                         AND i.status != 'CANCELLED'), 0
                 )
@@ -119,7 +119,7 @@ BEGIN
                 COALESCE(
                     (SELECT SUM(pv.amount)
                       FROM public.payment_vouchers pv 
-                      WHERE CAST(pv.entity_id AS text) = CAST(c.id AS text)
+                      WHERE pv.entity_id::text = c.id::text
                         AND pv.type = 'RECEIPT'
                         AND pv.company_id = p_company_id
                         AND pv.status = 'POSTED'), 0
@@ -141,7 +141,7 @@ BEGIN
                 COALESCE(
                     (SELECT SUM(i.total_amount)
                       FROM public.invoices i
-                      WHERE (i.raw_data->>'supplierId' = CAST(s.id AS text) OR i.raw_data->>'supplier_id' = CAST(s.id AS text))
+                      WHERE (i.raw_data->>'supplierId' = s.id::text OR i.raw_data->>'supplier_id' = s.id::text)
                         AND i.company_id = p_company_id
                         AND i.status != 'CANCELLED'), 0
                 )
@@ -149,7 +149,7 @@ BEGIN
                 COALESCE(
                     (SELECT SUM(pv.amount)
                       FROM public.payment_vouchers pv
-                      WHERE CAST(pv.entity_id AS text) = CAST(s.id AS text)
+                      WHERE pv.entity_id::text = s.id::text
                         AND pv.type = 'PAYMENT'
                         AND pv.company_id = p_company_id
                         AND pv.status = 'POSTED'), 0
@@ -184,7 +184,6 @@ DECLARE
     v_lines JSONB;
     v_entity_name TEXT;
     v_desc TEXT;
-    v_acc_id_text TEXT;
 BEGIN
     IF p_company_id IS NULL OR p_voucher_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'معرف الشركة ورقم السند مطلوبان.');
@@ -192,14 +191,14 @@ BEGIN
 
     SELECT * INTO v_voucher
     FROM public.payment_vouchers
-    WHERE (CAST(id AS text) = p_voucher_id OR voucher_number = p_voucher_id)
+    WHERE (id::text = p_voucher_id OR voucher_number = p_voucher_id)
       AND company_id = p_company_id;
 
     IF v_voucher IS NULL AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vouchers') THEN
         SELECT 
             id,
             company_id,
-            COALESCE(CAST(id AS text), 'RCV-2026-0001') AS voucher_number,
+            COALESCE(id::text, 'RCV-2026-0001') AS voucher_number,
             COALESCE(voucher_type, 'RECEIPT') AS type,
             created_at::date AS date,
             amount,
@@ -212,7 +211,7 @@ BEGIN
             'POSTED' AS status
         INTO v_voucher
         FROM public.vouchers
-        WHERE CAST(id AS text) = p_voucher_id AND company_id = p_company_id;
+        WHERE id::text = p_voucher_id AND company_id = p_company_id;
     END IF;
 
     IF v_voucher IS NULL THEN
@@ -228,18 +227,16 @@ BEGIN
         SET status = 'CANCELLED',
             updated_at = timezone('utc', now())
         WHERE company_id = p_company_id
-          AND (CAST(reference_id AS text) = CAST(v_voucher.id AS text) OR reference = v_voucher.voucher_number OR entry_number = v_entry_number);
+          AND (reference_id::text = v_voucher.id::text OR reference = v_voucher.voucher_number OR entry_number = v_entry_number);
 
         PERFORM recalculate_company_ledger_balances(p_company_id);
         RETURN jsonb_build_object('success', true, 'status', 'CANCELLED_REVERSED');
     END IF;
 
-    v_acc_id_text := CAST(v_voucher.account_id AS text);
-    
     SELECT id, code, name_ar, normal_balance INTO v_liquid_acc
     FROM public.chart_of_accounts
     WHERE company_id = p_company_id
-      AND (CAST(id AS text) = v_acc_id_text OR CAST(code AS text) = v_acc_id_text)
+      AND (id::text = v_voucher.account_id::text OR code::text = v_voucher.account_id::text)
     LIMIT 1;
 
     IF v_liquid_acc IS NULL THEN
@@ -346,7 +343,7 @@ BEGIN
     SELECT id INTO v_journal_id
     FROM public.journal_entries
     WHERE company_id = p_company_id
-      AND (CAST(reference_id AS text) = CAST(v_voucher.id AS text) OR reference = v_voucher.voucher_number OR entry_number = v_entry_number)
+      AND (reference_id::text = v_voucher.id::text OR reference = v_voucher.voucher_number OR entry_number = v_entry_number)
     LIMIT 1;
 
     IF v_journal_id IS NOT NULL THEN
@@ -359,7 +356,7 @@ BEGIN
             lines = v_lines,
             reference = v_voucher.voucher_number,
             reference_type = v_voucher.type,
-            reference_id = CAST(v_voucher.id AS text),
+            reference_id = v_voucher.id::text,
             updated_at = timezone('utc', now())
         WHERE id = v_journal_id;
     ELSE
@@ -389,7 +386,7 @@ BEGIN
             'POSTED',
             v_voucher.voucher_number,
             v_voucher.type,
-            CAST(v_voucher.id AS text),
+            v_voucher.id::text,
             v_amount,
             v_amount,
             v_lines,
@@ -399,9 +396,9 @@ BEGIN
     END IF;
 
     UPDATE public.payment_vouchers
-    SET journal_entry_id = CAST(v_journal_id AS text),
+    SET journal_entry_id = v_journal_id::text,
         is_posted = true,
-        account_id = CAST(v_liquid_acc.id AS text),
+        account_id = v_liquid_acc.id::text,
         updated_at = timezone('utc', now())
     WHERE id = v_voucher.id;
 
@@ -431,7 +428,7 @@ DECLARE
     v_comp_id UUID;
 BEGIN
     FOR r_voucher IN (
-        SELECT CAST(id AS text) AS id, company_id, voucher_number 
+        SELECT id::text, company_id, voucher_number 
         FROM public.payment_vouchers
         WHERE (p_target_company_id IS NULL OR company_id = p_target_company_id)
         ORDER BY date ASC, created_at ASC
@@ -443,7 +440,7 @@ BEGIN
 
     IF v_posted_count = 0 AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vouchers') THEN
         FOR r_voucher IN (
-            SELECT CAST(id AS text) AS id, company_id, CAST(id AS text) AS voucher_number
+            SELECT id::text, company_id, id::text AS voucher_number
             FROM public.vouchers
             WHERE (p_target_company_id IS NULL OR company_id = p_target_company_id)
         ) LOOP
@@ -478,7 +475,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-    PERFORM post_voucher_to_ledger(CAST(NEW.id AS text), NEW.company_id);
+    PERFORM post_voucher_to_ledger(NEW.id::text, NEW.company_id);
     RETURN NEW;
 END;
 $$;

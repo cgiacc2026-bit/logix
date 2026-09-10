@@ -4,6 +4,9 @@
 -- متوافق بالكامل مع PostgreSQL & Supabase Database
 -- ==============================================================================
 
+-- ==============================================================================
+-- 1) التحقق من الحقول الإضافية
+-- ==============================================================================
 ALTER TABLE public.chart_of_accounts 
     ADD COLUMN IF NOT EXISTS current_balance NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.chart_of_accounts 
@@ -25,6 +28,19 @@ ALTER TABLE public.payment_vouchers
     ADD COLUMN IF NOT EXISTS journal_entry_id TEXT;
 ALTER TABLE public.payment_vouchers 
     ADD COLUMN IF NOT EXISTS is_posted BOOLEAN DEFAULT true;
+
+-- إضافة الحقول الناقصة إذا لم تكن موجودة لتجنب أي أخطاء متعلقة بها
+ALTER TABLE public.journal_entries 
+    ADD COLUMN IF NOT EXISTS debit_account UUID;
+ALTER TABLE public.journal_entries 
+    ADD COLUMN IF NOT EXISTS credit_account UUID;
+ALTER TABLE public.journal_entries 
+    ADD COLUMN IF NOT EXISTS amount NUMERIC(18, 4) DEFAULT 0;
+
+-- لتجنب أي أخطاء متعلقة بالقيود الصارمة (Not-Null) إذا كانت مفروضة مسبقاً
+ALTER TABLE public.journal_entries ALTER COLUMN debit_account DROP NOT NULL;
+ALTER TABLE public.journal_entries ALTER COLUMN credit_account DROP NOT NULL;
+ALTER TABLE public.journal_entries ALTER COLUMN amount DROP NOT NULL;
 
 DO $$
 BEGIN
@@ -58,7 +74,7 @@ BEGIN
 
     UPDATE public.chart_of_accounts
     SET balance = 0, current_balance = 0
-    WHERE company_id = p_company_id;
+    WHERE company_id::text = p_company_id::text;
 
     FOR r_account IN (
         SELECT 
@@ -69,11 +85,11 @@ BEGIN
             COALESCE(SUM((line->>'credit')::numeric), 0) AS total_credit
         FROM public.chart_of_accounts coa
         LEFT JOIN public.journal_entries je 
-             ON je.company_id = p_company_id 
+             ON je.company_id::text = p_company_id::text 
              AND je.status = 'POSTED'
         LEFT JOIN LATERAL jsonb_array_elements(je.lines) AS line 
-             ON (line->>'accountId' = coa.id::text OR line->>'accountCode' = coa.code)
-        WHERE coa.company_id = p_company_id
+             ON (line->>'accountId' = coa.id::text OR line->>'accountCode' = coa.code::text)
+        WHERE coa.company_id::text = p_company_id::text
         GROUP BY coa.id, coa.code, coa.normal_balance
     ) LOOP
         IF r_account.normal_balance = 'DEBIT' THEN
@@ -86,7 +102,7 @@ BEGIN
         SET balance = v_net_movement,
             current_balance = v_net_movement,
             updated_at = timezone('utc', now())
-        WHERE id = r_account.account_id AND company_id = p_company_id;
+        WHERE id::text = r_account.account_id::text AND company_id::text = p_company_id::text;
     END LOOP;
 
     UPDATE public.chart_of_accounts parent
@@ -95,10 +111,10 @@ BEGIN
     FROM (
         SELECT parent_id, SUM(balance) AS sum_balance
         FROM public.chart_of_accounts
-        WHERE company_id = p_company_id AND parent_id IS NOT NULL
+        WHERE company_id::text = p_company_id::text AND parent_id IS NOT NULL
         GROUP BY parent_id
     ) children
-    WHERE parent.id = children.parent_id AND parent.company_id = p_company_id;
+    WHERE parent.id::text = children.parent_id::text AND parent.company_id::text = p_company_id::text;
 
     UPDATE public.customers cust
     SET balance = COALESCE(calc.net_balance, 0),
@@ -111,24 +127,24 @@ BEGIN
                 COALESCE(
                     (SELECT SUM(i.total_amount)
                       FROM public.invoices i
-                      WHERE CAST(i.customer_id AS text) = CAST(c.id AS text)
-                        AND i.company_id = p_company_id
+                      WHERE i.customer_id::text = c.id::text
+                        AND i.company_id::text = p_company_id::text
                         AND i.status != 'CANCELLED'), 0
                 )
                 -
                 COALESCE(
                     (SELECT SUM(pv.amount)
                       FROM public.payment_vouchers pv 
-                      WHERE CAST(pv.entity_id AS text) = CAST(c.id AS text)
+                      WHERE pv.entity_id::text = c.id::text
                         AND pv.type = 'RECEIPT'
-                        AND pv.company_id = p_company_id
+                        AND pv.company_id::text = p_company_id::text
                         AND pv.status = 'POSTED'), 0
                 )
             ) AS net_balance
         FROM public.customers c
-        WHERE c.company_id = p_company_id
+        WHERE c.company_id::text = p_company_id::text
     ) calc
-    WHERE cust.id = calc.customer_id AND cust.company_id = p_company_id;
+    WHERE cust.id::text = calc.customer_id::text AND cust.company_id::text = p_company_id::text;
 
     UPDATE public.suppliers supp
     SET balance = COALESCE(calc.net_balance, 0),
@@ -141,24 +157,24 @@ BEGIN
                 COALESCE(
                     (SELECT SUM(i.total_amount)
                       FROM public.invoices i
-                      WHERE (i.raw_data->>'supplierId' = CAST(s.id AS text) OR i.raw_data->>'supplier_id' = CAST(s.id AS text))
-                        AND i.company_id = p_company_id
+                      WHERE (i.raw_data->>'supplierId' = s.id::text OR i.raw_data->>'supplier_id' = s.id::text)
+                        AND i.company_id::text = p_company_id::text
                         AND i.status != 'CANCELLED'), 0
                 )
                 -
                 COALESCE(
                     (SELECT SUM(pv.amount)
                       FROM public.payment_vouchers pv
-                      WHERE CAST(pv.entity_id AS text) = CAST(s.id AS text)
+                      WHERE pv.entity_id::text = s.id::text
                         AND pv.type = 'PAYMENT'
-                        AND pv.company_id = p_company_id
+                        AND pv.company_id::text = p_company_id::text
                         AND pv.status = 'POSTED'), 0
                 )
             ) AS net_balance
         FROM public.suppliers s
-        WHERE s.company_id = p_company_id
+        WHERE s.company_id::text = p_company_id::text
     ) calc
-    WHERE supp.id = calc.supplier_id AND supp.company_id = p_company_id;
+    WHERE supp.id::text = calc.supplier_id::text AND supp.company_id::text = p_company_id::text;
 END;
 $$;
 
@@ -185,6 +201,8 @@ DECLARE
     v_entity_name TEXT;
     v_desc TEXT;
     v_acc_id_text TEXT;
+    v_debit_account UUID;
+    v_credit_account UUID;
 BEGIN
     IF p_company_id IS NULL OR p_voucher_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'معرف الشركة ورقم السند مطلوبان.');
@@ -192,14 +210,14 @@ BEGIN
 
     SELECT * INTO v_voucher
     FROM public.payment_vouchers
-    WHERE (CAST(id AS text) = p_voucher_id OR voucher_number = p_voucher_id)
-      AND company_id = p_company_id;
+    WHERE (id::text = p_voucher_id::text OR voucher_number::text = p_voucher_id::text)
+      AND company_id::text = p_company_id::text;
 
     IF v_voucher IS NULL AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vouchers') THEN
         SELECT 
             id,
             company_id,
-            COALESCE(CAST(id AS text), 'RCV-2026-0001') AS voucher_number,
+            COALESCE(id::text, 'RCV-2026-0001') AS voucher_number,
             COALESCE(voucher_type, 'RECEIPT') AS type,
             created_at::date AS date,
             amount,
@@ -212,7 +230,7 @@ BEGIN
             'POSTED' AS status
         INTO v_voucher
         FROM public.vouchers
-        WHERE CAST(id AS text) = p_voucher_id AND company_id = p_company_id;
+        WHERE id::text = p_voucher_id::text AND company_id::text = p_company_id::text;
     END IF;
 
     IF v_voucher IS NULL THEN
@@ -227,8 +245,8 @@ BEGIN
         UPDATE public.journal_entries
         SET status = 'CANCELLED',
             updated_at = timezone('utc', now())
-        WHERE company_id = p_company_id
-          AND (CAST(reference_id AS text) = CAST(v_voucher.id AS text) OR reference = v_voucher.voucher_number OR entry_number = v_entry_number);
+        WHERE company_id::text = p_company_id::text
+          AND (reference_id::text = v_voucher.id::text OR reference::text = v_voucher.voucher_number::text OR entry_number::text = v_entry_number::text);
 
         PERFORM recalculate_company_ledger_balances(p_company_id);
         RETURN jsonb_build_object('success', true, 'status', 'CANCELLED_REVERSED');
@@ -238,22 +256,22 @@ BEGIN
     
     SELECT id, code, name_ar, normal_balance INTO v_liquid_acc
     FROM public.chart_of_accounts
-    WHERE company_id = p_company_id
-      AND (CAST(id AS text) = v_acc_id_text OR CAST(code AS text) = v_acc_id_text)
+    WHERE company_id::text = p_company_id::text
+      AND (id::text = v_acc_id_text OR code::text = v_acc_id_text)
     LIMIT 1;
 
     IF v_liquid_acc IS NULL THEN
         IF v_voucher.payment_method = 'CASH' THEN
             SELECT id, code, name_ar, normal_balance INTO v_liquid_acc
             FROM public.chart_of_accounts
-            WHERE company_id = p_company_id
+            WHERE company_id::text = p_company_id::text
               AND (code = '1113' OR code = '1112' OR code = '1110' OR name_ar LIKE '%صندوق%' OR name_ar LIKE '%خزينة%')
             ORDER BY code ASC
             LIMIT 1;
         ELSE
             SELECT id, code, name_ar, normal_balance INTO v_liquid_acc
             FROM public.chart_of_accounts
-            WHERE company_id = p_company_id
+            WHERE company_id::text = p_company_id::text
               AND (code = '1111' OR code = '1112' OR code = '1110' OR name_ar LIKE '%بنك%' OR name_ar LIKE '%مصرف%')
             ORDER BY code ASC
             LIMIT 1;
@@ -263,7 +281,7 @@ BEGIN
     IF v_liquid_acc IS NULL THEN
         SELECT id, code, name_ar, normal_balance INTO v_liquid_acc
         FROM public.chart_of_accounts
-        WHERE company_id = p_company_id AND category = 'ASSET'
+        WHERE company_id::text = p_company_id::text AND category = 'ASSET'
         ORDER BY code ASC
         LIMIT 1;
     END IF;
@@ -271,7 +289,7 @@ BEGIN
     IF v_voucher.type = 'RECEIPT' THEN
         SELECT id, code, name_ar INTO v_receivable_acc
         FROM public.chart_of_accounts
-        WHERE company_id = p_company_id
+        WHERE company_id::text = p_company_id::text
           AND (code = '1120' OR code LIKE '112%' OR name_ar LIKE '%مدين%' OR name_ar LIKE '%عملاء%')
         ORDER BY code ASC
         LIMIT 1;
@@ -279,6 +297,9 @@ BEGIN
         IF v_receivable_acc IS NULL THEN
             v_receivable_acc := v_liquid_acc;
         END IF;
+
+        v_debit_account := CAST(v_liquid_acc.id AS UUID);
+        v_credit_account := CAST(v_receivable_acc.id AS UUID);
 
         v_lines := jsonb_build_array(
             jsonb_build_object(
@@ -308,7 +329,7 @@ BEGIN
     ELSE
         SELECT id, code, name_ar INTO v_payable_acc
         FROM public.chart_of_accounts
-        WHERE company_id = p_company_id
+        WHERE company_id::text = p_company_id::text
           AND (code = '2110' OR code LIKE '211%' OR name_ar LIKE '%دائن%' OR name_ar LIKE '%مورد%')
         ORDER BY code ASC
         LIMIT 1;
@@ -316,6 +337,9 @@ BEGIN
         IF v_payable_acc IS NULL THEN
             v_payable_acc := v_liquid_acc;
         END IF;
+
+        v_debit_account := CAST(v_payable_acc.id AS UUID);
+        v_credit_account := CAST(v_liquid_acc.id AS UUID);
 
         v_lines := jsonb_build_array(
             jsonb_build_object(
@@ -345,8 +369,8 @@ BEGIN
 
     SELECT id INTO v_journal_id
     FROM public.journal_entries
-    WHERE company_id = p_company_id
-      AND (CAST(reference_id AS text) = CAST(v_voucher.id AS text) OR reference = v_voucher.voucher_number OR entry_number = v_entry_number)
+    WHERE company_id::text = p_company_id::text
+      AND (reference_id::text = v_voucher.id::text OR reference::text = v_voucher.voucher_number::text OR entry_number::text = v_entry_number::text)
     LIMIT 1;
 
     IF v_journal_id IS NOT NULL THEN
@@ -360,8 +384,11 @@ BEGIN
             reference = v_voucher.voucher_number,
             reference_type = v_voucher.type,
             reference_id = CAST(v_voucher.id AS text),
+            debit_account = v_debit_account,
+            credit_account = v_credit_account,
+            amount = v_amount,
             updated_at = timezone('utc', now())
-        WHERE id = v_journal_id;
+        WHERE id::text = v_journal_id::text;
     ELSE
         v_journal_id := gen_random_uuid();
 
@@ -378,6 +405,9 @@ BEGIN
             total_debit,
             total_credit,
             lines,
+            debit_account,
+            credit_account,
+            amount,
             created_at,
             updated_at
         ) VALUES (
@@ -393,6 +423,9 @@ BEGIN
             v_amount,
             v_amount,
             v_lines,
+            v_debit_account,
+            v_credit_account,
+            v_amount,
             timezone('utc', now()),
             timezone('utc', now())
         );
@@ -403,7 +436,7 @@ BEGIN
         is_posted = true,
         account_id = CAST(v_liquid_acc.id AS text),
         updated_at = timezone('utc', now())
-    WHERE id = v_voucher.id;
+    WHERE id::text = v_voucher.id::text;
 
     PERFORM recalculate_company_ledger_balances(p_company_id);
 
@@ -433,7 +466,7 @@ BEGIN
     FOR r_voucher IN (
         SELECT CAST(id AS text) AS id, company_id, voucher_number 
         FROM public.payment_vouchers
-        WHERE (p_target_company_id IS NULL OR company_id = p_target_company_id)
+        WHERE (p_target_company_id IS NULL OR company_id::text = p_target_company_id::text)
         ORDER BY date ASC, created_at ASC
     ) LOOP
         PERFORM post_voucher_to_ledger(r_voucher.id, r_voucher.company_id);
@@ -445,7 +478,7 @@ BEGIN
         FOR r_voucher IN (
             SELECT CAST(id AS text) AS id, company_id, CAST(id AS text) AS voucher_number
             FROM public.vouchers
-            WHERE (p_target_company_id IS NULL OR company_id = p_target_company_id)
+            WHERE (p_target_company_id IS NULL OR company_id::text = p_target_company_id::text)
         ) LOOP
             PERFORM post_voucher_to_ledger(r_voucher.id, r_voucher.company_id);
             v_posted_count := v_posted_count + 1;
