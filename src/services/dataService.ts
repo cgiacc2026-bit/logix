@@ -341,6 +341,8 @@ export function getDefaultMappingForAccounts(accounts: Account[]): DefaultAccoun
 class LocalDataStore {
   private memoryFallback: Record<string, string> = {};
 
+  public clearMemoryCache(): void { this.memoryFallback = {}; }
+
   public getEffectiveCompanyId(): string | null {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem('supabase_company_id');
@@ -5434,6 +5436,8 @@ export class DataService {
       closingBalance: customer?.balance || 0,
     };
   }
+
+  public static clearLocalMemory(): void { localDataStore.clearMemoryCache(); }
 
   public static async resetDatabase(): Promise<void> {
     const compId = localDataStore.getEffectiveCompanyId();

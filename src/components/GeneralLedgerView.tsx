@@ -5,7 +5,9 @@ import { BookOpen, Calendar, Printer, Filter, ArrowLeftRight } from 'lucide-reac
 import { DataService } from '../services/dataService.ts';
 
 interface GeneralLedgerProps {
+  journals?: any[];
   accounts: Account[];
+  journals?: any[];
   currency: string;
   selectedAccountId?: string;
 }
@@ -14,6 +16,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
   accounts,
   currency,
   selectedAccountId,
+  journals,
 }) => {
   const [currentAccountId, setCurrentAccountId] = useState<string>(
     selectedAccountId || (accounts.length > 0 ? accounts[0].id : '')
@@ -47,7 +50,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
     };
 
     fetchLedger();
-  }, [currentAccountId, startDate, endDate]);
+  }, [currentAccountId, startDate, endDate, journals]);
 
   return (
     <div className="space-y-6">

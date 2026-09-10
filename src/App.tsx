@@ -150,6 +150,17 @@ export default function App() {
     localStorage.removeItem('logix_auth_session');
     localStorage.removeItem('supabase_company_id');
     localStorage.removeItem('supabase_company_info');
+    DataService.clearLocalMemory();
+    setInvoices([]);
+    setJournals([]);
+    setAccounts([]);
+    setCustomers([]);
+    setSuppliers([]);
+    setInventory([]);
+    setVouchers([]);
+    setProductionOrders([]);
+    setQuotations([]);
+
   };
 
   // Fetch all ERP system data from Supabase / DataService
@@ -617,6 +628,7 @@ export default function App() {
           {activeTab === 'ledger' && (
             <GeneralLedgerView
               accounts={accounts}
+              journals={journals}
               currency={currency}
               selectedAccountId={selectedLedgerAccountId}
             />
