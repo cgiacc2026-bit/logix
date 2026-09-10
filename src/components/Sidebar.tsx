@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   RotateCcw,
   BarChart3,
+  FolderUp,
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
 import { CompanyProfile } from '../types.js';
@@ -40,6 +41,7 @@ interface SidebarProps {
   collapsed: boolean;
   setCollapsed: (c: boolean | ((prev: boolean) => boolean)) => void;
   onOpenCompanySetup: () => void;
+  onOpenJsonBackup?: () => void;
   onSaveCompany?: (updated: CompanyProfile) => Promise<void> | void;
 }
 
@@ -64,6 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   setCollapsed,
   onOpenCompanySetup,
+  onOpenJsonBackup,
   onSaveCompany,
 }) => {
   const {
@@ -217,6 +220,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           color: 'text-violet-400',
         },
         {
+          id: 'json-backup' as any,
+          label: 'استيراد نسخة احتياطية (JSON)',
+          icon: FolderUp,
+          color: 'text-amber-400',
+        },
+        {
           id: 'users',
           label: 'المستخدمون والصلاحيات',
           icon: Users,
@@ -330,7 +339,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setActiveTab(item.id)}
+                    onClick={() => {
+                      if (item.id === ('json-backup' as any)) {
+                        if (onOpenJsonBackup) onOpenJsonBackup();
+                        return;
+                      }
+                      setActiveTab(item.id);
+                    }}
                     title={collapsed ? item.label : undefined}
                     style={
                       isActive
@@ -378,6 +393,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         ))}
       </div>
+
+      {/* Quick JSON Backup / Import Button in Sidebar */}
+      {onOpenJsonBackup && (
+        <div
+          style={{ borderColor: activePalette.sidebarBorder }}
+          className="px-2 pt-2 border-t bg-black/10 shrink-0"
+        >
+          {!collapsed ? (
+            <button
+              type="button"
+              onClick={onOpenJsonBackup}
+              className="w-full text-right bg-amber-500/15 hover:bg-amber-500/25 p-2 rounded-lg border border-amber-500/40 flex items-center justify-between cursor-pointer transition-colors text-amber-200 group shadow-2xs"
+              title="استيراد واستعادة نسخة احتياطية (JSON) لقاعدة البيانات السحابية والمحلية"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md flex items-center justify-center border shrink-0 bg-amber-500/25 text-amber-300 border-amber-400/50 group-hover:scale-105 transition-transform">
+                  <FolderUp className="w-3.5 h-3.5 text-amber-300" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold text-white flex items-center gap-1 truncate">
+                    <span>استيراد نسخة (JSON)</span>
+                  </div>
+                  <div className="text-[9px] text-amber-300/80 truncate">
+                    <span>استعادة ملف النسخة الاحتياطية</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenJsonBackup}
+              className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center border cursor-pointer bg-amber-500/20 text-amber-300 border-amber-400/40 hover:bg-amber-500/30 transition-colors shadow-2xs"
+              title="استيراد واستعادة نسخة احتياطية (JSON)"
+            >
+              <FolderUp className="w-4 h-4 text-amber-300" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Supabase Cloud Sync Status Widget & Theme Switcher in Sidebar */}
       <div

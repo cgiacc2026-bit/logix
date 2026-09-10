@@ -511,6 +511,7 @@ export default function App() {
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
         onOpenCompanySetup={() => setActiveTab('company')}
+        onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
         onSaveCompany={handleSaveCompany}
       />
 
@@ -834,7 +835,7 @@ export default function App() {
           onClose={() => setIsJsonBackupModalOpen(false)}
           currentCompanyId={activeCompany.id}
           currentCompanyName={activeCompany.nameAr}
-          isSuperAdmin={currentUser?.role === 'ADMIN'}
+          isSuperAdmin={Boolean(currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.isPlatformAdmin || currentUser?.email === 'cgiacc2026@gmail.com')}
           onDataRestored={() => refreshAllData()}
         />
       )}

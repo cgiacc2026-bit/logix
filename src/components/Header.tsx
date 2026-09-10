@@ -19,6 +19,8 @@ import {
   Layers,
   ChevronDown,
   Wrench,
+  FolderUp,
+  Upload,
 } from 'lucide-react';
 import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
@@ -214,18 +216,17 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="sm:hidden">Excel</span>
           </button>
 
-          {/* Quick Backup Export / Restore via JSON - Restricted to Super Admin Only */}
-          {Boolean(currentUser?.isPlatformAdmin || currentUser?.role === 'SUPER_ADMIN' || currentUser?.email === 'cgiacc2026@gmail.com') && (
-            <button
-              onClick={onOpenJsonBackup || handleQuickBackup}
-              disabled={isExporting}
-              title="إدارة واستعادة وتصدير وتصفير بيانات المنشأة بصيغة JSON (خاص بالمشرف العام)"
-              className="hidden md:flex px-2 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-200 text-xs font-bold items-center gap-1 border border-indigo-700/60 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
-            >
-              <Download className={`w-3 h-3 ${isExporting ? 'animate-bounce' : ''}`} />
-              <span>نسخ/استعادة JSON</span>
-            </button>
-          )}
+          {/* Dedicated Import Backup Button (أيقونة وزر استيراد نسخة احتياطية مباشرة في الواجهة) */}
+          <button
+            onClick={onOpenJsonBackup || handleQuickBackup}
+            disabled={isExporting}
+            title="استيراد واستعادة نسخة احتياطية (ملف JSON) لقاعدة البيانات السحابية والمحلية"
+            className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 border border-amber-400/50 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
+          >
+            <FolderUp className={`w-3.5 h-3.5 text-amber-200 ${isExporting ? 'animate-bounce' : ''}`} />
+            <span className="hidden sm:inline">استيراد نسخة (JSON)</span>
+            <span className="sm:hidden">استيراد</span>
+          </button>
 
           {/* Super Admin Company Activation Portal - Strictly Restricted to Super Admin */}
           {onOpenSuperAdminPortal && Boolean(currentUser?.isPlatformAdmin || currentUser?.role === 'SUPER_ADMIN' || currentUser?.email === 'cgiacc2026@gmail.com') && (
