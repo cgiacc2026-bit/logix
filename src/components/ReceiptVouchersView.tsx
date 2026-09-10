@@ -81,6 +81,23 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
   const [vouchNotes, setVouchNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSyncingLedger, setIsSyncingLedger] = useState(false);
+  const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
+
+  const handleSyncAllVouchers = async () => {
+    setIsSyncingLedger(true);
+    setSyncSuccessMsg(null);
+    try {
+      const result = await VouchersService.syncAllVouchersToLedger();
+      if (onRefreshAll) await onRefreshAll();
+      setSyncSuccessMsg(`تمت المزامنة بنجاح: تم ترحيل وتحديث القيود وأرصدة ${result.accountsUpdated} حساب.`);
+      setTimeout(() => setSyncSuccessMsg(null), 4000);
+    } catch (err: any) {
+      alert('حدث خطأ أثناء المزامنة: ' + (err?.message || 'خطأ غير معروف'));
+    } finally {
+      setIsSyncingLedger(false);
+    }
+  };
 
   // Dynamically resolve active Bank and Cash accounts from VouchersService and accounts prop
   const bankAndCashAccounts: BankOrCashAccountSummary[] = useMemo(() => {
@@ -381,6 +398,16 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
 
           <div className="flex flex-wrap items-center gap-2.5">
             <button
+              onClick={handleSyncAllVouchers}
+              disabled={isSyncingLedger}
+              className="px-3.5 py-2.5 bg-[#FAF7F0] hover:bg-[#F3EDE0] text-[#B8860B] border border-[#E5E1DA] text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all disabled:opacity-50"
+              title="مزامنة وترحيل كافة السندات للدليل المحاسبي وتحديث أرصدة البنوك والخزينة والعملاء"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isSyncingLedger ? 'animate-spin' : ''}`} />
+              <span>{isSyncingLedger ? 'جارِ الترحيل...' : 'ترحيل وتحديث الأرصدة'}</span>
+            </button>
+
+            <button
               onClick={() => handleOpenCreate('RECEIPT')}
               className="px-4 py-2.5 bg-[#2D6A4F] hover:bg-[#22533D] text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-2 transition-all"
             >
@@ -397,6 +424,13 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
             </button>
           </div>
         </div>
+
+        {syncSuccessMsg && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-[#2D6A4F] font-bold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{syncSuccessMsg}</span>
+          </div>
+        )}
 
         {/* Filter Controls */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-[#E5E1DA] text-xs">

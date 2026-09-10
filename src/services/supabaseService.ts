@@ -394,6 +394,7 @@ export class SupabaseDataService {
             address: cust.address || '',
             city: cust.city || '',
             balance: cust.balance || 0,
+            current_balance: cust.balance || 0,
             tax_number: cust.taxNumber || '',
             raw_data: {
               ...cust,
@@ -432,6 +433,7 @@ export class SupabaseDataService {
         address: cust.address || '',
         city: cust.city || '',
         balance: cust.balance || 0,
+        current_balance: cust.balance || 0,
         tax_number: cust.taxNumber || '',
         raw_data: {
           ...cust,
@@ -539,6 +541,7 @@ export class SupabaseDataService {
             address: supp.address || '',
             city: supp.city || '',
             balance: supp.balance || 0,
+            current_balance: supp.balance || 0,
             raw_data: {
               ...supp,
               id: supp.id,
@@ -575,6 +578,7 @@ export class SupabaseDataService {
         address: s.address || '',
         city: s.city || '',
         balance: s.balance || 0,
+        current_balance: s.balance || 0,
         raw_data: {
           ...s,
           id: s.id,
@@ -1544,6 +1548,7 @@ export class SupabaseDataService {
         is_system: !!acc.isSystem,
         is_active: acc.isActive ?? true,
         balance: acc.balance || 0,
+        current_balance: acc.balance || 0,
         description: acc.description || '',
         updated_at: new Date().toISOString(),
       }));
@@ -1576,6 +1581,27 @@ export class SupabaseDataService {
       return !error;
     } catch (e) {
       console.warn('Supabase deleteAccount exception:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Triggers the remote PostgreSQL ledger synchronization RPC for all vouchers.
+   */
+  public static async syncAllVouchersToLedgerRemote(targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    try {
+      const { error } = await supabase.rpc('sync_all_vouchers_to_ledger', {
+        p_target_company_id: companyId || null,
+      });
+      if (error) {
+        // Safe fallback if RPC not yet created in PostgreSQL
+        return false;
+      }
+      return true;
+    } catch (err: any) {
       return false;
     }
   }

@@ -1576,6 +1576,17 @@ export class DataService {
       console.warn('Supabase getJournals notice:', e);
     }
 
+    try {
+      const vouchers = localDataStore.getVouchers();
+      if (vouchers.length > 0) {
+        const jMap = new Set(localJournals.map((j) => j.sourceId || j.id || j.reference));
+        const missing = vouchers.some((v) => v.amount > 0 && !jMap.has(v.id) && !jMap.has(v.voucherNumber));
+        if (missing) {
+          this.syncVouchersWithJournals(localJournals).catch(() => {});
+        }
+      }
+    } catch {}
+
     return localJournals;
   }
 
@@ -2644,10 +2655,219 @@ export class DataService {
    */
   public static syncAccountBalances(): Account[] {
     const accounts = localDataStore.getAccounts();
-    const journals = localDataStore.getJournals();
+    const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
     const withBalances = this.calculateDynamicAccountBalances(accounts, journals);
     localDataStore.saveAccounts(withBalances);
     return withBalances;
+  }
+
+  /**
+   * Enterprise-Grade Double-Entry Voucher-to-Ledger Synchronization
+   * Ensures every active receipt and payment voucher has a matching, balanced double-entry journal entry,
+   * updates the Chart of Accounts dynamic balances (Bank/Cash accounts), and recalculates Customer/Supplier balances.
+   */
+  public static async syncVouchersWithJournals(targetJournals?: JournalEntry[]): Promise<{
+    journalsCount: number;
+    accountsUpdated: number;
+    vouchersSynced: number;
+  }> {
+    const vouchers = localDataStore.getVouchers();
+    const journals = targetJournals || localDataStore.getJournals();
+    const accounts = localDataStore.getAccounts();
+    const customers = localDataStore.getCustomers();
+    const suppliers = localDataStore.getSuppliers();
+    const resolved = this.getResolvedAccounts();
+
+    let vouchersSynced = 0;
+    let journalsChanged = false;
+    const syncedJournalEntries: JournalEntry[] = [];
+
+    const journalMap = new Map<string, JournalEntry>();
+    for (const j of journals) {
+      if (j.id) journalMap.set(j.id, j);
+      if (j.sourceId) journalMap.set(j.sourceId, j);
+      if (j.reference) journalMap.set(j.reference, j);
+      if (j.entryNumber) journalMap.set(j.entryNumber, j);
+    }
+
+    for (const v of vouchers) {
+      const isReceipt = v.type === 'RECEIPT';
+      const amount = Number(v.amount) || 0;
+      if (amount <= 0 && v.status !== 'CANCELLED') continue;
+
+      const voucherNum = v.voucherNumber || v.id;
+      const jvNum = `JV-${voucherNum}`;
+
+      let entityNameAr = v.entityNameAr || '';
+      if (!entityNameAr && v.entityId) {
+        if (isReceipt) {
+          const c = customers.find((x) => x.id === v.entityId);
+          if (c) entityNameAr = c.nameAr;
+        } else {
+          const s = suppliers.find((x) => x.id === v.entityId);
+          if (s) entityNameAr = s.nameAr;
+        }
+      }
+
+      // Resolve liquid account (Bank or Cash)
+      const targetBankAccId = v.bankAccountId || (v.paymentMethod === 'CASH' ? resolved.cash.id : resolved.bank.id);
+      let liquidAcc = accounts.find((a) => a.id === targetBankAccId || a.code === targetBankAccId);
+      if (!liquidAcc) {
+        if (v.paymentMethod === 'CASH') {
+          liquidAcc = accounts.find((a) => a.code === '1113' || a.nameAr.includes('صندوق') || a.nameAr.includes('خزينة')) || resolved.cash;
+        } else {
+          liquidAcc = accounts.find((a) => a.code === '1111' || a.code === '1112' || a.nameAr.includes('بنك') || a.nameAr.includes('تمويل') || a.nameAr.includes('مصرف')) || resolved.bank;
+        }
+      }
+
+      const existingJ = (v.journalEntryId && journalMap.get(v.journalEntryId)) ||
+        journalMap.get(v.id) ||
+        journalMap.get(voucherNum) ||
+        journalMap.get(jvNum);
+
+      if (v.status === 'CANCELLED') {
+        if (existingJ && existingJ.status !== 'CANCELLED') {
+          existingJ.status = 'CANCELLED';
+          existingJ.updatedAt = new Date().toISOString();
+          journalsChanged = true;
+          syncedJournalEntries.push(existingJ);
+        }
+        continue;
+      }
+
+      const jLines = isReceipt
+        ? [
+            {
+              id: 'jl-1',
+              accountId: liquidAcc.id,
+              accountCode: liquidAcc.code,
+              accountNameAr: liquidAcc.nameAr,
+              debit: amount,
+              credit: 0,
+              memo: `قبض مبالغ سند رقم ${voucherNum} - ${entityNameAr}`,
+            },
+            {
+              id: 'jl-2',
+              accountId: resolved.receivable.id,
+              accountCode: resolved.receivable.code,
+              accountNameAr: resolved.receivable.nameAr,
+              debit: 0,
+              credit: amount,
+              memo: `تحصيل من العميل ${entityNameAr}`,
+              entityType: 'CUSTOMER' as const,
+              entityId: v.entityId || '',
+            },
+          ]
+        : [
+            {
+              id: 'jl-1',
+              accountId: resolved.payable.id,
+              accountCode: resolved.payable.code,
+              accountNameAr: resolved.payable.nameAr,
+              debit: amount,
+              credit: 0,
+              memo: `سداد للمورد ${entityNameAr}`,
+              entityType: 'SUPPLIER' as const,
+              entityId: v.entityId || '',
+            },
+            {
+              id: 'jl-2',
+              accountId: liquidAcc.id,
+              accountCode: liquidAcc.code,
+              accountNameAr: liquidAcc.nameAr,
+              debit: 0,
+              credit: amount,
+              memo: `صرف مبالغ سند رقم ${voucherNum} - ${entityNameAr}`,
+            },
+          ];
+
+      if (existingJ) {
+        const needsUpdate =
+          existingJ.status !== 'POSTED' ||
+          existingJ.totalDebit !== amount ||
+          existingJ.totalCredit !== amount ||
+          !existingJ.lines ||
+          existingJ.lines.length < 2;
+
+        if (needsUpdate) {
+          existingJ.status = 'POSTED';
+          existingJ.date = v.date || existingJ.date;
+          existingJ.lines = jLines;
+          existingJ.totalDebit = amount;
+          existingJ.totalCredit = amount;
+          existingJ.updatedAt = new Date().toISOString();
+          journalsChanged = true;
+          syncedJournalEntries.push(existingJ);
+        }
+        v.journalEntryId = existingJ.id;
+      } else {
+        const newJ: JournalEntry = {
+          id: 'jv-' + (v.id.startsWith('v-') || v.id.startsWith('pv-') ? v.id : 'vch-' + voucherNum),
+          entryNumber: jvNum,
+          date: v.date || new Date().toISOString().split('T')[0],
+          reference: voucherNum,
+          description: `قيد ترحيل سند ${isReceipt ? 'قبض' : 'صرف'} رقم (${voucherNum}) - ${entityNameAr}`,
+          status: 'POSTED',
+          lines: jLines,
+          totalDebit: amount,
+          totalCredit: amount,
+          createdAt: v.createdAt || new Date().toISOString(),
+          postedAt: v.createdAt || new Date().toISOString(),
+          isAutoGenerated: true,
+          sourceModule: v.type,
+          sourceId: v.id,
+        };
+
+        journals.unshift(newJ);
+        journalMap.set(newJ.id, newJ);
+        journalMap.set(v.id, newJ);
+        journalMap.set(voucherNum, newJ);
+        journalMap.set(jvNum, newJ);
+        v.journalEntryId = newJ.id;
+        journalsChanged = true;
+        vouchersSynced++;
+        syncedJournalEntries.push(newJ);
+      }
+    }
+
+    if (journalsChanged || vouchersSynced > 0) {
+      localDataStore.saveJournals(journals);
+      localDataStore.saveVouchers(vouchers);
+    }
+
+    // Recalculate dynamic account balances with all posted journals
+    const postedJournals = journals.filter((j) => j.status === 'POSTED');
+    const updatedAccounts = this.calculateDynamicAccountBalances(accounts, postedJournals);
+    localDataStore.saveAccounts(updatedAccounts);
+
+    // Recalculate all customer & supplier balances
+    for (const cust of customers) {
+      this.recalculateCustomerBalance(cust.id);
+    }
+    for (const supp of suppliers) {
+      this.recalculateSupplierBalance(supp.id);
+    }
+
+    // Persist to Supabase if configured
+    if (isSupabaseConfigured) {
+      try {
+        if (syncedJournalEntries.length > 0) {
+          await SupabaseDataService.saveJournals(syncedJournalEntries);
+        }
+        await SupabaseDataService.saveAccounts(updatedAccounts);
+        await SupabaseDataService.saveCustomers(localDataStore.getCustomers());
+        await SupabaseDataService.saveSuppliers(localDataStore.getSuppliers());
+        await SupabaseDataService.syncAllVouchersToLedgerRemote();
+      } catch (err) {
+        console.warn('Supabase sync warning in syncVouchersWithJournals:', err);
+      }
+    }
+
+    return {
+      journalsCount: journals.length,
+      accountsUpdated: updatedAccounts.length,
+      vouchersSynced,
+    };
   }
 
   public static async createVoucher(data: any): Promise<PaymentVoucher> {
@@ -2786,12 +3006,25 @@ export class DataService {
     }
 
     // Immediately sync and update Bank/Cash account balances in local store!
-    this.syncAccountBalances();
+    const updatedAccounts = this.syncAccountBalances();
 
     // High-Performance Optimistic UI: Background Non-Blocking Persistence
     const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
     backgroundSync.enqueueVoucherCreate(newVoucher, data, activeCompanyId);
     syncToFirestore('erp_vouchers', newVoucher.id, newVoucher);
+
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveVoucher(newVoucher).catch(() => {});
+      SupabaseDataService.saveJournal(jEntry).catch(() => {});
+      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      if (isReceipt && newVoucher.entityId) {
+        const c = localDataStore.getCustomers().find((x) => x.id === newVoucher.entityId);
+        if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+      } else if (!isReceipt && newVoucher.entityId) {
+        const s = localDataStore.getSuppliers().find((x) => x.id === newVoucher.entityId);
+        if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+      }
+    }
 
     safeApiFetch('/api/vouchers', {
       method: 'POST',
@@ -2843,11 +3076,24 @@ export class DataService {
     }
 
     // 5. Instantly restore Bank/Cash balances
-    this.syncAccountBalances();
+    const updatedAccounts = this.syncAccountBalances();
 
     const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
     backgroundSync.enqueueVoucherCancel(v, reason, activeCompanyId);
     syncToFirestore('erp_vouchers', id, v);
+
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveVoucher(v).catch(() => {});
+      if (j) SupabaseDataService.saveJournal(j).catch(() => {});
+      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      if (v.entityType === 'CUSTOMER' && v.entityId) {
+        const c = localDataStore.getCustomers().find((x) => x.id === v.entityId);
+        if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+      } else if (v.entityId) {
+        const s = localDataStore.getSuppliers().find((x) => x.id === v.entityId);
+        if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+      }
+    }
 
     safeApiFetch<PaymentVoucher>(`/api/vouchers/${id}/cancel`, {
       method: 'POST',
@@ -3032,11 +3278,34 @@ export class DataService {
     }
 
     // 6. Instantly update dynamic Bank / Cash account balances in local store!
-    this.syncAccountBalances();
+    const updatedAccounts = this.syncAccountBalances();
 
     // 7. Background sync & API call
     if (isSupabaseConfigured) {
       SupabaseDataService.saveVoucher(updatedVoucher).catch(() => {});
+      const updatedJournal = journals.find((j) => j.id === updatedVoucher.journalEntryId);
+      if (updatedJournal) {
+        SupabaseDataService.saveJournal(updatedJournal).catch(() => {});
+      }
+      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      if (oldEntityId) {
+        if (oldEntityType === 'CUSTOMER') {
+          const c = localDataStore.getCustomers().find((x) => x.id === oldEntityId);
+          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+        } else {
+          const s = localDataStore.getSuppliers().find((x) => x.id === oldEntityId);
+          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+        }
+      }
+      if (newEntityId && newEntityId !== oldEntityId) {
+        if (isReceipt) {
+          const c = localDataStore.getCustomers().find((x) => x.id === newEntityId);
+          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+        } else {
+          const s = localDataStore.getSuppliers().find((x) => x.id === newEntityId);
+          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+        }
+      }
     }
     syncToFirestore('erp_vouchers', id, updatedVoucher);
 

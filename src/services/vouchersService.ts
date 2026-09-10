@@ -51,17 +51,18 @@ export class VouchersService {
     const bankAndCash = accounts.filter((acc) => {
       const code = String(acc.code || '');
       const name = String(acc.nameAr || '');
-      const cat = String(acc.category || '').toUpperCase();
       const subCat = String((acc as any).subCategory || '').toUpperCase();
 
-      const isCashCode = code.startsWith('1112') || code.startsWith('1110') || code === '111' || code === '1113';
+      const isCashCode = code.startsWith('1113') || code === '111';
       const isBankCode = code.startsWith('1111') || code.startsWith('1101');
       const isBankOrCashByName =
         name.includes('بنك') ||
         name.includes('مصرف') ||
+        name.includes('تمويل') ||
         name.includes('خزينة') ||
         name.includes('صندوق') ||
-        name.includes('نقدية');
+        name.includes('نقدية') ||
+        name.includes('عهدة');
 
       return (
         acc.category === 'ASSET' &&
@@ -73,6 +74,20 @@ export class VouchersService {
       );
     });
 
+    const classifyAccount = (acc: Account): 'CASH' | 'BANK' => {
+      const name = String(acc.nameAr || '');
+      const code = String(acc.code || '');
+      const isBank =
+        name.includes('بنك') ||
+        name.includes('مصرف') ||
+        name.includes('تمويل') ||
+        name.includes('KFH') ||
+        name.includes('NBK') ||
+        code.startsWith('1111') ||
+        (code.startsWith('1112') && !name.includes('صندوق') && !name.includes('خزينة'));
+      return isBank ? 'BANK' : 'CASH';
+    };
+
     // If none found, provide defaults with real accounts
     if (bankAndCash.length === 0) {
       const fallback = accounts.filter((a) => a.category === 'ASSET').slice(0, 2);
@@ -80,7 +95,7 @@ export class VouchersService {
         id: a.id,
         code: a.code,
         nameAr: a.nameAr,
-        category: a.code === '1112' || a.nameAr.includes('خزينة') || a.nameAr.includes('صندوق') ? 'CASH' : 'BANK',
+        category: classifyAccount(a),
         balance: a.balance || 0,
       }));
     }
@@ -89,9 +104,21 @@ export class VouchersService {
       id: acc.id,
       code: acc.code,
       nameAr: acc.nameAr,
-      category: acc.code.startsWith('1112') || acc.nameAr.includes('صندوق') || acc.nameAr.includes('خزينة') ? 'CASH' : 'BANK',
+      category: classifyAccount(acc),
       balance: acc.balance || 0,
     }));
+  }
+
+  /**
+   * Performs an instant reconciliation of all vouchers with the General Ledger,
+   * generating missing double-entry journals and updating Chart of Accounts balances.
+   */
+  public static async syncAllVouchersToLedger(): Promise<{
+    journalsCount: number;
+    accountsUpdated: number;
+    vouchersSynced: number;
+  }> {
+    return DataService.syncVouchersWithJournals();
   }
 
   /**
