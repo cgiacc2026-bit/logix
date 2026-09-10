@@ -503,6 +503,7 @@ export default function App() {
 
       {/* Side Navigation Bar (الايقونات في الجنب) */}
       <Sidebar
+        currentUser={currentUser}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         unpaidCount={unpaidInvoices.length}

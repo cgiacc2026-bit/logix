@@ -29,7 +29,10 @@ import { isDemoActive } from '../services/demoService.js';
 import { checkIsSupabaseConfigured } from '../services/supabaseClient.ts';
 import { useTheme } from '../services/themeService.ts';
 
+import { SystemUser } from '../types.js';
+
 interface SidebarProps {
+  currentUser?: SystemUser | null;
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   unpaidCount?: number;
@@ -53,6 +56,7 @@ interface NavSection {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
+  currentUser,
   activeTab,
   setActiveTab,
   unpaidCount = 0,
@@ -228,6 +232,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
+  
+  // [ARCHITECT] Strict RBAC Filtering
+  const isCashier = currentUser?.role === 'SALES';
+  const isAccountant = currentUser?.role === 'ACCOUNTANT' || currentUser?.role === 'CHIEF_ACCOUNTANT';
+  const isManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'GENERAL_MANAGER';
+  
+
+  
+  const filteredGroups = groups.map(group => {
+    return {
+      ...group,
+      items: group.items.filter(item => {
+        if (isManager) return true; // Manager sees everything
+        
+        if (isCashier) {
+          // Cashier ONLY sees POS, Invoices (basic view), and maybe their own dashboard
+          return ['pos', 'dashboard', 'invoices', 'quotations'].includes(item.id);
+        }
+        
+        if (isAccountant) {
+          // Accountant sees financials, ledgers, journals, vouchers, statements, etc.
+          // Probably shouldn't see system settings (users, company setup) unless authorized
+          if (['users', 'system-reset'].includes(item.id)) return false;
+          return true;
+        }
+        
+        return true; // Default fallback
+      })
+    };
+  }).filter(g => g.items.length > 0);
+  
   return (
     <aside
       style={{ backgroundColor: activePalette.sidebarBg, borderColor: activePalette.sidebarBorder }}
@@ -280,7 +315,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation List */}
       <div className="flex-1 overflow-y-auto py-2.5 px-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
-        {sections.map((section) => (
+        {filteredGroups.map((section) => (
           <div key={section.id} className="space-y-0.5">
             {!collapsed && (
               <div className="px-2.5 py-0.5 text-[10px] font-bold text-slate-400 tracking-wider">
