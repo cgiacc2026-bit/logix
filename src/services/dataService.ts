@@ -599,6 +599,24 @@ class LocalDataStore {
     }
   }
 
+  public clearTombstones(specificCompanyId?: string): void {
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const types = ['customers', 'suppliers', 'inventory', 'journals', 'invoices', 'vouchers', 'accounts', 'quotations'];
+    for (const type of types) {
+      const key = `logix_tombstones_${type}_${canonId}`;
+      const altKey = `logix_tombstones_${type}_${rawId}`;
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          window.localStorage.removeItem(key);
+          window.localStorage.removeItem(altKey);
+        } catch {}
+      }
+      delete this.memoryFallback[key];
+      delete this.memoryFallback[altKey];
+    }
+  }
+
   public getCompany(): CompanyProfile {
     const compId = this.getEffectiveCompanyId();
     const dedicatedLogo = typeof window !== 'undefined'

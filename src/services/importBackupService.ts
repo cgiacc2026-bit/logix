@@ -9,6 +9,8 @@ import {
 } from '../types.js';
 import { supabase, toValidUUID } from './supabaseClient.js';
 import { resolveToSupabaseCompanyUUID } from './supabaseService.js';
+import { localDataStore } from './dataService.js';
+import { cacheService } from './cacheService.js';
 
 export interface ImportProgress {
   total: number;
@@ -41,7 +43,7 @@ export interface ImportResultReport {
  * while maintaining referential integrity across all entities in memory.
  */
 class IdSanitizerMap {
-  private map = new Map<string, string>();
+  public map = new Map<string, string>();
   private uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   public generateUUID(): string {
@@ -66,11 +68,12 @@ class IdSanitizerMap {
       return this.generateUUID();
     }
     const cleanId = rawId.trim();
-    if (this.isValidUUID(cleanId)) {
-      return cleanId;
-    }
     if (this.map.has(cleanId)) {
       return this.map.get(cleanId)!;
+    }
+    if (this.isValidUUID(cleanId)) {
+      this.map.set(cleanId, cleanId);
+      return cleanId;
     }
     const newUuid = this.generateUUID();
     this.map.set(cleanId, newUuid);
@@ -80,8 +83,9 @@ class IdSanitizerMap {
   public mapExisting(rawId: any): string | null {
     if (!rawId || typeof rawId !== 'string') return null;
     const cleanId = rawId.trim();
+    if (this.map.has(cleanId)) return this.map.get(cleanId)!;
     if (this.isValidUUID(cleanId)) return cleanId;
-    return this.map.get(cleanId) || null;
+    return null;
   }
 }
 
@@ -119,11 +123,13 @@ function deduplicateLatest<T>(
 
 export class ERPBackupImportService {
   /**
-   * Imports ERP Backup JSON into Supabase with strict tenant scoping:
+   * Imports ERP Backup JSON into Supabase and local storage with strict tenant scoping:
    * 1. Ignores legacy company IDs like "company-kw-01", forcing active tenant UUID.
    * 2. Sanitizes old IDs ("acc-1000", "inv-101", "cust-9407") into valid UUIDs with an in-memory mapping.
-   * 3. Memory deduplication: keeps newest record for duplicate reference numbers.
-   * 4. Safe sequential processing: Batches of 20 with upsert onConflict and try/catch per batch.
+   * 3. Pre-queries existing Supabase items/customers/suppliers/accounts to link with existing records.
+   * 4. Memory deduplication: keeps newest record for duplicate reference numbers.
+   * 5. Safe sequential processing: Batches of 25 with correct 'id' onConflict and mandatory 'name' column.
+   * 6. Persists data to localDataStore and cacheService for immediate offline and UI rendering.
    */
   public static async importCompanyJsonData(
     targetCompanyId: string,
@@ -173,17 +179,17 @@ export class ERPBackupImportService {
 
       const rawData = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
 
-      // Extract and normalize raw entities
-      const rawAccounts: Account[] = rawData.accounts || rawData.chart_of_accounts || [];
-      const rawCustomers: Customer[] = rawData.customers || [];
-      const rawSuppliers: Supplier[] = rawData.suppliers || [];
-      const rawInventory: InventoryItem[] = rawData.inventory || rawData.items || rawData.products || [];
-      const rawInvoices: Invoice[] = rawData.invoices || [];
-      const rawVouchers: PaymentVoucher[] = rawData.vouchers || rawData.payment_vouchers || [];
-      const rawJournals: JournalEntry[] = rawData.journals || rawData.journal_entries || [];
+      // Extract and normalize raw entities (supporting all schema naming variants)
+      const rawAccounts: Account[] = rawData.accounts || rawData.chart_of_accounts || rawData.chartOfAccounts || [];
+      const rawCustomers: Customer[] = rawData.customers || rawData.clients || [];
+      const rawSuppliers: Supplier[] = rawData.suppliers || rawData.vendors || [];
+      const rawInventory: InventoryItem[] = rawData.inventory || rawData.items || rawData.products || rawData.articles || [];
+      const rawInvoices: Invoice[] = rawData.invoices || rawData.sales_invoices || rawData.salesInvoices || [];
+      const rawVouchers: PaymentVoucher[] = rawData.vouchers || rawData.payment_vouchers || rawData.paymentVouchers || rawData.receipts || [];
+      const rawJournals: JournalEntry[] = rawData.journals || rawData.journal_entries || rawData.journalEntries || [];
 
       // ==============================================================================
-      // 2. In-Memory Deduplication (Deduplication in Memory)
+      // 2. In-Memory Deduplication
       //    Keep newest version of any record sharing the same reference number
       // ==============================================================================
       const dedupeTimestamp = (item: any) => {
@@ -233,34 +239,80 @@ export class ERPBackupImportService {
         dedupeTimestamp
       );
 
+      // Pre-query existing Supabase records to reuse existing UUIDs where code/SKU matches
+      try {
+        const [exItems, exCusts, exSupps, exAccs] = await Promise.all([
+          supabase.from('items').select('id, code, sku').eq('company_id', activeCompanyUUID),
+          supabase.from('customers').select('id, code').eq('company_id', activeCompanyUUID),
+          supabase.from('suppliers').select('id, code').eq('company_id', activeCompanyUUID),
+          supabase.from('chart_of_accounts').select('id, code').eq('company_id', activeCompanyUUID),
+        ]);
+
+        if (exItems.data) {
+          for (const row of exItems.data) {
+            if (row.code) idSanitizer.map.set(`code-${row.code}`, row.id);
+            if (row.sku) idSanitizer.map.set(`sku-${row.sku}`, row.id);
+          }
+        }
+        if (exCusts.data) {
+          for (const row of exCusts.data) {
+            if (row.code) idSanitizer.map.set(`custcode-${row.code}`, row.id);
+          }
+        }
+        if (exSupps.data) {
+          for (const row of exSupps.data) {
+            if (row.code) idSanitizer.map.set(`suppcode-${row.code}`, row.id);
+          }
+        }
+        if (exAccs.data) {
+          for (const row of exAccs.data) {
+            if (row.code) idSanitizer.map.set(`acccode-${row.code}`, row.id);
+          }
+        }
+      } catch (exErr) {
+        console.warn('Pre-query existing records note:', exErr);
+      }
+
       // Pre-register IDs in ID Sanitizer Map to preserve relational links
-      accounts.forEach((acc) => {
-        const uuid = idSanitizer.getOrCreateUUID(acc.id || `acc-${acc.code}`);
-        if (acc.code) idSanitizer.getOrCreateUUID(`code-${acc.code}`);
+      accounts.forEach((acc, index) => {
+        const existingId = acc.code ? idSanitizer.mapExisting(`acccode-${acc.code}`) : null;
+        const uid = existingId || idSanitizer.getOrCreateUUID(acc.id || `acc-${acc.code || index}`);
+        if (acc.id) idSanitizer.map.set(acc.id, uid);
+        if (acc.code) idSanitizer.map.set(acc.code, uid);
       });
 
-      customers.forEach((c) => {
-        idSanitizer.getOrCreateUUID(c.id);
+      customers.forEach((c, index) => {
+        const existingId = (c as any).code ? idSanitizer.mapExisting(`custcode-${(c as any).code}`) : null;
+        const uid = existingId || idSanitizer.getOrCreateUUID(c.id || `cust-${(c as any).code || index}`);
+        if (c.id) idSanitizer.map.set(c.id, uid);
       });
 
-      suppliers.forEach((s) => {
-        idSanitizer.getOrCreateUUID(s.id);
+      suppliers.forEach((s, index) => {
+        const existingId = (s as any).code ? idSanitizer.mapExisting(`suppcode-${(s as any).code}`) : null;
+        const uid = existingId || idSanitizer.getOrCreateUUID(s.id || `supp-${(s as any).code || index}`);
+        if (s.id) idSanitizer.map.set(s.id, uid);
       });
 
-      inventory.forEach((item) => {
-        idSanitizer.getOrCreateUUID(item.id);
+      inventory.forEach((item, index) => {
+        const existingId = (item.sku && idSanitizer.mapExisting(`sku-${item.sku}`)) ||
+                           ((item as any).code && idSanitizer.mapExisting(`code-${(item as any).code}`));
+        const uid = existingId || idSanitizer.getOrCreateUUID(item.id || item.sku || `item-${index}`);
+        if (item.id) idSanitizer.map.set(item.id, uid);
       });
 
-      invoices.forEach((inv) => {
-        idSanitizer.getOrCreateUUID(inv.id);
+      invoices.forEach((inv, index) => {
+        const uid = idSanitizer.getOrCreateUUID(inv.id || `inv-${index}`);
+        if (inv.id) idSanitizer.map.set(inv.id, uid);
       });
 
-      vouchers.forEach((v) => {
-        idSanitizer.getOrCreateUUID(v.id);
+      vouchers.forEach((v, index) => {
+        const uid = idSanitizer.getOrCreateUUID(v.id || `vch-${index}`);
+        if (v.id) idSanitizer.map.set(v.id, uid);
       });
 
-      journals.forEach((j) => {
-        idSanitizer.getOrCreateUUID(j.id);
+      journals.forEach((j, index) => {
+        const uid = idSanitizer.getOrCreateUUID(j.id || `jv-${index}`);
+        if (j.id) idSanitizer.map.set(j.id, uid);
       });
 
       const totalSteps =
@@ -278,7 +330,7 @@ export class ERPBackupImportService {
         if (onProgress) {
           onProgress({
             total: totalSteps > 0 ? totalSteps : 1,
-            current: currentStep,
+            current: Math.min(currentStep, totalSteps > 0 ? totalSteps : 1),
             stage,
             message,
           });
@@ -288,21 +340,22 @@ export class ERPBackupImportService {
       updateProgress('START', 'بدء فحص وتطهير البيانات...', 0);
 
       // ==============================================================================
-      // 3. Prepare Payloads with UUID Sanitization & Relational Mapping
+      // 3. Prepare Payloads with UUID Sanitization & Mandatory DB Constraints
       // ==============================================================================
 
-      // 3.1 Chart of Accounts
+      // 3.1 Chart of Accounts (Supabase chart_of_accounts: id, company_id, code, name_ar, name_en, category, ...)
       const accountsPayload = accounts.map((acc, index) => {
         const sanitizedId = idSanitizer.getOrCreateUUID(acc.id || `acc-${acc.code || index}`);
         const parentId = acc.parentId ? idSanitizer.getOrCreateUUID(acc.parentId) : null;
+        const accName = acc.nameAr || (acc as any).name || (acc as any).name_ar || 'حساب مستورد';
         return {
           id: sanitizedId,
           company_id: activeCompanyUUID,
           code: acc.code || `ACC-${String(index + 1).padStart(4, '0')}`,
-          name_ar: acc.nameAr || (acc as any).name_ar || 'حساب مستورد',
+          name_ar: accName,
           name_en: acc.nameEn || '',
           category: acc.category || 'ASSET',
-          normal_balance: acc.normalBalance || 'DEBIT',
+          normal_balance: acc.normalBalance || (acc as any).normal_balance || 'DEBIT',
           level: acc.level || 1,
           type: acc.type || 'DETAIL',
           parent_id: parentId,
@@ -313,59 +366,101 @@ export class ERPBackupImportService {
         };
       });
 
-      // 3.2 Customers
+      // 3.2 Customers (Supabase customers: id, company_id, code, name [NOT NULL], name_ar, name_en, balance, ...)
       const customersPayload = customers.map((c, index) => {
-        const sanitizedId = idSanitizer.getOrCreateUUID(c.id || `cust-${index}`);
+        const sanitizedId = idSanitizer.getOrCreateUUID(c.id || `cust-${(c as any).code || index}`);
+        const customerName = c.nameAr || (c as any).name || (c as any).name_ar || 'عميل مستورد';
+        const customerCode = (c as any).code || `CUST-${String(index + 1).padStart(4, '0')}`;
+        const custBalance = Number((c as any).balance || (c as any).current_balance || 0);
         return {
           id: sanitizedId,
           company_id: activeCompanyUUID,
-          code: (c as any).code || `CUST-${String(index + 1).padStart(4, '0')}`,
-          name_ar: c.nameAr || (c as any).name || 'عميل مستورد',
+          code: customerCode,
+          name: customerName,
+          name_ar: customerName,
           name_en: c.nameEn || '',
           phone: c.phone || '',
-          email: c.email || '',
-          tax_number: c.taxNumber || '',
+          tax_number: c.taxNumber || (c as any).tax_number || '',
           address: c.address || '',
-          balance: Number((c as any).balance || 0),
-          current_balance: Number((c as any).current_balance ?? (c as any).balance ?? 0),
+          city: (c as any).city || 'الكويت',
+          balance: custBalance,
+          current_balance: custBalance,
+          is_active: (c as any).isActive ?? (c as any).is_active ?? true,
+          raw_data: {
+            ...c,
+            id: sanitizedId,
+            code: customerCode,
+            nameAr: customerName,
+            companyId: activeCompanyUUID,
+          },
           updated_at: new Date().toISOString(),
         };
       });
 
-      // 3.3 Suppliers
+      // 3.3 Suppliers (Supabase suppliers: id, company_id, code, name, name_ar, name_en, phone, balance, ...)
       const suppliersPayload = suppliers.map((s, index) => {
-        const sanitizedId = idSanitizer.getOrCreateUUID(s.id || `supp-${index}`);
+        const sanitizedId = idSanitizer.getOrCreateUUID(s.id || `supp-${(s as any).code || index}`);
+        const supplierName = s.nameAr || (s as any).name || (s as any).name_ar || 'مورد مستورد';
+        const supplierCode = (s as any).code || `SUPP-${String(index + 1).padStart(4, '0')}`;
+        const suppBalance = Number((s as any).balance || (s as any).current_balance || 0);
         return {
           id: sanitizedId,
           company_id: activeCompanyUUID,
-          code: (s as any).code || `SUPP-${String(index + 1).padStart(4, '0')}`,
-          name_ar: s.nameAr || (s as any).name || 'مورد مستورد',
+          code: supplierCode,
+          name: supplierName,
+          name_ar: supplierName,
           name_en: s.nameEn || '',
           phone: s.phone || '',
-          email: s.email || '',
-          tax_number: s.taxNumber || '',
           address: s.address || '',
-          balance: Number((s as any).balance || 0),
-          current_balance: Number((s as any).current_balance ?? (s as any).balance ?? 0),
+          city: (s as any).city || 'الكويت',
+          balance: suppBalance,
+          current_balance: suppBalance,
+          raw_data: {
+            ...s,
+            id: sanitizedId,
+            code: supplierCode,
+            nameAr: supplierName,
+            companyId: activeCompanyUUID,
+          },
           updated_at: new Date().toISOString(),
         };
       });
 
-      // 3.4 Inventory Items
+      // 3.4 Inventory Items (Supabase items: id, company_id, code, sku, name [NOT NULL], item_name, name_ar, ...)
       const itemsPayload = inventory.map((item, index) => {
-        const sanitizedId = idSanitizer.getOrCreateUUID(item.id || `item-${index}`);
+        const sanitizedId = idSanitizer.getOrCreateUUID(item.id || item.sku || (item as any).code || `item-${index}`);
+        const itemName = item.nameAr || (item as any).name || (item as any).name_ar || 'صنف مستورد';
+        const itemCode = item.sku || (item as any).code || (item as any).barcode || `SKU-${String(index + 1).padStart(4, '0')}`;
+        const costPrice = Number(item.purchasePrice || (item as any).costPrice || (item as any).cost_price || 0);
+        const salePrice = Number(item.salePrice || (item as any).selling_price || (item as any).sale_price || 0);
+        const currentBalance = Number(item.quantityOnHand ?? (item as any).current_balance ?? (item as any).qty_on_hand ?? 0);
+        const minLimit = Number(item.minQuantityAlert ?? (item as any).min_limit ?? 10);
         return {
           id: sanitizedId,
           company_id: activeCompanyUUID,
-          code: item.sku || (item as any).code || `SKU-${String(index + 1).padStart(4, '0')}`,
-          name_ar: item.nameAr || (item as any).name || 'صنف مستورد',
+          code: itemCode,
+          sku: itemCode,
+          barcode: item.barcode || (item as any).barcode || '',
+          name: itemName,
+          item_name: itemName,
+          name_ar: itemName,
           name_en: item.nameEn || '',
-          category: item.category || 'مواد غذائية',
+          category: item.category || 'عام',
           unit: item.unit || 'حبة',
-          cost_price: Number(item.purchasePrice || (item as any).costPrice || (item as any).cost_price || 0),
-          selling_price: Number(item.salePrice || (item as any).selling_price || 0),
-          current_balance: Number(item.quantityOnHand ?? (item as any).current_balance ?? 0),
-          min_limit: Number(item.minQuantityAlert ?? (item as any).min_limit ?? 10),
+          cost_price: costPrice,
+          sale_price: salePrice,
+          selling_price: salePrice,
+          current_balance: currentBalance,
+          qty_on_hand: currentBalance,
+          min_limit: minLimit,
+          is_active: (item as any).isActive ?? (item as any).is_active ?? true,
+          raw_data: {
+            ...item,
+            id: sanitizedId,
+            sku: itemCode,
+            nameAr: itemName,
+            companyId: activeCompanyUUID,
+          },
           updated_at: new Date().toISOString(),
         };
       });
@@ -469,62 +564,62 @@ export class ERPBackupImportService {
       });
 
       // ==============================================================================
-      // 4. Sequential Safe Execution in Batches of 20 with Try/Catch
+      // 4. Sequential Safe Execution in Batches with Try/Catch
       // ==============================================================================
 
-      // 4.1 Accounts (onConflict: company_id, code)
+      // 4.1 Accounts (onConflict: id)
       if (accountsPayload.length > 0) {
         updateProgress('ACCOUNTS', `جاري استيراد ${accountsPayload.length} حساب مالي بدفعات آمنة...`, 0);
         const accAccepted = await this.safeBatchedUpsert(
           'chart_of_accounts',
           accountsPayload,
-          'company_id, code',
+          'id',
           report
         );
         report.stats.accounts = accAccepted;
-        updateProgress('ACCOUNTS', `تم استيراد ${accAccepted} حساب مالي بنجاح`, accountsPayload.length);
+        updateProgress('ACCOUNTS', `تم استيراد ${accAccepted} حساب مالي بنجاح`, accAccepted);
       }
 
-      // 4.2 Customers (onConflict: company_id, code)
+      // 4.2 Customers (onConflict: id)
       if (customersPayload.length > 0) {
         updateProgress('CUSTOMERS', `جاري استيراد ${customersPayload.length} عميل...`, 0);
         const custAccepted = await this.safeBatchedUpsert(
           'customers',
           customersPayload,
-          'company_id, code',
+          'id',
           report
         );
         report.stats.customers = custAccepted;
-        updateProgress('CUSTOMERS', `تم استيراد ${custAccepted} عميل بنجاح`, customersPayload.length);
+        updateProgress('CUSTOMERS', `تم استيراد ${custAccepted} عميل بنجاح`, custAccepted);
       }
 
-      // 4.3 Suppliers (onConflict: company_id, code)
+      // 4.3 Suppliers (onConflict: id)
       if (suppliersPayload.length > 0) {
         updateProgress('SUPPLIERS', `جاري استيراد ${suppliersPayload.length} مورد...`, 0);
         const suppAccepted = await this.safeBatchedUpsert(
           'suppliers',
           suppliersPayload,
-          'company_id, code',
+          'id',
           report
         );
         report.stats.suppliers = suppAccepted;
-        updateProgress('SUPPLIERS', `تم استيراد ${suppAccepted} مورد بنجاح`, suppliersPayload.length);
+        updateProgress('SUPPLIERS', `تم استيراد ${suppAccepted} مورد بنجاح`, suppAccepted);
       }
 
-      // 4.4 Inventory Items (onConflict: company_id, code)
+      // 4.4 Inventory Items (onConflict: id)
       if (itemsPayload.length > 0) {
-        updateProgress('INVENTORY', `جاري استيراد ${itemsPayload.length} صنف...`, 0);
+        updateProgress('INVENTORY', `جاري استيراد ${itemsPayload.length} صنف ومخزون...`, 0);
         const itemAccepted = await this.safeBatchedUpsert(
           'items',
           itemsPayload,
-          'company_id, code',
+          'id',
           report
         );
         report.stats.inventory = itemAccepted;
-        updateProgress('INVENTORY', `تم استيراد ${itemAccepted} صنف بنجاح`, itemsPayload.length);
+        updateProgress('INVENTORY', `تم استيراد ${itemAccepted} صنف بنجاح`, itemAccepted);
       }
 
-      // 4.5 Invoices (onConflict: company_id, invoice_number)
+      // 4.5 Invoices (onConflict: company_id, invoice_number with fallback to id)
       if (invoicesPayload.length > 0) {
         updateProgress('INVOICES', `جاري استيراد ${invoicesPayload.length} فاتورة...`, 0);
         const invAccepted = await this.safeBatchedUpsert(
@@ -534,10 +629,10 @@ export class ERPBackupImportService {
           report
         );
         report.stats.invoices = invAccepted;
-        updateProgress('INVOICES', `تم استيراد ${invAccepted} فاتورة بنجاح`, invoicesPayload.length);
+        updateProgress('INVOICES', `تم استيراد ${invAccepted} فاتورة بنجاح`, invAccepted);
       }
 
-      // 4.6 Payment Vouchers (onConflict: company_id, voucher_number)
+      // 4.6 Payment Vouchers (onConflict: company_id, voucher_number with fallback to id)
       if (vouchersPayload.length > 0) {
         updateProgress('VOUCHERS', `جاري استيراد ${vouchersPayload.length} سند قبض وصرف...`, 0);
         const vchAccepted = await this.safeBatchedUpsert(
@@ -550,7 +645,7 @@ export class ERPBackupImportService {
         updateProgress('VOUCHERS', `تم استيراد ${vchAccepted} سند بنجاح`, vouchersPayload.length);
       }
 
-      // 4.7 Journal Entries (onConflict: company_id, entry_number)
+      // 4.7 Journal Entries (onConflict: company_id, entry_number with fallback to id)
       if (journalsPayload.length > 0) {
         updateProgress('JOURNALS', `جاري استيراد ${journalsPayload.length} قيد يومية...`, 0);
         const jrnAccepted = await this.safeBatchedUpsert(
@@ -560,14 +655,143 @@ export class ERPBackupImportService {
           report
         );
         report.stats.journals = jrnAccepted;
-        updateProgress('JOURNALS', `تم استيراد ${jrnAccepted} قيد يومية بنجاح`, journalsPayload.length);
+        updateProgress('JOURNALS', `تم استيراد ${jrnAccepted} قيد يومية بنجاح`, jrnAccepted);
       }
 
-      // Auto-recalculate accounting balances
+      // Auto-recalculate accounting balances in database
       try {
         await supabase.rpc('recalculate_company_ledger_balances', { p_company_id: activeCompanyUUID });
       } catch (e) {
         console.warn('Recalculate balances RPC note:', e);
+      }
+
+      // ==============================================================================
+      // 5. Direct Local Storage & In-Memory Cache Persistence
+      //    Guarantees instant visibility across the UI even offline or before query
+      // ==============================================================================
+      try {
+        if (customers.length > 0) {
+          const localCust: Customer[] = customers.map((c, i) => {
+            const custName = c.nameAr || (c as any).name || (c as any).name_ar || 'عميل مستورد';
+            const cId = customersPayload[i]?.id || idSanitizer.getOrCreateUUID(c.id);
+            return {
+              ...c,
+              id: cId,
+              code: (c as any).code || `CUST-${String(i + 1).padStart(4, '0')}`,
+              nameAr: custName,
+              nameEn: c.nameEn || '',
+              phone: c.phone || '',
+              address: c.address || '',
+              city: (c as any).city || 'الكويت',
+              balance: Number((c as any).balance || 0),
+              openingBalance: Number((c as any).openingBalance ?? (c as any).balance ?? 0),
+              isActive: (c as any).isActive ?? true,
+            };
+          });
+          localDataStore.saveCustomers(localCust);
+          cacheService.setCustomers(activeCompanyUUID, localCust);
+        }
+
+        if (inventory.length > 0) {
+          const localInv: InventoryItem[] = inventory.map((item, i) => {
+            const itName = item.nameAr || (item as any).name || (item as any).name_ar || 'صنف مستورد';
+            const itCode = item.sku || (item as any).code || `SKU-${String(i + 1).padStart(4, '0')}`;
+            const itId = itemsPayload[i]?.id || idSanitizer.getOrCreateUUID(item.id);
+            return {
+              ...item,
+              id: itId,
+              sku: itCode,
+              nameAr: itName,
+              nameEn: item.nameEn || '',
+              barcode: item.barcode || '',
+              category: item.category || 'عام',
+              unit: item.unit || 'حبة',
+              purchasePrice: Number(item.purchasePrice || (item as any).costPrice || 0),
+              costPrice: Number(item.purchasePrice || (item as any).costPrice || 0),
+              salePrice: Number(item.salePrice || 0),
+              quantityOnHand: Number(item.quantityOnHand ?? (item as any).current_balance ?? 0),
+              minQuantityAlert: Number(item.minQuantityAlert ?? 10),
+              isActive: (item as any).isActive ?? true,
+            };
+          });
+          localDataStore.saveInventory(localInv);
+          cacheService.setItems(activeCompanyUUID, localInv);
+        }
+
+        if (suppliers.length > 0) {
+          const localSupp: Supplier[] = suppliers.map((s, i) => {
+            const suppName = s.nameAr || (s as any).name || (s as any).name_ar || 'مورد مستورد';
+            const sId = suppliersPayload[i]?.id || idSanitizer.getOrCreateUUID(s.id);
+            return {
+              ...s,
+              id: sId,
+              code: (s as any).code || `SUPP-${String(i + 1).padStart(4, '0')}`,
+              nameAr: suppName,
+              nameEn: s.nameEn || '',
+              phone: s.phone || '',
+              address: s.address || '',
+              balance: Number((s as any).balance || 0),
+              isActive: (s as any).isActive ?? true,
+            };
+          });
+          localDataStore.saveSuppliers(localSupp);
+          cacheService.setSuppliers(activeCompanyUUID, localSupp);
+        }
+
+        if (accounts.length > 0) {
+          const localAcc: Account[] = accounts.map((acc, i) => {
+            const aName = acc.nameAr || (acc as any).name || (acc as any).name_ar || 'حساب مستورد';
+            const aId = accountsPayload[i]?.id || idSanitizer.getOrCreateUUID(acc.id);
+            return {
+              ...acc,
+              id: aId,
+              code: acc.code || `ACC-${String(i + 1).padStart(4, '0')}`,
+              nameAr: aName,
+              nameEn: acc.nameEn || '',
+              category: acc.category || 'ASSET',
+              normalBalance: acc.normalBalance || 'DEBIT',
+              level: acc.level || 1,
+              type: acc.type || 'DETAIL',
+              balance: Number(acc.balance || 0),
+              currentBalance: Number(acc.currentBalance ?? acc.balance ?? 0),
+              isActive: true,
+            };
+          });
+          localDataStore.saveAccounts(localAcc);
+          cacheService.setAccounts(activeCompanyUUID, localAcc);
+        }
+
+        if (invoices.length > 0) {
+          const localInvs: Invoice[] = invoices.map((inv, i) => ({
+            ...inv,
+            id: invoicesPayload[i]?.id || idSanitizer.getOrCreateUUID(inv.id),
+          }));
+          localDataStore.saveInvoices(localInvs);
+        }
+
+        if (vouchers.length > 0) {
+          const localVchs: PaymentVoucher[] = vouchers.map((v, i) => ({
+            ...v,
+            id: vouchersPayload[i]?.id || idSanitizer.getOrCreateUUID(v.id),
+          }));
+          localDataStore.saveVouchers(localVchs);
+        }
+
+        if (journals.length > 0) {
+          const localJrns: JournalEntry[] = journals.map((j, i) => ({
+            ...j,
+            id: journalsPayload[i]?.id || idSanitizer.getOrCreateUUID(j.id),
+          }));
+          localDataStore.saveJournals(localJrns);
+        }
+
+        if (rawData.company) {
+          localDataStore.saveCompany(rawData.company);
+        }
+
+        localDataStore.clearTombstones();
+      } catch (storageErr) {
+        console.warn('LocalDataStore persistence note:', storageErr);
       }
 
       report.acceptedTotal =
@@ -580,7 +804,7 @@ export class ERPBackupImportService {
         report.stats.journals;
 
       report.success = report.acceptedTotal > 0 || totalSteps === 0;
-      report.message = `تمت استعادة وقبول ${report.acceptedTotal} سجل بنجاح وربطها بالشركة (${activeCompanyUUID}).`;
+      report.message = `تمت استعادة وحفظ ${report.acceptedTotal} سجل بنجاح وربطها بالشركة (${activeCompanyUUID}).`;
       
       updateProgress('COMPLETE', report.message, 0);
       return report;
@@ -594,7 +818,7 @@ export class ERPBackupImportService {
   }
 
   /**
-   * Helper to perform batched upserts in chunks of 20 with fallback item-level retry
+   * Helper to perform batched upserts in chunks of 25 with fallback item-level retry
    * to guarantee that a single bad row never fails other valid rows in the batch.
    */
   private static async safeBatchedUpsert(
@@ -603,7 +827,7 @@ export class ERPBackupImportService {
     onConflict: string,
     report: ImportResultReport
   ): Promise<number> {
-    const BATCH_SIZE = 20;
+    const BATCH_SIZE = 25;
     let acceptedCount = 0;
 
     for (let i = 0; i < payloads.length; i += BATCH_SIZE) {
@@ -618,22 +842,21 @@ export class ERPBackupImportService {
           // Item-level resilient fallback
           for (const item of batch) {
             try {
-              const { error: itemError } = await supabase
+              let itemRes = await supabase
                 .from(tableName)
                 .upsert([item], { onConflict, ignoreDuplicates: false });
 
-              if (itemError) {
-                // Secondary fallback using 'id' as onConflict if compound index is missing
-                const { error: idError } = await supabase
+              // If compound onConflict failed, retry with primary key 'id'
+              if (itemRes.error && onConflict !== 'id') {
+                itemRes = await supabase
                   .from(tableName)
                   .upsert([item], { onConflict: 'id', ignoreDuplicates: false });
+              }
 
-                if (idError) {
-                  report.failedTotal++;
-                  report.errors.push(`[${tableName}] تخطي السجل ${item.code || item.invoice_number || item.voucher_number || item.id}: ${idError.message}`);
-                } else {
-                  acceptedCount++;
-                }
+              if (itemRes.error) {
+                report.failedTotal++;
+                const itemRef = item.code || item.sku || item.invoice_number || item.voucher_number || item.entry_number || item.name || item.id;
+                report.errors.push(`[${tableName}] تخطي السجل ${itemRef}: ${itemRes.error.message}`);
               } else {
                 acceptedCount++;
               }
@@ -647,7 +870,7 @@ export class ERPBackupImportService {
         }
       } catch (batchEx: any) {
         console.warn(`[Batch Exception] in ${tableName}:`, batchEx);
-        // Try item by item
+        // Fallback item by item using 'id'
         for (const item of batch) {
           try {
             const { error: fallbackErr } = await supabase
@@ -657,6 +880,7 @@ export class ERPBackupImportService {
               acceptedCount++;
             } else {
               report.failedTotal++;
+              report.errors.push(`[${tableName}] استثناء في السجل: ${fallbackErr.message}`);
             }
           } catch {
             report.failedTotal++;
