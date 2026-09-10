@@ -30,7 +30,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
   onClose,
   showControls = true,
 }) => {
-  const activeCompany = resolveActiveCompany(company, (invoice as any)?.companyId);
+  const activeCompany = resolveActiveCompany(company, invoice.companyId || (invoice as any)?.company_id);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showQr, setShowQr] = useState<boolean>(true);
   const [zoomLevel, setZoomLevel] = useState<number>(100);

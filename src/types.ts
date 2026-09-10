@@ -219,6 +219,16 @@ export interface Customer {
   priceListName?: string;
   customPrices?: CustomerPriceListItem[];
   defaultDiscountRate?: number;
+  company_id?: string;
+  companyId?: string;
+  branch_id?: string;
+  branchId?: string;
+  is_deleted?: boolean;
+  deleted_at?: string;
+  deleted_by?: string;
+  deletion_reason?: string;
+  isTaxExempt?: boolean;
+  paymentTermsDays?: number;
 }
 
 export interface Supplier {
@@ -239,6 +249,14 @@ export interface Supplier {
   openingBalance?: number;
   openingBalanceDate?: string;
   isActive?: boolean;
+  company_id?: string;
+  companyId?: string;
+  branch_id?: string;
+  branchId?: string;
+  is_deleted?: boolean;
+  deleted_at?: string;
+  deleted_by?: string;
+  deletion_reason?: string;
 }
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'EXECUTIVE' | 'GENERAL_MANAGER' | 'CHIEF_ACCOUNTANT' | 'ACCOUNTANT' | 'SALES' | 'AUDITOR' | 'STAFF';
@@ -289,6 +307,12 @@ export interface InventoryItem {
   isActive: boolean;
   companyId?: string;
   company_id?: string;
+  branch_id?: string;
+  branchId?: string;
+  is_deleted?: boolean;
+  deleted_at?: string;
+  deleted_by?: string;
+  deletion_reason?: string;
 }
 
 export type InvoiceType = 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN';
@@ -349,6 +373,18 @@ export interface Invoice {
   negativeStockReason?: string;
   companyId?: string;
   company_id?: string;
+  branch_id?: string;
+  branchId?: string;
+  pos_session_id?: string;
+  posSessionId?: string;
+  cashierName?: string;
+  cashTendered?: number;
+  changeDue?: number;
+  paymentMethod?: 'CASH' | 'CARD' | 'CREDIT' | 'SPLIT' | string;
+  is_deleted?: boolean;
+  deleted_at?: string;
+  deleted_by?: string;
+  deletion_reason?: string;
   createdAt: string;
 }
 
@@ -921,5 +957,188 @@ export interface PurchaseOrder {
   notes?: string;
   createdAt: string;
 }
+
+// =========================================================
+// SECTION 6 ARCHITECTURAL SCHEMA: LOGIX ERP MULTI-TENANT,
+// AUDIT LOGS, POS SESSIONS, CREDIT NOTES & SMART CUSTOMER
+// =========================================================
+
+export interface Branch {
+  id: string;
+  company_id: string;
+  code: string; // e.g. "BR-01"
+  nameAr: string;
+  nameEn?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  commercialRegNumber?: string;
+  taxNumber?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string;
+  deleted_by?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export type AuditLogAction =
+  | 'VOID'
+  | 'REFUND'
+  | 'DISCOUNT_APPLIED'
+  | 'CREDIT_LIMIT_OVERRIDE'
+  | 'SUPERVISOR_AUTH'
+  | 'SOFT_DELETE'
+  | 'PRICE_CHANGE'
+  | 'STOCK_ADJUSTMENT'
+  | 'CASH_DRAWER_TRANSACTION'
+  | 'SESSION_OPEN'
+  | 'SESSION_CLOSE'
+  | 'LOGIN'
+  | 'SETTINGS_CHANGE';
+
+export type AuditLogEntityType =
+  | 'INVOICE'
+  | 'POS_SALE'
+  | 'CUSTOMER'
+  | 'ITEM'
+  | 'QUOTATION'
+  | 'JOURNAL'
+  | 'POS_SESSION'
+  | 'PAYMENT_VOUCHER'
+  | 'BRANCH'
+  | 'CREDIT_NOTE';
+
+export interface AuditLog {
+  id: string;
+  company_id: string;
+  branch_id?: string;
+  user_id: string;
+  user_name: string;
+  action: AuditLogAction;
+  entity_type: AuditLogEntityType;
+  entity_id: string;
+  entity_reference?: string; // e.g. "INV-2026-0045"
+  old_values?: Record<string, any>;
+  new_values?: Record<string, any>;
+  reason?: string;
+  authorized_by?: string; // Supervisor name or ID
+  ip_address?: string;
+  created_at: string;
+}
+
+export type PosSessionStatus = 'OPEN' | 'CLOSED';
+
+export interface PosSession {
+  id: string;
+  company_id: string;
+  branch_id: string;
+  user_id: string;
+  user_name: string;
+  session_number: string; // e.g. "POS-SESS-2026-001"
+  opened_at: string;
+  closed_at?: string;
+  opening_cash: number;
+  expected_cash: number;
+  actual_cash?: number;
+  difference?: number; // actual - expected
+  status: PosSessionStatus;
+  total_sales_cash: number;
+  total_sales_card: number;
+  total_sales_credit: number;
+  total_returns: number;
+  total_cash_in: number;
+  total_cash_out: number;
+  notes?: string;
+  created_at: string;
+}
+
+export type CashRegisterTransactionType = 'CASH_IN' | 'CASH_OUT' | 'DROP';
+
+export interface CashRegisterTransaction {
+  id: string;
+  company_id: string;
+  branch_id: string;
+  session_id: string;
+  type: CashRegisterTransactionType;
+  amount: number;
+  reason: string;
+  authorized_by?: string;
+  created_at: string;
+}
+
+export interface CreditNoteLine {
+  id: string;
+  itemId: string;
+  itemSku: string;
+  itemNameAr: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  refundAmount: number;
+  reason?: string;
+}
+
+export interface CreditNote {
+  id: string;
+  company_id: string;
+  branch_id?: string;
+  return_number: string; // e.g. "CN-2026-001"
+  original_invoice_id: string;
+  original_invoice_number: string;
+  customer_id: string;
+  customer_name: string;
+  date: string;
+  lines: CreditNoteLine[];
+  total_refund_amount: number;
+  refund_method: 'CASH' | 'CARD' | 'CUSTOMER_BALANCE';
+  reason: string;
+  status: 'APPROVED' | 'DRAFT' | 'REVERSED';
+  authorized_by?: string;
+  journal_entry_id?: string;
+  created_at: string;
+  is_deleted?: boolean;
+}
+
+export interface ParkedCartItem {
+  itemId: string;
+  itemSku: string;
+  barcode?: string;
+  itemNameAr: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount?: number;
+  unit: string;
+  item: InventoryItem;
+}
+
+export interface ParkedCart {
+  id: string;
+  company_id: string;
+  branch_id?: string;
+  ticketNumber: string; // e.g. "HOLD-001"
+  customerId?: string;
+  customerName?: string;
+  items: ParkedCartItem[];
+  subtotal: number;
+  notes?: string;
+  parkedAt: string;
+  cashierId?: string;
+  cashierName?: string;
+}
+
+export type SmartCustomerCreditStatus = 'NORMAL' | 'WARNING' | 'EXCEEDED' | 'BLOCKED';
+
+export interface CustomerCreditEvaluation {
+  status: SmartCustomerCreditStatus;
+  currentBalance: number;
+  creditLimit: number;
+  availableCredit: number;
+  utilizationRate: number; // 0% - 100%+
+  requiresSupervisorOverride: boolean;
+  message: string;
+}
+
 
 

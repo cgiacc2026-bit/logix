@@ -10,6 +10,7 @@ interface ReceiptPrintTemplateProps {
   invoice: Invoice;
   company: CompanyProfile | null;
   cashierName?: string;
+  branchName?: string;
   cashTendered?: number;
   changeDue?: number;
   paymentMethod?: 'CASH' | 'CARD' | 'CREDIT' | string;
@@ -21,6 +22,7 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
   invoice,
   company,
   cashierName = 'كاشير نقطة البيع',
+  branchName,
   cashTendered,
   changeDue,
   paymentMethod,
@@ -28,6 +30,7 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
   autoPrint = false,
 }) => {
   const activeCompany = resolveActiveCompany(company, invoice.companyId || (invoice as any)?.company_id);
+  const [paperWidth, setPaperWidth] = useState<'80mm' | '58mm'>('80mm');
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
   const effectiveCurrency = activeCompany.functionalCurrency || 'KWD';
@@ -96,12 +99,30 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
       {/* Container Dialog */}
       <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden text-slate-900 my-auto flex flex-col">
         {/* Top Dialog Action Bar (Hidden on Print) */}
-        <div className="p-3 bg-slate-950 border-b border-slate-800 text-white flex items-center justify-between print:hidden">
+        <div className="p-3 bg-slate-950 border-b border-slate-800 text-white flex flex-wrap items-center justify-between gap-2 print:hidden">
           <div className="flex items-center gap-2">
             <Receipt className="w-5 h-5 text-cyan-400" />
             <span className="text-xs sm:text-sm font-black">
-              معاينة وطباعة إيصال نقطة البيع POS (80mm)
+              معاينة وطباعة إيصال الكاشير POS
             </span>
+            <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 mr-2 text-[11px]">
+              <button
+                onClick={() => setPaperWidth('80mm')}
+                className={`px-2 py-0.5 rounded cursor-pointer transition-all font-bold ${
+                  paperWidth === '80mm' ? 'bg-cyan-500 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                80mm (قياسي)
+              </button>
+              <button
+                onClick={() => setPaperWidth('58mm')}
+                className={`px-2 py-0.5 rounded cursor-pointer transition-all font-bold ${
+                  paperWidth === '58mm' ? 'bg-cyan-500 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                58mm (مدمج)
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -109,7 +130,7 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
             >
               <Printer className="w-4 h-4" />
-              <span>طباعة الإيصال الحراري</span>
+              <span>طباعة الإيصال ({paperWidth})</span>
             </button>
             {onClose && (
               <button
@@ -125,10 +146,12 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
 
         {/* Receipt Scrollable Body */}
         <div className="p-4 overflow-y-auto max-h-[82vh] bg-slate-200 flex justify-center print:p-0 print:m-0 print:bg-white print:max-h-none">
-          {/* Thermal Receipt Paper 80mm (approx 300-340px) */}
+          {/* Thermal Receipt Paper 80mm or 58mm */}
           <div
             id="pos-thermal-receipt"
-            className="w-full max-w-[340px] bg-white p-4 shadow-xl border border-slate-300 rounded-lg text-slate-900 font-sans print:shadow-none print:border-none print:w-full print:max-w-none print:p-2 text-xs leading-tight"
+            className={`w-full bg-white p-3 sm:p-4 shadow-xl border border-slate-300 rounded-lg text-slate-900 font-sans print:shadow-none print:border-none print:w-full print:max-w-none print:p-2 text-xs leading-tight transition-all ${
+              paperWidth === '58mm' ? 'max-w-[270px] text-[10.5px]' : 'max-w-[340px]'
+            }`}
           >
             {/* Header: Company Profile */}
             <div className="text-center space-y-1 pb-2.5 border-b-2 border-dashed border-slate-400">
@@ -187,6 +210,12 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
                 <span className="text-slate-600">التاريخ والوقت:</span>
                 <span>{invoice.date} {new Date().toLocaleTimeString('ar-KW', { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
+              {branchName && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">الفرع:</span>
+                  <span className="font-bold text-slate-900">{branchName}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-600">الكاشير:</span>
                 <span className="font-bold">{cashierName}</span>

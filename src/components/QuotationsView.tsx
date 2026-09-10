@@ -94,6 +94,13 @@ export const QuotationsView: React.FC<QuotationsViewProps> = ({
   const [itemDiscount, setItemDiscount] = useState(0);
 
   const filteredQuotations = quotations.filter((q) => {
+    // Strict Tenant Isolation: scoped to activeCompany.id
+    if (activeCompany?.id && (q.companyId || (q as any)?.company_id)) {
+      const qComp = q.companyId || (q as any)?.company_id;
+      if (qComp !== activeCompany.id && qComp !== 'default') {
+        return false;
+      }
+    }
     const matchesSearch =
       q.quotationNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       q.customerNameAr.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -1,0 +1,29 @@
+{
+  "id": "/",
+  "name": "نظام لوجيكس المحاسبي المتكامل LOGIX ERP",
+  "short_name": "LOGIX ERP",
+  "description": "نظام تخطيط موارد المؤسسات والمحاسبة ونقاط البيع السحابي المتوافق مع المعايير الدولية IFRS",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["business", "finance", "productivity"]
+}
