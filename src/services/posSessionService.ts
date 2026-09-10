@@ -19,46 +19,48 @@ class PosSessionService {
   private sessionsHistory: PosSession[] = [];
   private cashTransactions: CashRegisterTransaction[] = [];
   private parkedCarts: ParkedCart[] = [];
+  private lastCompanyId: string | null = null;
 
   constructor() {
-    this.init();
+    this.reloadForCurrentTenant();
   }
 
-  private init() {
+  public reloadForCurrentTenant() {
+    const currentId = getCurrentCompanyId() || localDataStore.getEffectiveCompanyId() || 'default';
+    if (this.lastCompanyId === currentId) return; // Already loaded for this tenant
+
+    this.lastCompanyId = currentId;
     try {
       if (typeof window !== 'undefined') {
-        const activeRaw = localStorage.getItem(POS_SESSION_STORAGE_KEY);
-        if (activeRaw) {
-          this.activeSession = JSON.parse(activeRaw);
-        }
+        const activeRaw = localStorage.getItem(localDataStore.getKey(POS_SESSION_STORAGE_KEY));
+        this.activeSession = activeRaw ? JSON.parse(activeRaw) : null;
 
-        const histRaw = localStorage.getItem(POS_SESSIONS_HISTORY_KEY);
-        if (histRaw) {
-          this.sessionsHistory = JSON.parse(histRaw);
-        }
+        const histRaw = localStorage.getItem(localDataStore.getKey(POS_SESSIONS_HISTORY_KEY));
+        this.sessionsHistory = histRaw ? JSON.parse(histRaw) : [];
 
-        const txRaw = localStorage.getItem(CASH_TX_STORAGE_KEY);
-        if (txRaw) {
-          this.cashTransactions = JSON.parse(txRaw);
-        }
+        const txRaw = localStorage.getItem(localDataStore.getKey(CASH_TX_STORAGE_KEY));
+        this.cashTransactions = txRaw ? JSON.parse(txRaw) : [];
 
-        const parkedRaw = localStorage.getItem(PARKED_CARTS_STORAGE_KEY);
-        if (parkedRaw) {
-          this.parkedCarts = JSON.parse(parkedRaw);
-        }
+        const parkedRaw = localStorage.getItem(localDataStore.getKey(PARKED_CARTS_STORAGE_KEY));
+        this.parkedCarts = parkedRaw ? JSON.parse(parkedRaw) : [];
       }
     } catch (e) {
       console.warn('Error loading pos sessions:', e);
+      this.activeSession = null;
+      this.sessionsHistory = [];
+      this.cashTransactions = [];
+      this.parkedCarts = [];
     }
   }
 
   private persistActive() {
+    this.reloadForCurrentTenant();
     try {
       if (typeof window !== 'undefined') {
         if (this.activeSession) {
-          localStorage.setItem(POS_SESSION_STORAGE_KEY, JSON.stringify(this.activeSession));
+          localStorage.setItem(localDataStore.getKey(POS_SESSION_STORAGE_KEY), JSON.stringify(this.activeSession));
         } else {
-          localStorage.removeItem(POS_SESSION_STORAGE_KEY);
+          localStorage.removeItem(localDataStore.getKey(POS_SESSION_STORAGE_KEY));
         }
       }
     } catch (e) {
@@ -67,10 +69,11 @@ class PosSessionService {
   }
 
   private persistHistory() {
+    this.reloadForCurrentTenant();
     try {
       if (typeof window !== 'undefined') {
-        localStorage.setItem(POS_SESSIONS_HISTORY_KEY, JSON.stringify(this.sessionsHistory.slice(0, 100)));
-        localStorage.setItem(CASH_TX_STORAGE_KEY, JSON.stringify(this.cashTransactions.slice(0, 300)));
+        localStorage.setItem(localDataStore.getKey(POS_SESSIONS_HISTORY_KEY), JSON.stringify(this.sessionsHistory.slice(0, 100)));
+        localStorage.setItem(localDataStore.getKey(CASH_TX_STORAGE_KEY), JSON.stringify(this.cashTransactions.slice(0, 300)));
       }
     } catch (e) {
       console.warn('Failed to persist session history:', e);
@@ -78,9 +81,10 @@ class PosSessionService {
   }
 
   private persistParkedCarts() {
+    this.reloadForCurrentTenant();
     try {
       if (typeof window !== 'undefined') {
-        localStorage.setItem(PARKED_CARTS_STORAGE_KEY, JSON.stringify(this.parkedCarts));
+        localStorage.setItem(localDataStore.getKey(PARKED_CARTS_STORAGE_KEY), JSON.stringify(this.parkedCarts));
       }
     } catch (e) {
       console.warn('Failed to persist parked carts:', e);
@@ -88,6 +92,7 @@ class PosSessionService {
   }
 
   public getActiveSession(): PosSession | null {
+    this.reloadForCurrentTenant();
     return this.activeSession;
   }
 
@@ -99,6 +104,7 @@ class PosSessionService {
     company_id?: string;
     notes?: string;
   }): PosSession {
+    this.reloadForCurrentTenant();
     const compId =
       params.company_id ||
       getCurrentCompanyId() ||
@@ -148,8 +154,8 @@ class PosSessionService {
   }
 
   public recordSale(paymentMethod: 'CASH' | 'CARD' | 'CREDIT', amount: number) {
+    this.reloadForCurrentTenant();
     if (!this.activeSession || this.activeSession.status !== 'OPEN') return;
-
     if (paymentMethod === 'CASH') {
       this.activeSession.total_sales_cash += amount;
       this.activeSession.expected_cash += amount;
@@ -158,13 +164,12 @@ class PosSessionService {
     } else if (paymentMethod === 'CREDIT') {
       this.activeSession.total_sales_credit += amount;
     }
-
     this.persistActive();
   }
 
   public recordReturn(amount: number, isCashRefund: boolean = true) {
+    this.reloadForCurrentTenant();
     if (!this.activeSession || this.activeSession.status !== 'OPEN') return;
-
     this.activeSession.total_returns += amount;
     if (isCashRefund) {
       this.activeSession.expected_cash = Math.max(0, this.activeSession.expected_cash - amount);
@@ -178,10 +183,10 @@ class PosSessionService {
     reason: string;
     authorized_by?: string;
   }): CashRegisterTransaction {
+    this.reloadForCurrentTenant();
     if (!this.activeSession) {
       throw new Error('لا توجد وردية كاشير مفتوحة حالياً');
     }
-
     const tx: CashRegisterTransaction = {
       id: 'tx-' + Date.now().toString(36),
       company_id: this.activeSession.company_id,
@@ -230,6 +235,7 @@ class PosSessionService {
     notes?: string;
     closed_by?: string;
   }): PosSession {
+    this.reloadForCurrentTenant();
     if (!this.activeSession) {
       throw new Error('لا توجد وردية كاشير نشطة لإغلاقها');
     }
@@ -286,6 +292,7 @@ class PosSessionService {
     notes?: string;
     branchId?: string;
   }): ParkedCart {
+    this.reloadForCurrentTenant();
     const ticketNumber = `HOLD-${String(this.parkedCarts.length + 1).padStart(3, '0')}`;
     const parked: ParkedCart = {
       id: 'park-' + Date.now().toString(36),
@@ -317,10 +324,12 @@ class PosSessionService {
   }
 
   public getParkedCarts(): ParkedCart[] {
+    this.reloadForCurrentTenant();
     return this.parkedCarts;
   }
 
   public removeParkedCart(id: string): boolean {
+    this.reloadForCurrentTenant();
     const idx = this.parkedCarts.findIndex((c) => c.id === id);
     if (idx !== -1) {
       this.parkedCarts.splice(idx, 1);

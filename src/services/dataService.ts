@@ -2177,12 +2177,15 @@ export class DataService {
     const isPurchase = data.type === 'PURCHASE';
     const isPurchaseReturn = data.type === 'PURCHASE_RETURN';
 
+    const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
+
     if (isSales && newInvoice.entityId) {
       const cust = customers.find((c) => c.id === newInvoice.entityId);
       if (cust) {
         cust.balance += dueAmount;
         localDataStore.saveCustomers(customers);
         syncToFirestore('erp_customers', cust.id, cust);
+        if (isSupabaseConfigured) SupabaseDataService.saveCustomer(cust).catch(() => {});
       }
     } else if (isSalesReturn && newInvoice.entityId) {
       const cust = customers.find((c) => c.id === newInvoice.entityId);
@@ -2190,6 +2193,7 @@ export class DataService {
         cust.balance = Math.max(0, cust.balance - dueAmount);
         localDataStore.saveCustomers(customers);
         syncToFirestore('erp_customers', cust.id, cust);
+        if (isSupabaseConfigured) SupabaseDataService.saveCustomer(cust).catch(() => {});
       }
     } else if (isPurchase && newInvoice.entityId) {
       const supp = suppliers.find((s) => s.id === newInvoice.entityId);
@@ -2197,6 +2201,7 @@ export class DataService {
         supp.balance += dueAmount;
         localDataStore.saveSuppliers(suppliers);
         syncToFirestore('erp_suppliers', supp.id, supp);
+        if (isSupabaseConfigured) SupabaseDataService.saveSupplier(supp).catch(() => {});
       }
     } else if (isPurchaseReturn && newInvoice.entityId) {
       const supp = suppliers.find((s) => s.id === newInvoice.entityId);
@@ -2204,6 +2209,7 @@ export class DataService {
         supp.balance = Math.max(0, supp.balance - dueAmount);
         localDataStore.saveSuppliers(suppliers);
         syncToFirestore('erp_suppliers', supp.id, supp);
+        if (isSupabaseConfigured) SupabaseDataService.saveSupplier(supp).catch(() => {});
       }
     }
 
@@ -2220,8 +2226,10 @@ export class DataService {
           invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - it.quantity);
         }
         syncToFirestore('erp_inventory', invItem.id, invItem);
+        if (isSupabaseConfigured) SupabaseDataService.saveItem(invItem).catch(() => {});
       }
     });
+
     localDataStore.saveInventory(inventory);
 
     const resolved = this.getResolvedAccounts();
@@ -2423,7 +2431,6 @@ export class DataService {
     localDataStore.saveInvoices(invoices);
 
     // Smart Caching update
-    const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
     if (isSales && newInvoice.entityId) {
       cacheService.updateCustomerBalance(newInvoice.entityId, dueAmount);
     } else if (!isSales && newInvoice.entityId) {
@@ -5374,8 +5381,12 @@ export class DataService {
   }
 
   public static async resetDatabase(): Promise<void> {
+    const compId = localDataStore.getEffectiveCompanyId();
     localDataStore.resetToDefaults();
     await safeApiFetch('/api/seed/reset', { method: 'POST' });
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.resetTenantData(compId || undefined);
+    }
   }
 
   public static async syncSystemIntegrity(): Promise<any> {
