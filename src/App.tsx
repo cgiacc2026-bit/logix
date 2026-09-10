@@ -39,6 +39,7 @@ import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
 import { JsonBackupRestoreModal } from './components/JsonBackupRestoreModal.tsx';
+import { AutoBackupController } from './components/AutoBackupController.tsx';
 import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { DataService } from './services/dataService.ts';
@@ -474,6 +475,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] text-[#1A1A1A] flex flex-row font-['Cairo',sans-serif] rtl">
+      {/* Auto Backup Background Controller */}
+      <AutoBackupController companyId={activeCompany.id} companyName={activeCompany.nameAr} />
+
       {/* Side Navigation Bar (الايقونات في الجنب) */}
       <Sidebar
         activeTab={activeTab}
