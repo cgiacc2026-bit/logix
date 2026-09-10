@@ -362,7 +362,8 @@ export class SupabaseDataService {
           balance: Number(row.balance ?? raw.balance ?? 0),
           taxNumber: row.tax_number || raw.taxNumber || '',
           creditLimit: raw.creditLimit ?? 0,
-          openingBalance: raw.openingBalance ?? 0,
+          openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
+          openingBalanceDate: raw.openingBalanceDate || '2026-07-01',
           isActive: raw.isActive ?? row.is_active ?? true,
           ...raw,
         };
@@ -395,6 +396,7 @@ export class SupabaseDataService {
             city: cust.city || '',
             balance: cust.balance || 0,
             current_balance: cust.balance || 0,
+            opening_balance: Number(cust.openingBalance || 0),
             tax_number: cust.taxNumber || '',
             raw_data: {
               ...cust,
@@ -434,6 +436,7 @@ export class SupabaseDataService {
         city: cust.city || '',
         balance: cust.balance || 0,
         current_balance: cust.balance || 0,
+        opening_balance: Number(cust.openingBalance || 0),
         tax_number: cust.taxNumber || '',
         raw_data: {
           ...cust,

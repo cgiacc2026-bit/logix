@@ -371,7 +371,8 @@ export class ERPBackupImportService {
         const sanitizedId = idSanitizer.getOrCreateUUID(c.id || `cust-${(c as any).code || index}`);
         const customerName = c.nameAr || (c as any).name || (c as any).name_ar || 'عميل مستورد';
         const customerCode = (c as any).code || `CUST-${String(index + 1).padStart(4, '0')}`;
-        const custBalance = Number((c as any).balance || (c as any).current_balance || 0);
+        const custOpeningBal = Number(c.openingBalance ?? (c as any).opening_balance ?? (c as any).balance ?? 0);
+        const custBalance = Number((c as any).balance ?? (c as any).current_balance ?? custOpeningBal ?? 0);
         return {
           id: sanitizedId,
           company_id: activeCompanyUUID,
@@ -385,12 +386,15 @@ export class ERPBackupImportService {
           city: (c as any).city || 'الكويت',
           balance: custBalance,
           current_balance: custBalance,
+          opening_balance: custOpeningBal,
           is_active: (c as any).isActive ?? (c as any).is_active ?? true,
           raw_data: {
             ...c,
             id: sanitizedId,
             code: customerCode,
             nameAr: customerName,
+            openingBalance: custOpeningBal,
+            openingBalanceDate: (c as any).openingBalanceDate || '2026-07-01',
             companyId: activeCompanyUUID,
           },
           updated_at: new Date().toISOString(),
@@ -402,7 +406,8 @@ export class ERPBackupImportService {
         const sanitizedId = idSanitizer.getOrCreateUUID(s.id || `supp-${(s as any).code || index}`);
         const supplierName = s.nameAr || (s as any).name || (s as any).name_ar || 'مورد مستورد';
         const supplierCode = (s as any).code || `SUPP-${String(index + 1).padStart(4, '0')}`;
-        const suppBalance = Number((s as any).balance || (s as any).current_balance || 0);
+        const suppOpeningBal = Number(s.openingBalance ?? (s as any).opening_balance ?? (s as any).balance ?? 0);
+        const suppBalance = Number((s as any).balance ?? (s as any).current_balance ?? suppOpeningBal ?? 0);
         return {
           id: sanitizedId,
           company_id: activeCompanyUUID,
@@ -420,6 +425,8 @@ export class ERPBackupImportService {
             id: sanitizedId,
             code: supplierCode,
             nameAr: supplierName,
+            openingBalance: suppOpeningBal,
+            openingBalanceDate: (s as any).openingBalanceDate || '2026-07-01',
             companyId: activeCompanyUUID,
           },
           updated_at: new Date().toISOString(),
