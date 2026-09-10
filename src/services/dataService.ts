@@ -941,6 +941,109 @@ class LocalDataStore {
     this.markTenantInitialized();
   }
 
+  public deduplicateJournals(journals: JournalEntry[]): JournalEntry[] {
+    if (!Array.isArray(journals) || journals.length <= 1) return journals || [];
+    const seen = new Map<string, JournalEntry>();
+    const result: JournalEntry[] = [];
+
+    for (const j of journals) {
+      if (!j) continue;
+      const num = (j.entryNumber || '').trim().toUpperCase();
+      const ref = (j.reference || '').trim().toUpperCase();
+      const srcKey = j.sourceModule && j.sourceId ? `${j.sourceModule}_${j.sourceId}` : '';
+      const key = num || (ref ? `REF_${ref}` : (srcKey || j.id));
+
+      const existing = seen.get(key) || (ref ? seen.get(`REF_${ref}`) : null) || (srcKey ? seen.get(srcKey) : null);
+      if (existing) {
+        const existingTime = new Date(existing.postedAt || existing.createdAt || 0).getTime();
+        const currentTime = new Date(j.postedAt || j.createdAt || 0).getTime();
+        if (currentTime >= existingTime) {
+          const idx = result.indexOf(existing);
+          if (idx !== -1) {
+            result[idx] = j;
+          }
+          seen.set(key, j);
+          if (ref) seen.set(`REF_${ref}`, j);
+          if (srcKey) seen.set(srcKey, j);
+        }
+      } else {
+        result.push(j);
+        seen.set(key, j);
+        if (ref) seen.set(`REF_${ref}`, j);
+        if (srcKey) seen.set(srcKey, j);
+      }
+    }
+    return result;
+  }
+
+  public deduplicateInvoices(invoices: Invoice[]): Invoice[] {
+    if (!Array.isArray(invoices) || invoices.length <= 1) return invoices || [];
+    const seenNumbers = new Map<string, Invoice>();
+    const seenIds = new Map<string, Invoice>();
+    const result: Invoice[] = [];
+
+    for (const inv of invoices) {
+      if (!inv) continue;
+      const num = (inv.invoiceNumber || '').trim().toUpperCase();
+      const id = (inv.id || '').trim();
+
+      const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
+      if (existing) {
+        const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+        const currentTime = new Date(inv.updatedAt || inv.createdAt || 0).getTime();
+        const currentHasLines = Array.isArray(inv.lines) && inv.lines.length > 0;
+        const existingHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
+
+        // Keep the more recently updated, or the one with lines if the other is empty
+        if (currentTime > existingTime || (currentHasLines && !existingHasLines)) {
+          const idx = result.indexOf(existing);
+          if (idx !== -1) {
+            result[idx] = inv;
+          }
+          if (num) seenNumbers.set(num, inv);
+          if (id) seenIds.set(id, inv);
+        }
+      } else {
+        result.push(inv);
+        if (num) seenNumbers.set(num, inv);
+        if (id) seenIds.set(id, inv);
+      }
+    }
+    return result;
+  }
+
+  public deduplicateVouchers(vouchers: PaymentVoucher[]): PaymentVoucher[] {
+    if (!Array.isArray(vouchers) || vouchers.length <= 1) return vouchers || [];
+    const seenNumbers = new Map<string, PaymentVoucher>();
+    const seenIds = new Map<string, PaymentVoucher>();
+    const result: PaymentVoucher[] = [];
+
+    for (const v of vouchers) {
+      if (!v) continue;
+      const num = (v.voucherNumber || '').trim().toUpperCase();
+      const id = (v.id || '').trim();
+
+      const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
+      if (existing) {
+        const existingTime = new Date(existing.createdAt || 0).getTime();
+        const currentTime = new Date(v.createdAt || 0).getTime();
+        if (currentTime >= existingTime) {
+          const idx = result.indexOf(existing);
+          if (idx !== -1) {
+            result[idx] = v;
+          }
+          if (num) seenNumbers.set(num, v);
+          if (id) seenIds.set(id, v);
+        }
+      } else {
+        result.push(v);
+        if (num) seenNumbers.set(num, v);
+        if (id) seenIds.set(id, v);
+      }
+    }
+    return result;
+  }
+
   public getJournals(): JournalEntry[] {
     const list = this.getLocal<JournalEntry[] | null>(this.getKey(STORAGE_KEYS.JOURNALS), null);
     const tombstones = this.getTombstones('journals');
@@ -952,22 +1055,24 @@ class LocalDataStore {
         const alwaleedJournals = JSON.parse(JSON.stringify(INITIAL_JOURNALS)).filter((j: any) => !tombstones.has(j.id));
         this.saveJournals(alwaleedJournals);
         this.markTenantInitialized();
-        return alwaleedJournals;
+        return this.deduplicateJournals(alwaleedJournals);
       }
       this.saveJournals([]);
       return [];
     }
     if (tombstones.size > 0) {
       const filtered = list.filter((j) => !tombstones.has(j.id));
-      if (filtered.length !== list.length) {
-        this.saveJournals(filtered);
+      const deduped = this.deduplicateJournals(filtered);
+      if (filtered.length !== list.length || deduped.length !== filtered.length) {
+        this.saveJournals(deduped);
       }
-      return filtered;
+      return deduped;
     }
-    return list;
+    return this.deduplicateJournals(list);
   }
   public saveJournals(j: JournalEntry[]): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), j);
+    const deduped = this.deduplicateJournals(j);
+    this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), deduped);
     this.markTenantInitialized();
   }
 
@@ -981,19 +1086,21 @@ class LocalDataStore {
         const alwaleedInvoices = JSON.parse(JSON.stringify(INITIAL_INVOICES));
         this.saveInvoices(alwaleedInvoices);
         this.markTenantInitialized();
-        return alwaleedInvoices;
+        return this.deduplicateInvoices(alwaleedInvoices);
       }
       this.saveInvoices([]);
       return [];
     }
     const tombstones = this.getTombstones('invoices');
+    let filtered = list;
     if (tombstones.size > 0) {
-      return list.filter((inv) => !tombstones.has(inv.id));
+      filtered = list.filter((inv) => !tombstones.has(inv.id));
     }
-    return list;
+    return this.deduplicateInvoices(filtered);
   }
   public saveInvoices(inv: Invoice[]): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), inv);
+    const deduped = this.deduplicateInvoices(inv);
+    this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), deduped);
     this.markTenantInitialized();
   }
 
@@ -1003,13 +1110,15 @@ class LocalDataStore {
       return [];
     }
     const tombstones = this.getTombstones('vouchers');
+    let filtered = list;
     if (tombstones.size > 0) {
-      return list.filter((v) => !tombstones.has(v.id));
+      filtered = list.filter((v) => !tombstones.has(v.id));
     }
-    return list;
+    return this.deduplicateVouchers(filtered);
   }
   public saveVouchers(v: PaymentVoucher[]): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), v);
+    const deduped = this.deduplicateVouchers(v);
+    this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), deduped);
     this.markTenantInitialized();
   }
 
@@ -1903,30 +2012,53 @@ export class DataService {
         const validRemote = fromSupabase.filter((inv) => !tombstones.has(inv.id));
 
         if (localInvoices.length > 0 || localDataStore.isTenantInitialized()) {
-          const localMap = new Map(localInvoices.map((inv) => [inv.id, inv]));
-          let hasNew = false;
+          const localById = new Map<string, Invoice>();
+          const localByNumber = new Map<string, Invoice>();
+          for (const inv of localInvoices) {
+            if (inv.id) localById.set(inv.id, inv);
+            if (inv.invoiceNumber) localByNumber.set(inv.invoiceNumber.trim().toUpperCase(), inv);
+          }
+
+          let hasChanges = false;
           for (const rInv of validRemote) {
-            if (!localMap.has(rInv.id)) {
+            const rNum = (rInv.invoiceNumber || '').trim().toUpperCase();
+            const existing = (rInv.id ? localById.get(rInv.id) : null) || (rNum ? localByNumber.get(rNum) : null);
+            if (!existing) {
               localInvoices.push(rInv);
-              hasNew = true;
+              if (rInv.id) localById.set(rInv.id, rInv);
+              if (rNum) localByNumber.set(rNum, rInv);
+              hasChanges = true;
+            } else {
+              // Existing record found: reconcile without creating duplicate
+              const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+              const remoteTime = new Date(rInv.updatedAt || rInv.createdAt || 0).getTime();
+              const remoteHasLines = Array.isArray(rInv.lines) && rInv.lines.length > 0;
+              const localHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
+
+              if (remoteTime > localTime || (remoteHasLines && !localHasLines)) {
+                Object.assign(existing, rInv);
+                hasChanges = true;
+              }
             }
           }
-          if (hasNew) {
-            localDataStore.saveInvoices(localInvoices);
+          const deduplicated = localDataStore.deduplicateInvoices(localInvoices);
+          if (hasChanges || deduplicated.length !== localInvoices.length) {
+            localDataStore.saveInvoices(deduplicated);
           }
-          return localInvoices;
+          return deduplicated;
         }
 
         if (validRemote.length > 0) {
-          localDataStore.saveInvoices(validRemote);
-          return validRemote;
+          const deduplicated = localDataStore.deduplicateInvoices(validRemote);
+          localDataStore.saveInvoices(deduplicated);
+          return deduplicated;
         }
       }
     } catch (e) {
       console.warn('Supabase getInvoices notice:', e);
     }
 
-    return localInvoices;
+    return localDataStore.deduplicateInvoices(localInvoices);
   }
 
   public static async createInvoice(data: any): Promise<Invoice> {
@@ -2489,11 +2621,16 @@ export class DataService {
   public static async updateInvoice(id: string, data: any): Promise<Invoice | null> {
     localDataStore.removeTombstone('invoices', id);
     const invoices = localDataStore.getInvoices();
-    const original = invoices.find((i) => i.id === id);
-    if (!original) {
+    const targetInvoiceNumber = (data.invoiceNumber || '').trim().toUpperCase();
+    let originalIdx = invoices.findIndex((i) => i.id === id);
+    if (originalIdx === -1 && targetInvoiceNumber) {
+      originalIdx = invoices.findIndex((i) => i.invoiceNumber && i.invoiceNumber.trim().toUpperCase() === targetInvoiceNumber);
+    }
+    if (originalIdx === -1) {
       console.warn(`updateInvoice: Invoice ${id} not found.`);
       return null;
     }
+    const original = invoices[originalIdx];
 
     const customers = localDataStore.getCustomers();
     const suppliers = localDataStore.getSuppliers();
@@ -2904,21 +3041,39 @@ export class DataService {
         updatedInvoice.journalEntryId = newJournal.id;
         linkedJournal = newJournal;
       }
-      localDataStore.saveJournals(journals);
+      // Purge any extraneous duplicate journal entries with same reference or entryNumber
+      const cleanJournals = journals.filter((j) => {
+        if (j === linkedJournal) return true;
+        if (invoiceNumber) {
+          const numUpper = invoiceNumber.trim().toUpperCase();
+          if (j.reference && j.reference.trim().toUpperCase() === numUpper) return false;
+          if (j.entryNumber && j.entryNumber.trim().toUpperCase() === `JV-${numUpper}`) return false;
+        }
+        if (j.sourceId === updatedInvoice.id) return false;
+        return true;
+      });
+      localDataStore.saveJournals(cleanJournals);
 
       if (isSupabaseConfigured && linkedJournal) {
         SupabaseDataService.saveJournal(linkedJournal).catch(() => {});
       }
     }
 
-    // 4. Update the invoice in invoices list
-    const originalIdx = invoices.findIndex((i) => i.id === id);
-    if (originalIdx !== -1) {
-      invoices[originalIdx] = updatedInvoice;
-    } else {
-      invoices.unshift(updatedInvoice);
-    }
-    localDataStore.saveInvoices(invoices);
+    // 4. Update the invoice in invoices list with strict deduplication
+    const finalNumber = (original.invoiceNumber || data.invoiceNumber || '').trim().toUpperCase();
+    const finalId = original.id;
+    updatedInvoice.id = finalId;
+    updatedInvoice.invoiceNumber = original.invoiceNumber || data.invoiceNumber;
+
+    const cleanInvoices = invoices.filter((inv, idx) => {
+      if (idx === originalIdx) return false;
+      const num = (inv.invoiceNumber || '').trim().toUpperCase();
+      if (num && finalNumber && num === finalNumber) return false;
+      if (inv.id === finalId) return false;
+      return true;
+    });
+    cleanInvoices.splice(originalIdx, 0, updatedInvoice);
+    localDataStore.saveInvoices(cleanInvoices);
     syncToFirestore('erp_invoices', id, updatedInvoice);
 
     // 5. Update Bank & Cash balances
@@ -2976,30 +3131,50 @@ export class DataService {
         const validRemote = fromSupabase.filter((v) => !tombstones.has(v.id));
 
         if (localVouchers.length > 0 || localDataStore.isTenantInitialized()) {
-          const localMap = new Map(localVouchers.map((v) => [v.id, v]));
-          let hasNew = false;
+          const localById = new Map<string, PaymentVoucher>();
+          const localByNumber = new Map<string, PaymentVoucher>();
+          for (const v of localVouchers) {
+            if (v.id) localById.set(v.id, v);
+            if (v.voucherNumber) localByNumber.set(v.voucherNumber.trim().toUpperCase(), v);
+          }
+
+          let hasChanges = false;
           for (const rv of validRemote) {
-            if (!localMap.has(rv.id)) {
+            const rvNum = (rv.voucherNumber || '').trim().toUpperCase();
+            const existing = (rv.id ? localById.get(rv.id) : null) || (rvNum ? localByNumber.get(rvNum) : null);
+            if (!existing) {
               localVouchers.push(rv);
-              hasNew = true;
+              if (rv.id) localById.set(rv.id, rv);
+              if (rvNum) localByNumber.set(rvNum, rv);
+              hasChanges = true;
+            } else {
+              // Existing voucher found: reconcile without creating duplicate
+              const localTime = new Date(existing.createdAt || 0).getTime();
+              const remoteTime = new Date(rv.createdAt || 0).getTime();
+              if (remoteTime > localTime) {
+                Object.assign(existing, rv);
+                hasChanges = true;
+              }
             }
           }
-          if (hasNew) {
-            localDataStore.saveVouchers(localVouchers);
+          const deduplicated = localDataStore.deduplicateVouchers(localVouchers);
+          if (hasChanges || deduplicated.length !== localVouchers.length) {
+            localDataStore.saveVouchers(deduplicated);
           }
-          return localVouchers;
+          return deduplicated;
         }
 
         if (validRemote.length > 0) {
-          localDataStore.saveVouchers(validRemote);
-          return validRemote;
+          const deduplicated = localDataStore.deduplicateVouchers(validRemote);
+          localDataStore.saveVouchers(deduplicated);
+          return deduplicated;
         }
       }
     } catch (e) {
       console.warn('Supabase getVouchers notice:', e);
     }
 
-    return localVouchers;
+    return localDataStore.deduplicateVouchers(localVouchers);
   }
 
   /**
@@ -3559,7 +3734,11 @@ export class DataService {
   public static async updateVoucher(id: string, data: any): Promise<PaymentVoucher | null> {
     localDataStore.removeTombstone('vouchers', id);
     const vouchers = localDataStore.getVouchers();
-    const idx = vouchers.findIndex((x) => x.id === id);
+    const targetVoucherNumber = (data.voucherNumber || '').trim().toUpperCase();
+    let idx = vouchers.findIndex((x) => x.id === id);
+    if (idx === -1 && targetVoucherNumber) {
+      idx = vouchers.findIndex((x) => x.voucherNumber && x.voucherNumber.trim().toUpperCase() === targetVoucherNumber);
+    }
     if (idx === -1) return null;
 
     const original = { ...vouchers[idx] };
@@ -3620,21 +3799,38 @@ export class DataService {
       }
     }
 
-    // 3. Update Voucher object
-    vouchers[idx] = {
+    // 3. Update Voucher object with strict deduplication
+    const finalVoucherNumber = original.voucherNumber || data.voucherNumber;
+    const finalId = original.id;
+    const updatedVoucher: PaymentVoucher = {
       ...original,
       ...data,
+      id: finalId,
+      voucherNumber: finalVoucherNumber,
       amount: newAmount,
       bankAccountId: liquidAcc.id,
       entityNameAr,
       entityId: newEntityId,
     };
-    const updatedVoucher = vouchers[idx];
-    localDataStore.saveVouchers(vouchers);
+    const cleanVouchers = vouchers.filter((v, vIdx) => {
+      if (vIdx === idx) return false;
+      const num = (v.voucherNumber || '').trim().toUpperCase();
+      if (num && finalVoucherNumber && num === finalVoucherNumber.trim().toUpperCase()) return false;
+      if (v.id === finalId) return false;
+      return true;
+    });
+    cleanVouchers.splice(idx, 0, updatedVoucher);
+    localDataStore.saveVouchers(cleanVouchers);
 
     // 4. Update Journal Entry with double-entry integrity
     const journals = localDataStore.getJournals();
-    const jIdx = journals.findIndex((j) => j.id === original.journalEntryId || j.sourceId === id);
+    let linkedJournal: JournalEntry | null = null;
+    const jIdx = journals.findIndex((j) => 
+      j.id === original.journalEntryId || 
+      j.sourceId === finalId ||
+      (j.reference && finalVoucherNumber && j.reference.trim().toUpperCase() === finalVoucherNumber.trim().toUpperCase()) ||
+      (j.entryNumber && finalVoucherNumber && j.entryNumber.trim().toUpperCase() === `JV-${finalVoucherNumber.trim().toUpperCase()}`)
+    );
 
     const jLines = isReceipt
       ? [
@@ -3692,6 +3888,7 @@ export class DataService {
         totalCredit: newAmount,
         status: 'POSTED',
       };
+      linkedJournal = journals[jIdx];
     } else {
       const newJ: JournalEntry = {
         id: 'jv-' + Math.random().toString(36).substr(2, 9),
@@ -3711,9 +3908,20 @@ export class DataService {
       };
       journals.unshift(newJ);
       updatedVoucher.journalEntryId = newJ.id;
-      localDataStore.saveVouchers(vouchers);
+      linkedJournal = newJ;
     }
-    localDataStore.saveJournals(journals);
+    // Purge duplicate journal entries
+    const cleanJournals = journals.filter((j) => {
+      if (j === linkedJournal || (jIdx !== -1 && j === journals[jIdx])) return true;
+      if (finalVoucherNumber) {
+        const numUpper = finalVoucherNumber.trim().toUpperCase();
+        if (j.reference && j.reference.trim().toUpperCase() === numUpper) return false;
+        if (j.entryNumber && j.entryNumber.trim().toUpperCase() === `JV-${numUpper}`) return false;
+      }
+      if (j.sourceId === finalId) return false;
+      return true;
+    });
+    localDataStore.saveJournals(cleanJournals);
 
     // 5. Recalculate customer / supplier balances
     if (oldEntityId && oldEntityId !== newEntityId) {
@@ -5265,41 +5473,99 @@ export class DataService {
 
         if (Array.isArray(journals)) {
           const validRemote = journals.filter((j) => !journalTombstones.has(j.id));
-          const localMap = new Map(localJournals.map((j) => [j.id, j]));
+          const localById = new Map<string, JournalEntry>();
+          const localByNumber = new Map<string, JournalEntry>();
+          for (const j of localJournals) {
+            if (j.id) localById.set(j.id, j);
+            if (j.entryNumber) localByNumber.set(j.entryNumber.trim().toUpperCase(), j);
+            if (j.reference) localByNumber.set(`REF_${j.reference.trim().toUpperCase()}`, j);
+          }
           let changed = false;
           for (const rj of validRemote) {
-            if (!localMap.has(rj.id)) {
+            const rNum = (rj.entryNumber || '').trim().toUpperCase();
+            const rRef = (rj.reference || '').trim().toUpperCase();
+            const existing = (rj.id ? localById.get(rj.id) : null) || 
+                             (rNum ? localByNumber.get(rNum) : null) || 
+                             (rRef ? localByNumber.get(`REF_${rRef}`) : null);
+            if (!existing) {
               localJournals.push(rj);
+              if (rj.id) localById.set(rj.id, rj);
+              if (rNum) localByNumber.set(rNum, rj);
+              if (rRef) localByNumber.set(`REF_${rRef}`, rj);
               changed = true;
+            } else {
+              const localTime = new Date(existing.postedAt || existing.createdAt || 0).getTime();
+              const remoteTime = new Date(rj.postedAt || rj.createdAt || 0).getTime();
+              if (remoteTime > localTime) {
+                Object.assign(existing, rj);
+                changed = true;
+              }
             }
           }
-          if (changed) localDataStore.saveJournals(localJournals);
+          const dedupedJournals = localDataStore.deduplicateJournals(localJournals);
+          localDataStore.saveJournals(dedupedJournals);
         }
 
         if (Array.isArray(invoices)) {
           const validRemote = invoices.filter((i) => !invoiceTombstones.has(i.id));
-          const localMap = new Map(localInvoices.map((i) => [i.id, i]));
+          const localById = new Map<string, Invoice>();
+          const localByNumber = new Map<string, Invoice>();
+          for (const inv of localInvoices) {
+            if (inv.id) localById.set(inv.id, inv);
+            if (inv.invoiceNumber) localByNumber.set(inv.invoiceNumber.trim().toUpperCase(), inv);
+          }
           let changed = false;
           for (const ri of validRemote) {
-            if (!localMap.has(ri.id)) {
+            const rNum = (ri.invoiceNumber || '').trim().toUpperCase();
+            const existing = (ri.id ? localById.get(ri.id) : null) || (rNum ? localByNumber.get(rNum) : null);
+            if (!existing) {
               localInvoices.push(ri);
+              if (ri.id) localById.set(ri.id, ri);
+              if (rNum) localByNumber.set(rNum, ri);
               changed = true;
+            } else {
+              const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+              const remoteTime = new Date(ri.updatedAt || ri.createdAt || 0).getTime();
+              const remoteHasLines = Array.isArray(ri.lines) && ri.lines.length > 0;
+              const localHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
+              if (remoteTime > localTime || (remoteHasLines && !localHasLines)) {
+                Object.assign(existing, ri);
+                changed = true;
+              }
             }
           }
-          if (changed) localDataStore.saveInvoices(localInvoices);
+          const dedupedInvoices = localDataStore.deduplicateInvoices(localInvoices);
+          localDataStore.saveInvoices(dedupedInvoices);
         }
 
         if (Array.isArray(vouchers)) {
           const validRemote = vouchers.filter((v) => !voucherTombstones.has(v.id));
-          const localMap = new Map(localVouchers.map((v) => [v.id, v]));
+          const localById = new Map<string, PaymentVoucher>();
+          const localByNumber = new Map<string, PaymentVoucher>();
+          for (const v of localVouchers) {
+            if (v.id) localById.set(v.id, v);
+            if (v.voucherNumber) localByNumber.set(v.voucherNumber.trim().toUpperCase(), v);
+          }
           let changed = false;
           for (const rv of validRemote) {
-            if (!localMap.has(rv.id)) {
+            const rvNum = (rv.voucherNumber || '').trim().toUpperCase();
+            const existing = (rv.id ? localById.get(rv.id) : null) || (rvNum ? localByNumber.get(rvNum) : null);
+            if (!existing) {
               localVouchers.push(rv);
+              if (rv.id) localById.set(rv.id, rv);
+              if (rvNum) localByNumber.set(rvNum, rv);
               changed = true;
+            } else {
+              const localTime = new Date(existing.createdAt || 0).getTime();
+              const remoteTime = new Date(rv.createdAt || 0).getTime();
+              if (remoteTime > localTime) {
+                Object.assign(existing, rv);
+                changed = true;
+              }
             }
           }
-          if (changed) localDataStore.saveVouchers(localVouchers);
+          const dedupedVouchers = localDataStore.deduplicateVouchers(localVouchers);
+          localDataStore.saveVouchers(dedupedVouchers);
         }
 
         let accounts = await SupabaseDataService.getAccounts();
@@ -5498,5 +5764,80 @@ export class DataService {
     const filtered = list.filter((r) => r.id !== id);
     localDataStore.saveSalesReps(filtered);
     return true;
+  }
+
+  /**
+   * Comprehensive Immediate Repair & Deduplication (إصلاح فوري شامل وتطهير التكرارات)
+   * Enforces unique identifiers for every invoice, voucher, and journal entry.
+   * Purges duplicate entries and recalculates accounting ledgers and customer balances.
+   */
+  public static async executeImmediateRepairAndDeduplication(): Promise<{
+    invoicesDeduplicated: number;
+    vouchersDeduplicated: number;
+    journalsDeduplicated: number;
+    message: string;
+  }> {
+    // 1. Invoices deduplication based on unique invoiceNumber and ID
+    const rawInvoices = localDataStore.getLocal<Invoice[] | null>(localDataStore.getKey(STORAGE_KEYS.INVOICES), []) || [];
+    const dedupedInvoices = localDataStore.deduplicateInvoices(rawInvoices);
+    const invoicesDeduplicated = Math.max(0, rawInvoices.length - dedupedInvoices.length);
+    localDataStore.saveInvoices(dedupedInvoices);
+
+    // 2. Vouchers deduplication based on unique voucherNumber and ID
+    const rawVouchers = localDataStore.getLocal<PaymentVoucher[] | null>(localDataStore.getKey(STORAGE_KEYS.VOUCHERS), []) || [];
+    const dedupedVouchers = localDataStore.deduplicateVouchers(rawVouchers);
+    const vouchersDeduplicated = Math.max(0, rawVouchers.length - dedupedVouchers.length);
+    localDataStore.saveVouchers(dedupedVouchers);
+
+    // 3. Journals deduplication based on unique entryNumber, reference, and ID
+    const rawJournals = localDataStore.getLocal<JournalEntry[] | null>(localDataStore.getKey(STORAGE_KEYS.JOURNALS), []) || [];
+    const dedupedJournals = localDataStore.deduplicateJournals(rawJournals);
+    const journalsDeduplicated = Math.max(0, rawJournals.length - dedupedJournals.length);
+    localDataStore.saveJournals(dedupedJournals);
+
+    // 4. Sync vouchers with journals (updates existing, creates missing, purges orphans)
+    await this.syncVouchersWithJournals();
+
+    // 5. Update Bank & Cash dynamic account balances
+    const updatedAccounts = this.syncAccountBalances();
+
+    // 6. Recalculate customer & supplier balances dynamically
+    const customers = localDataStore.getCustomers();
+    for (const c of customers) {
+      this.recalculateCustomerBalance(c.id);
+    }
+    const suppliers = localDataStore.getSuppliers();
+    for (const s of suppliers) {
+      this.recalculateSupplierBalance(s.id);
+    }
+
+    // 7. Push clean deduplicated data to Supabase if configured
+    if (isSupabaseConfigured) {
+      try {
+        await Promise.all([
+          SupabaseDataService.saveInvoices(dedupedInvoices),
+          SupabaseDataService.saveVouchers(dedupedVouchers),
+          SupabaseDataService.saveJournals(dedupedJournals),
+          SupabaseDataService.saveAccounts(updatedAccounts),
+        ]);
+      } catch (err) {
+        console.warn('Supabase immediate repair sync notice:', err);
+      }
+    }
+
+    // 8. Run system integrity check
+    await this.syncSystemIntegrity();
+
+    const totalPurged = invoicesDeduplicated + vouchersDeduplicated + journalsDeduplicated;
+    const message = totalPurged > 0
+      ? `تم الإصلاح الفوري وتطهير ${totalPurged} سجل مكرر (${invoicesDeduplicated} فاتورة، ${vouchersDeduplicated} سند، ${journalsDeduplicated} قيد يومية) وضبط الأرقام المميزة بنجاح.`
+      : `تم فحص وتأكيد سلامة النظام بنجاح. كافة الفواتير والسندات تحمل أرقاماً مميزة وفريدة ولا توجد أي سجلات مكررة.`;
+
+    return {
+      invoicesDeduplicated,
+      vouchersDeduplicated,
+      journalsDeduplicated,
+      message,
+    };
   }
 }

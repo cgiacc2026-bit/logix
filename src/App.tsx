@@ -506,6 +506,7 @@ export default function App() {
           currentUser={currentUser}
           onLogout={handleLogout}
           onSaveCompany={handleSaveCompany}
+          onRefreshAll={refreshAllData}
         />
 
         {/* Main View Container */}

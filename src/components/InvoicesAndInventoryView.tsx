@@ -57,7 +57,8 @@ import {
   Sparkles,
   Download,
   FileText,
-  ChevronDown
+  ChevronDown,
+  Wrench,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -203,6 +204,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isInvoiceModalExpanded, setIsInvoiceModalExpanded] = useState<boolean>(true);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [isRepairingInvoices, setIsRepairingInvoices] = useState(false);
+  const [repairFeedback, setRepairFeedback] = useState<string | null>(null);
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
   const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -624,6 +627,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       negativeStockApprovedBy: 'admin',
       negativeStockApprovedByName: 'إدارة النظام المعتمدة',
       negativeStockReason: reason,
+      invoiceNumber: editingInvoice?.invoiceNumber,
     };
 
     if (editingInvoice) {
@@ -642,6 +646,20 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvCustomerBranchId('');
     setInvCustomerBranchName('');
     setInvPaidAmount(0);
+  };
+
+  const handleImmediateRepairInvoices = async () => {
+    setIsRepairingInvoices(true);
+    try {
+      const res = await DataService.executeImmediateRepairAndDeduplication();
+      if (onRefreshAll) await onRefreshAll();
+      setRepairFeedback(res.message);
+      setTimeout(() => setRepairFeedback(null), 6000);
+    } catch (err: any) {
+      alert(err?.message || 'حدث خطأ أثناء إجراء الإصلاح الفوري وتدقيق الأرقام المميزة');
+    } finally {
+      setIsRepairingInvoices(false);
+    }
   };
 
   const handleSaveInvoice = async (e: React.FormEvent, autoPost: boolean = true) => {
@@ -1282,28 +1300,58 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               <p className="text-[11px] text-[#8C8273]">عرض كافة المعاملات المالية وترحيلها أو طباعتها فورياً</p>
             </div>
 
-            {/* Filter Pills */}
-            <div className="flex items-center gap-1.5 bg-[#F7F5F0] p-1 rounded-xl border border-[#E5E1DA] text-xs font-bold">
-              {[
-                { id: 'ALL', label: 'الكل' },
-                { id: 'SALES', label: 'فواتير المبيعات' },
-                { id: 'PURCHASE', label: 'فواتير المشتريات' },
-                { id: 'RETURNS', label: 'مرتجعات وإشعارات' },
-              ].map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setInvFilterType(f.id as any)}
-                  className={`px-3 py-1 rounded-lg cursor-pointer transition-all ${
-                    invFilterType === f.id
-                      ? 'bg-[#1A1A1A] text-white shadow-xs'
-                      : 'text-[#6E6659] hover:text-[#1A1A1A]'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+            {/* Actions and Filter Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleImmediateRepairInvoices}
+                disabled={isRepairingInvoices}
+                title="الإصلاح الفوري الشامل: تدقيق الأرقام المميزة للفواتير ومنع أي تكرار وتحديث القيود المحاسبية"
+                className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs active:scale-95 disabled:opacity-50"
+              >
+                <Wrench className={`w-3.5 h-3.5 text-teal-600 ${isRepairingInvoices ? 'animate-spin' : ''}`} />
+                <span>{isRepairingInvoices ? 'جارٍ الإصلاح والتدقيق...' : 'الإصلاح الفوري وتدقيق الأرقام'}</span>
+              </button>
+
+              {/* Filter Pills */}
+              <div className="flex items-center gap-1.5 bg-[#F7F5F0] p-1 rounded-xl border border-[#E5E1DA] text-xs font-bold">
+                {[
+                  { id: 'ALL', label: 'الكل' },
+                  { id: 'SALES', label: 'فواتير المبيعات' },
+                  { id: 'PURCHASE', label: 'فواتير المشتريات' },
+                  { id: 'RETURNS', label: 'مرتجعات وإشعارات' },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setInvFilterType(f.id as any)}
+                    className={`px-3 py-1 rounded-lg cursor-pointer transition-all ${
+                      invFilterType === f.id
+                        ? 'bg-[#1A1A1A] text-white shadow-xs'
+                        : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+
+          {repairFeedback && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-4 py-2.5 rounded-xl flex items-center justify-between shadow-2xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-bold">{repairFeedback}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRepairFeedback(null)}
+                className="text-emerald-700 hover:text-emerald-900 font-bold text-[11px] bg-emerald-100 px-2 py-0.5 rounded-lg"
+              >
+                إغلاق
+              </button>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs">

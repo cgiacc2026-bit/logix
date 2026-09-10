@@ -16,6 +16,7 @@ import {
   FileText,
   X,
   Scale,
+  Wrench,
 } from 'lucide-react';
 import {
   PaymentVoucher,
@@ -27,6 +28,7 @@ import {
 } from '../types';
 import { formatCurrency } from '../utils/formatters.ts';
 import { VouchersService, BankOrCashAccountSummary } from '../services/vouchersService';
+import { DataService } from '../services/dataService.ts';
 
 interface ReceiptVouchersViewProps {
   vouchers: PaymentVoucher[];
@@ -88,12 +90,13 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
     setIsSyncingLedger(true);
     setSyncSuccessMsg(null);
     try {
+      const repairResult = await DataService.executeImmediateRepairAndDeduplication();
       const result = await VouchersService.syncAllVouchersToLedger();
       if (onRefreshAll) await onRefreshAll();
-      setSyncSuccessMsg(`تمت المزامنة بنجاح: تم ترحيل وتحديث القيود وأرصدة ${result.accountsUpdated} حساب.`);
-      setTimeout(() => setSyncSuccessMsg(null), 4000);
+      setSyncSuccessMsg(`تم الإصلاح الفوري وتدقيق الأرقام المميزة بنجاح: ${repairResult.message}. كما تم تحديث أرصدة ${result.accountsUpdated} حساب.`);
+      setTimeout(() => setSyncSuccessMsg(null), 6000);
     } catch (err: any) {
-      alert('حدث خطأ أثناء المزامنة: ' + (err?.message || 'خطأ غير معروف'));
+      alert('حدث خطأ أثناء الإصلاح والمزامنة: ' + (err?.message || 'خطأ غير معروف'));
     } finally {
       setIsSyncingLedger(false);
     }
@@ -270,6 +273,7 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
         invoiceId: vouchInvoiceId || undefined,
         reference: vouchReference || undefined,
         notes: vouchNotes,
+        voucherNumber: editingVoucher?.voucherNumber,
       };
 
       if (editingVoucher && onUpdateVoucher) {
@@ -400,11 +404,11 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
             <button
               onClick={handleSyncAllVouchers}
               disabled={isSyncingLedger}
-              className="px-3.5 py-2.5 bg-[#FAF7F0] hover:bg-[#F3EDE0] text-[#B8860B] border border-[#E5E1DA] text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all disabled:opacity-50"
-              title="مزامنة وترحيل كافة السندات للدليل المحاسبي وتحديث أرصدة البنوك والخزينة والعملاء"
+              className="px-3.5 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all disabled:opacity-50"
+              title="الإصلاح الفوري وتدقيق الأرقام المميزة: منع تكرار السندات، ضبط قيود اليومية، وتحديث أرصدة البنوك والخزينة والعملاء"
             >
-              <RotateCcw className={`w-3.5 h-3.5 ${isSyncingLedger ? 'animate-spin' : ''}`} />
-              <span>{isSyncingLedger ? 'جارِ الترحيل...' : 'ترحيل وتحديث الأرصدة'}</span>
+              <Wrench className={`w-3.5 h-3.5 text-teal-600 ${isSyncingLedger ? 'animate-spin' : ''}`} />
+              <span>{isSyncingLedger ? 'جارٍ الإصلاح والتدقيق...' : 'الإصلاح الفوري وتدقيق السندات'}</span>
             </button>
 
             <button

@@ -18,11 +18,13 @@ import {
   Check,
   Layers,
   ChevronDown,
+  Wrench,
 } from 'lucide-react';
 import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
 import { ThemeService, ERP_THEMES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
 import { resolveActiveCompany } from '../utils/companyResolver.ts';
+import { DataService } from '../services/dataService.ts';
 
 interface HeaderProps {
   company: CompanyProfile | null;
@@ -36,6 +38,7 @@ interface HeaderProps {
   currentUser?: SystemUser | null;
   onLogout?: () => void;
   onSaveCompany?: (updated: CompanyProfile) => Promise<void> | void;
+  onRefreshAll?: (silent?: boolean) => Promise<void>;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,12 +53,31 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onLogout,
   onSaveCompany,
+  onRefreshAll,
 }) => {
   const activeCompany = resolveActiveCompany(company);
   const [isExporting, setIsExporting] = useState(false);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [repairNotice, setRepairNotice] = useState<string | null>(null);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const paletteMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleImmediateRepair = async () => {
+    setIsRepairing(true);
+    try {
+      const res = await DataService.executeImmediateRepairAndDeduplication();
+      if (onRefreshAll) {
+        await onRefreshAll(true);
+      }
+      setRepairNotice(res.message);
+      setTimeout(() => setRepairNotice(null), 6000);
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء إجراء الإصلاح الفوري');
+    } finally {
+      setIsRepairing(false);
+    }
+  };
 
   const {
     themeColor: currentThemeColor,
@@ -167,6 +189,18 @@ export const Header: React.FC<HeaderProps> = ({
             <span>سحابي متصل</span>
             <CheckCircle2 className="w-3 h-3 text-emerald-400" />
           </div>
+
+          {/* Immediate System Repair & Deduplication Button */}
+          <button
+            onClick={handleImmediateRepair}
+            disabled={isRepairing}
+            title="الإصلاح الفوري الشامل: مطابقة الأرقام المميزة لجميع الفواتير والسندات وتطهير السجلات المكررة وضبط قيود اليومية"
+            className="px-2.5 py-1 rounded-lg bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5 border border-teal-400/40 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
+          >
+            <Wrench className={`w-3.5 h-3.5 text-teal-200 ${isRepairing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{isRepairing ? 'جارٍ الإصلاح...' : 'الإصلاح الفوري'}</span>
+            <span className="sm:hidden">إصلاح</span>
+          </button>
 
           {/* Full System Excel Backup Export Button */}
           <button
@@ -349,6 +383,20 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
       </div>
+      {repairNotice && (
+        <div className="bg-emerald-900/95 border-t border-b border-emerald-500/50 text-emerald-100 text-xs px-4 py-2 flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="font-bold">{repairNotice}</span>
+          </div>
+          <button
+            onClick={() => setRepairNotice(null)}
+            className="text-emerald-200 hover:text-white font-bold text-[11px] px-2.5 py-0.5 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 transition-colors"
+          >
+            حسناً
+          </button>
+        </div>
+      )}
     </header>
   );
 };
