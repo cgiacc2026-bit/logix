@@ -359,6 +359,17 @@ export default function App() {
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
     setSuppliers(DataService.getLocalSuppliers());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
+  };
+
+  const handleUpdateVoucher = async (id: string, voucherData: any) => {
+    await DataService.updateVoucher(id, voucherData);
+    setVouchers(DataService.getLocalVouchers());
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setAccounts(DataService.getLocalAccounts());
     refreshAllData(true);
   };
 
@@ -368,12 +379,14 @@ export default function App() {
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
     setSuppliers(DataService.getLocalSuppliers());
+    setAccounts(DataService.getLocalAccounts());
     refreshAllData(true);
   };
 
   const handleDeleteVoucher = async (id: string) => {
     await DataService.deleteVoucher(id);
     setVouchers(DataService.getLocalVouchers());
+    setAccounts(DataService.getLocalAccounts());
     refreshAllData(true);
   };
 
@@ -670,11 +683,13 @@ export default function App() {
                   : 'invoices'
               }
               onSubTabChange={(sub) => setActiveTab(sub)}
+              accounts={accounts}
               onCreateInvoice={handleCreateInvoice}
               onPostInvoice={handlePostInvoice}
               onCancelInvoice={handleCancelInvoice}
               onDeleteInvoice={handleDeleteInvoice}
               onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
               onCancelVoucher={handleCancelVoucher}
               onDeleteVoucher={handleDeleteVoucher}
               onCreateCustomer={handleCreateCustomer}

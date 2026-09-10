@@ -1230,6 +1230,16 @@ export class AccountingEngine {
       const today = new Date().toISOString().split('T')[0];
       const journalEntryNumber = `JV-${voucher.voucherNumber}`;
 
+      // Dynamically resolve Bank or Cash account from Chart of Accounts
+      const allAccounts = db.getAccounts();
+      const targetBankAccId = voucher.bankAccountId || (voucher.paymentMethod === 'CASH' ? 'acc-1112' : 'acc-1111');
+      const resolvedBankAcc = allAccounts.find((a) => a.id === targetBankAccId || a.code === targetBankAccId) ||
+        allAccounts.find((a) => (voucher.paymentMethod === 'CASH' ? a.code === '1112' || a.code === '1110' : a.code === '1111')) || {
+          id: targetBankAccId,
+          code: voucher.paymentMethod === 'CASH' ? '1112' : '1111',
+          nameAr: voucher.paymentMethod === 'CASH' ? 'الصندوق الرئيسي (الخزينة)' : 'البنك الأهلي التجاري - الحساب الرئيسي',
+        };
+
       const lines = [];
 
       if (voucher.type === 'RECEIPT') {
@@ -1237,12 +1247,9 @@ export class AccountingEngine {
         lines.push(
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: voucher.bankAccountId || 'acc-1111',
-            accountCode: voucher.bankAccountId === 'acc-1112' ? '1112' : '1111',
-            accountNameAr:
-              voucher.bankAccountId === 'acc-1112'
-                ? 'الصندوق الرئيسي (الخزينة)'
-                : 'البنك الأهلي التجاري - الحساب الرئيسي',
+            accountId: resolvedBankAcc.id,
+            accountCode: resolvedBankAcc.code,
+            accountNameAr: resolvedBankAcc.nameAr,
             debit: voucher.amount,
             credit: 0,
             memo: `سند قبض رقم ${voucher.voucherNumber} من ${voucher.entityNameAr}`,
@@ -1264,7 +1271,7 @@ export class AccountingEngine {
         if (voucher.invoiceId) {
           const inv = db.getInvoices().find((i) => i.id === voucher.invoiceId);
           if (inv) {
-            const newPaid = inv.paidAmount + voucher.amount;
+            const newPaid = (inv.paidAmount || 0) + voucher.amount;
             const newDue = Math.max(0, inv.grandTotal - newPaid);
             db.updateInvoice(inv.id, {
               paidAmount: newPaid,
@@ -1289,12 +1296,9 @@ export class AccountingEngine {
           },
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: voucher.bankAccountId || 'acc-1111',
-            accountCode: voucher.bankAccountId === 'acc-1112' ? '1112' : '1111',
-            accountNameAr:
-              voucher.bankAccountId === 'acc-1112'
-                ? 'الصندوق الرئيسي (الخزينة)'
-                : 'البنك الأهلي التجاري - الحساب الرئيسي',
+            accountId: resolvedBankAcc.id,
+            accountCode: resolvedBankAcc.code,
+            accountNameAr: resolvedBankAcc.nameAr,
             debit: 0,
             credit: voucher.amount,
             memo: `سند صرف رقم ${voucher.voucherNumber} إلى ${voucher.entityNameAr}`,
@@ -1352,14 +1356,10 @@ export class AccountingEngine {
       if (!voucher) throw new Error('السند غير موجود');
       if (voucher.status === 'CANCELLED') return voucher;
 
-      // 1. Reverse the associated journal entry
+      // 1. Reverse or cancel the associated journal entry
       const journal = db.getJournals().find((j) => j.id === voucher.journalEntryId || j.sourceId === voucher.id);
       if (journal && journal.status === 'POSTED') {
-        try {
-          this.reverseJournalEntry(journal.id, `إلغاء السند ${voucher.voucherNumber}: ${reason}`);
-        } catch (e) {
-          db.updateJournal(journal.id, { status: 'CANCELLED' });
-        }
+        db.updateJournal(journal.id, { status: 'CANCELLED' });
       }
 
       // 2. If voucher was linked to an invoice, restore invoice paidAmount & dueAmount
@@ -1401,18 +1401,50 @@ export class AccountingEngine {
       const original = db.getVouchers().find((v) => v.id === voucherId);
       if (!original) throw new Error('السند غير موجود');
 
-      // Cancel old journal
+      const oldAmount = Number(original.amount) || 0;
+      const newAmount = updatedData.amount !== undefined ? Number(updatedData.amount) : oldAmount;
+      const oldInvoiceId = original.invoiceId;
+      const newInvoiceId = updatedData.invoiceId !== undefined ? updatedData.invoiceId : oldInvoiceId;
+      const oldEntityId = original.entityId;
+      const newEntityId = updatedData.entityId || oldEntityId;
+      const oldEntityType = original.entityType;
+
+      // 1. Cancel old journal entry
       const oldJournal = db.getJournals().find((j) => j.id === original.journalEntryId || j.sourceId === original.id);
       if (oldJournal) {
         db.updateJournal(oldJournal.id, { status: 'CANCELLED' });
       }
 
-      // If linked to invoice, adjust invoice paidAmount
-      if (original.invoiceId) {
-        const inv = db.getInvoices().find((i) => i.id === original.invoiceId);
+      // 2. Reconcile invoices
+      if (oldInvoiceId && oldInvoiceId !== newInvoiceId) {
+        // Revert old invoice
+        const oldInv = db.getInvoices().find((i) => i.id === oldInvoiceId);
+        if (oldInv) {
+          const restoredPaid = Math.max(0, (oldInv.paidAmount || 0) - oldAmount);
+          const restoredDue = Math.max(0, oldInv.grandTotal - restoredPaid);
+          db.updateInvoice(oldInv.id, {
+            paidAmount: restoredPaid,
+            dueAmount: restoredDue,
+            status: restoredDue === 0 ? 'PAID' : (restoredPaid > 0 ? 'PARTIALLY_PAID' : 'POSTED'),
+          });
+        }
+        // Apply to new invoice
+        if (newInvoiceId) {
+          const newInv = db.getInvoices().find((i) => i.id === newInvoiceId);
+          if (newInv) {
+            const adjustedPaid = (newInv.paidAmount || 0) + newAmount;
+            const adjustedDue = Math.max(0, newInv.grandTotal - adjustedPaid);
+            db.updateInvoice(newInv.id, {
+              paidAmount: adjustedPaid,
+              dueAmount: adjustedDue,
+              status: adjustedDue === 0 ? 'PAID' : (adjustedPaid > 0 ? 'PARTIALLY_PAID' : 'POSTED'),
+            });
+          }
+        }
+      } else if (newInvoiceId) {
+        // Same invoice, adjust delta
+        const inv = db.getInvoices().find((i) => i.id === newInvoiceId);
         if (inv) {
-          const oldAmount = original.amount || 0;
-          const newAmount = updatedData.amount !== undefined ? Number(updatedData.amount) : oldAmount;
           const delta = newAmount - oldAmount;
           const adjustedPaid = Math.max(0, (inv.paidAmount || 0) + delta);
           const adjustedDue = Math.max(0, inv.grandTotal - adjustedPaid);
@@ -1424,25 +1456,32 @@ export class AccountingEngine {
         }
       }
 
-      // Apply update
+      // 3. Apply voucher update
       db.updateVoucher(voucherId, updatedData);
       const updatedVoucher = db.getVouchers().find((v) => v.id === voucherId)!;
 
-      // Re-generate journal entry for the updated voucher
-      const lines = [];
-      const bankAcc = updatedVoucher.bankAccountId || 'acc-1111';
-      const isCash = bankAcc === 'acc-1112' || bankAcc === 'acc-1113';
+      // 4. Resolve Bank or Cash account dynamically from Chart of Accounts
+      const allAccounts = db.getAccounts();
+      const targetBankAccId = updatedVoucher.bankAccountId || (updatedVoucher.paymentMethod === 'CASH' ? 'acc-1112' : 'acc-1111');
+      const resolvedBankAcc = allAccounts.find((a) => a.id === targetBankAccId || a.code === targetBankAccId) ||
+        allAccounts.find((a) => (updatedVoucher.paymentMethod === 'CASH' ? a.code === '1112' || a.code === '1110' : a.code === '1111')) || {
+          id: targetBankAccId,
+          code: updatedVoucher.paymentMethod === 'CASH' ? '1112' : '1111',
+          nameAr: updatedVoucher.paymentMethod === 'CASH' ? 'الصندوق الرئيسي (الخزينة)' : 'البنك الأهلي التجاري - الحساب الرئيسي',
+        };
 
+      // 5. Build new Journal Entry
+      const lines = [];
       if (updatedVoucher.type === 'RECEIPT') {
         lines.push(
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: bankAcc,
-            accountCode: isCash ? '1112' : '1111',
-            accountNameAr: isCash ? 'الصندوق الرئيسي (الخزينة)' : 'البنك الأهلي التجاري - الحساب الرئيسي',
+            accountId: resolvedBankAcc.id,
+            accountCode: resolvedBankAcc.code,
+            accountNameAr: resolvedBankAcc.nameAr,
             debit: updatedVoucher.amount,
             credit: 0,
-            memo: `سند قبض رقم ${updatedVoucher.voucherNumber} من ${updatedVoucher.entityNameAr}`,
+            memo: `سند قبض معدل رقم ${updatedVoucher.voucherNumber} من ${updatedVoucher.entityNameAr}`,
           },
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
@@ -1471,12 +1510,12 @@ export class AccountingEngine {
           },
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: bankAcc,
-            accountCode: isCash ? '1112' : '1111',
-            accountNameAr: isCash ? 'الصندوق الرئيسي (الخزينة)' : 'البنك الأهلي التجاري - الحساب الرئيسي',
+            accountId: resolvedBankAcc.id,
+            accountCode: resolvedBankAcc.code,
+            accountNameAr: resolvedBankAcc.nameAr,
             debit: 0,
             credit: updatedVoucher.amount,
-            memo: `سند صرف رقم ${updatedVoucher.voucherNumber} إلى ${updatedVoucher.entityNameAr}`,
+            memo: `سند صرف معدل رقم ${updatedVoucher.voucherNumber} إلى ${updatedVoucher.entityNameAr}`,
           }
         );
       }
@@ -1503,7 +1542,14 @@ export class AccountingEngine {
       db.addJournal(journalEntry);
       db.updateVoucher(voucherId, { journalEntryId: journalEntry.id });
 
-      // Recalculate entity balances
+      // 6. Recalculate both old and new entity balances to prevent hanging balances
+      if (oldEntityId && oldEntityId !== newEntityId) {
+        if (oldEntityType === 'CUSTOMER') {
+          this.recalculateCustomerBalance(oldEntityId);
+        } else {
+          this.recalculateSupplierBalance(oldEntityId);
+        }
+      }
       if (updatedVoucher.entityType === 'CUSTOMER') {
         this.recalculateCustomerBalance(updatedVoucher.entityId);
       } else {

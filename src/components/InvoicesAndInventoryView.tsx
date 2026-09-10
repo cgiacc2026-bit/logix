@@ -7,7 +7,8 @@ import {
   PaymentVoucher,
   CompanyProfile,
   UnitDefinition,
-  ProductionOrder
+  ProductionOrder,
+  Account
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
@@ -17,6 +18,7 @@ import { PriceManagementModal } from './PriceManagementModal';
 import { AccountStatementModal } from './AccountStatementModal';
 import { NegativeStockConfirmationModal, DeficitItem } from './NegativeStockConfirmationModal';
 import { StockLedgerAndAuditView } from './StockLedgerAndAuditView';
+import { ReceiptVouchersView } from './ReceiptVouchersView';
 import { DataService, localDataStore } from '../services/dataService.ts';
 import { calculateEntityCurrentBalance } from '../services/statementService.ts';
 import { CustomerSearchCombobox } from './CustomerSearchCombobox.tsx';
@@ -66,6 +68,7 @@ interface InvoicesProps {
   inventory: InventoryItem[];
   invoices: Invoice[];
   vouchers: PaymentVoucher[];
+  accounts?: Account[];
   units?: UnitDefinition[];
   currency: string;
   activeSubTab?: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units';
@@ -75,6 +78,7 @@ interface InvoicesProps {
   onPostInvoice: (id: string) => Promise<void>;
   onCancelInvoice?: (id: string, reason?: string) => Promise<void>;
   onCreateVoucher: (data: any) => Promise<void>;
+  onUpdateVoucher?: (id: string, data: any) => Promise<void>;
   onCancelVoucher?: (id: string, reason: string) => Promise<void>;
   onDeleteVoucher?: (id: string) => Promise<void>;
   onCreateCustomer: (data: any) => Promise<void>;
@@ -100,6 +104,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   inventory,
   invoices,
   vouchers,
+  accounts = [],
   units,
   currency,
   activeSubTab,
@@ -109,6 +114,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   onPostInvoice,
   onCancelInvoice,
   onCreateVoucher,
+  onUpdateVoucher,
   onCancelVoucher,
   onDeleteVoucher,
   onCreateCustomer,
@@ -1396,114 +1402,21 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
       {/* TAB 2: VOUCHERS */}
       {subTab === 'vouchers' && (
-        <div className="bg-white border border-[#E5E1DA] rounded-2xl p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-[#E5E1DA] pb-3">
-            <h3 className="text-sm font-bold text-[#1A1A1A]">سجل سندات القبض والصرف النقدية والبنكية وطباعتها</h3>
-            <span className="text-xs text-[#8C8273] font-semibold">إجمالي السندات: {vouchers.length}</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-[#F7F5F0] text-[#1A1A1A] font-bold border-b border-[#E5E1DA]">
-                <tr>
-                  <th className="py-3 px-4">رقم السند</th>
-                  <th className="py-3 px-4">نوع السند</th>
-                  <th className="py-3 px-4">اسم العميل / المورد</th>
-                  <th className="py-3 px-4">التاريخ</th>
-                  <th className="py-3 px-4">المبلغ</th>
-                  <th className="py-3 px-4">طريقة السداد</th>
-                  <th className="py-3 px-4">البيان</th>
-                  <th className="py-3 px-4 text-center">الحالة</th>
-                  <th className="py-3 px-4 text-center">الإجراءات والطباعة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E5E1DA]">
-                {vouchers.map((v) => (
-                  <tr key={v.id} className="hover:bg-[#FDFCFB] transition-all">
-                    <td className="py-3 px-4 font-mono font-bold text-[#B8860B]">{v.voucherNumber}</td>
-                    <td className="py-3 px-4 font-bold text-[#1A1A1A]">
-                      {v.type === 'RECEIPT' ? 'سند قبض (من عميل)' : 'سند صرف (لمورد)'}
-                    </td>
-                    <td className="py-3 px-4 font-bold text-[#1A1A1A]">{v.entityNameAr}</td>
-                    <td className="py-3 px-4 text-[#8C8273]">{v.date}</td>
-                    <td className="py-3 px-4 font-bold text-[#2D6A4F]">{formatCurrency(v.amount, currency)}</td>
-                    <td className="py-3 px-4 text-[#6E6659]">
-                      {v.paymentMethod === 'BANK' ? 'تحويل بنكي / شيك' : 'نقداً من الخزينة'}
-                    </td>
-                    <td className="py-3 px-4 text-[#8C8273]">{v.notes || '-'}</td>
-                    <td className="py-3 px-4 text-center">
-                      <span
-                        className={`px-2.5 py-1 text-[11px] font-bold rounded-full border ${
-                          v.status === 'CANCELLED'
-                            ? 'bg-[#FDF0F0] text-[#9E2A2B] border-[#9E2A2B]/30'
-                            : 'bg-[#EBF5EE] text-[#2D6A4F] border-[#2D6A4F]/30'
-                        }`}
-                      >
-                        {v.status === 'CANCELLED' ? 'ملغى / معكوس' : 'معتمد'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => setPrintDoc({ type: 'VOUCHER', data: v })}
-                          className="px-2.5 py-1 bg-[#1A1A1A] hover:bg-black text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer shadow-xs"
-                          title="طباعة السند"
-                        >
-                          <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
-                          طباعة
-                        </button>
-
-                        {v.status !== 'CANCELLED' && onCancelVoucher && (
-                          <button
-                            onClick={async () => {
-                              const reason = prompt(
-                                `إلغاء وعكس السند (${v.voucherNumber}): الرجاء كتابة سبب الإلغاء لتوليد قيد عكسي وإعادة احتساب الرصيد:`,
-                                'إلغاء السند بطلب الإدارة'
-                              );
-                              if (reason === null) return;
-                              try {
-                                await onCancelVoucher(v.id, reason);
-                              } catch (e: any) {
-                                alert(e.message);
-                              }
-                            }}
-                            className="px-2 py-1 bg-[#9E2A2B] hover:bg-[#782021] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
-                            title="إلغاء السند وعكس القيد والأرصدة"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            إلغاء وعكس
-                          </button>
-                        )}
-
-                        {onDeleteVoucher && (
-                          <button
-                            onClick={async () => {
-                              if (
-                                confirm(
-                                  `⚠️ هل أنت متأكد من حذف السند (${v.voucherNumber})؟ سيتم عكس قيوده وإعادة ضبط رصيد الحساب بالكامل.`
-                                )
-                              ) {
-                                try {
-                                  await onDeleteVoucher(v.id);
-                                } catch (e: any) {
-                                  alert(e.message);
-                                }
-                              }
-                            }}
-                            className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                            title="حذف السند وعكس آثاره"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ReceiptVouchersView
+          vouchers={vouchers}
+          customers={customers}
+          suppliers={suppliers}
+          accounts={accounts}
+          invoices={invoices}
+          company={company}
+          currency={currency}
+          onCreateVoucher={onCreateVoucher}
+          onUpdateVoucher={onUpdateVoucher}
+          onCancelVoucher={onCancelVoucher}
+          onDeleteVoucher={onDeleteVoucher}
+          onPrintVoucher={(v) => setPrintDoc({ type: 'VOUCHER', data: v })}
+          onRefreshAll={onRefreshAll}
+        />
       )}
 
       {/* TAB 3: CUSTOMERS & SUPPLIERS */}
