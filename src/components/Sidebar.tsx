@@ -24,6 +24,7 @@ import {
   BarChart3,
   Sun,
   Moon,
+  Layers,
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
 import { CompanyProfile } from '../types.js';
@@ -65,6 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSaveCompany,
 }) => {
   const {
+    themeMode,
     effectiveMode,
     activePalette,
     toggleThemeMode,
@@ -390,7 +392,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
 
-        {/* Day / Night Quick Button in Sidebar Footer */}
+        {/* Tri-Theme Mode Quick Toggle in Sidebar Footer */}
         {!collapsed ? (
           <button
             type="button"
@@ -400,19 +402,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSaveCompany({ ...company, themeMode: next });
               }
             }}
-            className="w-full flex items-center justify-between px-2 py-1 rounded-lg bg-black/20 hover:bg-black/40 text-xs font-semibold text-slate-300 border border-white/5 transition-all cursor-pointer"
-            title={effectiveMode === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-black/20 hover:bg-black/35 text-xs font-semibold text-slate-200 border border-white/10 transition-all cursor-pointer"
+            title="التبديل بين الثيمات: فاتح مهني / رمادي مؤسسي / كحلي عميق"
           >
-            <div className="flex items-center gap-1.5">
-              {effectiveMode === 'dark' ? (
-                <Sun className="w-3.5 h-3.5 text-amber-300" />
-              ) : (
-                <Moon className="w-3.5 h-3.5 text-cyan-300" />
-              )}
-              <span>{effectiveMode === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'}</span>
+            <div className="flex items-center gap-2">
+              {themeMode === 'light' && <Sun className="w-3.5 h-3.5 text-amber-300" />}
+              {themeMode === 'slate' && <Layers className="w-3.5 h-3.5 text-sky-300" />}
+              {themeMode === 'navy' && <Moon className="w-3.5 h-3.5 text-indigo-300" />}
+              <span>
+                {themeMode === 'light' && 'فاتح مهني'}
+                {themeMode === 'slate' && 'رمادي مؤسسي'}
+                {themeMode === 'navy' && 'كحلي عميق'}
+              </span>
             </div>
-            <span className="text-[9px] text-slate-400 font-mono">
-              {effectiveMode === 'dark' ? 'Light' : 'Dark'}
+            <span className="text-[10px] text-cyan-300 font-mono">
+              {themeMode === 'light' && 'Light'}
+              {themeMode === 'slate' && 'Slate'}
+              {themeMode === 'navy' && 'Navy'}
             </span>
           </button>
         ) : (
@@ -424,14 +430,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSaveCompany({ ...company, themeMode: next });
               }
             }}
-            className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center bg-black/20 hover:bg-black/40 text-slate-300 border border-white/5 cursor-pointer"
-            title={effectiveMode === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
+            className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center bg-black/20 hover:bg-black/40 text-slate-300 border border-white/10 cursor-pointer"
+            title="التبديل بين الثيمات (فاتح / رمادي / كحلي)"
           >
-            {effectiveMode === 'dark' ? (
-              <Sun className="w-3.5 h-3.5 text-amber-300" />
-            ) : (
-              <Moon className="w-3.5 h-3.5 text-cyan-300" />
-            )}
+            {themeMode === 'light' && <Sun className="w-3.5 h-3.5 text-amber-300" />}
+            {themeMode === 'slate' && <Layers className="w-3.5 h-3.5 text-sky-300" />}
+            {themeMode === 'navy' && <Moon className="w-3.5 h-3.5 text-indigo-300" />}
           </button>
         )}
       </div>

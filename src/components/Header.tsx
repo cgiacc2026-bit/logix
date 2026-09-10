@@ -16,10 +16,11 @@ import {
   Moon,
   Palette,
   Check,
+  Layers,
 } from 'lucide-react';
 import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
-import { ThemeService, THEME_PALETTES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
+import { ThemeService, ERP_THEMES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
 
 interface HeaderProps {
   company: CompanyProfile | null;
@@ -59,6 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
     effectiveMode,
     activePalette,
     setThemeColor,
+    setThemeMode,
     toggleThemeMode,
   } = useTheme(company);
 
@@ -82,11 +84,11 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const handleSelectThemeColor = (colorKey: ThemeColor) => {
-    setThemeColor(colorKey);
+  const handleSelectTheme = (modeKey: ThemeMode) => {
+    setThemeMode(modeKey);
     setIsPaletteOpen(false);
     if (company && onSaveCompany) {
-      onSaveCompany({ ...company, themeColor: colorKey });
+      onSaveCompany({ ...company, themeMode: modeKey });
     }
   };
 
@@ -231,26 +233,35 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">الإعدادات</span>
           </button>
 
-          {/* Day / Night Mode (الوضع النهاري والليلي) Toggle Button */}
+          {/* Tri-Theme Mode Quick Toggle Button (التبديل السريع بين الثيمات الثلاثة) */}
           <button
             type="button"
             onClick={handleToggleThemeMode}
-            title={effectiveMode === 'dark' ? 'التبديل إلى الوضع النهاري (Light Mode)' : 'التبديل إلى الوضع الليلي (Dark Mode)'}
+            title="التبديل بين الثيمات: فاتح مهني / رمادي مؤسسي / كحلي عميق"
             className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0 ${
-              effectiveMode === 'dark'
-                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-400/50'
-                : 'bg-black/30 hover:bg-black/50 text-slate-100 border-white/20'
+              currentThemeMode === 'light'
+                ? 'bg-blue-600/30 hover:bg-blue-600/40 text-blue-100 border-blue-400/50'
+                : currentThemeMode === 'slate'
+                ? 'bg-slate-700/60 hover:bg-slate-700/80 text-sky-200 border-sky-400/40'
+                : 'bg-indigo-900/60 hover:bg-indigo-900/80 text-indigo-200 border-indigo-400/40'
             }`}
           >
-            {effectiveMode === 'dark' ? (
+            {currentThemeMode === 'light' && (
               <>
                 <Sun className="w-3.5 h-3.5 text-amber-300" />
-                <span className="hidden sm:inline">نهاري</span>
+                <span className="hidden sm:inline">فاتح مهني</span>
               </>
-            ) : (
+            )}
+            {currentThemeMode === 'slate' && (
               <>
-                <Moon className="w-3.5 h-3.5 text-cyan-300" />
-                <span className="hidden sm:inline">ليلي</span>
+                <Layers className="w-3.5 h-3.5 text-sky-300" />
+                <span className="hidden sm:inline">رمادي مؤسسي</span>
+              </>
+            )}
+            {currentThemeMode === 'navy' && (
+              <>
+                <Moon className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="hidden sm:inline">كحلي عميق</span>
               </>
             )}
           </button>
@@ -261,48 +272,55 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={() => setIsPaletteOpen((prev) => !prev)}
               title={`نسق وألوان البرنامج: ${activePalette.labelAr}`}
-              className="p-1.5 sm:px-2 sm:py-1 rounded-lg bg-black/30 hover:bg-black/50 text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+              className="p-1.5 sm:px-2 sm:py-1 rounded-lg bg-black/25 hover:bg-black/40 text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
             >
               <div
                 className="w-3.5 h-3.5 rounded-full border border-white/80 shadow-xs"
                 style={{ backgroundColor: activePalette.primaryColor }}
               />
               <Palette className="w-3.5 h-3.5 text-slate-300" />
-              <span className="hidden xl:inline text-[11px] font-medium text-slate-200 truncate max-w-[70px]">
-                {activePalette.labelAr.split(' ')[0]}
+              <span className="hidden xl:inline text-[11px] font-medium text-slate-200 truncate max-w-[90px]">
+                {activePalette.labelAr}
               </span>
             </button>
 
             {isPaletteOpen && (
-              <div className="absolute left-0 mt-2 w-64 bg-[#0E1626] border border-slate-700 rounded-xl shadow-2xl p-2.5 z-50 text-right space-y-1 animate-in fade-in duration-100">
-                <div className="text-[11px] font-bold text-slate-200 border-b border-slate-800 pb-1.5 px-1 flex items-center justify-between">
-                  <span>نسق وألوان البرنامج (ERP Themes)</span>
-                  <span className="text-[10px] text-cyan-400 font-mono">6 ألوان</span>
+              <div className="absolute left-0 mt-2 w-72 bg-[#142034] border border-slate-700 rounded-xl shadow-2xl p-2.5 z-50 text-right space-y-1.5 animate-in fade-in duration-100">
+                <div className="text-[11px] font-bold text-slate-200 border-b border-slate-700/60 pb-1.5 px-1 flex items-center justify-between">
+                  <span>أنظمة الثيمات الاحترافية (ERP Themes)</span>
+                  <span className="text-[10px] text-cyan-400 font-mono">3 ثيمات</span>
                 </div>
-                <div className="grid grid-cols-1 gap-1 pt-1">
-                  {Object.values(THEME_PALETTES).filter((p, i, arr) => arr.findIndex(t => t.id === p.id) === i).map((p) => {
-                    const isSelected = currentThemeColor === p.id;
+                <div className="grid grid-cols-1 gap-1.5 pt-1">
+                  {(['light', 'slate', 'navy'] as ThemeMode[]).map((modeKey) => {
+                    const p = ERP_THEMES[modeKey];
+                    const isSelected = currentThemeMode === modeKey;
                     return (
                       <button
-                        key={p.id}
+                        key={modeKey}
                         type="button"
-                        onClick={() => handleSelectThemeColor(p.id as ThemeColor)}
-                        className={`w-full flex items-center justify-between p-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer text-right ${
+                        onClick={() => handleSelectTheme(modeKey)}
+                        className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-right ${
                           isSelected
-                            ? 'bg-blue-600/30 text-white border border-blue-500/50'
+                            ? 'bg-blue-600/30 text-white border border-blue-400/60 shadow-xs'
                             : 'text-slate-300 hover:bg-slate-800/80 hover:text-white border border-transparent'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                           <span
                             className="w-4 h-4 rounded-full border border-white/40 shadow-xs shrink-0 flex items-center justify-center"
                             style={{ backgroundColor: p.primaryColor }}
                           >
                             {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
                           </span>
-                          <span className="truncate">{p.labelAr}</span>
+                          <div>
+                            <div className="font-semibold leading-tight">{p.labelAr}</div>
+                            <div className="text-[10px] text-slate-400 font-normal mt-0.5">{p.labelEn}</div>
+                          </div>
                         </div>
-                        <span className="text-[9px] text-slate-400 font-mono">{p.labelEn.split(' ')[0]}</span>
+                        <span
+                          className="w-3 h-3 rounded-full border border-white/30 shrink-0"
+                          style={{ backgroundColor: p.swatchHex }}
+                        />
                       </button>
                     );
                   })}

@@ -4,18 +4,26 @@
   :root {
     --theme-primary: #2563EB;
     --theme-primary-hover: #1D4ED8;
+    --theme-primary-rgb: 37, 99, 235;
     --theme-accent: #38BDF8;
-    --theme-header-bg: #0B192C;
-    --theme-header-border: #1E3E62;
-    --theme-sidebar-bg: #071322;
-    --theme-sidebar-border: #162B45;
+    --theme-header-bg: #1E40AF;
+    --theme-header-border: #1D4ED8;
+    --theme-sidebar-bg: #1E293B;
+    --theme-sidebar-border: #334155;
+    --theme-body-bg: #F8FAFC;
+    --theme-surface-bg: #FFFFFF;
+    --theme-surface-border: #E2E8F0;
+    --theme-text-main: #0F172A;
+    --theme-text-muted: #64748B;
+    --theme-badge-bg: #DBEAFE;
+    --theme-badge-text: #1E40AF;
   }
 
   body {
     font-family: 'Cairo', system-ui, sans-serif;
-    background-color: #F8FAFC;
-    color: #0F172A;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    background-color: var(--theme-body-bg, #F8FAFC);
+    color: var(--theme-text-main, #0F172A);
+    transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .font-serif {
     font-family: 'Cairo', system-ui, sans-serif;
@@ -23,150 +31,413 @@
 }
 
 /* ==========================================================================
-   LOGIX ERP Dark Mode (الوضع الليلي عالي الوضوح) & Color Palette Engine
+   LOGIX ERP TRI-THEME SYSTEM (نظام الثيمات الاحترافي الثلاثي)
+   1. 'light' (الفاتح المهني - Clean Light)
+   2. 'slate' (الرمادي المؤسسي - Enterprise Slate)
+   3. 'navy'  (الكحلي العميق - Midnight Navy)
    ========================================================================== */
-html.dark {
+
+/* --------------------------------------------------------------------------
+   THEME 1: Clean Light (الفاتح المهني)
+   خلفيات بيضاء ورمادية فاتحة ناعمة عالية التباين
+   -------------------------------------------------------------------------- */
+html.theme-light {
+  color-scheme: light;
+}
+
+html.theme-light body {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+html.theme-light ::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+html.theme-light input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html.theme-light select,
+html.theme-light textarea {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+  border-color: #CBD5E1 !important;
+}
+
+html.theme-light select option {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+}
+
+html.theme-light thead tr {
+  background-color: #F1F5F9 !important;
+}
+
+html.theme-light tbody tr:hover {
+  background-color: #F8FAFC !important;
+}
+
+/* --------------------------------------------------------------------------
+   THEME 2: Enterprise Slate (الرمادي المؤسسي)
+   درجات رمادية صلبة وأنيقة ومحترفة مستوحاة من أنظمة الـ ERP المالية العالمية
+   -------------------------------------------------------------------------- */
+html.theme-slate {
   color-scheme: dark;
 }
 
-html.dark body {
-  background-color: #090E1A !important;
+html.theme-slate body {
+  background-color: #111B2B !important;
   color: #F8FAFC !important;
 }
 
-html.dark ::-webkit-scrollbar-track {
-  background: #090E1A;
+html.theme-slate ::-webkit-scrollbar-track {
+  background: #111B2B;
 }
 
-html.dark ::-webkit-scrollbar-thumb {
-  background: #25354E;
+html.theme-slate ::-webkit-scrollbar-thumb {
+  background: #3B5377;
+  border-radius: 4px;
 }
 
-html.dark ::-webkit-scrollbar-thumb:hover {
-  background: #3B4F70;
+html.theme-slate ::-webkit-scrollbar-thumb:hover {
+  background: #4F6D9B;
 }
 
-/* Surface backgrounds in Dark Mode */
-html.dark .bg-white,
-html.dark .bg-\[\#FAF9F6\],
-html.dark .bg-\[\#FDFCFB\],
-html.dark .bg-\[\#F7F5F0\],
-html.dark .bg-\[\#F8FAFC\],
-html.dark .bg-\[\#F9F8F6\],
-html.dark .bg-\[\#FAF8F5\],
-html.dark .bg-\[\#FAF3E0\],
-html.dark .bg-\[\#FAFAFA\],
-html.dark .bg-\[\#FBF9F4\],
-html.dark .bg-slate-50,
-html.dark .bg-neutral-50,
-html.dark .bg-slate-100,
-html.dark .bg-neutral-100 {
-  background-color: #111A2B !important;
+/* Surfaces & Cards in Slate */
+html.theme-slate .bg-white,
+html.theme-slate .bg-\[\#FAF9F6\],
+html.theme-slate .bg-\[\#FDFCFB\],
+html.theme-slate .bg-\[\#F7F5F0\],
+html.theme-slate .bg-\[\#F8FAFC\],
+html.theme-slate .bg-\[\#F9F8F6\],
+html.theme-slate .bg-\[\#FAF8F5\],
+html.theme-slate .bg-\[\#FAF3E0\],
+html.theme-slate .bg-\[\#FAFAFA\],
+html.theme-slate .bg-\[\#FBF9F4\],
+html.theme-slate .bg-slate-50,
+html.theme-slate .bg-neutral-50,
+html.theme-slate .bg-slate-100,
+html.theme-slate .bg-neutral-100 {
+  background-color: #1E2D42 !important;
 }
 
-html.dark .bg-slate-200,
-html.dark .bg-neutral-200 {
-  background-color: #1A263C !important;
+html.theme-slate .bg-slate-200,
+html.theme-slate .bg-neutral-200 {
+  background-color: #273952 !important;
 }
 
-html.dark .hover\:bg-slate-50:hover,
-html.dark .hover\:bg-neutral-50:hover,
-html.dark .hover\:bg-slate-100:hover,
-html.dark .hover\:bg-neutral-100:hover {
-  background-color: #182338 !important;
+html.theme-slate .hover\:bg-slate-50:hover,
+html.theme-slate .hover\:bg-neutral-50:hover,
+html.theme-slate .hover\:bg-slate-100:hover,
+html.theme-slate .hover\:bg-neutral-100:hover {
+  background-color: #263850 !important;
 }
 
-/* High contrast typography in Dark Mode */
-html.dark .text-\[\#1A1A1A\],
-html.dark .text-slate-900,
-html.dark .text-neutral-900 {
+/* Typography in Slate */
+html.theme-slate .text-\[\#1A1A1A\],
+html.theme-slate .text-slate-900,
+html.theme-slate .text-neutral-900 {
   color: #F8FAFC !important;
 }
 
-html.dark .text-slate-800,
-html.dark .text-neutral-800 {
+html.theme-slate .text-slate-800,
+html.theme-slate .text-neutral-800 {
   color: #E2E8F0 !important;
 }
 
-html.dark .text-slate-700,
-html.dark .text-neutral-700 {
+html.theme-slate .text-slate-700,
+html.theme-slate .text-neutral-700 {
   color: #CBD5E1 !important;
 }
 
-html.dark .text-slate-600,
-html.dark .text-neutral-600 {
+html.theme-slate .text-slate-600,
+html.theme-slate .text-neutral-600,
+html.theme-slate .text-slate-500,
+html.theme-slate .text-neutral-500,
+html.theme-slate .text-\[\#8C8273\] {
   color: #94A3B8 !important;
 }
 
-html.dark .text-slate-500,
-html.dark .text-neutral-500,
-html.dark .text-\[\#8C8273\] {
-  color: #94A3B8 !important;
+/* Borders in Slate */
+html.theme-slate .border-slate-200,
+html.theme-slate .border-neutral-200,
+html.theme-slate .border-\[\#E5E1DA\],
+html.theme-slate .border-\[\#E2E8F0\],
+html.theme-slate .border-slate-300,
+html.theme-slate .border-neutral-300 {
+  border-color: #304562 !important;
 }
 
-/* Subtle border lines in Dark Mode */
-html.dark .border-slate-200,
-html.dark .border-neutral-200,
-html.dark .border-\[\#E5E1DA\],
-html.dark .border-\[\#E2E8F0\],
-html.dark .border-slate-300,
-html.dark .border-neutral-300 {
-  border-color: #202F47 !important;
+html.theme-slate .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+html.theme-slate .divide-neutral-200 > :not([hidden]) ~ :not([hidden]),
+html.theme-slate .divide-slate-300 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #304562 !important;
 }
 
-html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
-html.dark .divide-neutral-200 > :not([hidden]) ~ :not([hidden]),
-html.dark .divide-slate-300 > :not([hidden]) ~ :not([hidden]),
-html.dark .divide-neutral-300 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #202F47 !important;
-}
-
-/* Inputs, Textareas, and Dropdown Selects in Dark Mode */
-html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
-html.dark select,
-html.dark textarea {
-  background-color: #0E1626 !important;
+/* Inputs & Form Controls in Slate */
+html.theme-slate input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html.theme-slate select,
+html.theme-slate textarea {
+  background-color: #152234 !important;
   color: #F8FAFC !important;
-  border-color: #2A3B57 !important;
+  border-color: #3B5377 !important;
 }
 
-html.dark select option {
-  background-color: #0E1626 !important;
+html.theme-slate select option {
+  background-color: #1E2D42 !important;
   color: #F8FAFC !important;
 }
 
-html.dark input::placeholder,
-html.dark textarea::placeholder {
-  color: #64748B !important;
-}
-
-/* Table styling in Dark Mode */
-html.dark thead tr {
-  background-color: #0B1220 !important;
-}
-
-html.dark tbody tr:hover {
-  background-color: #172236 !important;
-}
-
-html.dark tfoot tr {
-  background-color: #0E1626 !important;
-}
-
-/* Footer in Dark Mode */
-html.dark footer {
-  background-color: #070B14 !important;
-  border-color: #162235 !important;
+html.theme-slate input::placeholder,
+html.theme-slate textarea::placeholder {
   color: #94A3B8 !important;
 }
 
-/* Modals & Popups in Dark Mode */
-html.dark .bg-black\/50,
-html.dark .bg-black\/60 {
-  background-color: rgba(3, 7, 18, 0.82) !important;
+/* Table styling in Slate */
+html.theme-slate thead tr {
+  background-color: #152234 !important;
 }
 
-/* Executive ERP Custom scrollbars */
+html.theme-slate tbody tr:hover {
+  background-color: #273952 !important;
+}
+
+html.theme-slate tfoot tr {
+  background-color: #18263A !important;
+}
+
+/* Sidebar & Header in Slate */
+html.theme-slate aside {
+  background-color: #182436 !important;
+  border-color: #2C3E57 !important;
+}
+
+html.theme-slate header {
+  background-color: #182436 !important;
+  border-color: #2C3E57 !important;
+}
+
+html.theme-slate footer {
+  background-color: #141E2D !important;
+  border-color: #27374D !important;
+  color: #94A3B8 !important;
+}
+
+/* Semi-transparent overlays in Slate (No pitch black) */
+html.theme-slate .bg-black\/20,
+html.theme-slate .bg-black\/30 {
+  background-color: rgba(24, 36, 54, 0.45) !important;
+}
+
+html.theme-slate .bg-black\/40,
+html.theme-slate .bg-black\/50,
+html.theme-slate .bg-black\/60 {
+  background-color: rgba(17, 27, 43, 0.78) !important;
+}
+
+/* --------------------------------------------------------------------------
+   THEME 3: Midnight Navy (الكحلي العميق)
+   درجات الأزرق والكحلي الراقي الملكي كملاذ مريح وهادئ للعين بدلاً من الأسود
+   -------------------------------------------------------------------------- */
+html.theme-navy,
+html.dark:not(.theme-slate) {
+  color-scheme: dark;
+}
+
+html.theme-navy body,
+html.dark:not(.theme-slate) body {
+  background-color: #0B162C !important;
+  color: #F1F5F9 !important;
+}
+
+html.theme-navy ::-webkit-scrollbar-track,
+html.dark:not(.theme-slate) ::-webkit-scrollbar-track {
+  background: #0B162C;
+}
+
+html.theme-navy ::-webkit-scrollbar-thumb,
+html.dark:not(.theme-slate) ::-webkit-scrollbar-thumb {
+  background: #274375;
+  border-radius: 4px;
+}
+
+html.theme-navy ::-webkit-scrollbar-thumb:hover,
+html.dark:not(.theme-slate) ::-webkit-scrollbar-thumb:hover {
+  background: #395F9E;
+}
+
+/* Surfaces & Cards in Navy */
+html.theme-navy .bg-white,
+html.theme-navy .bg-\[\#FAF9F6\],
+html.theme-navy .bg-\[\#FDFCFB\],
+html.theme-navy .bg-\[\#F7F5F0\],
+html.theme-navy .bg-\[\#F8FAFC\],
+html.theme-navy .bg-\[\#F9F8F6\],
+html.theme-navy .bg-\[\#FAF8F5\],
+html.theme-navy .bg-\[\#FAF3E0\],
+html.theme-navy .bg-\[\#FAFAFA\],
+html.theme-navy .bg-\[\#FBF9F4\],
+html.theme-navy .bg-slate-50,
+html.theme-navy .bg-neutral-50,
+html.theme-navy .bg-slate-100,
+html.theme-navy .bg-neutral-100,
+html.dark:not(.theme-slate) .bg-white,
+html.dark:not(.theme-slate) .bg-\[\#FAF9F6\],
+html.dark:not(.theme-slate) .bg-slate-50,
+html.dark:not(.theme-slate) .bg-slate-100 {
+  background-color: #152646 !important;
+}
+
+html.theme-navy .bg-slate-200,
+html.theme-navy .bg-neutral-200,
+html.dark:not(.theme-slate) .bg-slate-200 {
+  background-color: #1E345D !important;
+}
+
+html.theme-navy .hover\:bg-slate-50:hover,
+html.theme-navy .hover\:bg-neutral-50:hover,
+html.theme-navy .hover\:bg-slate-100:hover,
+html.theme-navy .hover\:bg-neutral-100:hover,
+html.dark:not(.theme-slate) .hover\:bg-slate-50:hover,
+html.dark:not(.theme-slate) .hover\:bg-slate-100:hover {
+  background-color: #1D335B !important;
+}
+
+/* Typography in Navy */
+html.theme-navy .text-\[\#1A1A1A\],
+html.theme-navy .text-slate-900,
+html.theme-navy .text-neutral-900,
+html.dark:not(.theme-slate) .text-\[\#1A1A1A\],
+html.dark:not(.theme-slate) .text-slate-900 {
+  color: #F8FAFC !important;
+}
+
+html.theme-navy .text-slate-800,
+html.theme-navy .text-neutral-800,
+html.dark:not(.theme-slate) .text-slate-800 {
+  color: #E2E8F0 !important;
+}
+
+html.theme-navy .text-slate-700,
+html.theme-navy .text-neutral-700,
+html.dark:not(.theme-slate) .text-slate-700 {
+  color: #CBD5E1 !important;
+}
+
+html.theme-navy .text-slate-600,
+html.theme-navy .text-slate-500,
+html.theme-navy .text-neutral-600,
+html.theme-navy .text-neutral-500,
+html.theme-navy .text-\[\#8C8273\],
+html.dark:not(.theme-slate) .text-slate-600,
+html.dark:not(.theme-slate) .text-slate-500 {
+  color: #94A3B8 !important;
+}
+
+/* Borders in Navy */
+html.theme-navy .border-slate-200,
+html.theme-navy .border-neutral-200,
+html.theme-navy .border-\[\#E5E1DA\],
+html.theme-navy .border-\[\#E2E8F0\],
+html.theme-navy .border-slate-300,
+html.theme-navy .border-neutral-300,
+html.dark:not(.theme-slate) .border-slate-200,
+html.dark:not(.theme-slate) .border-slate-300 {
+  border-color: #243F70 !important;
+}
+
+html.theme-navy .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+html.theme-navy .divide-neutral-200 > :not([hidden]) ~ :not([hidden]),
+html.theme-navy .divide-slate-300 > :not([hidden]) ~ :not([hidden]),
+html.dark:not(.theme-slate) .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #243F70 !important;
+}
+
+/* Inputs & Form Controls in Navy */
+html.theme-navy input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html.theme-navy select,
+html.theme-navy textarea,
+html.dark:not(.theme-slate) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html.dark:not(.theme-slate) select,
+html.dark:not(.theme-slate) textarea {
+  background-color: #0E1B34 !important;
+  color: #F1F5F9 !important;
+  border-color: #2C4B82 !important;
+}
+
+html.theme-navy select option,
+html.dark:not(.theme-slate) select option {
+  background-color: #152646 !important;
+  color: #F1F5F9 !important;
+}
+
+html.theme-navy input::placeholder,
+html.theme-navy textarea::placeholder,
+html.dark:not(.theme-slate) input::placeholder,
+html.dark:not(.theme-slate) textarea::placeholder {
+  color: #8CA3C7 !important;
+}
+
+/* Table styling in Navy */
+html.theme-navy thead tr,
+html.dark:not(.theme-slate) thead tr {
+  background-color: #0E1B34 !important;
+}
+
+html.theme-navy tbody tr:hover,
+html.dark:not(.theme-slate) tbody tr:hover {
+  background-color: #1D335B !important;
+}
+
+html.theme-navy tfoot tr,
+html.dark:not(.theme-slate) tfoot tr {
+  background-color: #11203D !important;
+}
+
+/* Sidebar & Header in Navy */
+html.theme-navy aside,
+html.dark:not(.theme-slate) aside {
+  background-color: #0F1E38 !important;
+  border-color: #1F3863 !important;
+}
+
+html.theme-navy header,
+html.dark:not(.theme-slate) header {
+  background-color: #0F1E38 !important;
+  border-color: #1F3863 !important;
+}
+
+html.theme-navy footer,
+html.dark:not(.theme-slate) footer {
+  background-color: #0B162C !important;
+  border-color: #1C335A !important;
+  color: #94A3B8 !important;
+}
+
+/* Semi-transparent overlays in Navy (Eliminating heavy pitch black) */
+html.theme-navy .bg-black\/20,
+html.theme-navy .bg-black\/30,
+html.dark:not(.theme-slate) .bg-black\/20,
+html.dark:not(.theme-slate) .bg-black\/30 {
+  background-color: rgba(15, 30, 56, 0.45) !important;
+}
+
+html.theme-navy .bg-black\/40,
+html.theme-navy .bg-black\/50,
+html.theme-navy .bg-black\/60,
+html.dark:not(.theme-slate) .bg-black\/50,
+html.dark:not(.theme-slate) .bg-black\/60 {
+  background-color: rgba(11, 22, 44, 0.82) !important;
+}
+
+/* General clean custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -185,7 +456,9 @@ html.dark .bg-black\/60 {
   background: #64748B;
 }
 
-/* Print styling for invoices, vouchers, statements, and reports */
+/* ==========================================================================
+   PRINT STYLING (الفواتير، السندات، الحسابات والتقارير)
+   ========================================================================== */
 @media print {
   @page {
     size: A4 portrait;

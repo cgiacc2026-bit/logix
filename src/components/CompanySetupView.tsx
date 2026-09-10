@@ -50,7 +50,7 @@ import { DataService, localDataStore, getDefaultMappingForAccounts } from '../se
 import { safeApiFetch } from '../utils/safeJson.ts';
 import { SystemResetService } from '../services/systemResetService.ts';
 import { formatCurrency } from '../utils/formatters.ts';
-import { ThemeService, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
+import { ThemeService, ERP_THEMES, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
 
 interface CompanySetupViewProps {
   company: CompanyProfile | null;
@@ -1578,16 +1578,16 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </p>
             </div>
 
-            {/* ERP THEME & DISPLAY MODE SECTION */}
+            {/* ERP TRI-THEME SYSTEM (نظام الثيمات الاحترافي الثلاثي) */}
             <div className="bg-[#FAF9F6] border border-[#E5E1DA] rounded-xl p-5 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E5E1DA] pb-3">
                 <div>
                   <h4 className="font-bold text-sm text-[#1A1A1A] flex items-center gap-2">
                     <Palette className="w-4 h-4 text-blue-600" />
-                    نسق وألوان وهوية برنامج لوجيكس ERP (System Theme & Colors)
+                    أنظمة الثيمات الاحترافية لبرنامج لوجيكس ERP (System Theme System)
                   </h4>
                   <p className="text-[11px] text-[#6E6659] mt-0.5">
-                    تخصيص طابع وألوان واجهات النظام الرئيسية، ترويسات الشاشات، القائمة الجانبية، واختيار وضع العرض (نهاري أو ليلي).
+                    تخصيص الهوية البصرية للبرنامج بالاختيار بين ثلاثة أنظمة ألوان احترافية خالية تماماً من السواد الثقيل المجهد للعين.
                   </p>
                 </div>
                 <span className="px-2.5 py-1 text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 rounded-lg self-start sm:self-auto">
@@ -1595,109 +1595,78 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                 </span>
               </div>
 
-              {/* Mode Selector: Light / Dark / System */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-[#1A1A1A]">
-                  وضع العرض (Day / Night Mode):
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { id: 'light', label: 'الوضع النهاري (فاتح)', desc: 'ألوان مشرقة ومتباينة للمكاتب والطباعة', icon: Sun },
-                    { id: 'dark', label: 'الوضع الليلي (داكن)', desc: 'ألوان داكنة مريحة للعين في الإضاءة الخافتة', icon: Moon },
-                    { id: 'system', label: 'تلقائي حسب الجهاز', desc: 'يتبع تلقائياً إعدادات نظام التشغيل', icon: Monitor },
-                  ].map((m) => {
-                    const Icon = m.icon;
-                    const isSelected = (formData.themeMode || 'system') === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          handleChange('themeMode', m.id);
-                          ThemeService.applyTheme(undefined, m.id as ThemeMode);
-                        }}
-                        className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-3 ${
-                          isSelected
-                            ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-500/20 text-blue-950 shadow-xs'
-                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
-                        }`}
-                      >
-                        <div className={`p-2 rounded-lg shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs flex items-center justify-between">
-                            <span>{m.label}</span>
-                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{m.desc}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Color Themes Grid */}
-              <div className="space-y-2 pt-2">
-                <label className="block text-xs font-bold text-[#1A1A1A]">
-                  النسق اللوني المعتمد للبرنامج (ERP Color Theme):
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {Object.values(THEME_PALETTES).map((palette) => {
-                    const isSelected = (formData.themeColor || 'blue') === palette.id;
-                    return (
-                      <button
-                        key={palette.id}
-                        type="button"
-                        onClick={() => {
-                          handleChange('themeColor', palette.id);
-                          ThemeService.setThemeColor(palette.id as ThemeColor);
-                        }}
-                        className={`p-3 rounded-xl border text-right transition-all cursor-pointer relative overflow-hidden ${
-                          isSelected
-                            ? 'bg-white border-blue-600 ring-2 ring-blue-500/30 shadow-md'
-                            : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
-                        }`}
-                      >
+              {/* Three Professional Themes Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {(['light', 'slate', 'navy'] as ThemeMode[]).map((modeKey) => {
+                  const p = ERP_THEMES[modeKey];
+                  const isSelected = (formData.themeMode || 'light') === modeKey;
+                  return (
+                    <button
+                      key={modeKey}
+                      type="button"
+                      onClick={() => {
+                        handleChange('themeMode', modeKey);
+                        handleChange('themeColor', modeKey);
+                        ThemeService.applyTheme(modeKey);
+                      }}
+                      className={`p-4 rounded-xl border text-right transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-white border-blue-600 ring-2 ring-blue-500/30 shadow-md'
+                          : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
+                      }`}
+                    >
+                      <div>
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span
                               className="w-4 h-4 rounded-full border border-black/10 shadow-xs shrink-0"
-                              style={{ backgroundColor: palette.primaryColor }}
+                              style={{ backgroundColor: p.primaryColor }}
                             />
-                            <span className="font-bold text-xs text-slate-900">{palette.labelAr}</span>
+                            <span className="font-bold text-xs text-slate-900">{p.labelAr}</span>
                           </div>
                           {isSelected && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-blue-600 text-white rounded-md">
+                            <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-md flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
                               مفعّل
                             </span>
                           )}
                         </div>
 
+                        <p className="text-[11px] text-slate-600 leading-relaxed min-h-[38px]">
+                          {p.descriptionAr}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
                         {/* Visual Swatch Bar */}
-                        <div className="h-6 rounded-md overflow-hidden flex border border-slate-200">
+                        <div className="h-6 rounded-md overflow-hidden flex border border-slate-200 shadow-2xs">
                           <div
-                            className="flex-1 flex items-center justify-center text-[9px] font-bold text-white"
-                            style={{ backgroundColor: palette.headerBg }}
+                            className="flex-1 flex items-center justify-center text-[9px] font-bold text-white px-1 truncate"
+                            style={{ backgroundColor: p.headerBg }}
                           >
                             الترويسة
                           </div>
                           <div
-                            className="w-1/3 flex items-center justify-center text-[9px] font-bold text-white"
-                            style={{ backgroundColor: palette.primaryColor }}
+                            className="w-1/3 flex items-center justify-center text-[9px] font-bold text-white px-1 truncate"
+                            style={{ backgroundColor: p.primaryColor }}
                           >
-                            الأزرار
+                            الأساسي
+                          </div>
+                          <div
+                            className="w-1/4 flex items-center justify-center text-[9px] font-bold text-slate-700 px-1 truncate"
+                            style={{ backgroundColor: p.surfaceBg }}
+                          >
+                            البطاقة
                           </div>
                         </div>
 
-                        <div className="mt-2 text-[10px] text-slate-400 font-mono text-left dir-ltr">
-                          {palette.labelEn}
+                        <div className="text-[10px] text-slate-400 font-mono text-left dir-ltr">
+                          {p.labelEn}
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
