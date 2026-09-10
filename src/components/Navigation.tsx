@@ -37,6 +37,7 @@ export type TabType =
   | 'financials'
   | 'accounts'
   | 'inventory'
+  | 'stock-ledger'
   | 'units'
   | 'entities'
   | 'sales-reps'

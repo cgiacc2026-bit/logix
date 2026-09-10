@@ -24,6 +24,7 @@ import { ChartOfAccountsView } from './components/ChartOfAccountsView.tsx';
 import { JournalEntriesView } from './components/JournalEntriesView.tsx';
 import { GeneralLedgerView } from './components/GeneralLedgerView.tsx';
 import { TrialBalanceView } from './components/TrialBalanceView.tsx';
+import { StockLedgerAndAuditView } from './components/StockLedgerAndAuditView.tsx';
 import { FinancialStatementsView } from './components/FinancialStatementsView.tsx';
 import { InvoicesAndInventoryView } from './components/InvoicesAndInventoryView.tsx';
 import { ProductionOrdersView } from './components/ProductionOrdersView.tsx';
@@ -692,6 +693,15 @@ export default function App() {
               company={activeCompany}
               currency={currency}
               onCreateProductionOrder={handleCreateProductionOrder}
+            />
+          )}
+
+          {activeTab === 'stock-ledger' && (
+            <StockLedgerAndAuditView
+              inventory={inventory}
+              invoices={invoices}
+              currency={currency}
+              isAlwaleed={activeCompanyId === '20000000-0000-0000-0000-000000000001'}
             />
           )}
 

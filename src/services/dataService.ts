@@ -397,6 +397,20 @@ class LocalDataStore {
   }
 
   public setLocal<T>(key: string, value: T): void {
+    // [ARCHITECT] Strict Bypass: Do not write financial data to LocalStorage if cloud is configured.
+    if (isSupabaseConfigured && (
+      key.includes(STORAGE_KEYS.INVOICES) || 
+      key.includes(STORAGE_KEYS.VOUCHERS) || 
+      key.includes(STORAGE_KEYS.JOURNALS) || 
+      key.includes(STORAGE_KEYS.INVENTORY) ||
+      key.includes(STORAGE_KEYS.CUSTOMERS) ||
+      key.includes(STORAGE_KEYS.SUPPLIERS) ||
+      key.includes(STORAGE_KEYS.ACCOUNTS) ||
+      key.includes(STORAGE_KEYS.PRODUCTION_ORDERS)
+    )) {
+      return; // Absolute eradication of local writing for transactional data
+    }
+    
     const serialized = JSON.stringify(value);
     this.memoryFallback[key] = serialized;
     try {
@@ -1281,8 +1295,8 @@ export class DataService {
   public static async getKPIs(): Promise<FinancialKPIs> {
     const accounts = localDataStore.getAccounts();
     const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
-    const invoices = localDataStore.getInvoices();
-    const inventory = localDataStore.getInventory();
+    const invoices = isSupabaseConfigured ? await this.getInvoices() : localDataStore.getInvoices();
+    const inventory = isSupabaseConfigured ? await this.getInventory() : localDataStore.getInventory();
 
     const accountsWithBalances = this.calculateDynamicAccountBalances(accounts, journals);
 
@@ -1502,6 +1516,12 @@ export class DataService {
   }
 
   public static async getAccounts(): Promise<Account[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getAccounts();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     let accounts: Account[] = [];
     const tombstones = localDataStore.getTombstones('accounts');
     const localAccounts = localDataStore.getAccounts().filter((a) => !tombstones.has(a.id));
@@ -1636,6 +1656,12 @@ export class DataService {
 
   // Journals
   public static async getJournals(): Promise<JournalEntry[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getJournals();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     await this.syncServerTombstones();
     const tombstones = localDataStore.getTombstones('journals');
     let localJournals = localDataStore.getJournals().filter((j) => !tombstones.has(j.id));
@@ -1693,7 +1719,7 @@ export class DataService {
     }
 
     try {
-      const vouchers = localDataStore.getVouchers();
+      const vouchers = isSupabaseConfigured ? await this.getVouchers() : localDataStore.getVouchers();
       if (vouchers.length > 0) {
         const jMap = new Set(localJournals.map((j) => j.sourceId || j.id || j.reference));
         const missing = vouchers.some((v) => v.amount > 0 && !jMap.has(v.id) && !jMap.has(v.voucherNumber));
@@ -1746,7 +1772,7 @@ export class DataService {
     }
 
     const compId = localDataStore.getEffectiveCompanyId();
-    const journals = localDataStore.getJournals();
+    const journals = isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals();
     const entryNumber = `JV-${new Date().getFullYear()}-${String(journals.length + 1).padStart(4, '0')}`;
 
     const newJournal: JournalEntry = {
@@ -2005,6 +2031,12 @@ export class DataService {
 
   // Invoices
   public static async getInvoices(): Promise<Invoice[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getInvoices();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     const tombstones = localDataStore.getTombstones('invoices');
     let localInvoices = localDataStore.getInvoices().filter((inv) => !tombstones.has(inv.id));
     const isLocked = localDataStore.isRestoreLocked();
@@ -2070,8 +2102,8 @@ export class DataService {
 
   public static async createInvoice(data: any): Promise<Invoice> {
     const invoices = localDataStore.getInvoices();
-    const customers = localDataStore.getCustomers();
-    const suppliers = localDataStore.getSuppliers();
+    const customers = isSupabaseConfigured ? await this.getCustomers() : localDataStore.getCustomers();
+    const suppliers = isSupabaseConfigured ? await this.getSuppliers() : localDataStore.getSuppliers();
     const inventory = localDataStore.getInventory();
 
     const isSales = data.type === 'SALES';
@@ -3186,6 +3218,12 @@ export class DataService {
 
   // Vouchers
   public static async getVouchers(): Promise<PaymentVoucher[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getVouchers();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     const tombstones = localDataStore.getTombstones('vouchers');
     let localVouchers = localDataStore.getVouchers().filter((v) => !tombstones.has(v.id));
     const isLocked = localDataStore.isRestoreLocked();
@@ -4102,6 +4140,12 @@ export class DataService {
 
   // Customers & Suppliers
   public static async getCustomers(): Promise<Customer[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getCustomers();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
     const tombstones = localDataStore.getTombstones('customers');
     const cached = cacheService.getCustomers(compId);
@@ -4266,6 +4310,12 @@ export class DataService {
   }
 
   public static async getSuppliers(): Promise<Supplier[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getSuppliers();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
     const tombstones = localDataStore.getTombstones('suppliers');
     const cached = cacheService.getSuppliers(compId);
@@ -4426,6 +4476,12 @@ export class DataService {
 
   // Inventory
   public static async getInventory(): Promise<InventoryItem[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getItems();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
     const tombstones = localDataStore.getTombstones('inventory');
     const cached = cacheService.getItems(compId);
@@ -4840,6 +4896,12 @@ export class DataService {
 
   // Production Orders
   public static async getProductionOrders(): Promise<ProductionOrder[]> {
+    if (isSupabaseConfigured) {
+      const fromSupabase = await SupabaseDataService.getProductionOrders();
+      if (Array.isArray(fromSupabase)) {
+        return fromSupabase;
+      }
+    }
     const fromSupabase = await SupabaseDataService.getProductionOrders();
     if (fromSupabase && fromSupabase.length > 0) {
       localDataStore.saveProductionOrders(fromSupabase);
