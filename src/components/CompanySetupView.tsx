@@ -51,6 +51,7 @@ import { safeApiFetch } from '../utils/safeJson.ts';
 import { SystemResetService } from '../services/systemResetService.ts';
 import { formatCurrency } from '../utils/formatters.ts';
 import { ThemeService, ERP_THEMES, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
+import { ERPBackupImportService } from '../services/importBackupService.js';
 
 interface CompanySetupViewProps {
   company: CompanyProfile | null;
@@ -377,10 +378,10 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
           data.invoices = uniqueInvs;
         }
 
-        // Just push to local store and let the repair script handle it.
-        // We will call the standard restore function provided by the app, but with our fixed JSON.
-        if (onRestoreData) {
-            await onRestoreData(JSON.stringify(data));
+        // Call robust ERP backup import service to safely restore and upsert data
+        await ERPBackupImportService.importCompanyJsonData(company?.id || '20000000-0000-0000-0000-000000000001', JSON.stringify(data));
+        if (onRefreshData) {
+            await onRefreshData();
         }
         
         // Run massive repair

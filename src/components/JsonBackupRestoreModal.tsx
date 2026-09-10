@@ -48,14 +48,14 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
   const [syncDetails, setSyncDetails] = useState<{
     cloudSynced: boolean;
     stats?: {
-      invoices: number;
-      inventory: number;
-      journals: number;
-      customers: number;
-      suppliers: number;
-      vouchers: number;
-      accounts: number;
-      productionOrders: number;
+      invoices?: number;
+      inventory?: number;
+      journals?: number;
+      customers?: number;
+      suppliers?: number;
+      vouchers?: number;
+      accounts?: number;
+      productionOrders?: number;
     };
     cloudSyncNotice?: string;
   } | null>(null);

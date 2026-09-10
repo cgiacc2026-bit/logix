@@ -7,7 +7,6 @@ import { DataService } from '../services/dataService.ts';
 interface GeneralLedgerProps {
   journals?: any[];
   accounts: Account[];
-  journals?: any[];
   currency: string;
   selectedAccountId?: string;
 }
