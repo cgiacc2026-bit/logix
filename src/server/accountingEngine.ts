@@ -1588,7 +1588,10 @@ export class AccountingEngine {
   public static deleteJournal(journalId: string): boolean {
     return db.executeTransaction(() => {
       const journal = db.getJournals().find((j) => j.id === journalId);
-      if (!journal) return false;
+      if (!journal) {
+        db.deleteJournal(journalId);
+        return true;
+      }
 
       const touchedCustomerIds = new Set<string>();
       const touchedSupplierIds = new Set<string>();

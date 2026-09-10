@@ -528,13 +528,22 @@ class LocalDataStore {
     } else {
       raw = this.memoryFallback[key] || this.memoryFallback[altKey] || null;
     }
+    const result = new Set<string>();
+    if (type === 'journals') {
+      result.add('jv-2026-0001');
+      result.add('jv-2026-0002');
+      result.add('jv-2026-0003');
+      result.add('jv-2026-0004');
+    }
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return new Set<string>(parsed);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((id) => result.add(id));
+        }
       } catch {}
     }
-    return new Set<string>();
+    return result;
   }
 
   public addTombstone(type: string, id: string, specificCompanyId?: string): void {
@@ -939,12 +948,13 @@ class LocalDataStore {
 
   public getJournals(): JournalEntry[] {
     const list = this.getLocal<JournalEntry[] | null>(this.getKey(STORAGE_KEYS.JOURNALS), null);
+    const tombstones = this.getTombstones('journals');
     if (list === null) {
       if (this.isTenantInitialized()) {
         return [];
       }
       if (this.isAlWaleedActive()) {
-        const alwaleedJournals = JSON.parse(JSON.stringify(INITIAL_JOURNALS));
+        const alwaleedJournals = JSON.parse(JSON.stringify(INITIAL_JOURNALS)).filter((j: any) => !tombstones.has(j.id));
         this.saveJournals(alwaleedJournals);
         this.markTenantInitialized();
         return alwaleedJournals;
@@ -952,9 +962,12 @@ class LocalDataStore {
       this.saveJournals([]);
       return [];
     }
-    const tombstones = this.getTombstones('journals');
     if (tombstones.size > 0) {
-      return list.filter((j) => !tombstones.has(j.id));
+      const filtered = list.filter((j) => !tombstones.has(j.id));
+      if (filtered.length !== list.length) {
+        this.saveJournals(filtered);
+      }
+      return filtered;
     }
     return list;
   }
@@ -1487,11 +1500,53 @@ export class DataService {
     return true;
   }
 
+  public static async syncServerTombstones(): Promise<void> {
+    try {
+      const res = await safeApiFetch<{ tombstones: Record<string, string[]> }>('/api/tombstones');
+      if (res && res.tombstones) {
+        for (const [type, ids] of Object.entries(res.tombstones)) {
+          if (Array.isArray(ids)) {
+            for (const id of ids) {
+              localDataStore.addTombstone(type, id);
+            }
+          }
+        }
+        if (Array.isArray(res.tombstones.journals)) {
+          const tombstones = localDataStore.getTombstones('journals');
+          const currentJournals = localDataStore.getJournals();
+          const cleanJournals = currentJournals.filter((j) => !tombstones.has(j.id));
+          if (cleanJournals.length !== currentJournals.length) {
+            localDataStore.saveJournals(cleanJournals);
+          }
+        }
+      }
+    } catch {}
+  }
+
   // Journals
   public static async getJournals(): Promise<JournalEntry[]> {
+    await this.syncServerTombstones();
     const tombstones = localDataStore.getTombstones('journals');
     let localJournals = localDataStore.getJournals().filter((j) => !tombstones.has(j.id));
     const isLocked = localDataStore.isRestoreLocked();
+
+    try {
+      const fromServer = await safeApiFetch<JournalEntry[]>('/api/journals');
+      if (Array.isArray(fromServer)) {
+        const validServer = fromServer.filter((j) => !tombstones.has(j.id));
+        const localMap = new Map(localJournals.map((j) => [j.id, j]));
+        let hasNew = false;
+        for (const sj of validServer) {
+          if (!localMap.has(sj.id)) {
+            localJournals.push(sj);
+            hasNew = true;
+          }
+        }
+        if (hasNew) {
+          localDataStore.saveJournals(localJournals);
+        }
+      }
+    } catch {}
 
     try {
       const fromSupabase = await SupabaseDataService.getJournals();
@@ -1787,13 +1842,42 @@ export class DataService {
     const journals = localDataStore.getJournals();
     const filtered = journals.filter((j) => j.id !== id);
     localDataStore.saveJournals(filtered);
+
+    // Unlink from invoices in localDataStore
+    const invoices = localDataStore.getInvoices();
+    let invChanged = false;
+    invoices.forEach((inv) => {
+      if (inv.journalEntryId === id) {
+        inv.journalEntryId = undefined;
+        invChanged = true;
+      }
+    });
+    if (invChanged) {
+      localDataStore.saveInvoices(invoices);
+    }
+
+    // Broadcast across tabs/windows on device
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('logix_erp_sync');
+        bc.postMessage({ type: 'JOURNAL_DELETED', id });
+        bc.close();
+      }
+    } catch {}
+
     try {
       await SupabaseDataService.deleteJournal(id);
     } catch (e) {
       console.warn('Supabase deleteJournal notice:', e);
     }
     deleteFromFirestore('erp_journals', id);
+
     await safeApiFetch(`/api/journals/${id}`, { method: 'DELETE' });
+    await safeApiFetch('/api/tombstones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'journals', id }),
+    });
     return true;
   }
 
@@ -4014,6 +4098,7 @@ export class DataService {
   }
 
   public static async syncSystemIntegrity(): Promise<any> {
+    await this.syncServerTombstones();
     const compId = localDataStore.getEffectiveCompanyId();
     // 1. If restore lock is active, completely bypass remote overwrites to safeguard restored JSON data
     if (localDataStore.isRestoreLocked(compId || undefined)) {

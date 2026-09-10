@@ -498,8 +498,32 @@ async function startServer() {
     try {
       const { id } = req.params;
       const success = AccountingEngine.deleteJournal(id);
+      db.addTombstone('journals', id);
       if (!success) return res.status(404).json({ error: 'القيد غير موجود' });
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/tombstones', (req, res) => {
+    try {
+      res.json({ tombstones: db.getAllTombstones() });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/tombstones', (req, res) => {
+    try {
+      const { type, id } = req.body;
+      if (type && id) {
+        db.addTombstone(type, id);
+        if (type === 'journals') {
+          db.deleteJournal(id);
+        }
+      }
+      res.json({ success: true, tombstones: db.getAllTombstones() });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

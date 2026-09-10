@@ -211,6 +211,41 @@ export default function App() {
 
   useEffect(() => {
     refreshAllData();
+
+    const handleSync = () => {
+      refreshAllData(true);
+    };
+
+    window.addEventListener('focus', handleSync);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('logix_erp_sync');
+        bc.onmessage = (e) => {
+          if (e.data && (e.data.type === 'JOURNAL_DELETED' || e.data.type === 'DATA_CHANGED')) {
+            refreshAllData(true);
+          }
+        };
+      }
+    } catch {}
+
+    const interval = setInterval(() => {
+      refreshAllData(true);
+    }, 10000);
+
+    return () => {
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (bc) bc.close();
+      clearInterval(interval);
+    };
   }, []);
 
   const handleCreateProductionOrder = async (orderData: Partial<ProductionOrder>) => {
@@ -267,8 +302,9 @@ export default function App() {
   };
 
   const handleDeleteJournal = async (id: string) => {
+    setJournals((prev) => prev.filter((j) => j.id !== id));
     await DataService.deleteJournal(id);
-    await refreshAllData();
+    await refreshAllData(true);
   };
 
   const handleReverseJournal = async (id: string, reason: string) => {

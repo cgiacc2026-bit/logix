@@ -37,6 +37,7 @@ interface DBData {
   vouchers: PaymentVoucher[];
   units: UnitDefinition[];
   productionOrders?: ProductionOrder[];
+  tombstones?: Record<string, string[]>;
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -55,6 +56,9 @@ class DatabaseStore {
     vouchers: [],
     units: JSON.parse(JSON.stringify(INITIAL_UNITS)),
     productionOrders: [],
+    tombstones: {
+      journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'],
+    },
   };
 
   constructor() {
@@ -79,6 +83,31 @@ class DatabaseStore {
         if (!this.data.units || this.data.units.length === 0) {
           this.data.units = JSON.parse(JSON.stringify(INITIAL_UNITS));
         }
+        if (!this.data.tombstones) {
+          this.data.tombstones = {
+            journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'],
+          };
+        }
+        if (!Array.isArray(this.data.tombstones.journals)) {
+          this.data.tombstones.journals = ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'];
+        } else {
+          for (const tid of ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004']) {
+            if (!this.data.tombstones.journals.includes(tid)) {
+              this.data.tombstones.journals.push(tid);
+            }
+          }
+        }
+        const badJv = new Set(this.data.tombstones.journals);
+        if (Array.isArray(this.data.journals)) {
+          this.data.journals = this.data.journals.filter((j) => !badJv.has(j.id));
+        }
+        if (Array.isArray(this.data.invoices)) {
+          this.data.invoices.forEach((inv) => {
+            if (inv.journalEntryId && badJv.has(inv.journalEntryId)) {
+              delete inv.journalEntryId;
+            }
+          });
+        }
         console.log('✅ Loaded ERP database from filesystem.');
       } else {
         this.seedInitial();
@@ -90,6 +119,8 @@ class DatabaseStore {
   }
 
   public seedInitial() {
+    const tombJournals = this.getTombstones('journals');
+    const tombSet = new Set(tombJournals);
     this.data = {
       company: JSON.parse(JSON.stringify(DEFAULT_COMPANY_PROFILE)),
       users: JSON.parse(JSON.stringify(INITIAL_USERS)),
@@ -97,10 +128,11 @@ class DatabaseStore {
       customers: JSON.parse(JSON.stringify(INITIAL_CUSTOMERS)),
       suppliers: JSON.parse(JSON.stringify(INITIAL_SUPPLIERS)),
       inventory: JSON.parse(JSON.stringify(INITIAL_INVENTORY)),
-      journals: JSON.parse(JSON.stringify(INITIAL_JOURNALS)),
+      journals: JSON.parse(JSON.stringify(INITIAL_JOURNALS)).filter((j: any) => !tombSet.has(j.id)),
       invoices: JSON.parse(JSON.stringify(INITIAL_INVOICES)),
       vouchers: [],
       units: JSON.parse(JSON.stringify(INITIAL_UNITS)),
+      tombstones: this.data.tombstones || { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] },
     };
     this.save();
     console.log('🌱 Seeded authentic Al-Waleed ERP database.');
@@ -182,14 +214,52 @@ class DatabaseStore {
     return false;
   }
 
+  public getAllTombstones(): Record<string, string[]> {
+    if (!this.data.tombstones) {
+      this.data.tombstones = { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] };
+    }
+    return this.data.tombstones;
+  }
+
+  public getTombstones(type: string = 'journals'): string[] {
+    if (!this.data.tombstones) {
+      this.data.tombstones = { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] };
+    }
+    if (!Array.isArray(this.data.tombstones[type])) {
+      this.data.tombstones[type] = [];
+    }
+    return this.data.tombstones[type];
+  }
+
+  public addTombstone(type: string, id: string): void {
+    if (!id) return;
+    if (!this.data.tombstones) {
+      this.data.tombstones = {};
+    }
+    if (!Array.isArray(this.data.tombstones[type])) {
+      this.data.tombstones[type] = [];
+    }
+    if (!this.data.tombstones[type].includes(id)) {
+      this.data.tombstones[type].push(id);
+      this.save();
+    }
+  }
+
   public deleteJournal(id: string): boolean {
+    this.addTombstone('journals', id);
     const idx = this.data.journals.findIndex((j) => j.id === id);
     if (idx !== -1) {
       this.data.journals.splice(idx, 1);
-      this.save();
-      return true;
     }
-    return false;
+    if (this.data.invoices) {
+      this.data.invoices.forEach((inv) => {
+        if (inv.journalEntryId === id) {
+          delete inv.journalEntryId;
+        }
+      });
+    }
+    this.save();
+    return true;
   }
 
   public updateCompany(updated: Partial<CompanyProfile>): CompanyProfile {
@@ -214,7 +284,8 @@ class DatabaseStore {
   }
 
   public getJournals(): JournalEntry[] {
-    return this.data.journals;
+    const tombstones = new Set(this.getTombstones('journals'));
+    return (this.data.journals || []).filter((j) => !tombstones.has(j.id));
   }
 
   public getInvoices(): Invoice[] {
