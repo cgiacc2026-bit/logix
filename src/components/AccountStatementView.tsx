@@ -73,21 +73,21 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
     initialEntityId || (initialEntityType === 'CUSTOMER' ? customers[0]?.id || '' : suppliers[0]?.id || '')
   );
 
-  // 2. حالة التواريخ الافتراضية (من أول يوم في الشهر الحالي إلى اليوم)
+  // 2. حالة التواريخ الافتراضية (من أول يوم في السنة الحالية لضمان ظهور كافة فواتير وحركات العام)
   const defaultRange = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     return {
-      start: `${year}-${month}-01`,
+      start: `${year}-01-01`,
       end: `${year}-${month}-${day}`,
     };
   }, []);
 
   const [startDate, setStartDate] = useState<string>(defaultRange.start);
   const [endDate, setEndDate] = useState<string>(defaultRange.end);
-  const [activePreset, setActivePreset] = useState<string>('this-month');
+  const [activePreset, setActivePreset] = useState<string>('this-year');
 
   // 3. حالة البحث وتصفية الحركات داخل الكشف
   const [searchTerm, setSearchTerm] = useState<string>('');

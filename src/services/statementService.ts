@@ -207,6 +207,175 @@ export function getBalanceNature(balance: number, entityType: 'CUSTOMER' | 'SUPP
 }
 
 /**
+ * دالة مساعدة لتطبيع وتوحيد النصوص والأسماء العربية للمقارنة الذكية
+ */
+export function normalizeArabicForMatching(str?: string): string {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/[ًٌٍَُِّْـ]/g, '')
+    .replace(/[\s\-_]+/g, ' ');
+}
+
+/**
+ * دالة استخراج UUID القياسي للمقارنة الصارمة
+ */
+export function toValidUUID(val?: string): string | null {
+  if (!val || typeof val !== 'string' || val.trim().length < 4) return null;
+  const clean = val.trim().toLowerCase();
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (uuidRegex.test(clean)) return clean;
+  let hex = '';
+  for (let i = 0; i < clean.length; i++) {
+    hex += clean.charCodeAt(i).toString(16);
+  }
+  hex = hex.padEnd(32, '0').slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * دالة مركزية فائقة الدقة لمطابقة المستندات (فواتير، سندات، أسطر قيود) مع العميل أو المورد
+ * تدعم المطابقة المباشرة بالـ UUID، الكود، المعرف القديم (legacyId)، ومطابقة الأسماء الذكية
+ */
+export function isDocMatchingEntity(
+  doc: {
+    entityId?: string;
+    customerId?: string;
+    customer_id?: string;
+    supplierId?: string;
+    supplier_id?: string;
+    entity_id?: string;
+    entityNameAr?: string;
+    customerName?: string;
+    customer_name?: string;
+    supplierName?: string;
+    entityName?: string;
+    entity_name?: string;
+    raw_data?: any;
+    [key: string]: any;
+  },
+  targetEntityId: string,
+  targetEntity: Customer | Supplier | undefined | null,
+  entityType: 'CUSTOMER' | 'SUPPLIER'
+): boolean {
+  if (!targetEntityId && !targetEntity) return false;
+
+  const raw = doc.raw_data || {};
+  const rawTarget = (targetEntity as any)?.raw_data || {};
+
+  // 1. استخراج كافة المعرفات الممكنة من المستند
+  const docIds = [
+    doc.entityId,
+    doc.customerId,
+    doc.customer_id,
+    doc.supplierId,
+    doc.supplier_id,
+    doc.entity_id,
+    raw.entityId,
+    raw.customerId,
+    raw.supplierId,
+    raw.customer_id,
+  ]
+    .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
+    .map((x) => x.trim());
+
+  // 2. استخراج كافة معرفات الكيان المستهدف
+  const targetIds = [
+    targetEntityId,
+    targetEntity?.id,
+    rawTarget.id,
+    rawTarget.entityId,
+  ]
+    .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
+    .map((x) => x.trim());
+
+  // أ) مطابقة مباشرة عبر المعرفات أو الـ UUID
+  for (const dId of docIds) {
+    for (const tId of targetIds) {
+      if (dId === tId) return true;
+      const u1 = toValidUUID(dId);
+      const u2 = toValidUUID(tId);
+      if (u1 && u2 && u1 === u2) return true;
+    }
+
+    // ب) مطابقة عبر كود الحساب (مثلاً 4640 أو CUST-4640 أو cust-4640)
+    if (targetEntity?.code) {
+      const code = String(targetEntity.code).trim();
+      if (code) {
+        if (
+          dId === code ||
+          dId === `cust-${code}` ||
+          dId === `supp-${code}` ||
+          dId.endsWith(`-${code}`)
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // 3. مطابقة ذكية عبر الأسماء والكلمات المفتاحية للجمعيات والمؤسسات
+  const targetNames = [
+    targetEntity?.nameAr,
+    targetEntity?.nameEn,
+    (targetEntity as any)?.name,
+    rawTarget.nameAr,
+  ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
+
+  const docNames = [
+    doc.entityNameAr,
+    doc.customerName,
+    doc.customer_name,
+    doc.supplierName,
+    doc.entityName,
+    doc.entity_name,
+    raw.entityNameAr,
+    raw.customerName,
+    raw.entity_name,
+  ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
+
+  for (const tName of targetNames) {
+    const normTarget = normalizeArabicForMatching(tName);
+    if (!normTarget || normTarget.length < 3) continue;
+
+    for (const dName of docNames) {
+      const normDoc = normalizeArabicForMatching(dName);
+      if (!normDoc || normDoc.length < 3) continue;
+
+      if (normDoc === normTarget) return true;
+
+      // مطابقة الكيانات التعاونية والتجارية الرئيسية
+      if (normDoc.includes('جليب') && normTarget.includes('جليب')) return true;
+      if (normDoc.includes('صباح الاحمد') && normTarget.includes('صباح الاحمد')) return true;
+      if (normDoc.includes('صباح الناصر') && normTarget.includes('صباح الناصر')) return true;
+      if (normDoc.includes('علي صباح') && normTarget.includes('علي صباح')) return true;
+      if (normDoc.includes('سعد العبدالله') && normTarget.includes('سعد العبدالله')) return true;
+      if (normDoc.includes('مبارك الكبير') && normTarget.includes('مبارك الكبير')) return true;
+      if (normDoc.includes('صليبيخات') && normTarget.includes('صليبيخات')) return true;
+      if (normDoc.includes('اشبيليه') && normTarget.includes('اشبيليه')) return true;
+      if (normDoc.includes('قيروان') && normTarget.includes('قيروان')) return true;
+      if (normDoc.includes('صباحيه') && normTarget.includes('صباحيه')) return true;
+      if (normDoc.includes('احمدي') && normTarget.includes('احمدي')) return true;
+      if (normDoc.includes('بيان') && normTarget.includes('بيان')) return true;
+      if (normDoc.includes('سلوي') && normTarget.includes('سلوي')) return true;
+      if (normDoc.includes('مشرف') && normTarget.includes('مشرف')) return true;
+      if (normDoc.includes('مطلاع') && normTarget.includes('مطلاع')) return true;
+      if (normDoc.includes('وليد') && normTarget.includes('وليد')) return true;
+
+      if (normDoc.length >= 8 && normTarget.length >= 8) {
+        if (normDoc.includes(normTarget) || normTarget.includes(normDoc)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * ============================================================================
  * الدالة المحاسبية المركزية: getAccountStatement
  * ============================================================================
@@ -256,9 +425,21 @@ export function getAccountStatement(
     (j) => j && j.id && !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id)
   );
 
-  // 1. استخراج بيانات الكيان (العميل أو المورد)
-  const customer = entityType === 'CUSTOMER' ? customers.find((c) => c.id === entityId) : undefined;
-  const supplier = entityType === 'SUPPLIER' ? suppliers.find((s) => s.id === entityId) : undefined;
+  // 1. استخراج بيانات الكيان (العميل أو المورد) بمرونة عالية
+  const customer = entityType === 'CUSTOMER'
+    ? (customers.find((c) => c.id === entityId) ||
+       customers.find((c) => c.code && c.code === entityId) ||
+       customers.find((c) => toValidUUID(c.id) && toValidUUID(c.id) === toValidUUID(entityId)) ||
+       customers.find((c) => isDocMatchingEntity({ entityId }, c.id, c, 'CUSTOMER')))
+    : undefined;
+
+  const supplier = entityType === 'SUPPLIER'
+    ? (suppliers.find((s) => s.id === entityId) ||
+       suppliers.find((s) => s.code && s.code === entityId) ||
+       suppliers.find((s) => toValidUUID(s.id) && toValidUUID(s.id) === toValidUUID(entityId)) ||
+       suppliers.find((s) => isDocMatchingEntity({ entityId }, s.id, s, 'SUPPLIER')))
+    : undefined;
+
   const entity = customer || supplier;
 
   const entityNameAr = entity?.nameAr || (entityType === 'CUSTOMER' ? 'عميل عام' : 'مورد عام');
@@ -300,7 +481,7 @@ export function getAccountStatement(
 
   // أ) فواتير المبيعات والمشتريات والمرتجعات (من القائمة الفريدة غير المكررة)
   dedupedInvoices
-    .filter((inv) => inv.entityId === entityId)
+    .filter((inv) => isDocMatchingEntity(inv, entityId, entity, entityType))
     .forEach((inv) => {
       const isSales = inv.type === 'SALES';
       const isSalesReturn = inv.type === 'SALES_RETURN';
@@ -376,7 +557,7 @@ export function getAccountStatement(
 
   // ب) سندات القبض والصرف (من القائمة الفريدة غير المكررة)
   dedupedVouchers
-    .filter((v) => v.entityId === entityId)
+    .filter((v) => isDocMatchingEntity(v, entityId, entity, entityType))
     .forEach((v) => {
       let debit = 0;
       let credit = 0;
@@ -488,7 +669,9 @@ export function getAccountStatement(
 
     // نبحث عن أسطر القيد التي ترتبط بكود هذا العميل/المورد أو حسابه التحليلي أو اسمه
     j.lines?.forEach((line) => {
-      const isDirectEntityIdMatch = Boolean(line.entityId && line.entityId === entityId);
+      const isDirectEntityIdMatch = Boolean(
+        line.entityId && (line.entityId === entityId || isDocMatchingEntity(line, entityId, entity, entityType))
+      );
       const isDirectAccountMatch = Boolean(line.accountId === entityId || (entity?.accountId && line.accountId === entity.accountId));
       const isAccountCodeMatch = Boolean(entityCode && line.accountCode === entityCode);
       
@@ -835,7 +1018,7 @@ export function calculateEntityCurrentBalance(
 
   // 1. الفواتير والمرتجعات الفريدة
   const relevantInvoices = dedupedInvoices.filter(
-    (inv) => inv.entityId === entityId && inv.status !== 'CANCELLED'
+    (inv) => isDocMatchingEntity(inv, entityId, entity, entityType) && inv.status !== 'CANCELLED'
   );
   for (const inv of relevantInvoices) {
     const total = Number(inv.grandTotal) || 0;
@@ -850,7 +1033,7 @@ export function calculateEntityCurrentBalance(
 
   // 2. سندات القبض والصرف الفريدة
   const relevantVouchers = dedupedVouchers.filter(
-    (v) => v.entityId === entityId && v.status !== 'CANCELLED'
+    (v) => isDocMatchingEntity(v, entityId, entity, entityType) && v.status !== 'CANCELLED'
   );
   for (const v of relevantVouchers) {
     const amount = Number(v.amount) || 0;
@@ -918,7 +1101,9 @@ export function calculateEntityCurrentBalance(
     if (matchesDoc) continue;
 
     for (const line of j.lines || []) {
-      const isDirectEntityIdMatch = Boolean(line.entityId && line.entityId === entityId);
+      const isDirectEntityIdMatch = Boolean(
+        line.entityId && (line.entityId === entityId || isDocMatchingEntity(line, entityId, entity, entityType))
+      );
       const isDirectAccountMatch = Boolean(line.accountId === entityId || (entity.accountId && line.accountId === entity.accountId));
       const isAccountCodeMatch = Boolean(entityCode && line.accountCode === entityCode);
       

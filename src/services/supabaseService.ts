@@ -689,12 +689,13 @@ export class SupabaseDataService {
           const snapshot = inv.customer_snapshot || {};
           const lines = itemsByInvoice[inv.id] || raw.lines || [];
           return {
+            ...raw,
             id: raw.id || inv.id,
             invoiceNumber: inv.invoice_number || raw.invoiceNumber || inv.id,
-            type: raw.type || 'SALES',
+            type: raw.type || inv.invoice_type || 'SALES',
             paymentTerms: raw.paymentTerms || (inv.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
-            entityId: inv.customer_id || snapshot.id || raw.entityId || '',
-            entityNameAr: inv.customer_name || snapshot.nameAr || raw.entityNameAr || '',
+            entityId: inv.customer_id || raw.entityId || snapshot.id || '',
+            entityNameAr: inv.customer_name || raw.entityNameAr || snapshot.nameAr || '',
             entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
             date: inv.invoice_date || inv.date || raw.date,
             dueDate: raw.dueDate || inv.invoice_date || inv.date,
@@ -707,7 +708,6 @@ export class SupabaseDataService {
             paidAmount: Number(inv.paid_amount ?? raw.paidAmount ?? 0),
             dueAmount: Number(inv.due_amount ?? raw.dueAmount ?? 0),
             createdAt: raw.createdAt || inv.created_at || new Date().toISOString(),
-            ...raw,
           };
         });
       }
@@ -1145,6 +1145,7 @@ export class SupabaseDataService {
       return data.map((row: any) => {
         const raw = row.raw_data || {};
         return {
+          ...raw,
           id: raw.id || row.id,
           companyId: row.company_id || companyId,
           voucherNumber: row.voucher_number || raw.voucherNumber || row.id,
@@ -1162,7 +1163,6 @@ export class SupabaseDataService {
           invoiceId: raw.invoiceId || row.invoice_id || undefined,
           journalEntryId: raw.journalEntryId || undefined,
           createdAt: raw.createdAt || row.created_at || new Date().toISOString(),
-          ...raw,
         };
       });
     } catch (err: any) {
