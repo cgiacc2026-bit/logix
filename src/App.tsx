@@ -127,13 +127,6 @@ export default function App() {
     ThemeService.initTheme();
   }, []);
 
-  // Synchronize theme whenever active company profile changes
-  useEffect(() => {
-    if (company?.themeColor || company?.themeMode) {
-      ThemeService.applyTheme(company.themeColor as ThemeColor, company.themeMode as ThemeMode);
-    }
-  }, [company?.themeColor, company?.themeMode]);
-
   // Check onboarding on initial authenticated load
   useEffect(() => {
     if (isAuthenticated) {

@@ -768,11 +768,6 @@ class LocalDataStore {
       comp.id = compId;
     }
 
-    // Immediately apply and synchronize theme preferences
-    if (comp.themeColor || comp.themeMode) {
-      ThemeService.syncWithCompany(comp);
-    }
-
     // Dedicated Logo Storage for Guaranteed Persistence
     if (typeof window !== 'undefined' && window.localStorage && compId) {
       try {

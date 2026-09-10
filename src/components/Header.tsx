@@ -17,6 +17,7 @@ import {
   Palette,
   Check,
   Layers,
+  ChevronDown,
 } from 'lucide-react';
 import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
@@ -63,7 +64,6 @@ export const Header: React.FC<HeaderProps> = ({
     activePalette,
     setThemeColor,
     setThemeMode,
-    toggleThemeMode,
   } = useTheme(company);
 
   // Close palette menu on outside click
@@ -78,13 +78,6 @@ export const Header: React.FC<HeaderProps> = ({
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isPaletteOpen]);
-
-  const handleToggleThemeMode = () => {
-    const newMode = toggleThemeMode();
-    if (company && onSaveCompany) {
-      onSaveCompany({ ...company, themeMode: newMode });
-    }
-  };
 
   const handleSelectTheme = (modeKey: ThemeMode) => {
     setThemeMode(modeKey);
@@ -235,61 +228,34 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">الإعدادات</span>
           </button>
 
-          {/* Tri-Theme Mode Quick Toggle Button (التبديل السريع بين الثيمات الثلاثة) */}
-          <button
-            type="button"
-            onClick={handleToggleThemeMode}
-            title="التبديل بين الثيمات: فاتح مهني / رمادي مؤسسي / كحلي عميق"
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0 ${
-              currentThemeMode === 'light'
-                ? 'bg-blue-600/30 hover:bg-blue-600/40 text-blue-100 border-blue-400/50'
-                : currentThemeMode === 'slate'
-                ? 'bg-slate-700/60 hover:bg-slate-700/80 text-sky-200 border-sky-400/40'
-                : 'bg-indigo-900/60 hover:bg-indigo-900/80 text-indigo-200 border-indigo-400/40'
-            }`}
-          >
-            {currentThemeMode === 'light' && (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-300" />
-                <span className="hidden sm:inline">فاتح مهني</span>
-              </>
-            )}
-            {currentThemeMode === 'slate' && (
-              <>
-                <Layers className="w-3.5 h-3.5 text-sky-300" />
-                <span className="hidden sm:inline">رمادي مؤسسي</span>
-              </>
-            )}
-            {currentThemeMode === 'navy' && (
-              <>
-                <Moon className="w-3.5 h-3.5 text-indigo-300" />
-                <span className="hidden sm:inline">كحلي عميق</span>
-              </>
-            )}
-          </button>
-
-          {/* ERP Theme Quick Palette Selector */}
+          {/* Unified Single Theme Selector (خلية الثيم الموحدة في مكان واحد فقط) */}
           <div className="relative" ref={paletteMenuRef}>
             <button
               type="button"
               onClick={() => setIsPaletteOpen((prev) => !prev)}
-              title={`نسق وألوان البرنامج: ${activePalette.labelAr}`}
-              className="p-1.5 sm:px-2 sm:py-1 rounded-lg bg-black/25 hover:bg-black/40 text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+              title={`نسق وثيم النظام: ${activePalette.labelAr} (انقر للتغيير)`}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0 ${
+                currentThemeMode === 'light'
+                  ? 'bg-blue-600/30 hover:bg-blue-600/40 text-blue-100 border-blue-400/50'
+                  : currentThemeMode === 'slate'
+                  ? 'bg-slate-700/60 hover:bg-slate-700/80 text-sky-200 border-sky-400/40'
+                  : 'bg-indigo-900/60 hover:bg-indigo-900/80 text-indigo-200 border-indigo-400/40'
+              }`}
             >
-              <div
-                className="w-3.5 h-3.5 rounded-full border border-white/80 shadow-xs"
-                style={{ backgroundColor: activePalette.primaryColor }}
-              />
-              <Palette className="w-3.5 h-3.5 text-slate-300" />
-              <span className="hidden xl:inline text-[11px] font-medium text-slate-200 truncate max-w-[90px]">
-                {activePalette.labelAr}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {currentThemeMode === 'light' && <Sun className="w-3.5 h-3.5 text-amber-300" />}
+                {currentThemeMode === 'slate' && <Layers className="w-3.5 h-3.5 text-sky-300" />}
+                {currentThemeMode === 'navy' && <Moon className="w-3.5 h-3.5 text-indigo-300" />}
+                <span className="w-2.5 h-2.5 rounded-full border border-white/60 shadow-xs shrink-0" style={{ backgroundColor: activePalette.primaryColor }} />
+                <span>{activePalette.labelAr}</span>
+              </div>
+              <ChevronDown className={`w-3 h-3 text-slate-300 transition-transform duration-200 ${isPaletteOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isPaletteOpen && (
               <div className="absolute left-0 mt-2 w-72 bg-[#142034] border border-slate-700 rounded-xl shadow-2xl p-2.5 z-50 text-right space-y-1.5 animate-in fade-in duration-100">
                 <div className="text-[11px] font-bold text-slate-200 border-b border-slate-700/60 pb-1.5 px-1 flex items-center justify-between">
-                  <span>أنظمة الثيمات الاحترافية (ERP Themes)</span>
+                  <span>أنظمة الثيمات المعتمدة (ERP Themes)</span>
                   <span className="text-[10px] text-cyan-400 font-mono">3 ثيمات</span>
                 </div>
                 <div className="grid grid-cols-1 gap-1.5 pt-1">

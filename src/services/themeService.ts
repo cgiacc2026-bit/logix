@@ -311,23 +311,24 @@ export class ThemeService {
 
   static syncWithCompany(company?: CompanyProfile | null) {
     if (!company) return;
-    const currentSaved = this.getSavedThemeMode();
-    const companyMode = company.themeMode as ThemeMode;
-    if (companyMode && (companyMode === 'light' || companyMode === 'slate' || companyMode === 'navy')) {
-      if (companyMode !== currentSaved) {
-        this.applyTheme(companyMode);
+    try {
+      // Only set theme from company if the user has NEVER chosen a theme on this browser
+      const existing = localStorage.getItem(this.THEME_MODE_KEY);
+      if (!existing) {
+        const companyMode = company.themeMode as ThemeMode;
+        if (companyMode && (companyMode === 'light' || companyMode === 'slate' || companyMode === 'navy')) {
+          this.applyTheme(companyMode);
+        }
       }
-    }
+    } catch {}
   }
 }
 
 /**
  * Custom React Hook for components to consume theme state reactively
  */
-export function useTheme(company?: CompanyProfile | null) {
+export function useTheme(_company?: CompanyProfile | null) {
   const [themeMode, setCurrentThemeMode] = useState<ThemeMode>(() => {
-    const fromComp = company?.themeMode as ThemeMode;
-    if (fromComp === 'light' || fromComp === 'slate' || fromComp === 'navy') return fromComp;
     return ThemeService.getSavedThemeMode();
   });
 
@@ -358,12 +359,6 @@ export function useTheme(company?: CompanyProfile | null) {
     window.addEventListener('logix-theme-changed', handleThemeChange);
     return () => window.removeEventListener('logix-theme-changed', handleThemeChange);
   }, []);
-
-  useEffect(() => {
-    if (company) {
-      ThemeService.syncWithCompany(company);
-    }
-  }, [company?.id, company?.themeMode]);
 
   const setThemeMode = useCallback((mode: ThemeMode) => {
     ThemeService.setThemeMode(mode);
