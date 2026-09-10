@@ -240,7 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   
 
   
-  const filteredGroups = groups.map(group => {
+  const filteredGroups = sections.map(group => {
     return {
       ...group,
       items: group.items.filter(item => {

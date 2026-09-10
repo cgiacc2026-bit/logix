@@ -93,15 +93,24 @@ const fallbackMockClient = createClient(
 
 export const getActiveSupabaseClient = (): SupabaseClient => {
   const { url, key } = getSupabaseConfig();
+  const currentTenant = typeof window !== 'undefined' ? window.localStorage.getItem('activeCompanyId') || '' : '';
+  
   if (checkIsSupabaseConfigured()) {
-    if (!activeClientInstance || activeClientUrl !== url || activeClientKey !== key) {
+    // We must recreate the client if the tenant changes because global headers are immutable in JS client
+    if (!activeClientInstance || activeClientUrl !== url || activeClientKey !== key || (activeClientInstance as any)._tenantId !== currentTenant) {
       try {
         activeClientInstance = createClient(url, key, {
           auth: {
             persistSession: true,
             autoRefreshToken: true,
           },
+          global: {
+            headers: {
+              'x-tenant-id': currentTenant
+            }
+          }
         });
+        (activeClientInstance as any)._tenantId = currentTenant;
         activeClientUrl = url;
         activeClientKey = key;
       } catch (err) {
