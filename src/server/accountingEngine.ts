@@ -1645,8 +1645,8 @@ export class AccountingEngine {
   }
 
   /**
-   * Process & Post Mill Production Order (تشغيل وطحن وتعبئة منتجات المطحنة)
-   * ACID Transactional Transformation of Raw Materials to Finished Goods + Journal Entry
+   * Process & Post Universal Manufacturing Production Order (أمر تشغيل وتصنيع شامل لكافة الأنشطة)
+   * ACID Transactional Transformation of Raw Materials/Components to Finished Goods + Journal Entry
    */
   public static processProductionOrder(orderData: Partial<ProductionOrder>): ProductionOrder {
     return db.executeTransaction(() => {
@@ -1654,6 +1654,9 @@ export class AccountingEngine {
       const inventory = db.getInventory();
 
       const orderNumber = `PRD-2026-${String(orders.length + 1).padStart(3, '0')}`;
+      const lineName = orderData.productionLineNameAr || orderData.millLine || 'خط الإنتاج الرئيسي';
+      const industryType = orderData.industryType || 'GENERAL_ASSEMBLY';
+
       const newOrder: ProductionOrder = {
         id: 'prd-' + Math.random().toString(36).substr(2, 9),
         orderNumber,
@@ -1668,15 +1671,25 @@ export class AccountingEngine {
         totalProductionCost: Number(orderData.totalProductionCost) || 0,
         unitProductionCost: Number(orderData.unitProductionCost) || 0,
         status: orderData.status || 'COMPLETED',
-        notes: orderData.notes || 'أمر تشغيل وطحن وتجهيز منتجات المطحنة',
-        millLine: orderData.millLine || 'خط طحن وتعبئة البهارات',
-        operatorName: orderData.operatorName || 'مودي جميل',
+        notes: orderData.notes || 'أمر تشغيل وتصنيع في مركز التصنيع الشامل',
+        millLine: lineName,
+        productionLineId: orderData.productionLineId,
+        productionLineNameAr: lineName,
+        industryType,
+        categoryGroup: orderData.categoryGroup,
+        operatorName: orderData.operatorName || 'مشرف خط الإنتاج',
+        scrapQuantity: Number(orderData.scrapQuantity) || 0,
+        scrapPercentage: Number(orderData.scrapPercentage) || 0,
+        scrapReason: orderData.scrapReason,
+        byProducts: orderData.byProducts || [],
+        qualityInspection: orderData.qualityInspection,
+        routingSteps: orderData.routingSteps || [],
         createdAt: new Date().toISOString(),
         completedAt: orderData.status === 'COMPLETED' ? new Date().toISOString() : undefined,
       };
 
       if (newOrder.status === 'COMPLETED') {
-        // 1. Deduct raw materials from stock
+        // 1. Deduct raw materials / components from stock
         newOrder.rawMaterials.forEach((raw) => {
           const item = inventory.find((i) => i.id === raw.itemId);
           if (item) {
@@ -1686,15 +1699,33 @@ export class AccountingEngine {
           }
         });
 
-        // 2. Increase finished goods in stock
+        // 2. Increase finished goods in stock & optionally update unit cost
         const targetItem = inventory.find((i) => i.id === newOrder.targetItemId);
         if (targetItem) {
-          db.updateInventoryItem(targetItem.id, {
+          const updates: any = {
             quantityOnHand: targetItem.quantityOnHand + newOrder.targetQuantity,
+          };
+          if (newOrder.unitProductionCost > 0) {
+            updates.costPrice = newOrder.unitProductionCost;
+          }
+          db.updateInventoryItem(targetItem.id, updates);
+        }
+
+        // 3. Handle secondary / by-products if provided
+        if (newOrder.byProducts && newOrder.byProducts.length > 0) {
+          newOrder.byProducts.forEach((bp) => {
+            if (bp.itemId) {
+              const bpItem = inventory.find((i) => i.id === bp.itemId);
+              if (bpItem) {
+                db.updateInventoryItem(bpItem.id, {
+                  quantityOnHand: bpItem.quantityOnHand + bp.quantity,
+                });
+              }
+            }
           });
         }
 
-        // 3. Post double-entry journal
+        // 4. Post double-entry balanced industrial journal
         const totalDebit = newOrder.totalProductionCost;
         const rawCost = newOrder.rawMaterials.reduce((s, r) => s + r.totalCost, 0);
 
@@ -1706,16 +1737,16 @@ export class AccountingEngine {
             accountNameAr: 'مخزون البضائع والمنتجات التامة',
             debit: totalDebit,
             credit: 0,
-            memo: `إنتاج تام - أمر تشغيل مطحنة رقم ${newOrder.orderNumber} (${newOrder.targetItemNameAr})`,
+            memo: `إنتاج تام - أمر تصنيع رقم ${newOrder.orderNumber} (${newOrder.targetItemNameAr}) - ${lineName}`,
           },
           {
             id: 'jl-2',
             accountId: 'acc-1130',
             accountCode: '1130',
-            accountNameAr: 'مخزون المواد الخام والمكونات',
+            accountNameAr: 'مخزون المواد الأولية ومكونات التصنيع',
             debit: 0,
             credit: rawCost,
-            memo: `استهلاك مواد خام ومكونات - أمر تشغيل ${newOrder.orderNumber}`,
+            memo: `استهلاك مكونات وخامات - أمر تصنيع ${newOrder.orderNumber}`,
           },
         ];
 
@@ -1724,10 +1755,10 @@ export class AccountingEngine {
             id: 'jl-3',
             accountId: 'acc-5100',
             accountCode: '5100',
-            accountNameAr: 'تكاليف تشغيل وطحن وعمالة مباشرة',
+            accountNameAr: 'تكاليف تشغيل وصناعية وعمالة مباشرة',
             debit: 0,
             credit: newOrder.overheadCost,
-            memo: `تكاليف تشغيل وطحن - أمر رقم ${newOrder.orderNumber}`,
+            memo: `تكاليف تشغيل وصناعية - أمر تصنيع رقم ${newOrder.orderNumber}`,
           });
         }
 
@@ -1736,7 +1767,7 @@ export class AccountingEngine {
           entryNumber: `JV-${newOrder.orderNumber}`,
           date: newOrder.date,
           reference: newOrder.orderNumber,
-          description: `قيد تكاليف إنتاج وتشغيل المطحنة لأمر رقم (${newOrder.orderNumber}) - ${newOrder.targetItemNameAr}`,
+          description: `قيد تكاليف تشغيل وتصنيع لأمر رقم (${newOrder.orderNumber}) - ${newOrder.targetItemNameAr} [${lineName}]`,
           status: 'POSTED',
           lines: jLines,
           totalDebit,

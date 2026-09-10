@@ -102,7 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           id: 'production',
-          label: 'تشغيل وتصنيع المطحنة',
+          label: 'قسم التصنيع (Manufacturing Center)',
           icon: Factory,
           color: 'text-orange-400',
         },

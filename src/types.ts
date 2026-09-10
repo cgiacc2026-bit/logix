@@ -384,6 +384,38 @@ export interface PaymentVoucher {
   createdAt: string;
 }
 
+export type ManufacturingIndustryType =
+  | 'FOOD_MILLING'
+  | 'ELECTRICAL_LIGHTING'
+  | 'CHEMICALS_DETERGENTS'
+  | 'PACKAGING_CONVERTING'
+  | 'GENERAL_ASSEMBLY';
+
+export interface ManufacturingStandardCategory {
+  id: string;
+  nameAr: string;
+  nameEn?: string;
+  type: 'INPUT' | 'OUTPUT' | 'BOTH';
+}
+export type StandardCategoryDefinition = ManufacturingStandardCategory;
+
+export interface ManufacturingProductionLine {
+  id: string;
+  nameAr: string;
+  nameEn?: string;
+  description?: string;
+  defaultOperator?: string;
+  workstations?: string[];
+}
+export type StandardLineDefinition = ManufacturingProductionLine;
+
+export interface ManufacturingStandardSettings {
+  industryType: ManufacturingIndustryType;
+  standardCategories: ManufacturingStandardCategory[];
+  standardLines: ManufacturingProductionLine[];
+  standardWorkstations: Array<{ id: string; nameAr: string; lineId?: string; throughput?: string }>;
+}
+
 export interface ProductionLineItem {
   itemId: string;
   itemSku: string;
@@ -392,6 +424,8 @@ export interface ProductionLineItem {
   quantityRequired: number;
   unitCost: number;
   totalCost: number;
+  role?: 'RAW_MATERIAL' | 'COMPONENT' | 'PACKAGING' | 'AUXILIARY';
+  category?: string;
 }
 
 export type ProductionOrderStatus =
@@ -408,12 +442,13 @@ export interface QualityInspection {
   inspectionDate: string;
   purityPercentage: number; // e.g. 99.5%
   moisturePercentage: number; // e.g. 10.2%
-  sensoryCheck: 'PASS' | 'FAIL'; // الرائحة واللون والنكهة
-  foreignMatterCheck: 'PASS' | 'FAIL'; // خلو من المعادن والشوائب
-  weightToleranceCheck: 'PASS' | 'FAIL'; // دقة التعبئة
+  sensoryCheck: 'PASS' | 'FAIL'; // الرائحة واللون والنكهة أو الفحص الظاهري
+  foreignMatterCheck: 'PASS' | 'FAIL'; // خلو من العيوب والشوائب
+  weightToleranceCheck: 'PASS' | 'FAIL'; // دقة التعبئة أو الأبعاد
   status: 'PASSED' | 'REJECTED' | 'CONDITIONAL';
   coaCertificateNumber?: string; // e.g. "COA-2026-9812"
   notes?: string;
+  testedParameters?: Array<{ nameAr: string; standardValue: string; actualValue: string; isPass: boolean }>;
 }
 
 export interface EngineeringRoutingStep {
@@ -426,26 +461,42 @@ export interface EngineeringRoutingStep {
   isCompleted: boolean;
 }
 
+export interface ProductionByProduct {
+  itemId?: string;
+  itemNameAr: string;
+  quantity: number;
+  unit: string;
+  estimatedValue?: number;
+}
+
 export interface ProductionOrder {
   id: string;
   orderNumber: string; // e.g. "PRD-2026-001"
   date: string;
-  targetItemId: string; // Finished spice / packaged product
+  targetItemId: string; // Finished good / packaged product
   targetItemNameAr: string;
   targetSku: string;
   targetQuantity: number;
   targetUnit: string;
   rawMaterials: ProductionLineItem[];
-  overheadCost: number; // تكاليف التشغيل والطحن
+  overheadCost: number; // تكاليف التشغيل والعمالة المباشرة
   totalProductionCost: number;
   unitProductionCost: number;
   status: ProductionOrderStatus;
   notes?: string;
-  millLine?: string; // مثلاً: "خط طحن البهارات رقم 1"
+  millLine?: string; // خط الإنتاج (للتوافق القديم)
+  productionLineId?: string;
+  productionLineNameAr?: string;
+  industryType?: ManufacturingIndustryType;
+  categoryGroup?: string;
   operatorName?: string;
   journalEntryId?: string;
   createdAt: string;
   completedAt?: string;
+  scrapQuantity?: number;
+  scrapPercentage?: number;
+  scrapReason?: string;
+  byProducts?: ProductionByProduct[];
   qualityInspection?: QualityInspection;
   routingSteps?: EngineeringRoutingStep[];
 }

@@ -1952,7 +1952,20 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                         {item.barcode && <div className="text-[10px] text-[#8C8273]">QR: {item.barcode}</div>}
                       </td>
 
-                      <td className="py-3 px-4 font-bold text-[#1A1A1A]">{item.nameAr}</td>
+                      <td className="py-3 px-4 font-bold text-[#1A1A1A]">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{item.nameAr}</span>
+                          {isLow && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200 animate-pulse shadow-xs"
+                              title={`تنبيه آلي: رصيد الصنف (${item.quantityOnHand}) وصل أو أقل من حد الطلب الأدنى (${item.minQuantityAlert || 5})`}
+                            >
+                              <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                              <span>حد الطلب ({item.minQuantityAlert || 5})</span>
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 bg-[#F7F5F0] text-[#6E6659] rounded-md font-semibold text-[11px] border">

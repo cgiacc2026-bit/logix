@@ -107,9 +107,9 @@ export const Navigation: React.FC<NavigationProps> = ({
         },
         {
           id: 'production',
-          label: 'تشغيل وتصنيع المطحنة',
+          label: 'قسم التصنيع (Manufacturing Center)',
           icon: Factory,
-          subLabel: 'أوامر الطحن والتعبئة',
+          subLabel: 'أوامر التشغيل وخطوط الإنتاج',
         },
         {
           id: 'vouchers',

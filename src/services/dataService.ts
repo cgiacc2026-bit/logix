@@ -15,6 +15,8 @@ import {
   SystemUser,
   UnitDefinition,
   ProductionOrder,
+  ManufacturingStandardSettings,
+  ManufacturingIndustryType,
   FinancialKPIs,
   GeneralLedgerReport,
   TrialBalanceReport,
@@ -64,6 +66,133 @@ const STORAGE_KEYS = {
   VOUCHERS: 'alwaleed_erp_vouchers',
   UNITS: 'alwaleed_erp_units',
   PRODUCTION_ORDERS: 'alwaleed_erp_production_orders',
+  MANUFACTURING_SETTINGS: 'alwaleed_erp_mfg_settings',
+};
+
+export const DEFAULT_MANUFACTURING_PROFILES: Record<ManufacturingIndustryType, ManufacturingStandardSettings> = {
+  FOOD_MILLING: {
+    industryType: 'FOOD_MILLING',
+    standardCategories: [
+      { id: 'cat-raw-spices', nameAr: 'بهارات وتوابل خام أولية', nameEn: 'Raw Spices & Herbs', type: 'INPUT' },
+      { id: 'cat-raw-grains', nameAr: 'حبوب وبذور خام', nameEn: 'Raw Grains & Seeds', type: 'INPUT' },
+      { id: 'cat-food-pkg', nameAr: 'مواد تعبئة وتغليف غذائي', nameEn: 'Food Packaging', type: 'INPUT' },
+      { id: 'cat-additives', nameAr: 'نكهات وإضافات طبيعية', nameEn: 'Natural Flavors', type: 'INPUT' },
+      { id: 'cat-ground-pure', nameAr: 'بهارات مطحونة نقية تامة', nameEn: 'Pure Ground Spices', type: 'OUTPUT' },
+      { id: 'cat-spice-blends', nameAr: 'خلطات بهارات فاخرة معبأة', nameEn: 'Packaged Spice Blends', type: 'OUTPUT' },
+      { id: 'cat-co-bran', nameAr: 'منتجات فرعية (نخالة وقشور)', nameEn: 'Bran & By-Products', type: 'OUTPUT' },
+      { id: 'cat-scrap-sift', nameAr: 'هالك غربلة وتنقية', nameEn: 'Sifting Waste', type: 'OUTPUT' },
+    ],
+    standardLines: [
+      { id: 'line-mill-1', nameAr: 'خط الطحن والتنعيم الميكانيكي 01', nameEn: 'Milling Line 01', description: 'طحن فائق النعومة للبهارات الجافة' },
+      { id: 'line-roast-sift', nameAr: 'خط الغربلة والتنقية والتحميص', nameEn: 'Sifting & Roasting Line', description: 'تنقية الحبوب وتحميصها بدرجات حرارة معيارية' },
+      { id: 'line-blend-1', nameAr: 'خط الخلط والمجانسة الآلي', nameEn: 'Auto Blending Line', description: 'خلط دقيق للبهارات المشكلة والبهارات الخاصة' },
+      { id: 'line-pack-nitro', nameAr: 'خط التعبئة والختم النيتروجيني', nameEn: 'Nitrogen Pack Line', description: 'تعبئة عبوات وأكياس مع حفظ النكهة' },
+    ],
+    standardWorkstations: [
+      { id: 'ws-sift', nameAr: 'محطة الغربلة ونزع الشوائب' },
+      { id: 'ws-mill', nameAr: 'محطة الطواحين الميكانيكية' },
+      { id: 'ws-blend', nameAr: 'محطة خلاطات الدفعات' },
+      { id: 'ws-pack', nameAr: 'محطة موازين التعبئة والتغليف' },
+      { id: 'ws-qc-lab', nameAr: 'محطة الفحص المخبري وضبط الجودة' },
+    ],
+  },
+  ELECTRICAL_LIGHTING: {
+    industryType: 'ELECTRICAL_LIGHTING',
+    standardCategories: [
+      { id: 'cat-smd-led', nameAr: 'شرائح ومصفوفات LED الإلكترونية', nameEn: 'LED SMD Modules', type: 'INPUT' },
+      { id: 'cat-drivers', nameAr: 'محولات ودوائر التشغيل (Drivers)', nameEn: 'LED Power Drivers', type: 'INPUT' },
+      { id: 'cat-heatsink', nameAr: 'هياكل ومشتتات حرارية ألومنيوم', nameEn: 'Aluminum Heat Sinks', type: 'INPUT' },
+      { id: 'cat-optics', nameAr: 'عدسات وأغطية بصرية ناشرة', nameEn: 'Diffusers & Optics', type: 'INPUT' },
+      { id: 'cat-wires', nameAr: 'أسلاك وموصلات نحاسية معزولة', nameEn: 'Wires & Connectors', type: 'INPUT' },
+      { id: 'cat-elec-pkg', nameAr: 'كراتين حماية ممتصة للصدمات', nameEn: 'Shockproof Packaging', type: 'INPUT' },
+      { id: 'cat-finished-bulbs', nameAr: 'لمبات ووحدات إنارة ليد تامة', nameEn: 'Finished LED Luminaires', type: 'OUTPUT' },
+      { id: 'cat-co-subassy', nameAr: 'وحدات نصف مصنعة (WIP)', nameEn: 'Sub-Assemblies', type: 'OUTPUT' },
+      { id: 'cat-scrap-elec', nameAr: 'هالك لحام وتجميع وأسلاك', nameEn: 'Assembly Scrap', type: 'OUTPUT' },
+    ],
+    standardLines: [
+      { id: 'line-smt-mount', nameAr: 'خط التركيب السطحي واللحام SMT', nameEn: 'SMT Placement Line', description: 'تثبيت ولحام رقائق الليد على اللوحات المطبوعة' },
+      { id: 'line-mech-assy', nameAr: 'خط التجميع الميكانيكي والهياكل', nameEn: 'Mechanical Assembly Line', description: 'تركيب المشتتات والعدسات والمحولات' },
+      { id: 'line-burn-in', nameAr: 'خط اختبار الحرق والتحمل (Burn-in)', nameEn: 'Burn-in Test Chamber', description: 'تشغيل مستمر بدرجات جهد متغيرة لكشف العيوب المبكرة' },
+      { id: 'line-elec-pack', nameAr: 'خط الفحص الكهربائي النهائي والتغليف', nameEn: 'Testing & Packaging Line', description: 'قياس كفاءة اللومن والعزل والتغليف الآلي' },
+    ],
+    standardWorkstations: [
+      { id: 'ws-pick-place', nameAr: 'محطة ماكينة SMT والتثبيت' },
+      { id: 'ws-reflow', nameAr: 'محطة فرن اللحام الحراري Reflow' },
+      { id: 'ws-housing', nameAr: 'محطة تجميع الهيكل وتطبيق المعجون الحراري' },
+      { id: 'ws-burn-rack', nameAr: 'محطة حوامل اختبار الحرق والجهد' },
+      { id: 'ws-hipot', nameAr: 'محطة اختبار العزل الكهربائي Hi-Pot' },
+    ],
+  },
+  CHEMICALS_DETERGENTS: {
+    industryType: 'CHEMICALS_DETERGENTS',
+    standardCategories: [
+      { id: 'cat-surfactants', nameAr: 'مواد فعالة سطحياً وسلفونيك', nameEn: 'Surfactants & Acids', type: 'INPUT' },
+      { id: 'cat-alkalis', nameAr: 'قلويات ومحسنات قوام ورغوة', nameEn: 'Alkalis & Stabilizers', type: 'INPUT' },
+      { id: 'cat-perfumes', nameAr: 'عطور ومواد حافظة وملونات', nameEn: 'Fragrances & Colorants', type: 'INPUT' },
+      { id: 'cat-chem-bottles', nameAr: 'عبوات بلاستيكية وبخاخات وأغطية', nameEn: 'Bottles, Pumps & Caps', type: 'INPUT' },
+      { id: 'cat-labels', nameAr: 'ملصقات وبطاقات بيانات كيميائية', nameEn: 'Chemical Labels & SDS', type: 'INPUT' },
+      { id: 'cat-finished-chem', nameAr: 'منظفات ومطهرات سائلة تامة الصنع', nameEn: 'Finished Detergents & Disinfectants', type: 'OUTPUT' },
+      { id: 'cat-scrap-chem', nameAr: 'هالك تعبئة ورواسب خلط', nameEn: 'Mixing Sludge & Spillage', type: 'OUTPUT' },
+    ],
+    standardLines: [
+      { id: 'line-react-mix', nameAr: 'خط المفاعلات والخلط المتجانس', nameEn: 'Homogenization Reactors', description: 'خلط وتفاعل المركبات الكيميائية بدرجات حرارة مضبوطة' },
+      { id: 'line-vol-fill', nameAr: 'خط التعبئة الحجمية الآلية', nameEn: 'Volumetric Filling Line', description: 'تعبئة دقيقة للسوائل المركزة في العبوات' },
+      { id: 'line-cap-label', nameAr: 'خط تركيب الأغطية والوسم الأوتوماتيكي', nameEn: 'Capping & Labeling Line', description: 'إحكام الإغلاق وطباعة تاريخ الصلاحية والباركود' },
+    ],
+    standardWorkstations: [
+      { id: 'ws-reactor-1', nameAr: 'محطة مفاعل الخلط الرئيسي' },
+      { id: 'ws-viscosity', nameAr: 'محطة ضبط اللزوجة والرقم الهيدروجيني pH' },
+      { id: 'ws-nozzles', nameAr: 'محطة فوهات التعبئة الآلية' },
+      { id: 'ws-capper', nameAr: 'محطة ربط الأغطية بالهواء المضغوط' },
+      { id: 'ws-labeler', nameAr: 'محطة لصق البطاقات وطباعة الدفعة' },
+    ],
+  },
+  PACKAGING_CONVERTING: {
+    industryType: 'PACKAGING_CONVERTING',
+    standardCategories: [
+      { id: 'cat-paper-reels', nameAr: 'رولات ورق مقوى وكرافت', nameEn: 'Kraft & Fluting Paper Reels', type: 'INPUT' },
+      { id: 'cat-inks-glue', nameAr: 'أحبار مائية وغراء صناعي نشوي', nameEn: 'Water Inks & Starch Glue', type: 'INPUT' },
+      { id: 'cat-strapping', nameAr: 'أشرطة تحزيم وأفلام استريتش', nameEn: 'Strapping & Stretch Films', type: 'INPUT' },
+      { id: 'cat-finished-boxes', nameAr: 'كراتين مضلعة مطبوعة تامة الصنع', nameEn: 'Finished Corrugated Boxes', type: 'OUTPUT' },
+      { id: 'cat-scrap-paper', nameAr: 'قصاصات وهالك ورق قابل للتدوير', nameEn: 'Recyclable Paper Offcuts', type: 'OUTPUT' },
+    ],
+    standardLines: [
+      { id: 'line-corrugator', nameAr: 'خط إنتاج الكرتون المضلع (Corrugator)', nameEn: 'Corrugator Line', description: 'تمويج ولصق طبقات الورق' },
+      { id: 'line-flexo-die', nameAr: 'خط الطباعة فليكسو والتكسير والقص', nameEn: 'Flexo Printing & Die-Cut', description: 'طباعة متعددة الألوان وقص دقيق' },
+      { id: 'line-fold-glue', nameAr: 'خط الطي واللصق والتحزيم الآلي', nameEn: 'Folder Gluer & Strapping', description: 'طي أوتوماتيكي ولصق الحواف وتحزيم البالات' },
+    ],
+    standardWorkstations: [
+      { id: 'ws-reel-stand', nameAr: 'محطة حوامل رولات الورق' },
+      { id: 'ws-flexo-print', nameAr: 'محطة وحدات الطباعة فليكسو' },
+      { id: 'ws-rotary-die', nameAr: 'محطة قالب التكسير الدوار' },
+      { id: 'ws-gluer', nameAr: 'محطة حقن الغراء والكبس' },
+      { id: 'ws-bundler', nameAr: 'محطة الرص والتحزيم على طبالي' },
+    ],
+  },
+  GENERAL_ASSEMBLY: {
+    industryType: 'GENERAL_ASSEMBLY',
+    standardCategories: [
+      { id: 'cat-gen-raw', nameAr: 'مواد خام ومكونات أساسية', nameEn: 'Raw Materials', type: 'INPUT' },
+      { id: 'cat-gen-parts', nameAr: 'أجزاء وقطع تجميع نصف مصنعة', nameEn: 'Assembly Parts', type: 'INPUT' },
+      { id: 'cat-gen-fasteners', nameAr: 'مسامير ومثبتات ومواد تثبيت', nameEn: 'Fasteners & Hardware', type: 'INPUT' },
+      { id: 'cat-gen-pack', nameAr: 'مستلزمات تعبئة وتغليف وحماية', nameEn: 'Packaging & Boxing', type: 'INPUT' },
+      { id: 'cat-gen-finished', nameAr: 'منتجات تامة الصنع وجاهزة للتوزيع', nameEn: 'Finished Goods', type: 'OUTPUT' },
+      { id: 'cat-gen-wip', nameAr: 'منتجات قيد التشغيل (WIP)', nameEn: 'Work In Progress', type: 'OUTPUT' },
+      { id: 'cat-gen-scrap', nameAr: 'مخلفات وهالك تشغيل وإنتاج', nameEn: 'Production Scrap & Waste', type: 'OUTPUT' },
+    ],
+    standardLines: [
+      { id: 'line-gen-prep', nameAr: 'خط التجهيز والقص والمعالجة', nameEn: 'Preparation & Cutting Line', description: 'تجهيز الخامات وقطعها وضبط المقاسات' },
+      { id: 'line-gen-assy', nameAr: 'خط التجميع والتركيب الرئيسي', nameEn: 'Main Assembly Line', description: 'تجميع المكونات وبناء المنتج النهائي' },
+      { id: 'line-gen-test', nameAr: 'خط الفحص والاختبار والمعايرة', nameEn: 'Inspection & Testing Line', description: 'فحص الأداء والتطابق مع المواصفات الفنية' },
+      { id: 'line-gen-pack', nameAr: 'خط التعبئة والتغليف النهائي', nameEn: 'Final Packaging Line', description: 'التغليف ووضع بطاقات التعريف والتسليم للمستودع' },
+    ],
+    standardWorkstations: [
+      { id: 'ws-gen-prep', nameAr: 'محطة التجهيز المسبق' },
+      { id: 'ws-gen-assembly', nameAr: 'محطة التجميع اليدوي والآلي' },
+      { id: 'ws-gen-inspect', nameAr: 'محطة ضبط الجودة والفحص' },
+      { id: 'ws-gen-packing', nameAr: 'محطة التعبئة والرص' },
+    ],
+  },
 };
 
 export const INITIAL_PRODUCTION_ORDERS: ProductionOrder[] = [
@@ -647,6 +776,23 @@ class LocalDataStore {
   }
   public saveProductionOrders(orders: ProductionOrder[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), orders);
+  }
+
+  public getManufacturingSettings(): ManufacturingStandardSettings {
+    const saved = this.getLocal<ManufacturingStandardSettings | null>(
+      this.getKey(STORAGE_KEYS.MANUFACTURING_SETTINGS),
+      null
+    );
+    if (saved && saved.standardCategories && saved.standardCategories.length > 0) {
+      return saved;
+    }
+    const defType: ManufacturingIndustryType = this.isAlWaleedActive() ? 'FOOD_MILLING' : 'GENERAL_ASSEMBLY';
+    const initial = DEFAULT_MANUFACTURING_PROFILES[defType];
+    this.saveManufacturingSettings(initial);
+    return initial;
+  }
+  public saveManufacturingSettings(s: ManufacturingStandardSettings): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.MANUFACTURING_SETTINGS), s);
   }
 
   public resetToDefaults(): void {
@@ -2821,6 +2967,11 @@ export class DataService {
 
   // Production Orders
   public static async getProductionOrders(): Promise<ProductionOrder[]> {
+    const fromSupabase = await SupabaseDataService.getProductionOrders();
+    if (fromSupabase && fromSupabase.length > 0) {
+      localDataStore.saveProductionOrders(fromSupabase);
+      return fromSupabase;
+    }
     const fromApi = await safeApiFetch<ProductionOrder[]>('/api/production-orders');
     if (fromApi) {
       localDataStore.saveProductionOrders(fromApi);
@@ -2835,6 +2986,9 @@ export class DataService {
     const journals = localDataStore.getJournals();
 
     const orderNumber = `PRD-2026-${String(orders.length + 1).padStart(3, '0')}`;
+    const lineName = orderData.productionLineNameAr || orderData.millLine || 'خط الإنتاج الرئيسي';
+    const industryType = orderData.industryType || 'GENERAL_ASSEMBLY';
+
     const newOrder: ProductionOrder = {
       id: 'prd-' + Math.random().toString(36).substr(2, 9),
       orderNumber,
@@ -2849,9 +3003,19 @@ export class DataService {
       totalProductionCost: Number(orderData.totalProductionCost) || 0,
       unitProductionCost: Number(orderData.unitProductionCost) || 0,
       status: orderData.status || 'COMPLETED',
-      notes: orderData.notes || 'أمر تشغيل وطحن وتجهيز منتجات المطحنة',
-      millLine: orderData.millLine || 'خط طحن وتعبئة البهارات',
-      operatorName: orderData.operatorName || 'مودي جميل',
+      notes: orderData.notes || 'أمر تشغيل وتصنيع في مركز التصنيع الشامل',
+      millLine: lineName,
+      productionLineId: orderData.productionLineId,
+      productionLineNameAr: lineName,
+      industryType,
+      categoryGroup: orderData.categoryGroup,
+      operatorName: orderData.operatorName || 'مشرف خط الإنتاج',
+      scrapQuantity: Number(orderData.scrapQuantity) || 0,
+      scrapPercentage: Number(orderData.scrapPercentage) || 0,
+      scrapReason: orderData.scrapReason,
+      byProducts: orderData.byProducts || [],
+      qualityInspection: orderData.qualityInspection,
+      routingSteps: orderData.routingSteps || [],
       createdAt: new Date().toISOString(),
       completedAt: orderData.status === 'COMPLETED' ? new Date().toISOString() : undefined,
     };
@@ -2867,7 +3031,22 @@ export class DataService {
       const targetItem = inventory.find((i) => i.id === newOrder.targetItemId);
       if (targetItem) {
         targetItem.quantityOnHand += newOrder.targetQuantity;
+        if (newOrder.unitProductionCost > 0) {
+          targetItem.costPrice = newOrder.unitProductionCost;
+        }
       }
+
+      if (newOrder.byProducts && newOrder.byProducts.length > 0) {
+        newOrder.byProducts.forEach((bp) => {
+          if (bp.itemId) {
+            const bpItem = inventory.find((i) => i.id === bp.itemId);
+            if (bpItem) {
+              bpItem.quantityOnHand += bp.quantity;
+            }
+          }
+        });
+      }
+
       localDataStore.saveInventory(inventory);
 
       const totalDebit = newOrder.totalProductionCost;
@@ -2882,7 +3061,7 @@ export class DataService {
           accountNameAr: resolved.inventory.nameAr,
           debit: totalDebit,
           credit: 0,
-          memo: `إنتاج تام - أمر تشغيل رقم ${newOrder.orderNumber} (${newOrder.targetItemNameAr})`,
+          memo: `إنتاج تام - أمر تصنيع رقم ${newOrder.orderNumber} (${newOrder.targetItemNameAr}) - ${lineName}`,
         },
         {
           id: 'jl-2',
@@ -2891,7 +3070,7 @@ export class DataService {
           accountNameAr: resolved.inventory.nameAr,
           debit: 0,
           credit: rawCost,
-          memo: `استهلاك مواد خام ومكونات - أمر تشغيل ${newOrder.orderNumber}`,
+          memo: `استهلاك مكونات وخامات - أمر تصنيع ${newOrder.orderNumber}`,
         },
       ];
 
@@ -2903,7 +3082,7 @@ export class DataService {
           accountNameAr: resolved.cogs.nameAr,
           debit: 0,
           credit: newOrder.overheadCost,
-          memo: `تكاليف تشغيل وطحن - أمر رقم ${newOrder.orderNumber}`,
+          memo: `تكاليف تشغيل وصناعية - أمر تصنيع رقم ${newOrder.orderNumber}`,
         });
       }
 
@@ -2912,7 +3091,7 @@ export class DataService {
         entryNumber: `JV-${newOrder.orderNumber}`,
         date: newOrder.date,
         reference: newOrder.orderNumber,
-        description: `قيد تكاليف إنتاج وتشغيل المطحنة لأمر رقم (${newOrder.orderNumber}) - ${newOrder.targetItemNameAr}`,
+        description: `قيد تكاليف تشغيل وتصنيع لأمر رقم (${newOrder.orderNumber}) - ${newOrder.targetItemNameAr} [${lineName}]`,
         status: 'POSTED',
         lines: jLines,
         totalDebit,
@@ -2926,13 +3105,13 @@ export class DataService {
 
       journals.push(jEntry);
       localDataStore.saveJournals(journals);
-      syncToFirestore('erp_journals', jEntry.id, jEntry);
       newOrder.journalEntryId = jEntry.id;
+      SupabaseDataService.saveJournal(jEntry).catch(() => {});
     }
 
     orders.unshift(newOrder);
     localDataStore.saveProductionOrders(orders);
-    syncToFirestore('erp_production', newOrder.id, newOrder);
+    SupabaseDataService.saveProductionOrder(newOrder).catch(() => {});
 
     await safeApiFetch('/api/production-orders', {
       method: 'POST',
@@ -2941,6 +3120,30 @@ export class DataService {
     });
 
     return newOrder;
+  }
+
+  // Manufacturing Standard Settings
+  public static getLocalManufacturingSettings(companyId?: string): ManufacturingStandardSettings {
+    return localDataStore.getManufacturingSettings();
+  }
+
+  public static async getManufacturingSettings(companyId?: string): Promise<ManufacturingStandardSettings> {
+    const fromSupabase = await SupabaseDataService.getManufacturingSettings();
+    if (fromSupabase) {
+      localDataStore.saveManufacturingSettings(fromSupabase);
+      return fromSupabase;
+    }
+    return localDataStore.getManufacturingSettings();
+  }
+
+  public static async saveManufacturingSettings(
+    companyIdOrSettings: string | ManufacturingStandardSettings,
+    maybeSettings?: ManufacturingStandardSettings
+  ): Promise<ManufacturingStandardSettings> {
+    const settings = typeof companyIdOrSettings === 'string' && maybeSettings ? maybeSettings : (companyIdOrSettings as ManufacturingStandardSettings);
+    localDataStore.saveManufacturingSettings(settings);
+    SupabaseDataService.saveManufacturingSettings(settings).catch(() => {});
+    return settings;
   }
 
   // Users

@@ -40,6 +40,8 @@ import {
   JournalEntry,
   CompanyProfile,
   PaymentVoucher,
+  ProductionOrder,
+  ManufacturingStandardSettings,
 } from '../types.js';
 
 export class SupabaseDataService {
@@ -1574,6 +1576,169 @@ export class SupabaseDataService {
       return !error;
     } catch (e) {
       console.warn('Supabase deleteAccount exception:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Universal Multi-Industry Manufacturing Production Orders
+   * Strict Multi-Tenant isolation: .eq('company_id', companyId)
+   */
+  public static async getProductionOrders(targetCompanyId?: string): Promise<ProductionOrder[] | null> {
+    if (!isSupabaseConfigured) return null;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('production_orders')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('date', { ascending: false });
+
+      if (error) {
+        console.warn('Supabase getProductionOrders error (fallback to local):', error.message);
+        return null;
+      }
+
+      if (!data || data.length === 0) return null;
+
+      return data.map((row: any) => ({
+        id: row.id,
+        orderNumber: row.order_number || row.orderNumber,
+        date: row.date,
+        targetItemId: row.target_item_id || row.targetItemId,
+        targetItemNameAr: row.target_item_name_ar || row.targetItemNameAr,
+        targetSku: row.target_sku || row.targetSku || '',
+        targetQuantity: Number(row.target_quantity ?? row.targetQuantity) || 1,
+        targetUnit: row.target_unit || row.targetUnit || 'حبة',
+        rawMaterials: row.raw_materials || row.rawMaterials || [],
+        overheadCost: Number(row.overhead_cost ?? row.overheadCost) || 0,
+        totalProductionCost: Number(row.total_production_cost ?? row.totalProductionCost) || 0,
+        unitProductionCost: Number(row.unit_production_cost ?? row.unitProductionCost) || 0,
+        status: row.status || 'COMPLETED',
+        notes: row.notes || '',
+        millLine: row.production_line_name_ar || row.mill_line || row.millLine || 'خط الإنتاج الرئيسي',
+        productionLineId: row.production_line_id || row.productionLineId,
+        productionLineNameAr: row.production_line_name_ar || row.productionLineNameAr || row.mill_line,
+        industryType: row.industry_type || row.industryType || 'GENERAL_ASSEMBLY',
+        categoryGroup: row.category_group || row.categoryGroup,
+        operatorName: row.operator_name || row.operatorName || 'مشرف التشغيل',
+        journalEntryId: row.journal_entry_id || row.journalEntryId,
+        createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+        completedAt: row.completed_at || row.completedAt,
+        scrapQuantity: Number(row.scrap_quantity ?? row.scrapQuantity) || 0,
+        scrapPercentage: Number(row.scrap_percentage ?? row.scrapPercentage) || 0,
+        scrapReason: row.scrap_reason || row.scrapReason,
+        byProducts: row.by_products || row.byProducts || [],
+        qualityInspection: row.quality_inspection || row.qualityInspection,
+        routingSteps: row.routing_steps || row.routingSteps || [],
+      }));
+    } catch (e) {
+      console.warn('Supabase getProductionOrders exception:', e);
+      return null;
+    }
+  }
+
+  public static async saveProductionOrder(order: ProductionOrder, targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const payload = {
+        id: order.id,
+        company_id: companyId,
+        order_number: order.orderNumber,
+        date: order.date,
+        target_item_id: order.targetItemId,
+        target_item_name_ar: order.targetItemNameAr,
+        target_sku: order.targetSku || '',
+        target_quantity: Number(order.targetQuantity) || 1,
+        target_unit: order.targetUnit || 'حبة',
+        raw_materials: order.rawMaterials || [],
+        overhead_cost: Number(order.overheadCost) || 0,
+        total_production_cost: Number(order.totalProductionCost) || 0,
+        unit_production_cost: Number(order.unitProductionCost) || 0,
+        status: order.status || 'COMPLETED',
+        notes: order.notes || '',
+        mill_line: order.productionLineNameAr || order.millLine || 'خط الإنتاج الرئيسي',
+        production_line_id: order.productionLineId || null,
+        production_line_name_ar: order.productionLineNameAr || order.millLine || 'خط الإنتاج الرئيسي',
+        industry_type: order.industryType || 'GENERAL_ASSEMBLY',
+        category_group: order.categoryGroup || null,
+        operator_name: order.operatorName || 'مشرف التشغيل',
+        journal_entry_id: order.journalEntryId || null,
+        scrap_quantity: Number(order.scrapQuantity) || 0,
+        scrap_percentage: Number(order.scrapPercentage) || 0,
+        scrap_reason: order.scrapReason || null,
+        by_products: order.byProducts || [],
+        quality_inspection: order.qualityInspection || null,
+        routing_steps: order.routingSteps || [],
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('production_orders').upsert([payload]);
+      if (error) {
+        console.warn('Supabase saveProductionOrder error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveProductionOrder exception:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Manufacturing Settings (Standardized Categories, Lines, and Workstations per Tenant)
+   */
+  public static async getManufacturingSettings(targetCompanyId?: string): Promise<ManufacturingStandardSettings | null> {
+    if (!isSupabaseConfigured) return null;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('manufacturing_settings')
+        .select('*')
+        .eq('company_id', companyId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+
+      return {
+        industryType: data.industry_type || 'GENERAL_ASSEMBLY',
+        standardCategories: data.standard_categories || [],
+        standardLines: data.standard_lines || [],
+        standardWorkstations: data.standard_workstations || [],
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  public static async saveManufacturingSettings(
+    settings: ManufacturingStandardSettings,
+    targetCompanyId?: string
+  ): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const { error } = await supabase.from('manufacturing_settings').upsert([
+        {
+          company_id: companyId,
+          industry_type: settings.industryType,
+          standard_categories: settings.standardCategories,
+          standard_lines: settings.standardLines,
+          standard_workstations: settings.standardWorkstations,
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+      return !error;
+    } catch (e) {
       return false;
     }
   }
