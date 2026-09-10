@@ -463,6 +463,116 @@ class LocalDataStore {
     delete this.memoryFallback[`logix_restore_lock_${canonId}`];
   }
 
+  /**
+   * Check if tenant is initialized (prevents unwanted mock data re-seeding)
+   */
+  public isTenantInitialized(specificCompanyId?: string): boolean {
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const initKey = `logix_tenant_init_${canonId}`;
+    const altKey = `logix_tenant_init_${rawId}`;
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      if (
+        window.localStorage.getItem(initKey) === 'true' ||
+        window.localStorage.getItem(altKey) === 'true' ||
+        window.localStorage.getItem('logix_system_initialized') === 'true'
+      ) {
+        return true;
+      }
+      // Check if any entity key has been saved for this tenant (even as empty array)
+      const keysToCheck = [
+        this.getKey(STORAGE_KEYS.ACCOUNTS, specificCompanyId),
+        this.getKey(STORAGE_KEYS.JOURNALS, specificCompanyId),
+        this.getKey(STORAGE_KEYS.CUSTOMERS, specificCompanyId),
+        this.getKey(STORAGE_KEYS.INVOICES, specificCompanyId),
+      ];
+      for (const k of keysToCheck) {
+        if (window.localStorage.getItem(k) !== null) {
+          window.localStorage.setItem(initKey, 'true');
+          return true;
+        }
+      }
+    }
+    return !!(this.memoryFallback[initKey] || this.memoryFallback[altKey]);
+  }
+
+  /**
+   * Mark tenant as initialized
+   */
+  public markTenantInitialized(specificCompanyId?: string): void {
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const initKey = `logix_tenant_init_${canonId}`;
+    const altKey = `logix_tenant_init_${rawId}`;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(initKey, 'true');
+      window.localStorage.setItem(altKey, 'true');
+      window.localStorage.setItem('logix_system_initialized', 'true');
+    }
+    this.memoryFallback[initKey] = 'true';
+    this.memoryFallback[altKey] = 'true';
+  }
+
+  /**
+   * Tombstones: Track records explicitly deleted by user to prevent resurrection
+   */
+  public getTombstones(type: string, specificCompanyId?: string): Set<string> {
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const key = `logix_tombstones_${type}_${canonId}`;
+    const altKey = `logix_tombstones_${type}_${rawId}`;
+    let raw: string | null = null;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      raw = window.localStorage.getItem(key) || window.localStorage.getItem(altKey);
+    } else {
+      raw = this.memoryFallback[key] || this.memoryFallback[altKey] || null;
+    }
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return new Set<string>(parsed);
+      } catch {}
+    }
+    return new Set<string>();
+  }
+
+  public addTombstone(type: string, id: string, specificCompanyId?: string): void {
+    if (!id) return;
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const key = `logix_tombstones_${type}_${canonId}`;
+    const altKey = `logix_tombstones_${type}_${rawId}`;
+    const set = this.getTombstones(type, specificCompanyId);
+    set.add(id);
+    const serialized = JSON.stringify(Array.from(set));
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, serialized);
+      window.localStorage.setItem(altKey, serialized);
+    }
+    this.memoryFallback[key] = serialized;
+    this.memoryFallback[altKey] = serialized;
+  }
+
+  public removeTombstone(type: string, id: string, specificCompanyId?: string): void {
+    if (!id) return;
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const key = `logix_tombstones_${type}_${canonId}`;
+    const altKey = `logix_tombstones_${type}_${rawId}`;
+    const set = this.getTombstones(type, specificCompanyId);
+    if (set.has(id)) {
+      set.delete(id);
+      const serialized = JSON.stringify(Array.from(set));
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, serialized);
+        window.localStorage.setItem(altKey, serialized);
+      }
+      this.memoryFallback[key] = serialized;
+      this.memoryFallback[altKey] = serialized;
+    }
+  }
+
   public getCompany(): CompanyProfile {
     const compId = this.getEffectiveCompanyId();
     const dedicatedLogo = typeof window !== 'undefined'
@@ -710,111 +820,173 @@ class LocalDataStore {
 
   public getAccounts(): Account[] {
     const list = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
-    if (!list || list.length === 0) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       if (this.isAlWaleedActive()) {
         const alwaleedAccounts = JSON.parse(JSON.stringify(INITIAL_ACCOUNTS));
         this.saveAccounts(alwaleedAccounts);
+        this.markTenantInitialized();
         return alwaleedAccounts;
       }
-      // Default zeroed clean opening chart of accounts
+      // Default zeroed clean opening chart of accounts for first-time install
       const zeroedAccounts = generateCleanChartOfAccounts(this.getEffectiveCompanyId() || undefined);
       this.saveAccounts(zeroedAccounts);
+      this.markTenantInitialized();
       return zeroedAccounts;
+    }
+    const tombstones = this.getTombstones('accounts');
+    if (tombstones.size > 0) {
+      return list.filter((a) => !tombstones.has(a.id));
     }
     return list;
   }
   public saveAccounts(accounts: Account[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), accounts);
+    this.markTenantInitialized();
   }
 
   public getCustomers(): Customer[] {
     const list = this.getLocal<Customer[] | null>(this.getKey(STORAGE_KEYS.CUSTOMERS), null);
-    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       if (this.isAlWaleedActive()) {
         const alwaleedCustomers = JSON.parse(JSON.stringify(INITIAL_CUSTOMERS));
         this.saveCustomers(alwaleedCustomers);
+        this.markTenantInitialized();
         return alwaleedCustomers;
       }
       if (isDemoActive()) {
         const zeroedCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
         this.saveCustomers(zeroedCustomers);
+        this.markTenantInitialized();
         return zeroedCustomers;
       }
+      this.saveCustomers([]);
       return [];
+    }
+    const tombstones = this.getTombstones('customers');
+    if (tombstones.size > 0) {
+      return list.filter((c) => !tombstones.has(c.id));
     }
     return list;
   }
   public saveCustomers(customers: Customer[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), customers);
+    this.markTenantInitialized();
   }
 
   public getSuppliers(): Supplier[] {
     const list = this.getLocal<Supplier[] | null>(this.getKey(STORAGE_KEYS.SUPPLIERS), null);
-    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       if (this.isAlWaleedActive()) {
         const alwaleedSuppliers = JSON.parse(JSON.stringify(INITIAL_SUPPLIERS));
         this.saveSuppliers(alwaleedSuppliers);
+        this.markTenantInitialized();
         return alwaleedSuppliers;
       }
       if (isDemoActive()) {
         const zeroedSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
         this.saveSuppliers(zeroedSuppliers);
+        this.markTenantInitialized();
         return zeroedSuppliers;
       }
+      this.saveSuppliers([]);
       return [];
+    }
+    const tombstones = this.getTombstones('suppliers');
+    if (tombstones.size > 0) {
+      return list.filter((s) => !tombstones.has(s.id));
     }
     return list;
   }
   public saveSuppliers(suppliers: Supplier[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), suppliers);
+    this.markTenantInitialized();
   }
 
   public getInventory(): InventoryItem[] {
     const list = this.getLocal<InventoryItem[] | null>(this.getKey(STORAGE_KEYS.INVENTORY), null);
-    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       if (this.isAlWaleedActive()) {
         const alwaleedInventory = JSON.parse(JSON.stringify(INITIAL_INVENTORY));
         this.saveInventory(alwaleedInventory);
+        this.markTenantInitialized();
         return alwaleedInventory;
       }
+      this.saveInventory([]);
       return [];
+    }
+    const tombstones = this.getTombstones('inventory');
+    if (tombstones.size > 0) {
+      return list.filter((item) => !tombstones.has(item.id));
     }
     return list;
   }
   public saveInventory(inv: InventoryItem[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), inv);
+    this.markTenantInitialized();
   }
 
   public getJournals(): JournalEntry[] {
     const list = this.getLocal<JournalEntry[] | null>(this.getKey(STORAGE_KEYS.JOURNALS), null);
-    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       if (this.isAlWaleedActive()) {
         const alwaleedJournals = JSON.parse(JSON.stringify(INITIAL_JOURNALS));
         this.saveJournals(alwaleedJournals);
+        this.markTenantInitialized();
         return alwaleedJournals;
       }
+      this.saveJournals([]);
       return [];
+    }
+    const tombstones = this.getTombstones('journals');
+    if (tombstones.size > 0) {
+      return list.filter((j) => !tombstones.has(j.id));
     }
     return list;
   }
   public saveJournals(j: JournalEntry[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), j);
+    this.markTenantInitialized();
   }
 
   public getInvoices(): Invoice[] {
     const list = this.getLocal<Invoice[] | null>(this.getKey(STORAGE_KEYS.INVOICES), null);
-    if (!list || (list.length === 0 && this.isAlWaleedActive())) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       if (this.isAlWaleedActive()) {
         const alwaleedInvoices = JSON.parse(JSON.stringify(INITIAL_INVOICES));
         this.saveInvoices(alwaleedInvoices);
+        this.markTenantInitialized();
         return alwaleedInvoices;
       }
+      this.saveInvoices([]);
       return [];
+    }
+    const tombstones = this.getTombstones('invoices');
+    if (tombstones.size > 0) {
+      return list.filter((inv) => !tombstones.has(inv.id));
     }
     return list;
   }
   public saveInvoices(inv: Invoice[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.INVOICES), inv);
+    this.markTenantInitialized();
   }
 
   public getVouchers(): PaymentVoucher[] {
@@ -822,10 +994,15 @@ class LocalDataStore {
     if (!list) {
       return [];
     }
+    const tombstones = this.getTombstones('vouchers');
+    if (tombstones.size > 0) {
+      return list.filter((v) => !tombstones.has(v.id));
+    }
     return list;
   }
   public saveVouchers(v: PaymentVoucher[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), v);
+    this.markTenantInitialized();
   }
 
   public getUnits(): UnitDefinition[] {
@@ -844,6 +1021,7 @@ class LocalDataStore {
   }
   public saveProductionOrders(orders: ProductionOrder[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), orders);
+    this.markTenantInitialized();
   }
 
   public getManufacturingSettings(): ManufacturingStandardSettings {
@@ -865,29 +1043,40 @@ class LocalDataStore {
 
   public getQuotations(): Quotation[] {
     const list = this.getLocal<Quotation[] | null>(this.getKey(STORAGE_KEYS.QUOTATIONS), null);
-    if (!list) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       if (this.isAlWaleedActive() || isDemoActive()) {
         this.saveQuotations(INITIAL_QUOTATIONS);
+        this.markTenantInitialized();
         return INITIAL_QUOTATIONS;
       }
+      this.saveQuotations([]);
       return [];
     }
     return list;
   }
   public saveQuotations(quotations: Quotation[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.QUOTATIONS), quotations);
+    this.markTenantInitialized();
   }
 
   public getSalesReps(): SalesRep[] {
     const list = this.getLocal<SalesRep[] | null>(this.getKey(STORAGE_KEYS.SALES_REPS), null);
-    if (!list || list.length === 0) {
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
       this.saveSalesReps(INITIAL_SALES_REPS);
+      this.markTenantInitialized();
       return INITIAL_SALES_REPS;
     }
     return list;
   }
   public saveSalesReps(reps: SalesRep[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.SALES_REPS), reps);
+    this.markTenantInitialized();
   }
 
   public resetToDefaults(): void {
@@ -903,6 +1092,7 @@ class LocalDataStore {
     this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), []);
     this.setLocal(this.getKey(STORAGE_KEYS.UNITS), INITIAL_UNITS);
     this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), []);
+    this.markTenantInitialized();
   }
 }
 
@@ -1189,16 +1379,23 @@ export class DataService {
 
   public static async getAccounts(): Promise<Account[]> {
     let accounts: Account[] = [];
-    const localAccounts = localDataStore.getAccounts();
+    const tombstones = localDataStore.getTombstones('accounts');
+    const localAccounts = localDataStore.getAccounts().filter((a) => !tombstones.has(a.id));
     const isLocked = localDataStore.isRestoreLocked();
 
     try {
       const fromSupabase = await SupabaseDataService.getAccounts();
       if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        if (localAccounts && localAccounts.length > 0 && (isLocked || fromSupabase.length < localAccounts.length)) {
+        // Purge tombstoned accounts from Supabase if present
+        const remoteTombstoned = fromSupabase.filter((a) => tombstones.has(a.id));
+        if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
+          Promise.all(remoteTombstoned.map((a) => SupabaseDataService.deleteAccount(a.id))).catch(() => {});
+        }
+        const validRemote = fromSupabase.filter((a) => !tombstones.has(a.id));
+        if (localAccounts && localAccounts.length > 0 && (isLocked || validRemote.length < localAccounts.length)) {
           accounts = localAccounts;
-        } else {
-          accounts = fromSupabase;
+        } else if (validRemote.length > 0) {
+          accounts = validRemote;
         }
       }
     } catch (e) {
@@ -1207,7 +1404,7 @@ export class DataService {
 
     if (!accounts || accounts.length === 0) {
       accounts = localAccounts;
-      if (!accounts || accounts.length === 0) {
+      if ((!accounts || accounts.length === 0) && !localDataStore.isTenantInitialized()) {
         accounts = generateCleanChartOfAccounts(localDataStore.getEffectiveCompanyId() || undefined);
         localDataStore.saveAccounts(accounts);
         if (isSupabaseConfigured) {
@@ -1217,7 +1414,7 @@ export class DataService {
     }
 
     const journals = await this.getJournals();
-    const withBalances = this.calculateDynamicAccountBalances(accounts, journals);
+    const withBalances = this.calculateDynamicAccountBalances(accounts || [], journals);
     localDataStore.saveAccounts(withBalances);
     return withBalances;
   }
@@ -1237,6 +1434,7 @@ export class DataService {
       isActive: accData.isActive !== false,
       description: accData.description,
     };
+    localDataStore.removeTombstone('accounts', newAcc.id);
     accounts.push(newAcc);
     localDataStore.saveAccounts(accounts);
     if (isSupabaseConfigured) {
@@ -1254,6 +1452,7 @@ export class DataService {
   }
 
   public static async updateAccount(id: string, accData: Partial<Account>): Promise<Account | null> {
+    localDataStore.removeTombstone('accounts', id);
     const accounts = localDataStore.getAccounts();
     const idx = accounts.findIndex((a) => a.id === id);
     if (idx === -1) return null;
@@ -1274,6 +1473,7 @@ export class DataService {
   }
 
   public static async deleteAccount(id: string): Promise<boolean> {
+    localDataStore.addTombstone('accounts', id);
     const accounts = localDataStore.getAccounts();
     const filtered = accounts.filter((a) => a.id !== id);
     localDataStore.saveAccounts(filtered);
@@ -1289,27 +1489,43 @@ export class DataService {
 
   // Journals
   public static async getJournals(): Promise<JournalEntry[]> {
-    const localJournals = localDataStore.getJournals();
+    const tombstones = localDataStore.getTombstones('journals');
+    let localJournals = localDataStore.getJournals().filter((j) => !tombstones.has(j.id));
     const isLocked = localDataStore.isRestoreLocked();
 
     try {
       const fromSupabase = await SupabaseDataService.getJournals();
-      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        if (localJournals.length > 0 && (isLocked || fromSupabase.length < localJournals.length)) {
-          if (isSupabaseConfigured) {
-            Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
+      if (Array.isArray(fromSupabase)) {
+        const remoteTombstoned = fromSupabase.filter((j) => tombstones.has(j.id));
+        if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
+          Promise.all(remoteTombstoned.map((j) => SupabaseDataService.deleteJournal(j.id))).catch(() => {});
+        }
+        const validRemote = fromSupabase.filter((j) => !tombstones.has(j.id));
+
+        if (localJournals.length > 0 || localDataStore.isTenantInitialized()) {
+          const localMap = new Map(localJournals.map((j) => [j.id, j]));
+          let hasNew = false;
+          for (const rj of validRemote) {
+            if (!localMap.has(rj.id)) {
+              localJournals.push(rj);
+              hasNew = true;
+            }
+          }
+          if (hasNew) {
+            localDataStore.saveJournals(localJournals);
           }
           return localJournals;
         }
-        localDataStore.saveJournals(fromSupabase);
-        return fromSupabase;
+
+        if (validRemote.length > 0) {
+          localDataStore.saveJournals(validRemote);
+          return validRemote;
+        }
       }
     } catch (e) {
       console.warn('Supabase getJournals notice:', e);
     }
-    if (isSupabaseConfigured && localJournals.length > 0) {
-      Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
-    }
+
     return localJournals;
   }
 
@@ -1380,6 +1596,7 @@ export class DataService {
       sourceId: data.sourceId,
     };
 
+    localDataStore.removeTombstone('journals', newJournal.id);
     journals.unshift(newJournal);
     localDataStore.saveJournals(journals);
     try {
@@ -1400,6 +1617,7 @@ export class DataService {
   }
 
   public static async updateJournal(id: string, updated: Partial<JournalEntry>): Promise<JournalEntry | null> {
+    localDataStore.removeTombstone('journals', id);
     const journals = localDataStore.getJournals();
     const idx = journals.findIndex((j) => j.id === id);
     if (idx === -1) {
@@ -1565,6 +1783,7 @@ export class DataService {
   }
 
   public static async deleteJournal(id: string): Promise<boolean> {
+    localDataStore.addTombstone('journals', id);
     const journals = localDataStore.getJournals();
     const filtered = journals.filter((j) => j.id !== id);
     localDataStore.saveJournals(filtered);
@@ -1575,33 +1794,48 @@ export class DataService {
     }
     deleteFromFirestore('erp_journals', id);
     await safeApiFetch(`/api/journals/${id}`, { method: 'DELETE' });
-    await this.syncSystemIntegrity();
     return true;
   }
 
   // Invoices
   public static async getInvoices(): Promise<Invoice[]> {
-    const localInvoices = localDataStore.getInvoices();
+    const tombstones = localDataStore.getTombstones('invoices');
+    let localInvoices = localDataStore.getInvoices().filter((inv) => !tombstones.has(inv.id));
     const isLocked = localDataStore.isRestoreLocked();
 
     try {
       const fromSupabase = await SupabaseDataService.getInvoices();
-      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        if (localInvoices.length > 0 && (isLocked || fromSupabase.length < localInvoices.length)) {
-          if (isSupabaseConfigured) {
-            Promise.all(localInvoices.map((inv) => SupabaseDataService.saveInvoice(inv))).catch(() => {});
+      if (Array.isArray(fromSupabase)) {
+        const remoteTombstoned = fromSupabase.filter((inv) => tombstones.has(inv.id));
+        if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
+          Promise.all(remoteTombstoned.map((inv) => SupabaseDataService.deleteInvoice(inv.id))).catch(() => {});
+        }
+        const validRemote = fromSupabase.filter((inv) => !tombstones.has(inv.id));
+
+        if (localInvoices.length > 0 || localDataStore.isTenantInitialized()) {
+          const localMap = new Map(localInvoices.map((inv) => [inv.id, inv]));
+          let hasNew = false;
+          for (const rInv of validRemote) {
+            if (!localMap.has(rInv.id)) {
+              localInvoices.push(rInv);
+              hasNew = true;
+            }
+          }
+          if (hasNew) {
+            localDataStore.saveInvoices(localInvoices);
           }
           return localInvoices;
         }
-        localDataStore.saveInvoices(fromSupabase);
-        return fromSupabase;
+
+        if (validRemote.length > 0) {
+          localDataStore.saveInvoices(validRemote);
+          return validRemote;
+        }
       }
     } catch (e) {
       console.warn('Supabase getInvoices notice:', e);
     }
-    if (isSupabaseConfigured && localInvoices.length > 0) {
-      Promise.all(localInvoices.map((inv) => SupabaseDataService.saveInvoice(inv))).catch(() => {});
-    }
+
     return localInvoices;
   }
 
@@ -1956,6 +2190,8 @@ export class DataService {
     syncToFirestore('erp_journals', jEntry.id, jEntry);
 
     newInvoice.journalEntryId = jEntry.id;
+    localDataStore.removeTombstone('invoices', newInvoice.id);
+    localDataStore.removeTombstone('journals', jEntry.id);
     invoices.unshift(newInvoice);
     localDataStore.saveInvoices(invoices);
 
@@ -2122,6 +2358,8 @@ export class DataService {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return true;
 
+    localDataStore.addTombstone('invoices', id);
+
     // If not already cancelled, perform complete reversal first
     if (inv.status === 'POSTED' || inv.status === 'PAID') {
       await this.cancelInvoice(id, 'حذف الفاتورة بالكامل وعكس القيود والمخزون');
@@ -2129,6 +2367,16 @@ export class DataService {
 
     // Clean up any remaining associated journals from journals list & Firestore
     const journals = localDataStore.getJournals();
+    const matchingJournals = journals.filter(
+      (j) => j.id === inv.journalEntryId || j.sourceId === inv.id || j.reference === inv.invoiceNumber
+    );
+    for (const mj of matchingJournals) {
+      localDataStore.addTombstone('journals', mj.id);
+      deleteFromFirestore('erp_journals', mj.id);
+      if (isSupabaseConfigured) {
+        SupabaseDataService.deleteJournal(mj.id).catch(() => {});
+      }
+    }
     const remainingJournals = journals.filter(
       (j) => !(j.id === inv.journalEntryId || j.sourceId === inv.id || j.reference === inv.invoiceNumber)
     );
@@ -2145,11 +2393,11 @@ export class DataService {
     deleteFromFirestore('erp_invoices', id);
 
     await safeApiFetch(`/api/invoices/${id}`, { method: 'DELETE' });
-    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return true;
   }
 
   public static async updateInvoice(id: string, data: any): Promise<Invoice | null> {
+    localDataStore.removeTombstone('invoices', id);
     const invoices = localDataStore.getInvoices();
     const idx = invoices.findIndex((i) => i.id === id);
     if (idx !== -1) {
@@ -2167,33 +2415,48 @@ export class DataService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return apiRes || (idx !== -1 ? invoices[idx] : null);
   }
 
   // Vouchers
   public static async getVouchers(): Promise<PaymentVoucher[]> {
-    const localVouchers = localDataStore.getVouchers();
+    const tombstones = localDataStore.getTombstones('vouchers');
+    let localVouchers = localDataStore.getVouchers().filter((v) => !tombstones.has(v.id));
     const isLocked = localDataStore.isRestoreLocked();
 
     try {
       const fromSupabase = await SupabaseDataService.getVouchers();
-      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        if (localVouchers.length > 0 && (isLocked || fromSupabase.length < localVouchers.length)) {
-          if (isSupabaseConfigured) {
-            SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
+      if (Array.isArray(fromSupabase)) {
+        const remoteTombstoned = fromSupabase.filter((v) => tombstones.has(v.id));
+        if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
+          Promise.all(remoteTombstoned.map((v) => SupabaseDataService.deleteVoucher(v.id))).catch(() => {});
+        }
+        const validRemote = fromSupabase.filter((v) => !tombstones.has(v.id));
+
+        if (localVouchers.length > 0 || localDataStore.isTenantInitialized()) {
+          const localMap = new Map(localVouchers.map((v) => [v.id, v]));
+          let hasNew = false;
+          for (const rv of validRemote) {
+            if (!localMap.has(rv.id)) {
+              localVouchers.push(rv);
+              hasNew = true;
+            }
+          }
+          if (hasNew) {
+            localDataStore.saveVouchers(localVouchers);
           }
           return localVouchers;
         }
-        localDataStore.saveVouchers(fromSupabase);
-        return fromSupabase;
+
+        if (validRemote.length > 0) {
+          localDataStore.saveVouchers(validRemote);
+          return validRemote;
+        }
       }
     } catch (e) {
       console.warn('Supabase getVouchers notice:', e);
     }
-    if (isSupabaseConfigured && localVouchers.length > 0) {
-      SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
-    }
+
     return localVouchers;
   }
 
@@ -2327,6 +2590,8 @@ export class DataService {
     syncToFirestore('erp_journals', jEntry.id, jEntry);
 
     newVoucher.journalEntryId = jEntry.id;
+    localDataStore.removeTombstone('vouchers', newVoucher.id);
+    localDataStore.removeTombstone('journals', jEntry.id);
     vouchers.unshift(newVoucher);
     localDataStore.saveVouchers(vouchers);
 
@@ -2341,11 +2606,6 @@ export class DataService {
     // High-Performance Optimistic UI: Background Non-Blocking Persistence
     backgroundSync.enqueueVoucherCreate(newVoucher, data, activeCompanyId);
     syncToFirestore('erp_vouchers', newVoucher.id, newVoucher);
-
-    // Non-blocking background integrity check
-    setTimeout(() => {
-      this.syncSystemIntegrity().catch(() => {});
-    }, 1000);
 
     return newVoucher;
   }
@@ -2369,6 +2629,7 @@ export class DataService {
   }
 
   public static async updateVoucher(id: string, data: any): Promise<PaymentVoucher | null> {
+    localDataStore.removeTombstone('vouchers', id);
     const vouchers = localDataStore.getVouchers();
     const idx = vouchers.findIndex((x) => x.id === id);
     if (idx !== -1) {
@@ -2384,13 +2645,21 @@ export class DataService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return apiRes || (idx !== -1 ? vouchers[idx] : null);
   }
 
   public static async deleteVoucher(id: string): Promise<boolean> {
+    localDataStore.addTombstone('vouchers', id);
     const vouchers = localDataStore.getVouchers();
-    const filtered = vouchers.filter((v) => v.id !== id);
+    const v = vouchers.find((x) => x.id === id);
+    if (v && v.journalEntryId) {
+      localDataStore.addTombstone('journals', v.journalEntryId);
+      deleteFromFirestore('erp_journals', v.journalEntryId);
+      if (isSupabaseConfigured) {
+        SupabaseDataService.deleteJournal(v.journalEntryId).catch(() => {});
+      }
+    }
+    const filtered = vouchers.filter((x) => x.id !== id);
     localDataStore.saveVouchers(filtered);
     if (isSupabaseConfigured) {
       SupabaseDataService.deleteVoucher(id).catch((err) =>
@@ -2399,19 +2668,23 @@ export class DataService {
     }
     deleteFromFirestore('erp_vouchers', id);
     await safeApiFetch(`/api/vouchers/${id}`, { method: 'DELETE' });
-    setTimeout(() => { this.syncSystemIntegrity().catch(() => {}); }, 1000);
     return true;
   }
 
   // Customers & Suppliers
   public static async getCustomers(): Promise<Customer[]> {
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    const tombstones = localDataStore.getTombstones('customers');
     const cached = cacheService.getCustomers(compId);
     if (cached && cached.length > 0) {
-      return cached;
+      const filteredCached = cached.filter((c) => !tombstones.has(c.id));
+      if (filteredCached.length !== cached.length) {
+        cacheService.setCustomers(compId, filteredCached);
+      }
+      return filteredCached;
     }
 
-    const localCustomers = localDataStore.getCustomers();
+    let localCustomers = localDataStore.getCustomers().filter((c) => !tombstones.has(c.id));
     if (localCustomers.length > 0) {
       cacheService.setCustomers(compId, localCustomers);
     }
@@ -2420,16 +2693,34 @@ export class DataService {
     const fetchRemote = async () => {
       try {
         const fromSupabase = await SupabaseDataService.getCustomers();
-        if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-          if (localCustomers.length > 0 && (isLocked || fromSupabase.length < localCustomers.length)) {
-            if (isSupabaseConfigured) {
-              Promise.all(localCustomers.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
+        if (Array.isArray(fromSupabase)) {
+          const remoteTombstoned = fromSupabase.filter((c) => tombstones.has(c.id));
+          if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
+            Promise.all(remoteTombstoned.map((c) => SupabaseDataService.deleteCustomer(c.id))).catch(() => {});
+          }
+          const validRemote = fromSupabase.filter((c) => !tombstones.has(c.id));
+
+          if (localCustomers.length > 0 || localDataStore.isTenantInitialized()) {
+            const localMap = new Map(localCustomers.map((c) => [c.id, c]));
+            let hasNew = false;
+            for (const rc of validRemote) {
+              if (!localMap.has(rc.id)) {
+                localCustomers.push(rc);
+                hasNew = true;
+              }
+            }
+            if (hasNew) {
+              localDataStore.saveCustomers(localCustomers);
+              cacheService.setCustomers(compId, localCustomers);
             }
             return localCustomers;
           }
-          localDataStore.saveCustomers(fromSupabase);
-          cacheService.setCustomers(compId, fromSupabase);
-          return fromSupabase;
+
+          if (validRemote.length > 0) {
+            localDataStore.saveCustomers(validRemote);
+            cacheService.setCustomers(compId, validRemote);
+            return validRemote;
+          }
         }
       } catch (e) {
         console.warn('Supabase getCustomers notice:', e);
@@ -2466,6 +2757,7 @@ export class DataService {
       customPrices: data.customPrices || [],
       defaultDiscountRate: data.defaultDiscountRate !== undefined ? Number(data.defaultDiscountRate) : 0,
     };
+    localDataStore.removeTombstone('customers', newCust.id);
     list.push(newCust);
     localDataStore.saveCustomers(list);
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
@@ -2485,6 +2777,7 @@ export class DataService {
   }
 
   public static async updateCustomer(id: string, data: any): Promise<Customer | null> {
+    localDataStore.removeTombstone('customers', id);
     const list = localDataStore.getCustomers();
     const idx = list.findIndex((c) => c.id === id);
     if (idx === -1) return null;
@@ -2527,6 +2820,7 @@ export class DataService {
   }
 
   public static async deleteCustomer(id: string): Promise<boolean> {
+    localDataStore.addTombstone('customers', id);
     const list = localDataStore.getCustomers();
     const filtered = list.filter((c) => c.id !== id);
     localDataStore.saveCustomers(filtered);
@@ -2544,12 +2838,17 @@ export class DataService {
 
   public static async getSuppliers(): Promise<Supplier[]> {
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    const tombstones = localDataStore.getTombstones('suppliers');
     const cached = cacheService.getSuppliers(compId);
     if (cached && cached.length > 0) {
-      return cached;
+      const filteredCached = cached.filter((s) => !tombstones.has(s.id));
+      if (filteredCached.length !== cached.length) {
+        cacheService.setSuppliers(compId, filteredCached);
+      }
+      return filteredCached;
     }
 
-    const localSuppliers = localDataStore.getSuppliers();
+    let localSuppliers = localDataStore.getSuppliers().filter((s) => !tombstones.has(s.id));
     if (localSuppliers.length > 0) {
       cacheService.setSuppliers(compId, localSuppliers);
     }
@@ -2558,16 +2857,34 @@ export class DataService {
     const fetchRemote = async () => {
       try {
         const fromSupabase = await SupabaseDataService.getSuppliers();
-        if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-          if (localSuppliers.length > 0 && (isLocked || fromSupabase.length < localSuppliers.length)) {
-            if (isSupabaseConfigured) {
-              Promise.all(localSuppliers.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
+        if (Array.isArray(fromSupabase)) {
+          const remoteTombstoned = fromSupabase.filter((s) => tombstones.has(s.id));
+          if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
+            Promise.all(remoteTombstoned.map((s) => SupabaseDataService.deleteSupplier(s.id))).catch(() => {});
+          }
+          const validRemote = fromSupabase.filter((s) => !tombstones.has(s.id));
+
+          if (localSuppliers.length > 0 || localDataStore.isTenantInitialized()) {
+            const localMap = new Map(localSuppliers.map((s) => [s.id, s]));
+            let hasNew = false;
+            for (const rs of validRemote) {
+              if (!localMap.has(rs.id)) {
+                localSuppliers.push(rs);
+                hasNew = true;
+              }
+            }
+            if (hasNew) {
+              localDataStore.saveSuppliers(localSuppliers);
+              cacheService.setSuppliers(compId, localSuppliers);
             }
             return localSuppliers;
           }
-          localDataStore.saveSuppliers(fromSupabase);
-          cacheService.setSuppliers(compId, fromSupabase);
-          return fromSupabase;
+
+          if (validRemote.length > 0) {
+            localDataStore.saveSuppliers(validRemote);
+            cacheService.setSuppliers(compId, validRemote);
+            return validRemote;
+          }
         }
       } catch (e) {
         console.warn('Supabase getSuppliers notice:', e);
@@ -2599,6 +2916,7 @@ export class DataService {
       openingBalanceDate: data.openingBalanceDate || '2026-07-01',
       isActive: true,
     };
+    localDataStore.removeTombstone('suppliers', newSupp.id);
     list.push(newSupp);
     localDataStore.saveSuppliers(list);
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
@@ -2618,6 +2936,7 @@ export class DataService {
   }
 
   public static async updateSupplier(id: string, data: any): Promise<Supplier | null> {
+    localDataStore.removeTombstone('suppliers', id);
     const list = localDataStore.getSuppliers();
     const idx = list.findIndex((s) => s.id === id);
     if (idx === -1) return null;
@@ -2660,6 +2979,7 @@ export class DataService {
   }
 
   public static async deleteSupplier(id: string): Promise<boolean> {
+    localDataStore.addTombstone('suppliers', id);
     const list = localDataStore.getSuppliers();
     const filtered = list.filter((s) => s.id !== id);
     localDataStore.saveSuppliers(filtered);
@@ -2678,12 +2998,17 @@ export class DataService {
   // Inventory
   public static async getInventory(): Promise<InventoryItem[]> {
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
+    const tombstones = localDataStore.getTombstones('inventory');
     const cached = cacheService.getItems(compId);
     if (cached && cached.length > 0) {
-      return cached;
+      const filteredCached = cached.filter((i) => !tombstones.has(i.id));
+      if (filteredCached.length !== cached.length) {
+        cacheService.setItems(compId, filteredCached);
+      }
+      return filteredCached;
     }
 
-    const localInventory = localDataStore.getInventory();
+    let localInventory = localDataStore.getInventory().filter((i) => !tombstones.has(i.id));
     if (localInventory.length > 0) {
       cacheService.setItems(compId, localInventory);
     }
@@ -2692,16 +3017,34 @@ export class DataService {
     const fetchRemote = async () => {
       try {
         const fromSupabase = await SupabaseDataService.getItems();
-        if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-          if (localInventory.length > 0 && (isLocked || fromSupabase.length < localInventory.length)) {
-            if (isSupabaseConfigured) {
-              Promise.all(localInventory.map((item) => SupabaseDataService.saveItem(item))).catch(() => {});
+        if (Array.isArray(fromSupabase)) {
+          const remoteTombstoned = fromSupabase.filter((i) => tombstones.has(i.id));
+          if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
+            Promise.all(remoteTombstoned.map((i) => SupabaseDataService.deleteItem(i.id))).catch(() => {});
+          }
+          const validRemote = fromSupabase.filter((i) => !tombstones.has(i.id));
+
+          if (localInventory.length > 0 || localDataStore.isTenantInitialized()) {
+            const localMap = new Map(localInventory.map((i) => [i.id, i]));
+            let hasNew = false;
+            for (const rItem of validRemote) {
+              if (!localMap.has(rItem.id)) {
+                localInventory.push(rItem);
+                hasNew = true;
+              }
+            }
+            if (hasNew) {
+              localDataStore.saveInventory(localInventory);
+              cacheService.setItems(compId, localInventory);
             }
             return localInventory;
           }
-          localDataStore.saveInventory(fromSupabase);
-          cacheService.setItems(compId, fromSupabase);
-          return fromSupabase;
+
+          if (validRemote.length > 0) {
+            localDataStore.saveInventory(validRemote);
+            cacheService.setItems(compId, validRemote);
+            return validRemote;
+          }
         }
       } catch (e) {
         console.warn('Supabase getInventory notice:', e);
@@ -2734,6 +3077,7 @@ export class DataService {
       minQuantityAlert: Number(data.minQuantityAlert) || 10,
       isActive: true,
     };
+    localDataStore.removeTombstone('inventory', newItem.id);
     list.push(newItem);
     localDataStore.saveInventory(list);
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
@@ -2940,9 +3284,11 @@ export class DataService {
   }
 
   public static async updateInventoryItem(id: string, data: any): Promise<InventoryItem | null> {
+    localDataStore.removeTombstone('inventory', id);
     const list = localDataStore.getInventory();
     const idx = list.findIndex((i) => i.id === id);
     if (idx === -1) return null;
+
     list[idx] = { ...list[idx], ...data };
     localDataStore.saveInventory(list);
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
@@ -2962,6 +3308,7 @@ export class DataService {
   }
 
   public static async deleteInventoryItem(id: string): Promise<boolean> {
+    localDataStore.addTombstone('inventory', id);
     const list = localDataStore.getInventory();
     const filtered = list.filter((i) => i.id !== id);
     localDataStore.saveInventory(filtered);
@@ -3683,58 +4030,123 @@ export class DataService {
           SupabaseDataService.getInvoices(),
           SupabaseDataService.getVouchers(),
         ]);
-        const localCust = localDataStore.getCustomers();
-        const localSupp = localDataStore.getSuppliers();
-        const localInv = localDataStore.getInventory();
-        const localJournals = localDataStore.getJournals();
-        const localInvoices = localDataStore.getInvoices();
-        const localVouchers = localDataStore.getVouchers();
-        const isLocked = localDataStore.isRestoreLocked();
+        const custTombstones = localDataStore.getTombstones('customers');
+        const suppTombstones = localDataStore.getTombstones('suppliers');
+        const invTombstones = localDataStore.getTombstones('inventory');
+        const journalTombstones = localDataStore.getTombstones('journals');
+        const invoiceTombstones = localDataStore.getTombstones('invoices');
+        const voucherTombstones = localDataStore.getTombstones('vouchers');
 
-        if (Array.isArray(customers) && customers.length > 0) {
-          localDataStore.saveCustomers(customers);
-        } else if (localCust.length > 0) {
-          Promise.all(localCust.map((c) => SupabaseDataService.saveCustomer(c))).catch(() => {});
+        const localCust = localDataStore.getCustomers().filter((c) => !custTombstones.has(c.id));
+        const localSupp = localDataStore.getSuppliers().filter((s) => !suppTombstones.has(s.id));
+        const localInv = localDataStore.getInventory().filter((i) => !invTombstones.has(i.id));
+        const localJournals = localDataStore.getJournals().filter((j) => !journalTombstones.has(j.id));
+        const localInvoices = localDataStore.getInvoices().filter((inv) => !invoiceTombstones.has(inv.id));
+        const localVouchers = localDataStore.getVouchers().filter((v) => !voucherTombstones.has(v.id));
+
+        // Background purge of tombstoned records from remote Supabase
+        if (Array.isArray(customers)) {
+          const remoteCustTomb = customers.filter((c) => custTombstones.has(c.id));
+          if (remoteCustTomb.length > 0) Promise.all(remoteCustTomb.map((c) => SupabaseDataService.deleteCustomer(c.id))).catch(() => {});
+        }
+        if (Array.isArray(suppliers)) {
+          const remoteSuppTomb = suppliers.filter((s) => suppTombstones.has(s.id));
+          if (remoteSuppTomb.length > 0) Promise.all(remoteSuppTomb.map((s) => SupabaseDataService.deleteSupplier(s.id))).catch(() => {});
+        }
+        if (Array.isArray(inventory)) {
+          const remoteInvTomb = inventory.filter((i) => invTombstones.has(i.id));
+          if (remoteInvTomb.length > 0) Promise.all(remoteInvTomb.map((i) => SupabaseDataService.deleteItem(i.id))).catch(() => {});
+        }
+        if (Array.isArray(journals)) {
+          const remoteJrnTomb = journals.filter((j) => journalTombstones.has(j.id));
+          if (remoteJrnTomb.length > 0) Promise.all(remoteJrnTomb.map((j) => SupabaseDataService.deleteJournal(j.id))).catch(() => {});
+        }
+        if (Array.isArray(invoices)) {
+          const remoteInvTomb = invoices.filter((i) => invoiceTombstones.has(i.id));
+          if (remoteInvTomb.length > 0) Promise.all(remoteInvTomb.map((i) => SupabaseDataService.deleteInvoice(i.id))).catch(() => {});
+        }
+        if (Array.isArray(vouchers)) {
+          const remoteVchTomb = vouchers.filter((v) => voucherTombstones.has(v.id));
+          if (remoteVchTomb.length > 0) Promise.all(remoteVchTomb.map((v) => SupabaseDataService.deleteVoucher(v.id))).catch(() => {});
         }
 
-        if (Array.isArray(suppliers) && suppliers.length > 0) {
-          localDataStore.saveSuppliers(suppliers);
-        } else if (localSupp.length > 0) {
-          Promise.all(localSupp.map((s) => SupabaseDataService.saveSupplier(s))).catch(() => {});
-        }
-
-        if (Array.isArray(inventory) && inventory.length > 0) {
-          localDataStore.saveInventory(inventory);
-        } else if (localInv.length > 0) {
-          Promise.all(localInv.map((it) => SupabaseDataService.saveItem(it))).catch(() => {});
-        }
-
-        if (Array.isArray(journals) && journals.length > 0) {
-          localDataStore.saveJournals(journals);
-        } else if (localJournals.length > 0) {
-          Promise.all(localJournals.map((j) => SupabaseDataService.saveJournal(j))).catch(() => {});
-        }
-
-        // Invoices cloud sync
-        if (Array.isArray(invoices) && invoices.length > 0) {
-          if (localInvoices.length > 0 && (isLocked || invoices.length < localInvoices.length)) {
-            SupabaseDataService.saveInvoices(localInvoices).catch(() => {});
-          } else {
-            localDataStore.saveInvoices(invoices);
+        // Merge genuinely new remote records, never overwriting existing local or deleted tombstoned records
+        if (Array.isArray(customers)) {
+          const validRemote = customers.filter((c) => !custTombstones.has(c.id));
+          const localMap = new Map(localCust.map((c) => [c.id, c]));
+          let changed = false;
+          for (const rc of validRemote) {
+            if (!localMap.has(rc.id)) {
+              localCust.push(rc);
+              changed = true;
+            }
           }
-        } else if (localInvoices.length > 0) {
-          SupabaseDataService.saveInvoices(localInvoices).catch(() => {});
+          if (changed) localDataStore.saveCustomers(localCust);
         }
 
-        // Vouchers cloud sync
-        if (Array.isArray(vouchers) && vouchers.length > 0) {
-          if (localVouchers.length > 0 && (isLocked || vouchers.length < localVouchers.length)) {
-            SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
-          } else {
-            localDataStore.saveVouchers(vouchers);
+        if (Array.isArray(suppliers)) {
+          const validRemote = suppliers.filter((s) => !suppTombstones.has(s.id));
+          const localMap = new Map(localSupp.map((s) => [s.id, s]));
+          let changed = false;
+          for (const rs of validRemote) {
+            if (!localMap.has(rs.id)) {
+              localSupp.push(rs);
+              changed = true;
+            }
           }
-        } else if (localVouchers.length > 0) {
-          SupabaseDataService.saveVouchers(localVouchers).catch(() => {});
+          if (changed) localDataStore.saveSuppliers(localSupp);
+        }
+
+        if (Array.isArray(inventory)) {
+          const validRemote = inventory.filter((i) => !invTombstones.has(i.id));
+          const localMap = new Map(localInv.map((i) => [i.id, i]));
+          let changed = false;
+          for (const ri of validRemote) {
+            if (!localMap.has(ri.id)) {
+              localInv.push(ri);
+              changed = true;
+            }
+          }
+          if (changed) localDataStore.saveInventory(localInv);
+        }
+
+        if (Array.isArray(journals)) {
+          const validRemote = journals.filter((j) => !journalTombstones.has(j.id));
+          const localMap = new Map(localJournals.map((j) => [j.id, j]));
+          let changed = false;
+          for (const rj of validRemote) {
+            if (!localMap.has(rj.id)) {
+              localJournals.push(rj);
+              changed = true;
+            }
+          }
+          if (changed) localDataStore.saveJournals(localJournals);
+        }
+
+        if (Array.isArray(invoices)) {
+          const validRemote = invoices.filter((i) => !invoiceTombstones.has(i.id));
+          const localMap = new Map(localInvoices.map((i) => [i.id, i]));
+          let changed = false;
+          for (const ri of validRemote) {
+            if (!localMap.has(ri.id)) {
+              localInvoices.push(ri);
+              changed = true;
+            }
+          }
+          if (changed) localDataStore.saveInvoices(localInvoices);
+        }
+
+        if (Array.isArray(vouchers)) {
+          const validRemote = vouchers.filter((v) => !voucherTombstones.has(v.id));
+          const localMap = new Map(localVouchers.map((v) => [v.id, v]));
+          let changed = false;
+          for (const rv of validRemote) {
+            if (!localMap.has(rv.id)) {
+              localVouchers.push(rv);
+              changed = true;
+            }
+          }
+          if (changed) localDataStore.saveVouchers(localVouchers);
         }
 
         let accounts = await SupabaseDataService.getAccounts();
@@ -3744,7 +4156,7 @@ export class DataService {
         if (Array.isArray(accounts) && accounts.length > 0) {
           const withBal = this.calculateDynamicAccountBalances(
             accounts,
-            Array.isArray(journals) && journals.length > 0 ? journals : localJournals
+            localJournals
           );
           localDataStore.saveAccounts(withBal);
         }
@@ -3754,26 +4166,29 @@ export class DataService {
       }
     }
 
-    // Secondary fallback to local API only if restore is NOT locked and local has no data to protect
-    const localCust = localDataStore.getCustomers();
-    const localSupp = localDataStore.getSuppliers();
-    const localInv = localDataStore.getInventory();
-    if (localCust.length === 0 && localSupp.length === 0 && localInv.length === 0) {
-      const apiRes = await safeApiFetch<any>('/api/system/integrity-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const [customers, suppliers, inventory, accounts] = await Promise.all([
-        safeApiFetch<Customer[]>('/api/customers'),
-        safeApiFetch<Supplier[]>('/api/suppliers'),
-        safeApiFetch<InventoryItem[]>('/api/inventory'),
-        safeApiFetch<Account[]>('/api/chart-of-accounts'),
-      ]);
-      if (customers && customers.length > 0) localDataStore.saveCustomers(customers);
-      if (suppliers && suppliers.length > 0) localDataStore.saveSuppliers(suppliers);
-      if (inventory && inventory.length > 0) localDataStore.saveInventory(inventory);
-      if (accounts && accounts.length > 0) localDataStore.saveAccounts(accounts);
-      return apiRes;
+    // Fallback to local API ONLY if tenant has NEVER been initialized and local state is virgin
+    if (!localDataStore.isTenantInitialized()) {
+      const localCust = localDataStore.getCustomers();
+      const localSupp = localDataStore.getSuppliers();
+      const localInv = localDataStore.getInventory();
+      if (localCust.length === 0 && localSupp.length === 0 && localInv.length === 0) {
+        const apiRes = await safeApiFetch<any>('/api/system/integrity-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const [customers, suppliers, inventory, accounts] = await Promise.all([
+          safeApiFetch<Customer[]>('/api/customers'),
+          safeApiFetch<Supplier[]>('/api/suppliers'),
+          safeApiFetch<InventoryItem[]>('/api/inventory'),
+          safeApiFetch<Account[]>('/api/chart-of-accounts'),
+        ]);
+        if (customers && customers.length > 0) localDataStore.saveCustomers(customers);
+        if (suppliers && suppliers.length > 0) localDataStore.saveSuppliers(suppliers);
+        if (inventory && inventory.length > 0) localDataStore.saveInventory(inventory);
+        if (accounts && accounts.length > 0) localDataStore.saveAccounts(accounts);
+        localDataStore.markTenantInitialized();
+        return apiRes;
+      }
     }
 
     return { success: true, message: 'Local data retained safely' };
@@ -3783,10 +4198,12 @@ export class DataService {
   // QUOTATIONS & PROPOSALS API
   // ==========================================
   public static async getQuotations(): Promise<Quotation[]> {
-    return localDataStore.getQuotations();
+    const tombstones = localDataStore.getTombstones('quotations');
+    return localDataStore.getQuotations().filter((q) => !tombstones.has(q.id));
   }
 
   public static async saveQuotation(quotation: Quotation): Promise<Quotation> {
+    localDataStore.removeTombstone('quotations', quotation.id);
     const list = localDataStore.getQuotations();
     const idx = list.findIndex((q) => q.id === quotation.id);
     if (idx !== -1) {
@@ -3799,6 +4216,7 @@ export class DataService {
   }
 
   public static async deleteQuotation(id: string): Promise<boolean> {
+    localDataStore.addTombstone('quotations', id);
     const list = localDataStore.getQuotations();
     const filtered = list.filter((q) => q.id !== id);
     localDataStore.saveQuotations(filtered);
