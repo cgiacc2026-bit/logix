@@ -21,6 +21,7 @@ import {
   Users,
 } from 'lucide-react';
 import { CompanyJsonBackupService } from '../services/companyJsonBackupService.js';
+import { ERPBackupImportService, ImportProgress } from '../services/importBackupService.js';
 import { localDataStore } from '../services/dataService.js';
 
 interface JsonBackupRestoreModalProps {
@@ -59,6 +60,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
     cloudSyncNotice?: string;
   } | null>(null);
   const [processingStage, setProcessingStage] = useState<string>('');
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'restore' | 'export' | 'zero'>('restore');
 
@@ -88,26 +90,41 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
 
   // Perform Restore from JSON
   const handleRestore = async () => {
+    if (!currentCompanyId) {
+      setFeedback({ type: 'error', text: 'تنبيه أمني: لم يتم العثور على معرف الشركة في الجلسة الحالية. تم إيقاف العملية لمنع تداخل البيانات.' });
+      return;
+    }
+
     if (!jsonText.trim()) {
       setFeedback({ type: 'error', text: 'يرجى اختيار ملف JSON أو لصق محتوى الـ JSON أولاً.' });
       return;
     }
 
     setIsProcessing(true);
-    setProcessingStage('جاري قراءة وتثبيت البيانات محلياً والمزامنة الفورية مع سحابة Supabase...');
+    setProcessingStage('تهيئة استيراد البيانات الآمن...');
+    setImportProgress(null);
     setFeedback(null);
     setSyncDetails(null);
 
+    const activeTenantId = currentCompanyId;
+
     try {
-      const result = await CompanyJsonBackupService.importCompanyData(targetCompanyId, jsonText);
+      const result = await ERPBackupImportService.importCompanyJsonData(
+        activeTenantId,
+        jsonText,
+        (progress) => {
+          setImportProgress(progress);
+          setProcessingStage(progress.message);
+        }
+      );
       setIsProcessing(false);
       setProcessingStage('');
 
       if (result.success) {
         setSyncDetails({
-          cloudSynced: !!(result as any).cloudSynced,
+          cloudSynced: true,
           stats: result.stats,
-          cloudSyncNotice: (result as any).cloudSyncNotice,
+          cloudSyncNotice: `تم رفع السجلات بنجاح وارتباطها بالشركة ${activeTenantId}`,
         });
         setFeedback({
           type: 'success',
@@ -132,16 +149,30 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
 
   // Load Preset Al-Waleed Backup Work
   const handleLoadAlWaleedPreset = async () => {
+    if (!currentCompanyId) {
+      setFeedback({ type: 'error', text: 'تنبيه أمني: لم يتم العثور على معرف الشركة.' });
+      return;
+    }
+
     setIsProcessing(true);
-    setProcessingStage('جاري استيراد شغل مطحنة الوليد وتثبيته سحابياً في Supabase...');
+    setProcessingStage('جاري تجهيز النسخة المرجعية لمطحنة الوليد...');
+    setImportProgress(null);
     setFeedback(null);
     setSyncDetails(null);
 
     try {
       const alwaleedJson = CompanyJsonBackupService.getAlWaleedMillPresetBackupJson();
-      const targetId = targetCompanyId.includes('alwaleed') ? targetCompanyId : 'company-alwaleed-client-003';
+      const activeTenantId = targetCompanyId.includes('alwaleed') ? targetCompanyId : currentCompanyId;
 
-      const result = await CompanyJsonBackupService.importCompanyData(targetId, alwaleedJson);
+      const result = await ERPBackupImportService.importCompanyJsonData(
+        activeTenantId,
+        alwaleedJson,
+        (progress) => {
+          setImportProgress(progress);
+          setProcessingStage(progress.message);
+        }
+      );
+
       setIsProcessing(false);
       setProcessingStage('');
 
@@ -149,13 +180,13 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
         setJsonText(alwaleedJson);
         setFileName('AlWaleed_Mill_Verified_Backup_2026.json');
         setSyncDetails({
-          cloudSynced: !!(result as any).cloudSynced,
+          cloudSynced: true,
           stats: result.stats,
-          cloudSyncNotice: (result as any).cloudSyncNotice,
+          cloudSyncNotice: `تم رفع السجلات المرجعية وارتباطها بالشركة ${activeTenantId}`,
         });
         setFeedback({
           type: 'success',
-          text: `تمت استعادة آخر شغل مدخل لمطحنة الوليد ومزامنته سحابياً بنجاح! 22 صنفاً بهارات وتوابل، خطوط الطحن، وأوامر التصنيع أصبحت متطابقة على جميع الأجهزة.`,
+          text: `تمت استعادة آخر شغل مدخل لمطحنة الوليد بنجاح! السجلات متطابقة على جميع الأجهزة.`,
         });
         onDataRestored();
       } else {
@@ -320,11 +351,21 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
         <div className="p-6 space-y-5">
           {/* Active Processing / Cloud Sync Progress Banner */}
           {isProcessing && (
-            <div className="p-4 rounded-xl border border-indigo-500/40 bg-indigo-950/40 text-indigo-200 flex items-center gap-3 animate-pulse">
-              <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
-              <div className="text-sm font-medium">
-                {processingStage || 'جاري المعالجة والمزامنة السحابية الفورية في Supabase...'}
+            <div className="p-4 rounded-xl border border-indigo-500/40 bg-indigo-950/40 text-indigo-200 flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
+                <div className="text-sm font-medium">
+                  {processingStage || 'جاري المعالجة والمزامنة السحابية...'}
+                </div>
               </div>
+              {importProgress && importProgress.total > 0 && (
+                <div className="w-full bg-slate-800/80 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-indigo-500 h-2.5 transition-all duration-300 ease-out"
+                    style={{ width: `${Math.min(100, Math.max(0, (importProgress.current / importProgress.total) * 100))}%` }}
+                  ></div>
+                </div>
+              )}
             </div>
           )}
 
