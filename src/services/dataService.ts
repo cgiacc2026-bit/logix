@@ -57,6 +57,7 @@ import {
 import { ThemeService } from './themeService.ts';
 import { cacheService } from './cacheService.ts';
 import { backgroundSync } from './backgroundSyncService.ts';
+import { getAccountStatement } from './statementService.ts';
 
 const STORAGE_KEYS = {
   COMPANY: 'alwaleed_erp_company',

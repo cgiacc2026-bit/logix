@@ -123,6 +123,75 @@ export interface StatementQueryOptions {
   snapshots?: MonthlyBalanceSnapshot[];
 }
 
+// دوال مساعدة مركزية لإزالة التكرار ومنع تكرار السندات والفواتير
+export function deduplicateStatementVouchers(vouchersList: PaymentVoucher[]): PaymentVoucher[] {
+  if (!Array.isArray(vouchersList) || vouchersList.length <= 1) return vouchersList || [];
+  const byNumber = new Map<string, PaymentVoucher>();
+  const byId = new Map<string, PaymentVoucher>();
+  const deduped: PaymentVoucher[] = [];
+
+  for (const v of vouchersList) {
+    if (!v) continue;
+    const num = (v.voucherNumber || '').trim().toUpperCase();
+    const id = (v.id || '').trim();
+
+    const existing = (num ? byNumber.get(num) : null) || (id ? byId.get(id) : null);
+    if (existing) {
+      const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
+      const currentTime = new Date((v as any).updatedAt || v.createdAt || 0).getTime();
+      // إذا كان أحدهما نشط والآخر ملغي نفضل النشط، أو الأحدث تعديلاً
+      const preferCurrent = (v.status !== 'CANCELLED' && existing.status === 'CANCELLED') || (currentTime >= existingTime);
+      if (preferCurrent) {
+        const idx = deduped.indexOf(existing);
+        if (idx !== -1) deduped[idx] = v;
+        if (num) byNumber.set(num, v);
+        if (id) byId.set(id, v);
+        if (existing.voucherNumber) byNumber.set(existing.voucherNumber.trim().toUpperCase(), v);
+        if (existing.id) byId.set(existing.id, v);
+      }
+    } else {
+      deduped.push(v);
+      if (num) byNumber.set(num, v);
+      if (id) byId.set(id, v);
+    }
+  }
+  return deduped;
+}
+
+export function deduplicateStatementInvoices(invoicesList: Invoice[]): Invoice[] {
+  if (!Array.isArray(invoicesList) || invoicesList.length <= 1) return invoicesList || [];
+  const byNumber = new Map<string, Invoice>();
+  const byId = new Map<string, Invoice>();
+  const deduped: Invoice[] = [];
+
+  for (const inv of invoicesList) {
+    if (!inv) continue;
+    const num = (inv.invoiceNumber || '').trim().toUpperCase();
+    const id = (inv.id || '').trim();
+
+    const existing = (num ? byNumber.get(num) : null) || (id ? byId.get(id) : null);
+    if (existing) {
+      const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
+      const currentTime = new Date((inv as any).updatedAt || inv.createdAt || 0).getTime();
+      const currentHasLines = Array.isArray(inv.lines) && inv.lines.length > 0;
+      const existingHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
+      if (currentTime >= existingTime || (currentHasLines && !existingHasLines)) {
+        const idx = deduped.indexOf(existing);
+        if (idx !== -1) deduped[idx] = inv;
+        if (num) byNumber.set(num, inv);
+        if (id) byId.set(id, inv);
+        if (existing.invoiceNumber) byNumber.set(existing.invoiceNumber.trim().toUpperCase(), inv);
+        if (existing.id) byId.set(existing.id, inv);
+      }
+    } else {
+      deduped.push(inv);
+      if (num) byNumber.set(num, inv);
+      if (id) byId.set(id, inv);
+    }
+  }
+  return deduped;
+}
+
 /**
  * دالة مساعدة لتنسيق وتحديد طبيعة الرصيد (مدين / دائن / متزن)
  * للعميل: الرصيد الموجب = مدين (عليه مستحقات للشركة)، السالب = دائن (له رصيد دائن مسبق الدفع)
@@ -159,6 +228,29 @@ export function getAccountStatement(
     currency = 'KWD',
     snapshots = [],
   } = options;
+
+  // 1. تنظيف وإزالة التكرار من المدخلات الأساسية
+  const dedupedInvoices = deduplicateStatementInvoices(invoices);
+  const dedupedVouchers = deduplicateStatementVouchers(vouchers);
+
+  // إنشاء فهارس سريعة لجميع أرقام ومعرفات السندات والفواتير لمنع ازدواجية القيود اليومية التابعة لها
+  const knownVoucherNumbers = new Set<string>();
+  const knownVoucherIds = new Set<string>();
+  const knownVoucherJournalIds = new Set<string>();
+  for (const v of dedupedVouchers) {
+    if (v.voucherNumber) knownVoucherNumbers.add(v.voucherNumber.trim().toUpperCase());
+    if (v.id) knownVoucherIds.add(v.id.trim());
+    if (v.journalEntryId) knownVoucherJournalIds.add(v.journalEntryId.trim());
+  }
+
+  const knownInvoiceNumbers = new Set<string>();
+  const knownInvoiceIds = new Set<string>();
+  const knownInvoiceJournalIds = new Set<string>();
+  for (const inv of dedupedInvoices) {
+    if (inv.invoiceNumber) knownInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+    if (inv.id) knownInvoiceIds.add(inv.id.trim());
+    if (inv.journalEntryId) knownInvoiceJournalIds.add(inv.journalEntryId.trim());
+  }
 
   const cleanedJournals = journals.filter(
     (j) => j && j.id && !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id)
@@ -206,8 +298,8 @@ export function getAccountStatement(
 
   const allRawMovements: RawMovement[] = [];
 
-  // أ) فواتير المبيعات والمشتريات والمرتجعات
-  invoices
+  // أ) فواتير المبيعات والمشتريات والمرتجعات (من القائمة الفريدة غير المكررة)
+  dedupedInvoices
     .filter((inv) => inv.entityId === entityId)
     .forEach((inv) => {
       const isSales = inv.type === 'SALES';
@@ -282,8 +374,8 @@ export function getAccountStatement(
       }
     });
 
-  // ب) سندات القبض والصرف
-  vouchers
+  // ب) سندات القبض والصرف (من القائمة الفريدة غير المكررة)
+  dedupedVouchers
     .filter((v) => v.entityId === entityId)
     .forEach((v) => {
       let debit = 0;
@@ -344,15 +436,55 @@ export function getAccountStatement(
 
   // ج) القيود اليومية اليدوية أو التسويات المباشرة لحساب هذا الكيان
   cleanedJournals.forEach((j) => {
-    // تجنب التكرار للقيود الآلية الصادرة عن الفواتير أو السندات (لأنها محتسبة بالفعل من قائمة الفواتير والسندات)
-    if (j.isAutoGenerated && (
-      j.sourceModule === 'SALES_INVOICE' || 
-      j.sourceModule === 'PURCHASE_INVOICE' || 
-      j.sourceModule === 'RECEIPT' || 
-      j.sourceModule === 'PAYMENT'
-    )) {
+    // 1. تجنب التكرار للقيود الآلية الصادرة عن الفواتير أو السندات (لأنها محتسبة بالفعل كحركات فواتير وسندات مستقلة)
+    const isAuto = Boolean(j.isAutoGenerated);
+    const autoModules = [
+      'SALES_INVOICE', 'PURCHASE_INVOICE', 'RECEIPT', 'PAYMENT', 
+      'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER', 'VOUCHER', 'INVOICE'
+    ];
+    if (autoModules.includes(j.sourceModule || '') || (isAuto && j.sourceModule !== 'MANUAL')) {
       return;
     }
+
+    // 2. التحقق من الربط المباشر بأي سند أو فاتورة معروفة بالرقم أو المعرف
+    const refUpper = (j.reference || '').trim().toUpperCase();
+    const entryNumUpper = (j.entryNumber || '').trim().toUpperCase();
+    const jId = (j.id || '').trim();
+    const srcId = (j.sourceId || '').trim();
+
+    if (
+      (refUpper && (knownVoucherNumbers.has(refUpper) || knownInvoiceNumbers.has(refUpper))) ||
+      (srcId && (knownVoucherIds.has(srcId) || knownInvoiceIds.has(srcId))) ||
+      (jId && (knownVoucherJournalIds.has(jId) || knownInvoiceJournalIds.has(jId)))
+    ) {
+      return;
+    }
+
+    // 3. التحقق من احتواء رقم القيد أو بيانه على رقم السند أو الفاتورة لمنع الازدواجية
+    let matchesExistingDoc = false;
+    for (const vNum of knownVoucherNumbers) {
+      if (
+        entryNumUpper.includes(vNum) ||
+        refUpper.includes(vNum) ||
+        (j.description && j.description.toUpperCase().includes(vNum))
+      ) {
+        matchesExistingDoc = true;
+        break;
+      }
+    }
+    if (matchesExistingDoc) return;
+
+    for (const invNum of knownInvoiceNumbers) {
+      if (
+        entryNumUpper.includes(invNum) ||
+        refUpper.includes(invNum) ||
+        (j.description && j.description.toUpperCase().includes(invNum))
+      ) {
+        matchesExistingDoc = true;
+        break;
+      }
+    }
+    if (matchesExistingDoc) return;
 
     // نبحث عن أسطر القيد التي ترتبط بكود هذا العميل/المورد أو حسابه التحليلي أو اسمه
     j.lines?.forEach((line) => {
@@ -408,8 +540,35 @@ export function getAccountStatement(
     });
   });
 
+  // ============================================================================
+  // خطوة 1.5: تصفية فريدة صارمة (Deduplication Logic) باستخدام Map لمنع تكرار أي حركة
+  // ============================================================================
+  const uniqueMovementsMap = new Map<string, RawMovement>();
+  for (const move of allRawMovements) {
+    const docNumNorm = (move.docNumber || '').trim().toUpperCase();
+    let uniqueKey = `${move.sourceModule}_${docNumNorm}_${move.status}`;
+    if (move.sourceModule === 'JOURNAL') {
+      uniqueKey = `JOURNAL_${move.originalDocId || move.id}_${docNumNorm}`;
+    } else if (move.status === 'REVERSAL') {
+      uniqueKey = `REVERSAL_${move.sourceModule}_${docNumNorm}`;
+    }
+
+    const existing = uniqueMovementsMap.get(uniqueKey);
+    if (!existing) {
+      uniqueMovementsMap.set(uniqueKey, move);
+    } else {
+      const existingTime = new Date(existing.createdAt || 0).getTime();
+      const currentTime = new Date(move.createdAt || 0).getTime();
+      if (currentTime >= existingTime) {
+        uniqueMovementsMap.set(uniqueKey, move);
+      }
+    }
+  }
+
+  const sortedRawMovements = Array.from(uniqueMovementsMap.values());
+
   // ترتيب جميع الحركات ترتيباً زمنياً تصاعدياً
-  allRawMovements.sort((a, b) => {
+  sortedRawMovements.sort((a, b) => {
     if (a.date !== b.date) {
       return a.date.localeCompare(b.date);
     }
@@ -419,11 +578,11 @@ export function getAccountStatement(
   // ============================================================================
   // خطوة 2: احتساب الرصيد الافتتاحي الدقيق (Opening Balance)
   // ============================================================================
-  // الرصيد الافتتاحي هو مجموع رصيد أول المدة بناءً على آخر تعديل + جميع الحركات السابقة لتاريخ البداية (date < cleanStartDate)
+  // الرصيد الافتتاحي هو مجموع رصيد أول المدة بناءً على آخر تعديل + جميع الحركات الفريدة السابقة لتاريخ البداية (date < cleanStartDate)
   let calculatedOpeningBalance = entityInitialOpeningBalance;
 
-  // جمع الحركات التي تمت قبل تاريخ البداية
-  for (const move of allRawMovements) {
+  // جمع الحركات الفريدة التي تمت قبل تاريخ البداية
+  for (const move of sortedRawMovements) {
     if (move.date < cleanStartDate && move.status !== 'CANCELLED') {
       if (entityType === 'CUSTOMER') {
         // العميل: مدين يزيد المديونية، دائن ينقصها
@@ -446,7 +605,7 @@ export function getAccountStatement(
   let activeCount = 0;
   let cancelledCount = 0;
 
-  for (const move of allRawMovements) {
+  for (const move of sortedRawMovements) {
     // تصفية الحركات الواقعة فقط داخل الفترة المحددة شاملة لليومين
     if (move.date >= cleanStartDate && move.date <= cleanEndDate) {
       totalPeriodDebit += move.debit;
@@ -493,9 +652,9 @@ export function getAccountStatement(
     ? (totalPeriodDebit - totalPeriodCredit)
     : (totalPeriodCredit - totalPeriodDebit);
 
-  // احتساب الرصيد الفعلي الحالي الكامل للبطاقة بناءً على آخر تعديل وحركات الحساب
+  // احتساب الرصيد الفعلي الحالي الكامل للبطاقة بناءً على الحركات الفريدة
   let fullCardBalance = entityInitialOpeningBalance;
-  for (const move of allRawMovements) {
+  for (const move of sortedRawMovements) {
     if (move.status !== 'CANCELLED') {
       if (entityType === 'CUSTOMER') {
         fullCardBalance += (move.debit - move.credit);
@@ -652,8 +811,30 @@ export function calculateEntityCurrentBalance(
   
   let net = initialOpening;
 
-  // 1. الفواتير والمرتجعات
-  const relevantInvoices = (invoices || []).filter(
+  // إزالة التكرار بدقة باستخدام الدوال المساعدة
+  const dedupedInvoices = deduplicateStatementInvoices(invoices || []);
+  const dedupedVouchers = deduplicateStatementVouchers(vouchers || []);
+
+  const knownVoucherNumbers = new Set<string>();
+  const knownVoucherIds = new Set<string>();
+  const knownVoucherJournalIds = new Set<string>();
+  for (const v of dedupedVouchers) {
+    if (v.voucherNumber) knownVoucherNumbers.add(v.voucherNumber.trim().toUpperCase());
+    if (v.id) knownVoucherIds.add(v.id.trim());
+    if (v.journalEntryId) knownVoucherJournalIds.add(v.journalEntryId.trim());
+  }
+
+  const knownInvoiceNumbers = new Set<string>();
+  const knownInvoiceIds = new Set<string>();
+  const knownInvoiceJournalIds = new Set<string>();
+  for (const inv of dedupedInvoices) {
+    if (inv.invoiceNumber) knownInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+    if (inv.id) knownInvoiceIds.add(inv.id.trim());
+    if (inv.journalEntryId) knownInvoiceJournalIds.add(inv.journalEntryId.trim());
+  }
+
+  // 1. الفواتير والمرتجعات الفريدة
+  const relevantInvoices = dedupedInvoices.filter(
     (inv) => inv.entityId === entityId && inv.status !== 'CANCELLED'
   );
   for (const inv of relevantInvoices) {
@@ -667,8 +848,10 @@ export function calculateEntityCurrentBalance(
     }
   }
 
-  // 2. سندات القبض والصرف
-  const relevantVouchers = (vouchers || []).filter((v) => v.entityId === entityId);
+  // 2. سندات القبض والصرف الفريدة
+  const relevantVouchers = dedupedVouchers.filter(
+    (v) => v.entityId === entityId && v.status !== 'CANCELLED'
+  );
   for (const v of relevantVouchers) {
     const amount = Number(v.amount) || 0;
     const vType = v.type || (entityType === 'CUSTOMER' ? 'RECEIPT' : 'PAYMENT');
@@ -681,20 +864,58 @@ export function calculateEntityCurrentBalance(
     }
   }
 
-  // 3. القيود والتسويات اليدوية
+  // 3. القيود والتسويات اليدوية الفريدة
   const relevantJournals = (journals || []).filter(
     (j) => j && j.id && !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id) && j.status !== 'CANCELLED' && j.status !== 'REVERSED'
   );
   for (const j of relevantJournals) {
     // تجنب التكرار للقيود الآلية الصادرة عن الفواتير أو السندات
-    if (j.isAutoGenerated && (
-      j.sourceModule === 'SALES_INVOICE' || 
-      j.sourceModule === 'PURCHASE_INVOICE' || 
-      j.sourceModule === 'RECEIPT' || 
-      j.sourceModule === 'PAYMENT'
-    )) {
+    const isAuto = Boolean(j.isAutoGenerated);
+    const autoModules = [
+      'SALES_INVOICE', 'PURCHASE_INVOICE', 'RECEIPT', 'PAYMENT', 
+      'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER', 'VOUCHER', 'INVOICE'
+    ];
+    if (autoModules.includes(j.sourceModule || '') || (isAuto && j.sourceModule !== 'MANUAL')) {
       continue;
     }
+
+    const refUpper = (j.reference || '').trim().toUpperCase();
+    const entryNumUpper = (j.entryNumber || '').trim().toUpperCase();
+    const jId = (j.id || '').trim();
+    const srcId = (j.sourceId || '').trim();
+
+    if (
+      (refUpper && (knownVoucherNumbers.has(refUpper) || knownInvoiceNumbers.has(refUpper))) ||
+      (srcId && (knownVoucherIds.has(srcId) || knownInvoiceIds.has(srcId))) ||
+      (jId && (knownVoucherJournalIds.has(jId) || knownInvoiceJournalIds.has(jId)))
+    ) {
+      continue;
+    }
+
+    let matchesDoc = false;
+    for (const vNum of knownVoucherNumbers) {
+      if (
+        entryNumUpper.includes(vNum) ||
+        refUpper.includes(vNum) ||
+        (j.description && j.description.toUpperCase().includes(vNum))
+      ) {
+        matchesDoc = true;
+        break;
+      }
+    }
+    if (matchesDoc) continue;
+
+    for (const invNum of knownInvoiceNumbers) {
+      if (
+        entryNumUpper.includes(invNum) ||
+        refUpper.includes(invNum) ||
+        (j.description && j.description.toUpperCase().includes(invNum))
+      ) {
+        matchesDoc = true;
+        break;
+      }
+    }
+    if (matchesDoc) continue;
 
     for (const line of j.lines || []) {
       const isDirectEntityIdMatch = Boolean(line.entityId && line.entityId === entityId);
