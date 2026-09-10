@@ -415,7 +415,12 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     reader.onload = async (event) => {
       try {
         const jsonContent = event.target?.result as string;
-        const parsed = JSON.parse(jsonContent);
+        let parsed;
+        try {
+          parsed = JSON.parse(jsonContent);
+        } catch (e) {
+          throw new Error('الملف المرفوع يحتوي على أخطاء برمجية أو مقطوع. الرجاء نسخ كامل كود JSON ولصقه في ملف نصي وحفظه كـ .json ثم رفعه.');
+        }
 
         if (parsed.company) localDataStore.saveCompany(parsed.company);
         if (parsed.users) localDataStore.saveUsers(parsed.users);
