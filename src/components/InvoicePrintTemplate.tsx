@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
+import { resolveActiveCompany } from '../utils/companyResolver.ts';
 
 interface InvoicePrintTemplateProps {
   invoice: Invoice;
@@ -29,6 +30,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
   onClose,
   showControls = true,
 }) => {
+  const activeCompany = resolveActiveCompany(company, (invoice as any)?.companyId);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showQr, setShowQr] = useState<boolean>(true);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -39,7 +41,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
   const isCash = invoice.paymentTerms === 'CASH' || (invoice.paidAmount >= invoice.grandTotal && invoice.grandTotal > 0);
 
   const formattedCurrency = (val: number) => {
-    return formatCurrency(val, company.functionalCurrency || 'KWD');
+    return formatCurrency(val, activeCompany.functionalCurrency || 'KWD');
   };
 
   const getInvoiceTitle = () => {
@@ -54,8 +56,8 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
   useEffect(() => {
     const paymentTermText = isCash ? 'نقدي (كاش)' : 'آجل (على الحساب)';
     const qrPayloadText = [
-      `المورد: ${company.nameAr || 'مطحنة الوليد المتحدة'}`,
-      `س.ت: ${company.crNumber || '450912'}`,
+      `المورد: ${activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}`,
+      `س.ت: ${activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}`,
       `المستند: ${getInvoiceTitle()} - ${invoice.invoiceNumber}`,
       `التاريخ: ${invoice.date}`,
       `الطرف: ${invoice.entityNameAr || '-'}`,
@@ -72,7 +74,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
     })
       .then((url) => setQrCodeDataUrl(url))
       .catch((err) => console.error('Error generating invoice QR Code', err));
-  }, [invoice, company, isCash]);
+  }, [invoice, activeCompany, isCash]);
 
   // Calculate gross and line-level discounts
   let grossItemsTotal = 0;
@@ -280,20 +282,24 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
         {/* Header Section */}
         <div className="flex items-start justify-between border-b-2 border-black pb-5 gap-4">
           <div className="flex items-start gap-4 text-right max-w-md">
-            {company.logoUrl && (
+            {activeCompany.logoUrl && (
               <img
-                src={company.logoUrl}
+                src={activeCompany.logoUrl}
                 alt="Logo"
                 className="w-20 h-20 object-contain rounded-lg border border-neutral-300 p-1 bg-white shrink-0"
               />
             )}
             <div className="space-y-1">
-              <h1 className="text-2xl font-black text-black tracking-tight">{company.nameAr || 'مطحنة الوليد المتحدة'}</h1>
-              <p className="text-xs text-neutral-600 font-bold uppercase tracking-wider">{company.nameEn || 'Al-Waleed United Mill'}</p>
+              <h1 className="text-2xl font-black text-black tracking-tight">
+                {activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}
+              </h1>
+              <p className="text-xs text-neutral-600 font-bold uppercase tracking-wider">
+                {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED ENTERPRISE'}
+              </p>
               
               {/* Customer specific co-branded header and customer logo if applicable */}
               {(() => {
-                const matchedHeader = company.customerBrandHeaders?.find(
+                const matchedHeader = activeCompany.customerBrandHeaders?.find(
                   (h) => (invoice.entityId && h.customerId === invoice.entityId) || 
                          (invoice.entityNameAr && h.customerNameAr?.trim() === invoice.entityNameAr?.trim())
                 );
@@ -325,13 +331,22 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
 
               <div className="text-xs text-neutral-800 space-y-0.5 pt-1 font-medium leading-tight">
                 <p>
-                  السجل التجاري: <span className="font-bold font-mono text-black">{company.crNumber || '450912'}</span>
+                  السجل التجاري: <span className="font-bold font-mono text-black">{activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}</span>
+                  {activeCompany.taxNumber && (
+                    <span className="mr-3">الرقم الضريبي: <span className="font-bold font-mono text-black">{activeCompany.taxNumber}</span></span>
+                  )}
                 </p>
-                <p>{company.streetName || 'شارع السور'}، {company.district || 'منطقة القبلة'}، {company.city || 'الكويت'}</p>
                 <p>
-                  هاتف: <span className="font-mono font-bold">{company.phone || '65710278'}</span>
-                  <span className="mx-2 text-neutral-400">|</span>
-                  بريد: <span className="font-mono font-bold">{company.email || 'alwaleedmill@gmail.com'}</span>
+                  {[activeCompany.streetName, activeCompany.district, activeCompany.city, activeCompany.country].filter(Boolean).join('، ') || 'المقر الرئيسي'}
+                </p>
+                <p>
+                  هاتف: <span className="font-mono font-bold">{activeCompany.phone || activeCompany.mobile || '-'}</span>
+                  {activeCompany.email && (
+                    <>
+                      <span className="mx-2 text-neutral-400">|</span>
+                      بريد: <span className="font-mono font-bold">{activeCompany.email}</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -482,7 +497,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
                 المبلغ تفقيطاً بالكلمات والعملة الرسمية (Tafqeet):
               </span>
               <p className="text-xs sm:text-sm font-serif font-black text-black leading-relaxed bg-white p-2.5 rounded border border-neutral-200 shadow-2xs">
-                {tafqeetCurrency(finalGrandTotal, company.functionalCurrency || 'KWD')}
+                {tafqeetCurrency(finalGrandTotal, activeCompany.functionalCurrency || 'KWD')}
               </p>
             </div>
 
@@ -535,7 +550,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
           </div>
         </div>
 
-        {/* Classic Professional Footer: Receiver Name, Receiver Signature, and Al-Waleed United Mill */}
+        {/* Dynamic Professional Footer: Receiver Name, Receiver Signature, and Active Company Stamp */}
         <div className="pt-6 border-t-2 border-black grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs sm:text-sm">
           {/* 1. اسم المستلم */}
           <div className="border border-neutral-300 rounded-lg p-3.5 bg-[#FAF9F6] space-y-2">
@@ -558,17 +573,31 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
             </div>
           </div>
 
-          {/* 3. مطحنة الوليد المتحدة */}
+          {/* 3. ختم وتوقيع المنشأة النشطة حصرياً */}
           <div className="border border-neutral-300 rounded-lg p-3.5 bg-[#FAF9F6] space-y-2 text-center">
-            <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs">
-              مطحنة الوليد المتحدة
+            <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs truncate" title={activeCompany.nameAr || activeCompany.headerTitle}>
+              {activeCompany.nameAr || activeCompany.headerTitle || 'ختم واعتماد المنشأة'}
             </div>
             <div className="text-xs pt-1 text-neutral-800 space-y-1.5">
               <p>الختم والتوقيع: .................................</p>
-              <p className="text-[10px] text-neutral-500 font-mono">AL-WALEED UNITED MILL</p>
+              <p className="text-[10px] text-neutral-500 font-mono uppercase truncate">
+                {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED SIGNATURE & STAMP'}
+              </p>
+              {(activeCompany.generalManager || activeCompany.financialManager) && (
+                <p className="text-[9.5px] text-neutral-700 font-semibold truncate">
+                  {activeCompany.generalManager || activeCompany.financialManager}
+                </p>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Dynamic Footer Note */}
+        {(activeCompany.footerNotes || activeCompany.headerNotes) && (
+          <div className="text-center text-[10px] text-neutral-500 pt-3 border-t border-neutral-300 font-sans">
+            {activeCompany.footerNotes || activeCompany.headerNotes}
+          </div>
+        )}
       </div>
     </div>
   );

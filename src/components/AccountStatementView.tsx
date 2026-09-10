@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Customer, Supplier, Invoice, PaymentVoucher, JournalEntry, CompanyProfile } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
+import { resolveActiveCompany } from '../utils/companyResolver.ts';
 import {
   getAccountStatement,
   AccountStatementResult,
@@ -64,6 +65,8 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
   initialEntityType = 'CUSTOMER',
   initialEntityId,
 }) => {
+  const activeCompany = resolveActiveCompany(company);
+
   // 1. حالة نوع الكيان والكيان المختار
   const [entityType, setEntityType] = useState<'CUSTOMER' | 'SUPPLIER'>(initialEntityType);
   const [selectedEntityId, setSelectedEntityId] = useState<string>(
@@ -651,15 +654,15 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
                 <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-br from-[#1A1A1A] via-[#2A2A2A] to-[#1A1A1A] text-white p-0.5 shadow-md flex flex-col items-center justify-center shrink-0 border-2 border-[#D4AF37]/50 relative overflow-hidden print:w-12 print:h-12 print:rounded-lg print:border-black">
                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/20 via-transparent to-transparent"></div>
                   <Building2 className="w-7 h-7 md:w-8 md:h-8 text-[#D4AF37] relative z-10 mb-0.5 print:w-5 print:h-5 print:text-black" />
-                  <span className="text-[9px] md:text-[10px] font-serif font-black tracking-widest text-[#D4AF37] uppercase relative z-10 print:text-[8px] print:text-black">
-                    AL-WALEED
+                  <span className="text-[9px] md:text-[10px] font-serif font-black tracking-widest text-[#D4AF37] uppercase relative z-10 print:text-[8px] print:text-black truncate max-w-full px-1">
+                    {activeCompany.nameEn?.split(' ')[0] || activeCompany.tradeName?.split(' ')[0] || 'LOGIX'}
                   </span>
                 </div>
 
                 <div className="space-y-1 print:space-y-0.5">
                   <div className="flex items-center gap-2">
                     <h1 className="text-xl md:text-2xl font-serif font-extrabold text-[#1A1A1A] tracking-tight print:text-lg">
-                      {company?.nameAr || 'مطحنة الوليد المتحدة'}
+                      {activeCompany.nameAr || activeCompany.headerTitle || 'كشف حساب معتمد'}
                     </h1>
                     <span className="px-2 py-0.5 bg-[#FAF3E0] text-[#996515] border border-[#D4AF37]/30 text-[10px] font-bold rounded-full hidden sm:inline-flex items-center gap-1 print:hidden">
                       <Award className="w-3 h-3 text-[#B8860B]" />
@@ -667,22 +670,22 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-[#64748B] font-medium leading-relaxed print:text-[10px] print:text-black">
-                    {company?.activityAr || 'طحن وتعبئة الحبوب والبهارات وتجارة المواد الغذائية'}
+                    {activeCompany.activityAr || activeCompany.headerNotes || 'الأعمال التجارية والأنشطة المالية المعتمدة'}
                   </p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#475569] pt-1 font-sans print:pt-0.5 print:gap-x-2 print:text-[9px] print:text-neutral-800">
-                    {company?.commercialRegNumber && (
+                    {(activeCompany.commercialRegNumber || activeCompany.crNumber) && (
                       <span className="bg-[#F1F5F9] px-2 py-0.5 rounded border border-[#E2E8F0] print:bg-white print:border-neutral-400 print:px-1">
-                        سجل تجاري: <strong className="font-mono text-[#0F172A] print:text-black">{company.commercialRegNumber}</strong>
+                        سجل تجاري: <strong className="font-mono text-[#0F172A] print:text-black">{activeCompany.commercialRegNumber || activeCompany.crNumber}</strong>
                       </span>
                     )}
-                    {company?.taxNumber && (
+                    {activeCompany.taxNumber && (
                       <span className="bg-[#F1F5F9] px-2 py-0.5 rounded border border-[#E2E8F0] print:bg-white print:border-neutral-400 print:px-1">
-                        الرقم الضريبي: <strong className="font-mono text-[#0F172A] print:text-black">{company.taxNumber}</strong>
+                        الرقم الضريبي: <strong className="font-mono text-[#0F172A] print:text-black">{activeCompany.taxNumber}</strong>
                       </span>
                     )}
-                    {company?.phone && (
+                    {activeCompany.phone && (
                       <span>
-                        هاتف: <strong className="font-mono text-[#0F172A] print:text-black">{company.phone}</strong>
+                        هاتف: <strong className="font-mono text-[#0F172A] print:text-black">{activeCompany.phone}</strong>
                       </span>
                     )}
                   </div>
@@ -985,7 +988,7 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
                 <CheckCircle2 className="w-4 h-4 text-[#15803D] shrink-0 mt-0.5 print:w-3.5 print:h-3.5 print:text-black" />
                 <div>
                   <strong className="text-[#0F172A] font-bold print:text-black">إقرار وصحة الرصيد المالي:</strong> يُعتبر هذا الكشف صحيحاً
-                  ومطابقاً للدفاتر والقيود المحاسبية لشركة مطحنة الوليد المتحدة. يُرجى مراجعة الحركات المالية الموضحة أعلاه
+                  ومطابقاً للدفاتر والقيود المحاسبية لـ <span className="font-bold text-black">{activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة'}</span>. يُرجى مراجعة الحركات المالية الموضحة أعلاه
                   وموافاتنا بأي ملاحظات خطية خلال 15 يوماً من تاريخ الإصدار، وتُعتبر الأرصدة مصادقاً عليها ونهائية بعد
                   انقضاء المدة المقررة.
                 </div>
@@ -1013,18 +1016,24 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
               </div>
 
               <div className="space-y-3 p-4 bg-white rounded-xl border border-[#E2E8F0] shadow-2xs print:space-y-1 print:p-2 print:border print:border-black print:shadow-none print:rounded-lg">
-                <span className="text-[#0F172A] font-bold block print:text-black">اعتماد المدير المالي / الختم</span>
-                <span className="text-[#64748B] text-xs block print:text-[9px] print:text-neutral-700">الختم الرسمي والتوقيع:</span>
+                <span className="text-[#0F172A] font-bold block print:text-black truncate" title={activeCompany.nameAr || activeCompany.headerTitle}>
+                  {activeCompany.nameAr || activeCompany.headerTitle || 'اعتماد المنشأة / الختم'}
+                </span>
+                <span className="text-[#64748B] text-xs block print:text-[9px] print:text-neutral-700">
+                  {activeCompany.generalManager ? `اعتماد الإدارة: ${activeCompany.generalManager}` : 'الختم الرسمي والتوقيع:'}
+                </span>
                 <div className="w-full pt-6 print:pt-3">
                   <div className="w-4/5 h-[1.5px] bg-[#94A3B8] mx-auto border-dashed border-t border-[#64748B] print:border-black"></div>
-                  <span className="text-[10px] text-[#94A3B8] font-mono block pt-1 print:text-[8px] print:text-neutral-600">Financial Officer & Stamp</span>
+                  <span className="text-[10px] text-[#94A3B8] font-mono block pt-1 print:text-[8px] print:text-neutral-600 uppercase truncate">
+                    {activeCompany.nameEn || 'Authorized Signature & Stamp'}
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="text-center pt-2 border-t border-[#E2E8F0] print:pt-1 print:border-neutral-300">
               <span className="text-[10px] text-[#94A3B8] font-mono print:text-[8px] print:text-neutral-600">
-                Generated by Al-Waleed ERP System • Compliant with IFRS & Kuwait Commercial Law • Page 1 of 1
+                {activeCompany.footerNotes || `Generated by ${activeCompany.nameEn || activeCompany.nameAr || 'Enterprise'} ERP System • Compliant with IFRS & Commercial Law • Page 1 of 1`}
               </span>
             </div>
           </div>

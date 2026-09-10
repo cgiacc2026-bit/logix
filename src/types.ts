@@ -672,6 +672,7 @@ export interface CompanyProfile {
   
   // Branding & Print Config
   logoUrl?: string;
+  headerTitle?: string;
   headerNotes?: string;
   footerNotes?: string;
   showDigitalStamp: boolean;

@@ -8,6 +8,7 @@ import {
 } from '../types.js';
 import { StockLedgerService } from '../services/stockLedgerService.ts';
 import { formatCurrency } from '../utils/formatters.ts';
+import { resolveActiveCompany } from '../utils/companyResolver.ts';
 import {
   Package,
   Layers,
@@ -55,6 +56,8 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   initialItemId,
   initialSubTab,
 }) => {
+  const activeCompany = resolveActiveCompany(null, inventory[0]?.companyId || inventory[0]?.company_id);
+
   const [activeSubTab, setActiveSubTab] = useState<'audit' | 'ledger' | 'item_card' | 'qc_release' | 'reconcile'>(
     initialSubTab || (initialItemId ? 'item_card' : 'audit')
   );
@@ -1152,9 +1155,9 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
             <div className="space-y-6 text-black print:p-0">
               <div className="flex items-start justify-between border-b-2 border-black pb-4">
                 <div className="space-y-1 text-right">
-                  <h2 className="text-2xl font-black">شركة مطحنة الوليد المتحدة ذ.م.م</h2>
+                  <h2 className="text-2xl font-black">{activeCompany.nameAr || activeCompany.headerTitle || 'إدارة المستودعات وسلاسل الإمداد'}</h2>
                   <p className="text-xs text-slate-600 font-bold">إدارة المستودعات وسلاسل الإمداد - بطاقة حركة صنف رسمي</p>
-                  <p className="text-xs text-slate-500 font-mono">س.ت: 450912 | الكويت - الشويخ الصناعية</p>
+                  <p className="text-xs text-slate-500 font-mono">س.ت: {activeCompany.crNumber || activeCompany.commercialRegNumber || '-'} | {activeCompany.city || 'دولة الكويت'}</p>
                 </div>
                 <div className="text-left font-mono space-y-1">
                   <div className="text-sm font-black text-slate-900">ITEM STOCK CARD</div>
@@ -1260,7 +1263,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                 <div className="text-right space-y-1">
                   <h1 className="text-2xl font-black text-emerald-950">شهادة فحص مخبري وإذن إفراج جودة نهائي</h1>
                   <p className="text-xs font-bold text-slate-700">CERTIFICATE OF ANALYSIS & FINAL RELEASE APPROVAL</p>
-                  <p className="text-[11px] text-slate-500 font-mono">مطحنة الوليد المتحدة - مختبر فحص الجودة والمطابقة الغذائية</p>
+                  <p className="text-[11px] text-slate-500 font-mono">{activeCompany.nameAr || 'المنشأة المعتمدة'} - مختبر فحص الجودة والمطابقة</p>
                 </div>
                 <div className="text-left font-mono">
                   <div className="text-sm font-black text-emerald-900">{selectedQcForPrint.certNo}</div>

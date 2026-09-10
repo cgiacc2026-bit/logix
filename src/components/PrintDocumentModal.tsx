@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
+import { resolveActiveCompany } from '../utils/companyResolver.ts';
 
 interface PrintDocumentModalProps {
   documentType: 'INVOICE' | 'VOUCHER' | 'JOURNAL' | 'STATEMENT';
@@ -38,6 +39,8 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
 }) => {
   if (!data) return null;
 
+  const activeCompany = resolveActiveCompany(company, data?.companyId || data?.company_id);
+
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showQr, setShowQr] = useState<boolean>(true);
 
@@ -46,7 +49,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
   const [fontScale, setFontScale] = useState<'NORMAL' | 'LARGE' | 'XLARGE'>('NORMAL');
 
   const formattedCurrency = (val: number) => {
-    return formatCurrency(val, company.functionalCurrency || 'KWD');
+    return formatCurrency(val, activeCompany.functionalCurrency || 'KWD');
   };
 
   const getDocTitle = () => {
@@ -76,8 +79,8 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
           : 'آجل (على الحساب)';
 
       const qrPayloadText = [
-        `المورد: ${company.nameAr || 'مطحنة الوليد المتحدة'}`,
-        `س.ت: ${company.crNumber || '450912'}`,
+        `المورد: ${activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}`,
+        `س.ت: ${activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}`,
         `المستند: ${getDocTitle()} - ${inv.invoiceNumber}`,
         `التاريخ: ${inv.date}`,
         `الطرف: ${inv.entityNameAr || '-'}`,
@@ -100,7 +103,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
     } else if (documentType === 'VOUCHER') {
       const v = data as PaymentVoucher;
       const qrPayloadText = [
-        `الجهة: ${company.nameAr}`,
+        `الجهة: ${activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}`,
         `السند: ${v.type === 'RECEIPT' ? 'سند قبض' : 'سند صرف'} (${v.voucherNumber})`,
         `التاريخ: ${v.date}`,
         `المبلغ: ${formattedCurrency(v.amount)}`,
@@ -115,7 +118,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
         .then((url) => setQrCodeDataUrl(url))
         .catch((err) => console.error('QR Error', err));
     }
-  }, [documentType, data, company]);
+  }, [documentType, data, activeCompany]);
 
   const handlePrint = () => {
     window.print();
@@ -199,7 +202,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                 معاينة وطباعة {getDocTitle()}
               </span>
               <span className="text-[10px] text-neutral-400 font-mono">
-                مطحنة الوليد المتحدة • معاينة عالية الوضوح
+                {activeCompany.nameAr || activeCompany.headerTitle || 'لوجيكس ERP'} • معاينة عالية الوضوح
               </span>
             </div>
           </div>
@@ -334,23 +337,29 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
               {/* Right: Company Information */}
               <div className="space-y-1 text-right max-w-md">
                 <h1 className="text-2xl sm:text-3xl font-black text-black tracking-tight">
-                  {company.nameAr || 'مطحنة الوليد المتحدة'}
+                  {activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}
                 </h1>
                 <p className="text-xs text-neutral-700 font-bold uppercase tracking-wider font-mono">
-                  {company.nameEn || 'Al-Waleed United Mill'}
+                  {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED ENTERPRISE'}
                 </p>
                 <div className="text-xs text-neutral-800 space-y-0.5 pt-1.5 font-medium leading-relaxed">
                   <p>
-                    السجل التجاري: <span className="font-bold font-mono text-black">{company.crNumber || company.commercialRegNumber || '450912'}</span>
-                    {company.taxNumber && (
-                      <span className="mr-3">الرقم الضريبي: <span className="font-bold font-mono text-black">{company.taxNumber}</span></span>
+                    السجل التجاري: <span className="font-bold font-mono text-black">{activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}</span>
+                    {activeCompany.taxNumber && (
+                      <span className="mr-3">الرقم الضريبي: <span className="font-bold font-mono text-black">{activeCompany.taxNumber}</span></span>
                     )}
                   </p>
-                  <p>{company.streetName || 'شارع السور'}، {company.district || 'منطقة القبلة'}، {company.city || 'الكويت'}</p>
                   <p>
-                    هاتف: <span className="font-mono font-bold">{company.phone || '65710278'}</span>
-                    <span className="mx-2 text-neutral-400">|</span>
-                    بريد: <span className="font-mono font-bold">{company.email || 'alwaleedmill@gmail.com'}</span>
+                    {[activeCompany.streetName, activeCompany.district, activeCompany.city, activeCompany.country].filter(Boolean).join('، ') || 'المقر الرئيسي'}
+                  </p>
+                  <p>
+                    هاتف: <span className="font-mono font-bold">{activeCompany.phone || activeCompany.mobile || '-'}</span>
+                    {activeCompany.email && (
+                      <>
+                        <span className="mx-2 text-neutral-400">|</span>
+                        بريد: <span className="font-mono font-bold">{activeCompany.email}</span>
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -584,7 +593,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                           المبلغ تفقيطاً بالكلمات:
                         </span>
                         <p className="text-xs sm:text-sm font-serif font-black text-black leading-relaxed bg-white p-3 rounded-lg border border-neutral-300 shadow-2xs print:p-1.5 print:text-[10px] print:border-neutral-400 print:shadow-none">
-                          {tafqeetCurrency(finalGrandTotal, company.functionalCurrency || 'KWD')}
+                          {tafqeetCurrency(finalGrandTotal, activeCompany.functionalCurrency || 'KWD')}
                         </p>
                       </div>
 
@@ -661,14 +670,21 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                       </div>
                     </div>
 
-                    {/* 3. مطحنة الوليد المتحدة */}
+                    {/* 3. ختم وتوقيع المنشأة النشطة حصرياً */}
                     <div className="border border-neutral-300 rounded-xl p-4 bg-[#FAF9F6] space-y-2 text-center print:p-2 print:space-y-1 print:bg-white print:border-black print:rounded-lg">
-                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm print:pb-1 print:text-[10px] print:border-neutral-300">
-                        مطحنة الوليد المتحدة
+                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm print:pb-1 print:text-[10px] print:border-neutral-300 truncate" title={activeCompany.nameAr || activeCompany.headerTitle}>
+                        {activeCompany.nameAr || activeCompany.headerTitle || 'ختم واعتماد المنشأة'}
                       </div>
                       <div className="text-xs pt-1 text-neutral-800 space-y-1.5 print:space-y-0.5 print:text-[9.5px]">
                         <p>الختم والتوقيع: .................................</p>
-                        <p className="text-[10px] text-neutral-500 font-mono print:text-[8px] print:text-neutral-700">AL-WALEED UNITED MILL</p>
+                        <p className="text-[10px] text-neutral-500 font-mono print:text-[8px] print:text-neutral-700 uppercase truncate">
+                          {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED SIGNATURE & STAMP'}
+                        </p>
+                        {(activeCompany.generalManager || activeCompany.financialManager) && (
+                          <p className="text-[9.5px] text-neutral-700 font-semibold print:text-[8px] truncate">
+                            {activeCompany.generalManager || activeCompany.financialManager}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -702,7 +718,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                     <div className="p-3.5 bg-white rounded-xl border border-neutral-300">
                       <span className="text-xs font-bold text-neutral-600 block mb-0.5">المبلغ تفقيطاً بالكلمات:</span>
                       <p className="text-xs sm:text-sm font-serif font-black text-black">
-                        {tafqeetCurrency(v.amount, company.functionalCurrency)}
+                        {tafqeetCurrency(v.amount, activeCompany.functionalCurrency)}
                       </p>
                     </div>
 
@@ -816,7 +832,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                   <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300">
                     <span className="text-xs font-bold text-neutral-600 block mb-0.5">إجمالي قيمة القيد تفقيطاً بالكلمات:</span>
                     <p className="text-xs sm:text-sm font-serif font-black text-black">
-                      {tafqeetCurrency(jv.totalDebit, company.functionalCurrency)}
+                      {tafqeetCurrency(jv.totalDebit, activeCompany.functionalCurrency)}
                     </p>
                   </div>
                 </div>
@@ -916,7 +932,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                   <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300 print:p-2 print:bg-white print:border print:border-black print:rounded-lg print-avoid-break">
                     <span className="text-xs font-bold text-neutral-600 block mb-0.5 print:text-[10px] print:text-black">الرصيد المستحق تفقيطاً بالكلمات:</span>
                     <p className="text-xs sm:text-sm font-serif font-black text-black print:text-[10px]">
-                      {tafqeetCurrency(stmt.currentBalance || stmt.closingBalance || 0, company.functionalCurrency)}
+                      {tafqeetCurrency(stmt.currentBalance || stmt.closingBalance || 0, activeCompany.functionalCurrency)}
                     </p>
                   </div>
                 </div>
@@ -925,7 +941,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
 
             {/* Bottom Document Footnote */}
             <div className="text-center text-xs text-neutral-600 pt-6 border-t-2 border-neutral-300 mt-6 font-medium">
-              {company.headerNotes || 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت'}
+              {activeCompany.footerNotes || activeCompany.headerNotes || `مستند تجاري ومالي رسمي معتمد • ${activeCompany.nameAr || 'لوجيكس ERP'} • ${activeCompany.country || 'دولة الكويت'}`}
             </div>
           </div>
         </div>

@@ -23,6 +23,7 @@ import {
   ExternalLink,
   ShieldCheck
 } from 'lucide-react';
+import { resolveActiveCompany } from '../utils/companyResolver.ts';
 
 interface AccountingCycleBarProps {
   activeTab: string;
@@ -50,6 +51,7 @@ export const AccountingCycleBar: React.FC<AccountingCycleBarProps> = ({
   onNavigateTab,
   company,
 }) => {
+  const activeCompany = resolveActiveCompany(company);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showFlowModal, setShowFlowModal] = useState<boolean>(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
@@ -433,7 +435,7 @@ export const AccountingCycleBar: React.FC<AccountingCycleBarProps> = ({
                   <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
                     خريطة تدفق وترابط العمليات المحاسبية والتشغيلية
                     <span className="text-xs bg-cyan-400/20 text-cyan-200 border border-cyan-400/40 px-2.5 py-0.5 rounded-full font-bold">
-                      مطحنة الوليد المتحده
+                      {activeCompany.nameAr || 'المنشأة المعتمدة'}
                     </span>
                   </h2>
                   <p className="text-xs text-slate-300">

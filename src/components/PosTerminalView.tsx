@@ -9,6 +9,7 @@ import {
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { DataService } from '../services/dataService.ts';
+import { resolveActiveCompany } from '../utils/companyResolver.ts';
 import {
   ShoppingBag,
   Search,
@@ -52,6 +53,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   currency,
   onRefreshAll,
 }) => {
+  const activeCompany = resolveActiveCompany(company);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -202,7 +204,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
               </span>
             </h1>
             <p className="text-xs text-slate-400">
-              الشركة النشطة: <span className="text-cyan-300 font-bold">{company?.nameAr || 'مطحنة الوليد'}</span>
+              الشركة النشطة: <span className="text-cyan-300 font-bold">{activeCompany.nameAr || activeCompany.headerTitle || 'الشركة النشطة'}</span>
             </p>
           </div>
         </div>
@@ -500,11 +502,16 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
             {/* Header */}
             <div className="text-center space-y-1 border-b border-slate-200 pb-3">
               <h3 className="font-black text-lg text-slate-900">
-                {company?.nameAr || 'مطحنة الوليد المتحدة'}
+                {activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}
               </h3>
               <p className="text-xs text-slate-500 font-mono">
                 فاتورة مبيعات - نقطة بيع POS
               </p>
+              {activeCompany.crNumber && (
+                <div className="text-[11px] font-mono text-slate-500">
+                  س.ت: {activeCompany.crNumber}
+                </div>
+              )}
               <div className="text-xs font-mono text-slate-600 pt-1">
                 رقم الفاتورة: {completedInvoice.invoiceNumber}
               </div>

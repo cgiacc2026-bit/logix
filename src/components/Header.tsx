@@ -21,6 +21,7 @@ import {
 import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
 import { ThemeService, ERP_THEMES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
+import { resolveActiveCompany } from '../utils/companyResolver.ts';
 
 interface HeaderProps {
   company: CompanyProfile | null;
@@ -49,6 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onSaveCompany,
 }) => {
+  const activeCompany = resolveActiveCompany(company);
   const [isExporting, setIsExporting] = useState(false);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
@@ -152,10 +154,10 @@ export const Header: React.FC<HeaderProps> = ({
             <p className="text-[11px] text-slate-300 flex items-center gap-2 truncate">
               <span className="flex items-center gap-1 font-medium text-slate-200 truncate">
                 <Building2 className="w-3 h-3 text-slate-300 shrink-0" />
-                <span className="truncate">{company?.nameAr || 'مطحنة الوليد المتحده'}</span>
+                <span className="truncate">{activeCompany.nameAr || activeCompany.headerTitle || 'الشركة النشطة'}</span>
               </span>
               <span className="hidden md:inline-block text-[10px] font-mono bg-black/40 px-1.5 py-0.2 rounded text-slate-300 border border-white/10 shrink-0">
-                س.ت: {company?.crNumber || '450912'}
+                س.ت: {activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}
               </span>
             </p>
           </div>
