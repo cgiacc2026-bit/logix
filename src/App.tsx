@@ -11,7 +11,9 @@ import {
   CompanyProfile,
   UnitDefinition,
   ProductionOrder,
-  SystemUser
+  SystemUser,
+  Quotation,
+  SalesRep,
 } from './types.js';
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
@@ -25,6 +27,9 @@ import { FinancialStatementsView } from './components/FinancialStatementsView.ts
 import { InvoicesAndInventoryView } from './components/InvoicesAndInventoryView.tsx';
 import { ProductionOrdersView } from './components/ProductionOrdersView.tsx';
 import { AccountStatementView } from './components/AccountStatementView.tsx';
+import { QuotationsView } from './components/QuotationsView.tsx';
+import { PosTerminalView } from './components/PosTerminalView.tsx';
+import { SalesRepsView } from './components/SalesRepsView.tsx';
 import { CompanySetupView } from './components/CompanySetupView.tsx';
 import { UsersView } from './components/UsersView.tsx';
 import { SystemResetPanel } from './components/SystemResetPanel.tsx';
@@ -61,6 +66,8 @@ export default function App() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
+  const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]);
 
   const [units, setUnits] = useState<UnitDefinition[]>([]);
@@ -160,7 +167,7 @@ export default function App() {
       const accsData = await DataService.getAccounts();
       const kpisData = await DataService.getKPIs();
 
-      const [invData, vData, cData, sData, iData, uData, prdData, usersData] =
+      const [invData, vData, cData, sData, iData, uData, prdData, quoData, repsData, usersData] =
         await Promise.all([
           DataService.getInvoices(),
           DataService.getVouchers(),
@@ -169,6 +176,8 @@ export default function App() {
           DataService.getInventory(),
           DataService.getUnits(),
           DataService.getProductionOrders(),
+          DataService.getQuotations(),
+          DataService.getSalesReps(),
           DataService.getUsers(),
         ]);
 
@@ -186,6 +195,8 @@ export default function App() {
       setInventory(iData || []);
       setUnits(uData || []);
       setProductionOrders(prdData || []);
+      setQuotations(quoData || []);
+      setSalesReps(repsData || []);
       if (usersData && usersData.length > 0) {
         setUsers(usersData);
       }
@@ -556,6 +567,41 @@ export default function App() {
               journals={journals}
               company={activeCompany}
               currency={currency}
+            />
+          )}
+
+          {activeTab === 'quotations' && (
+            <QuotationsView
+              quotations={quotations}
+              customers={customers}
+              salesReps={salesReps}
+              inventory={inventory}
+              company={activeCompany}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+              onNavigateTab={(tab) => setActiveTab(tab as any)}
+            />
+          )}
+
+          {activeTab === 'pos' && (
+            <PosTerminalView
+              inventory={inventory}
+              customers={customers}
+              salesReps={salesReps}
+              company={activeCompany}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+            />
+          )}
+
+          {activeTab === 'sales-reps' && (
+            <SalesRepsView
+              salesReps={salesReps}
+              invoices={invoices}
+              vouchers={vouchers}
+              company={activeCompany}
+              currency={currency}
+              onRefreshAll={refreshAllData}
             />
           )}
 

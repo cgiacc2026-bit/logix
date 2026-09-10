@@ -335,6 +335,8 @@ export interface Invoice {
   paidAmount: number;
   dueAmount: number;
   salesPerson?: string;
+  salesRepId?: string;
+  salesRepName?: string;
   receiverName?: string;
   customerBranchId?: string;
   customerBranchName?: string;
@@ -346,6 +348,78 @@ export interface Invoice {
   negativeStockApprovedByName?: string;
   negativeStockReason?: string;
   createdAt: string;
+}
+
+// Quotations & Proposals
+export type QuotationStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'ACCEPTED'
+  | 'CONVERTED_INVOICE'
+  | 'CONVERTED_PRODUCTION'
+  | 'REJECTED';
+
+export interface QuotationLine {
+  id: string;
+  itemId: string;
+  itemSku: string;
+  itemNameAr: string;
+  unit: string;
+  unitsPerPack?: number;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  discountType?: 'PERCENT' | 'FIXED';
+  discountValue?: number;
+  discountAmount?: number;
+  vatRate: number;
+  vatAmount: number;
+  total: number;
+  notes?: string;
+}
+
+export interface Quotation {
+  id: string;
+  quotationNumber: string; // e.g. "QUO-2026-001"
+  date: string;
+  expiryDate: string;
+  customerId: string;
+  customerNameAr: string;
+  salesRepId?: string;
+  salesRepName?: string;
+  status: QuotationStatus;
+  lines: QuotationLine[];
+  subtotal: number;
+  vatTotal: number;
+  discountType?: 'PERCENT' | 'FIXED';
+  discountValue?: number;
+  discountTotal: number;
+  grandTotal: number;
+  convertedInvoiceId?: string;
+  convertedInvoiceNumber?: string;
+  convertedProductionOrderId?: string;
+  convertedProductionOrderNumber?: string;
+  notes?: string;
+  companyId?: string;
+  company_id?: string;
+  createdAt: string;
+}
+
+// Sales Reps Management
+export interface SalesRep {
+  id: string;
+  code: string; // e.g. "REP-01"
+  nameAr: string;
+  nameEn?: string;
+  phone?: string;
+  email?: string;
+  commissionRate: number; // e.g. 2.5%
+  targetAmount?: number;
+  isActive: boolean;
+  notes?: string;
+  companyId?: string;
+  company_id?: string;
+  createdAt?: string;
 }
 
 export interface NegativeStockAlert {
@@ -373,6 +447,8 @@ export interface PaymentVoucher {
   entityType: 'CUSTOMER' | 'SUPPLIER';
   entityId: string;
   entityNameAr: string;
+  salesRepId?: string;
+  salesRepName?: string;
   amount: number;
   paymentMethod: 'BANK' | 'CASH';
   bankAccountId: string; // Account ID for cash/bank

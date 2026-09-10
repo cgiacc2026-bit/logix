@@ -84,58 +84,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      id: 'operations',
-      title: 'الإنتاج والعمليات التجارية',
+      id: 'sales',
+      title: 'قسم المبيعات ونقاط البيع',
       items: [
         {
-          id: 'invoices',
-          label: 'الفواتير والمبيعات',
+          id: 'quotations',
+          label: 'عروض الأسعار والتحويل',
+          icon: FileText,
+          color: 'text-sky-400',
+        },
+        {
+          id: 'pos',
+          label: 'نقاط البيع POS',
           icon: ShoppingBag,
+          color: 'text-emerald-400',
+        },
+        {
+          id: 'invoices',
+          label: 'فواتير المبيعات',
+          icon: FileText,
           badge: unpaidCount > 0 ? unpaidCount : undefined,
           color: 'text-blue-400',
-        },
-        {
-          id: 'inventory',
-          label: 'المخزون والأصناف',
-          icon: Package,
-          color: 'text-amber-400',
-        },
-        {
-          id: 'production',
-          label: 'قسم التصنيع (Manufacturing Center)',
-          icon: Factory,
-          color: 'text-orange-400',
         },
         {
           id: 'vouchers',
           label: 'سندات القبض والصرف',
           icon: DollarSign,
-          color: 'text-emerald-400',
+          color: 'text-teal-400',
         },
+      ],
+    },
+    {
+      id: 'manufacturing',
+      title: 'قسم التصنيع والإنتاج',
+      items: [
         {
-          id: 'entities',
-          label: 'العملاء والموردين',
-          icon: Users2,
-          color: 'text-indigo-400',
-        },
-        {
-          id: 'statements',
-          label: 'كشوفات الحسابات (IFRS)',
-          icon: FileText,
+          id: 'production',
+          label: 'أوامر التصنيع والتشغيل',
+          icon: Factory,
           color: 'text-amber-400',
         },
       ],
     },
     {
       id: 'accounting',
-      title: 'المحاسبة والتقارير المالية',
+      title: 'قسم الحسابات والمالية',
       items: [
-        {
-          id: 'accounts',
-          label: 'الدليل المحاسبي',
-          icon: FolderTree,
-          color: 'text-teal-400',
-        },
         {
           id: 'journals',
           label: 'القيود اليومية',
@@ -146,7 +140,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           id: 'ledger',
           label: 'دفتر الأستاذ العام',
           icon: BookOpen,
-          color: 'text-sky-400',
+          color: 'text-indigo-400',
+        },
+        {
+          id: 'statements',
+          label: 'كشوفات الحسابات IFRS',
+          icon: FileText,
+          color: 'text-amber-400',
         },
         {
           id: 'trial-balance',
@@ -161,26 +161,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
           color: 'text-green-400',
         },
         {
-          id: 'reports',
-          label: 'التقارير التشغيلية والتحليلية',
-          icon: BarChart3,
-          color: 'text-cyan-400',
+          id: 'accounts',
+          label: 'الدليل المحاسبي',
+          icon: FolderTree,
+          color: 'text-teal-400',
         },
       ],
     },
     {
-      id: 'settings',
-      title: 'التهيئة وإدارة النظام',
+      id: 'inventory',
+      title: 'قسم إدارة المخزون والجرد',
       items: [
+        {
+          id: 'inventory',
+          label: 'الأصناف والمخزون',
+          icon: Package,
+          color: 'text-amber-400',
+        },
         {
           id: 'units',
           label: 'وحدات القياس والتحويل',
           icon: Ruler,
           color: 'text-purple-400',
         },
+      ],
+    },
+    {
+      id: 'management',
+      title: 'قسم الإدارة والبيانات الأساسية',
+      items: [
+        {
+          id: 'entities',
+          label: 'العملاء والموردين',
+          icon: Users2,
+          color: 'text-indigo-400',
+        },
+        {
+          id: 'sales-reps',
+          label: 'إدارة المناديب والعمولات',
+          icon: Users,
+          color: 'text-cyan-400',
+        },
+        {
+          id: 'reports',
+          label: 'التقارير التشغيلية',
+          icon: BarChart3,
+          color: 'text-sky-400',
+        },
         {
           id: 'company',
-          label: 'إعدادات المنشأة',
+          label: 'إعدادات المنشأة والترويسات',
           icon: Building2,
           color: 'text-violet-400',
         },
@@ -192,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           id: 'system-reset',
-          label: 'تصفير النظام وبدء دورة',
+          label: 'تصفير النظام وإقفال الدورة',
           icon: RotateCcw,
           color: 'text-rose-400',
         },

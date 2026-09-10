@@ -15,6 +15,7 @@ import {
   SystemUser,
   UnitDefinition,
   ProductionOrder,
+  ProductionOrderStatus,
   ManufacturingStandardSettings,
   ManufacturingIndustryType,
   FinancialKPIs,
@@ -24,6 +25,9 @@ import {
   BalanceSheetReport,
   CashFlowReport,
   DefaultAccountsMapping,
+  Quotation,
+  QuotationLine,
+  SalesRep,
 } from '../types.js';
 import {
   DEFAULT_COMPANY_PROFILE,
@@ -67,6 +71,8 @@ const STORAGE_KEYS = {
   UNITS: 'alwaleed_erp_units',
   PRODUCTION_ORDERS: 'alwaleed_erp_production_orders',
   MANUFACTURING_SETTINGS: 'alwaleed_erp_mfg_settings',
+  QUOTATIONS: 'alwaleed_erp_quotations',
+  SALES_REPS: 'alwaleed_erp_sales_reps',
 };
 
 export const DEFAULT_MANUFACTURING_PROFILES: Record<ManufacturingIndustryType, ManufacturingStandardSettings> = {
@@ -225,6 +231,68 @@ export const INITIAL_PRODUCTION_ORDERS: ProductionOrder[] = [
     operatorName: 'مودي جميل',
     createdAt: '2026-08-10T09:00:00.000Z',
     completedAt: '2026-08-10T14:30:00.000Z',
+  },
+];
+
+export const INITIAL_SALES_REPS: SalesRep[] = [
+  {
+    id: 'rep-001',
+    code: 'REP-01',
+    nameAr: 'أحمد بن عبد العزيز الكندري',
+    nameEn: 'Ahmed Al-Kandari',
+    phone: '+965 9911 2233',
+    email: 'ahmed.k@logix-erp.com',
+    commissionRate: 2.5,
+    targetAmount: 50000,
+    isActive: true,
+    notes: 'مندوب كبار العملاء والجمعيات التعاونية',
+  },
+  {
+    id: 'rep-002',
+    code: 'REP-02',
+    nameAr: 'محمد بن طارق الفضلي',
+    nameEn: 'Mohammed Al-Fadhli',
+    phone: '+965 9944 5566',
+    email: 'mohammed.f@logix-erp.com',
+    commissionRate: 3.0,
+    targetAmount: 35000,
+    isActive: true,
+    notes: 'مندوب قطاع التجزئة والمطاعم',
+  },
+];
+
+export const INITIAL_QUOTATIONS: Quotation[] = [
+  {
+    id: 'quo-001',
+    quotationNumber: 'QUO-2026-0001',
+    date: '2026-09-01',
+    expiryDate: '2026-09-30',
+    customerId: 'cust-1',
+    customerNameAr: 'شركة المطاحن الأولى للإنتاج الغذائي',
+    salesRepId: 'rep-001',
+    salesRepName: 'أحمد بن عبد العزيز الكندري',
+    status: 'SENT',
+    lines: [
+      {
+        id: 'qline-1',
+        itemId: 'inv-101',
+        itemSku: '2881016018603',
+        itemNameAr: 'فلفل اسود حب 80 جم (مادة خام)',
+        unit: 'حبة',
+        quantity: 500,
+        unitPrice: 0.25,
+        subtotal: 125.0,
+        vatRate: 0,
+        vatAmount: 0,
+        total: 125.0,
+      },
+    ],
+    subtotal: 125.0,
+    vatTotal: 0,
+    discountTotal: 0,
+    grandTotal: 125.0,
+    notes: 'عرض سعر توريد بهارات خامات للمطاحن - ينتهي بعد 30 يوم',
+    createdAt: '2026-09-01T10:00:00.000Z',
   },
 ];
 
@@ -793,6 +861,33 @@ class LocalDataStore {
   }
   public saveManufacturingSettings(s: ManufacturingStandardSettings): void {
     this.setLocal(this.getKey(STORAGE_KEYS.MANUFACTURING_SETTINGS), s);
+  }
+
+  public getQuotations(): Quotation[] {
+    const list = this.getLocal<Quotation[] | null>(this.getKey(STORAGE_KEYS.QUOTATIONS), null);
+    if (!list) {
+      if (this.isAlWaleedActive() || isDemoActive()) {
+        this.saveQuotations(INITIAL_QUOTATIONS);
+        return INITIAL_QUOTATIONS;
+      }
+      return [];
+    }
+    return list;
+  }
+  public saveQuotations(quotations: Quotation[]): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.QUOTATIONS), quotations);
+  }
+
+  public getSalesReps(): SalesRep[] {
+    const list = this.getLocal<SalesRep[] | null>(this.getKey(STORAGE_KEYS.SALES_REPS), null);
+    if (!list || list.length === 0) {
+      this.saveSalesReps(INITIAL_SALES_REPS);
+      return INITIAL_SALES_REPS;
+    }
+    return list;
+  }
+  public saveSalesReps(reps: SalesRep[]): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.SALES_REPS), reps);
   }
 
   public resetToDefaults(): void {
@@ -3680,5 +3775,151 @@ export class DataService {
     }
 
     return { success: true, message: 'Local data retained safely' };
+  }
+
+  // ==========================================
+  // QUOTATIONS & PROPOSALS API
+  // ==========================================
+  public static async getQuotations(): Promise<Quotation[]> {
+    return localDataStore.getQuotations();
+  }
+
+  public static async saveQuotation(quotation: Quotation): Promise<Quotation> {
+    const list = localDataStore.getQuotations();
+    const idx = list.findIndex((q) => q.id === quotation.id);
+    if (idx !== -1) {
+      list[idx] = quotation;
+    } else {
+      list.unshift(quotation);
+    }
+    localDataStore.saveQuotations(list);
+    return quotation;
+  }
+
+  public static async deleteQuotation(id: string): Promise<boolean> {
+    const list = localDataStore.getQuotations();
+    const filtered = list.filter((q) => q.id !== id);
+    localDataStore.saveQuotations(filtered);
+    return true;
+  }
+
+  public static async convertQuotationToInvoice(
+    quotationId: string,
+    paymentTerms: 'CASH' | 'CREDIT' = 'CASH'
+  ): Promise<{ quotation: Quotation; invoice: Invoice }> {
+    const list = localDataStore.getQuotations();
+    const q = list.find((x) => x.id === quotationId);
+    if (!q) throw new Error('عرض السعر غير موجود');
+
+    const invData = {
+      type: 'SALES',
+      status: 'POSTED',
+      paymentTerms,
+      entityId: q.customerId,
+      entityNameAr: q.customerNameAr,
+      salesPerson: q.salesRepName,
+      salesRepId: q.salesRepId,
+      salesRepName: q.salesRepName,
+      date: new Date().toISOString().split('T')[0],
+      dueDate: new Date().toISOString().split('T')[0],
+      lines: q.lines.map((l) => ({
+        itemId: l.itemId,
+        itemSku: l.itemSku,
+        itemNameAr: l.itemNameAr,
+        unit: l.unit,
+        unitsPerPack: l.unitsPerPack || 1,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        discountType: l.discountType || 'FIXED',
+        discountValue: l.discountValue || 0,
+        notes: l.notes || '',
+      })),
+      notes: `محولة بضغطة زر تلقائياً من عرض السعر رقم (${q.quotationNumber})`,
+    };
+
+    const createdInvoice = await this.createInvoice(invData);
+
+    q.status = 'CONVERTED_INVOICE';
+    q.convertedInvoiceId = createdInvoice.id;
+    q.convertedInvoiceNumber = createdInvoice.invoiceNumber;
+    localDataStore.saveQuotations(list);
+
+    return { quotation: q, invoice: createdInvoice };
+  }
+
+  public static async convertQuotationToProductionOrder(
+    quotationId: string
+  ): Promise<{ quotation: Quotation; productionOrder: ProductionOrder }> {
+    const list = localDataStore.getQuotations();
+    const q = list.find((x) => x.id === quotationId);
+    if (!q) throw new Error('عرض السعر غير موجود');
+
+    const firstItem = q.lines[0];
+    const targetItemId = firstItem?.itemId || 'inv-102';
+    const targetItemNameAr = firstItem?.itemNameAr || 'منتج عرض السعر';
+    const targetSku = firstItem?.itemSku || 'SKU-QUO-001';
+    const targetQuantity = firstItem?.quantity || 100;
+    const targetUnit = firstItem?.unit || 'حبة';
+
+    const rawMaterials = q.lines.map((l) => ({
+      itemId: l.itemId,
+      itemSku: l.itemSku,
+      itemNameAr: l.itemNameAr,
+      unit: l.unit,
+      quantityRequired: l.quantity,
+      unitCost: l.unitPrice,
+      totalCost: l.subtotal,
+    }));
+
+    const totalCost = rawMaterials.reduce((s, r) => s + r.totalCost, 0);
+
+    const prdData = {
+      targetItemId,
+      targetItemNameAr,
+      targetSku,
+      targetQuantity,
+      targetUnit,
+      rawMaterials,
+      overheadCost: 0,
+      totalProductionCost: totalCost,
+      unitProductionCost: targetQuantity > 0 ? totalCost / targetQuantity : 0,
+      status: 'PLANNED' as ProductionOrderStatus,
+      notes: `أمر تصنيع ناتج عن تحويل عرض السعر رقم (${q.quotationNumber}) للعميل: ${q.customerNameAr}`,
+    };
+
+    const createdOrder = await this.createProductionOrder(prdData);
+
+    q.status = 'CONVERTED_PRODUCTION';
+    q.convertedProductionOrderId = createdOrder.id;
+    q.convertedProductionOrderNumber = createdOrder.orderNumber;
+    localDataStore.saveQuotations(list);
+
+    return { quotation: q, productionOrder: createdOrder };
+  }
+
+  // ==========================================
+  // SALES REPS API
+  // ==========================================
+  public static async getSalesReps(): Promise<SalesRep[]> {
+    return localDataStore.getSalesReps();
+  }
+
+  public static async saveSalesRep(rep: SalesRep): Promise<SalesRep> {
+    const list = localDataStore.getSalesReps();
+    const idx = list.findIndex((r) => r.id === rep.id);
+    if (idx !== -1) {
+      list[idx] = rep;
+    } else {
+      list.unshift(rep);
+    }
+    localDataStore.saveSalesReps(list);
+    return rep;
+  }
+
+  public static async deleteSalesRep(id: string): Promise<boolean> {
+    const list = localDataStore.getSalesReps();
+    const filtered = list.filter((r) => r.id !== id);
+    localDataStore.saveSalesReps(filtered);
+    return true;
   }
 }
