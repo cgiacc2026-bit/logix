@@ -996,13 +996,15 @@ class LocalDataStore {
         const existingHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
 
         // Keep the more recently updated, or the one with lines if the other is empty
-        if (currentTime > existingTime || (currentHasLines && !existingHasLines)) {
+        if (currentTime >= existingTime || (currentHasLines && !existingHasLines)) {
           const idx = result.indexOf(existing);
           if (idx !== -1) {
             result[idx] = inv;
           }
           if (num) seenNumbers.set(num, inv);
           if (id) seenIds.set(id, inv);
+          if (existing.invoiceNumber) seenNumbers.set(existing.invoiceNumber.trim().toUpperCase(), inv);
+          if (existing.id) seenIds.set(existing.id.trim(), inv);
         }
       } else {
         result.push(inv);
@@ -1026,8 +1028,8 @@ class LocalDataStore {
 
       const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
       if (existing) {
-        const existingTime = new Date(existing.createdAt || 0).getTime();
-        const currentTime = new Date(v.createdAt || 0).getTime();
+        const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
+        const currentTime = new Date((v as any).updatedAt || v.createdAt || 0).getTime();
         if (currentTime >= existingTime) {
           const idx = result.indexOf(existing);
           if (idx !== -1) {
@@ -1035,6 +1037,8 @@ class LocalDataStore {
           }
           if (num) seenNumbers.set(num, v);
           if (id) seenIds.set(id, v);
+          if (existing.voucherNumber) seenNumbers.set(existing.voucherNumber.trim().toUpperCase(), v);
+          if (existing.id) seenIds.set(existing.id.trim(), v);
         }
       } else {
         result.push(v);
