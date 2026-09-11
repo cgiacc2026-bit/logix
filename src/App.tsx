@@ -481,6 +481,7 @@ export default function App() {
     setIsResetting(true);
     try {
       await DataService.resetDatabase();
+      await DataService.ensureOpeningBalancesAndMasterData();
       await refreshAllData();
     } catch (err) {
       console.error(err);

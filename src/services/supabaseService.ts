@@ -42,6 +42,8 @@ import {
   PaymentVoucher,
   ProductionOrder,
   ManufacturingStandardSettings,
+  Warehouse,
+  SalesRep,
 } from '../types.js';
 
 export class SupabaseDataService {
@@ -1669,21 +1671,37 @@ export class SupabaseDataService {
 
       if (error || !data || data.length === 0) return null;
 
-      return data.map((row: any) => ({
-        id: row.id,
-        code: row.code,
-        nameAr: row.name_ar,
-        nameEn: row.name_en || '',
-        category: row.category,
-        normalBalance: row.normal_balance || 'DEBIT',
-        level: Number(row.level) || 1,
-        type: row.type || 'DETAIL',
-        parentId: row.parent_id || null,
-        isSystem: !!row.is_system,
-        isActive: row.is_active ?? true,
-        balance: Number(row.balance) || 0,
-        description: row.description || '',
-      }));
+      const codeMap = new Map<string, Account>();
+      for (const row of data) {
+        const code = String(row.code || row.id || '').trim();
+        if (!code) continue;
+        const mapped: Account = {
+          id: row.id,
+          code: row.code,
+          nameAr: row.name_ar,
+          nameEn: row.name_en || '',
+          category: row.category,
+          normalBalance: row.normal_balance || 'DEBIT',
+          level: Number(row.level) || 1,
+          type: row.type || 'DETAIL',
+          parentId: row.parent_id || null,
+          isSystem: !!row.is_system,
+          isActive: row.is_active ?? true,
+          balance: Number(row.balance) || 0,
+          description: row.description || '',
+        };
+
+        if (!codeMap.has(code)) {
+          codeMap.set(code, mapped);
+        } else {
+          const existing = codeMap.get(code)!;
+          const bestBal = Math.abs(mapped.balance) > Math.abs(existing.balance) ? mapped.balance : existing.balance;
+          const preferredId = existing.id.startsWith('acc-') ? existing.id : (mapped.id.startsWith('acc-') ? mapped.id : existing.id);
+          codeMap.set(code, { ...existing, id: preferredId, balance: bestBal });
+        }
+      }
+
+      return Array.from(codeMap.values()).sort((a, b) => a.code.localeCompare(b.code));
     } catch (e) {
       return null;
     }
@@ -1695,7 +1713,22 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
-      const payload = accounts.map((acc) => ({
+      // Deduplicate accounts before sending to Supabase
+      const dedupedMap = new Map<string, Account>();
+      for (const acc of accounts) {
+        const code = String(acc.code || acc.id || '').trim();
+        if (!code) continue;
+        if (!dedupedMap.has(code)) {
+          dedupedMap.set(code, acc);
+        } else {
+          const existing = dedupedMap.get(code)!;
+          const bestBal = Math.abs(acc.balance || 0) > Math.abs(existing.balance || 0) ? acc.balance : existing.balance;
+          const preferredId = existing.id.startsWith('acc-') ? existing.id : (acc.id.startsWith('acc-') ? acc.id : existing.id);
+          dedupedMap.set(code, { ...existing, id: preferredId, balance: bestBal });
+        }
+      }
+
+      const payload = Array.from(dedupedMap.values()).map((acc) => ({
         id: acc.id,
         company_id: companyId,
         code: acc.code,
@@ -1742,6 +1775,116 @@ export class SupabaseDataService {
       return !error;
     } catch (e) {
       console.warn('Supabase deleteAccount exception:', e);
+      return false;
+    }
+  }
+
+  public static async getWarehouses(targetCompanyId?: string): Promise<Warehouse[] | null> {
+    if (!isSupabaseConfigured) return null;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('warehouses')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: true });
+      if (error || !data) return null;
+      return data.map((r: any) => ({
+        id: r.id,
+        code: r.code,
+        nameAr: r.name_ar,
+        nameEn: r.name_en || '',
+        location: r.location || '',
+        keeperName: r.keeper_name || '',
+        phone: r.phone || '',
+        isDefault: !!r.is_default,
+        isActive: r.is_active ?? true,
+      }));
+    } catch {
+      return null;
+    }
+  }
+
+  public static async saveWarehouses(warehouses: Warehouse[], targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured || warehouses.length === 0) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const payload = warehouses.map((w) => ({
+        id: w.id,
+        company_id: companyId,
+        code: w.code,
+        name_ar: w.nameAr,
+        name_en: w.nameEn || '',
+        location: w.location || '',
+        keeper_name: w.keeperName || '',
+        phone: w.phone || '',
+        is_default: !!w.isDefault,
+        is_active: w.isActive ?? true,
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase.from('warehouses').upsert(payload);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  public static async getSalesReps(targetCompanyId?: string): Promise<SalesRep[] | null> {
+    if (!isSupabaseConfigured) return null;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('sales_reps')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: true });
+      if (error || !data) return null;
+      return data.map((r: any) => ({
+        id: r.id,
+        code: r.code,
+        nameAr: r.name_ar,
+        nameEn: r.name_en || '',
+        phone: r.phone || '',
+        email: r.email || '',
+        commissionRate: Number(r.commission_rate) || 0,
+        targetAmount: Number(r.target_amount) || 0,
+        isActive: r.is_active ?? true,
+        notes: r.notes || '',
+      }));
+    } catch {
+      return null;
+    }
+  }
+
+  public static async saveSalesReps(reps: SalesRep[], targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured || reps.length === 0) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const payload = reps.map((r) => ({
+        id: r.id,
+        company_id: companyId,
+        code: r.code,
+        name_ar: r.nameAr,
+        name_en: r.nameEn || '',
+        phone: r.phone || '',
+        email: r.email || '',
+        commission_rate: r.commissionRate || 0,
+        target_amount: r.targetAmount || 0,
+        is_active: r.isActive ?? true,
+        notes: r.notes || '',
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase.from('sales_reps').upsert(payload);
+      return !error;
+    } catch {
       return false;
     }
   }

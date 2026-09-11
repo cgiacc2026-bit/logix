@@ -244,21 +244,33 @@ export const INITIAL_SALES_REPS: SalesRep[] = [
   {
     id: 'rep-001',
     code: 'REP-01',
-    nameAr: 'أحمد بن عبد العزيز الكندري',
-    nameEn: 'Ahmed Al-Kandari',
+    nameAr: 'مندوب عام',
+    nameEn: 'General Sales Representative',
     phone: '+965 9911 2233',
-    email: 'ahmed.k@logix-erp.com',
+    email: 'sales@logix-erp.com',
     commissionRate: 2.5,
     targetAmount: 50000,
     isActive: true,
-    notes: 'مندوب كبار العملاء والجمعيات التعاونية',
+    notes: 'مندوب عام لكافة الجمعيات والمبيعات العامة',
   },
   {
     id: 'rep-002',
     code: 'REP-02',
+    nameAr: 'أحمد بن عبد العزيز الكندري',
+    nameEn: 'Ahmed Al-Kandari',
+    phone: '+965 9944 5566',
+    email: 'ahmed.k@logix-erp.com',
+    commissionRate: 3.0,
+    targetAmount: 35000,
+    isActive: true,
+    notes: 'مندوب كبار العملاء والجمعيات التعاونية',
+  },
+  {
+    id: 'rep-003',
+    code: 'REP-03',
     nameAr: 'محمد بن طارق الفضلي',
     nameEn: 'Mohammed Al-Fadhli',
-    phone: '+965 9944 5566',
+    phone: '+965 9977 8899',
     email: 'mohammed.f@logix-erp.com',
     commissionRate: 3.0,
     targetAmount: 35000,
@@ -862,6 +874,25 @@ class LocalDataStore {
     this.setLocal(this.getKey(STORAGE_KEYS.USERS), users);
   }
 
+  public deduplicateAccounts(accounts: Account[]): Account[] {
+    if (!Array.isArray(accounts)) return [];
+    const map = new Map<string, Account>();
+    for (const acc of accounts) {
+      if (!acc) continue;
+      const key = String(acc.code || acc.id || '').trim();
+      if (!key) continue;
+      if (!map.has(key)) {
+        map.set(key, acc);
+      } else {
+        const existing = map.get(key)!;
+        const bestBal = Math.abs(acc.balance || 0) > Math.abs(existing.balance || 0) ? (acc.balance || 0) : (existing.balance || 0);
+        const bestId = existing.id.startsWith('acc-') ? existing.id : (acc.id.startsWith('acc-') ? acc.id : existing.id);
+        map.set(key, { ...existing, id: bestId, balance: bestBal });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+  }
+
   public getAccounts(): Account[] {
     const list = this.getLocal<Account[] | null>(this.getKey(STORAGE_KEYS.ACCOUNTS), null);
     if (list === null) {
@@ -869,25 +900,24 @@ class LocalDataStore {
         return [];
       }
       if (this.isAlWaleedActive()) {
-        const alwaleedAccounts = JSON.parse(JSON.stringify(INITIAL_ACCOUNTS));
+        const alwaleedAccounts = this.deduplicateAccounts(JSON.parse(JSON.stringify(INITIAL_ACCOUNTS)));
         this.saveAccounts(alwaleedAccounts);
         this.markTenantInitialized();
         return alwaleedAccounts;
       }
       // Default zeroed clean opening chart of accounts for first-time install
-      const zeroedAccounts = generateCleanChartOfAccounts(this.getEffectiveCompanyId() || undefined);
+      const zeroedAccounts = this.deduplicateAccounts(generateCleanChartOfAccounts(this.getEffectiveCompanyId() || undefined));
       this.saveAccounts(zeroedAccounts);
       this.markTenantInitialized();
       return zeroedAccounts;
     }
     const tombstones = this.getTombstones('accounts');
-    if (tombstones.size > 0) {
-      return list.filter((a) => !tombstones.has(a.id));
-    }
-    return list;
+    const filtered = tombstones.size > 0 ? list.filter((a) => !tombstones.has(a.id)) : list;
+    return this.deduplicateAccounts(filtered);
   }
   public saveAccounts(accounts: Account[]): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), accounts);
+    const deduped = this.deduplicateAccounts(accounts);
+    this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), deduped);
     this.markTenantInitialized();
   }
 
@@ -1317,13 +1347,16 @@ class LocalDataStore {
 
   public getSalesReps(): SalesRep[] {
     const list = this.getLocal<SalesRep[] | null>(this.getKey(STORAGE_KEYS.SALES_REPS), null);
-    if (list === null) {
-      if (this.isTenantInitialized()) {
-        return [];
-      }
+    if (!list || list.length === 0) {
       this.saveSalesReps(INITIAL_SALES_REPS);
-      this.markTenantInitialized();
       return INITIAL_SALES_REPS;
+    }
+    // Ensure "مندوب عام" is always available
+    const hasGeneralRep = list.some((r) => r.nameAr?.includes('مندوب عام') || r.code === 'REP-01');
+    if (!hasGeneralRep && INITIAL_SALES_REPS[0]) {
+      const merged = [INITIAL_SALES_REPS[0], ...list];
+      this.saveSalesReps(merged);
+      return merged;
     }
     return list;
   }
@@ -1334,13 +1367,16 @@ class LocalDataStore {
 
   public getWarehouses(): Warehouse[] {
     const list = this.getLocal<Warehouse[] | null>(this.getKey(STORAGE_KEYS.WAREHOUSES), null);
-    if (list === null) {
-      if (this.isTenantInitialized()) {
-        return [];
-      }
+    if (!list || list.length === 0) {
       this.saveWarehouses(INITIAL_WAREHOUSES);
-      this.markTenantInitialized();
       return INITIAL_WAREHOUSES;
+    }
+    // Ensure "مخزن رئيسي" is always available and set as default
+    const hasMainWh = list.some((w) => w.isDefault || w.code === 'WH-MAIN-01' || w.nameAr?.includes('مخزن رئيسي'));
+    if (!hasMainWh && INITIAL_WAREHOUSES[0]) {
+      const merged = [INITIAL_WAREHOUSES[0], ...list];
+      this.saveWarehouses(merged);
+      return merged;
     }
     return list;
   }
@@ -1359,7 +1395,7 @@ class LocalDataStore {
   }
 
   public resetToDefaults(): void {
-    const cleanAccounts = INITIAL_ACCOUNTS.map((a) => ({ ...a, balance: 0 }));
+    const cleanAccounts = this.deduplicateAccounts(INITIAL_ACCOUNTS.map((a) => ({ ...a, balance: 0 })));
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), this.getCompany());
     this.setLocal(this.getKey(STORAGE_KEYS.USERS), INITIAL_USERS);
     this.setLocal(this.getKey(STORAGE_KEYS.ACCOUNTS), cleanAccounts);
@@ -1371,6 +1407,8 @@ class LocalDataStore {
     this.setLocal(this.getKey(STORAGE_KEYS.VOUCHERS), []);
     this.setLocal(this.getKey(STORAGE_KEYS.UNITS), INITIAL_UNITS);
     this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), []);
+    this.setLocal(this.getKey(STORAGE_KEYS.WAREHOUSES), INITIAL_WAREHOUSES);
+    this.setLocal(this.getKey(STORAGE_KEYS.SALES_REPS), INITIAL_SALES_REPS);
     this.markTenantInitialized();
   }
 }
@@ -1657,34 +1695,29 @@ export class DataService {
   }
 
   public static async getAccounts(): Promise<Account[]> {
-    if (isSupabaseConfigured) {
-      const fromSupabase = await SupabaseDataService.getAccounts();
-      if (Array.isArray(fromSupabase)) {
-        return fromSupabase;
-      }
-    }
     let accounts: Account[] = [];
     const tombstones = localDataStore.getTombstones('accounts');
     const localAccounts = localDataStore.getAccounts().filter((a) => !tombstones.has(a.id));
     const isLocked = localDataStore.isRestoreLocked();
 
-    try {
-      const fromSupabase = await SupabaseDataService.getAccounts();
-      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
-        // Purge tombstoned accounts from Supabase if present
-        const remoteTombstoned = fromSupabase.filter((a) => tombstones.has(a.id));
-        if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-          Promise.all(remoteTombstoned.map((a) => SupabaseDataService.deleteAccount(a.id))).catch(() => {});
+    if (isSupabaseConfigured) {
+      try {
+        const fromSupabase = await SupabaseDataService.getAccounts();
+        if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
+          const remoteTombstoned = fromSupabase.filter((a) => tombstones.has(a.id));
+          if (remoteTombstoned.length > 0) {
+            Promise.all(remoteTombstoned.map((a) => SupabaseDataService.deleteAccount(a.id))).catch(() => {});
+          }
+          const validRemote = fromSupabase.filter((a) => !tombstones.has(a.id));
+          if (localAccounts && localAccounts.length > 0 && isLocked) {
+            accounts = localAccounts;
+          } else if (validRemote.length > 0) {
+            accounts = validRemote;
+          }
         }
-        const validRemote = fromSupabase.filter((a) => !tombstones.has(a.id));
-        if (localAccounts && localAccounts.length > 0 && (isLocked || validRemote.length < localAccounts.length)) {
-          accounts = localAccounts;
-        } else if (validRemote.length > 0) {
-          accounts = validRemote;
-        }
+      } catch (e) {
+        console.warn('Supabase getAccounts notice:', e);
       }
-    } catch (e) {
-      console.warn('Supabase getAccounts notice:', e);
     }
 
     if (!accounts || accounts.length === 0) {
@@ -1700,8 +1733,9 @@ export class DataService {
 
     const journals = await this.getJournals();
     const withBalances = this.calculateDynamicAccountBalances(accounts || [], journals);
-    localDataStore.saveAccounts(withBalances);
-    return withBalances;
+    const deduped = localDataStore.deduplicateAccounts(withBalances);
+    localDataStore.saveAccounts(deduped);
+    return deduped;
   }
 
   public static async createAccount(accData: Partial<Account>): Promise<Account> {
@@ -6300,6 +6334,189 @@ export class DataService {
 
   public static clearLocalMemory(): void { localDataStore.clearMemoryCache(); }
 
+  /**
+   * Ensures opening balances dated 2026-08-01 are established in chart of accounts and customers
+   * if not already present, and guarantees "مخزن رئيسي" and "مندوب عام" exist as core master data.
+   */
+  public static async ensureOpeningBalancesAndMasterData(): Promise<{
+    openingBalancesAdded: boolean;
+    mainWarehouseAdded: boolean;
+    generalRepAdded: boolean;
+  }> {
+    let openingBalancesAdded = false;
+    let mainWarehouseAdded = false;
+    let generalRepAdded = false;
+
+    // 1. Ensure "مخزن رئيسي" (Main Warehouse) exists
+    const warehouses = localDataStore.getWarehouses();
+    const hasMainWh = warehouses.some((w) => w.isDefault || w.code === 'WH-MAIN-01' || w.nameAr?.includes('مخزن رئيسي'));
+    if (!hasMainWh) {
+      const defaultWh: Warehouse = {
+        id: 'wh-main-01',
+        code: 'WH-MAIN-01',
+        nameAr: 'مخزن رئيسي (المستودع الرئيسي - الشويخ)',
+        nameEn: 'Main Warehouse - Shuwaikh',
+        location: 'الشويخ الصناعية، ق 3',
+        keeperName: 'سالم الكندري',
+        isDefault: true,
+        isActive: true,
+      };
+      const updatedWhs = [defaultWh, ...warehouses];
+      localDataStore.saveWarehouses(updatedWhs);
+      if (isSupabaseConfigured) {
+        await SupabaseDataService.saveWarehouses(updatedWhs).catch(() => {});
+      }
+      mainWarehouseAdded = true;
+    }
+
+    // 2. Ensure "مندوب عام" (General Sales Rep) exists
+    const salesReps = localDataStore.getSalesReps();
+    const hasGeneralRep = salesReps.some((r) => r.nameAr?.includes('مندوب عام') || r.code === 'REP-01');
+    if (!hasGeneralRep) {
+      const generalRep: SalesRep = {
+        id: 'rep-001',
+        code: 'REP-01',
+        nameAr: 'مندوب عام',
+        nameEn: 'General Sales Representative',
+        phone: '+965 9911 2233',
+        email: 'sales@logix-erp.com',
+        commissionRate: 2.5,
+        targetAmount: 50000,
+        isActive: true,
+        notes: 'مندوب عام لكافة الجمعيات والمبيعات العامة',
+      };
+      const updatedReps = [generalRep, ...salesReps];
+      localDataStore.saveSalesReps(updatedReps);
+      if (isSupabaseConfigured) {
+        await SupabaseDataService.saveSalesReps(updatedReps).catch(() => {});
+      }
+      generalRepAdded = true;
+    }
+
+    // 3. Ensure Opening Balances dated 2026-08-01 exist
+    const accounts = await this.getAccounts();
+    const journals = await this.getJournals();
+    const customers = localDataStore.getCustomers();
+
+    const hasOpeningJournal = journals.some(
+      (j) => j.date === '2026-08-01' && (j.description?.includes('رصيد') || j.description?.includes('افتتاحي'))
+    );
+    const acc1120 = accounts.find((a) => a.code === '1120');
+    const acc3100 = accounts.find((a) => a.code === '3100');
+
+    if (!hasOpeningJournal || !acc1120 || acc1120.balance === 0) {
+      const COOP_BALANCES = [
+        { code: '9407', nameAr: 'جمعية الجليب التعاونية', nameEn: 'Jleeb Al-Shuyoukh Co-op Society', balance: 2811.222, phone: '+965 2431 0000', city: 'الفروانية' },
+        { code: '4568', nameAr: 'جمعية القيروان التعاونية', nameEn: 'Qairawan Co-op Society', balance: 1514.395, phone: '+965 2467 0000', city: 'العاصمة' },
+        { code: '3124', nameAr: 'جمعية الصباحية التعاونية', nameEn: 'Sabahiya Co-op Society', balance: 2010.164, phone: '+965 2361 0000', city: 'الأحمدي' },
+        { code: '875',  nameAr: 'جمعية الأحمدي التعاونية', nameEn: 'Ahmadi Co-op Society', balance: 950.313, phone: '+965 2398 0000', city: 'الأحمدي' },
+        { code: '3900', nameAr: 'جمعية صباح الأحمد التعاونية', nameEn: 'Sabah Al-Ahmad Co-op Society', balance: 895.338, phone: '+965 2326 0000', city: 'الأحمدي' },
+        { code: '301',  nameAr: 'جمعية شمال غرب الصليبيخات التعاونية', nameEn: 'NW Sulaibikhat Co-op Society', balance: 2941.297, phone: '+965 2467 1111', city: 'العاصمة' },
+        { code: '5563', nameAr: 'جمعية بيان التعاونية', nameEn: 'Bayan Co-op Society', balance: 1743.973, phone: '+965 2538 0000', city: 'حولي' },
+        { code: '2035', nameAr: 'جمعية مدينة سعد العبدالله التعاونية', nameEn: 'Saad Al-Abdullah Co-op Society', balance: 711.214, phone: '+965 2454 0000', city: 'الجهراء' },
+        { code: '3764', nameAr: 'جمعية سلوى التعاونية', nameEn: 'Salwa Co-op Society', balance: 1002.707, phone: '+965 2561 0000', city: 'حولي' },
+        { code: '2537', nameAr: 'جمعية علي صباح السالم التعاونية', nameEn: 'Ali Sabah Al-Salem Co-op Society', balance: 931.940, phone: '+965 2328 8000', city: 'الأحمدي' },
+        { code: '7575', nameAr: 'جمعية صباح الناصر التعاونية', nameEn: 'Sabah Al-Nasser Co-op Society', balance: 760.456, phone: '+965 2471 0000', city: 'الفروانية' },
+        { code: '4640', nameAr: 'جمعية مبارك الكبير التعاونية', nameEn: 'Mubarak Al-Kabeer Co-op Society', balance: 4921.986, phone: '+965 2542 0000', city: 'مبارك الكبير' },
+        { code: '1804', nameAr: 'جمعية إشبيلية التعاونية', nameEn: 'Ishbiliya Co-op Society', balance: 441.429, phone: '+965 2476 0000', city: 'الفروانية' },
+      ];
+
+      const totalCoopBalance = COOP_BALANCES.reduce((sum, c) => sum + c.balance, 0);
+
+      // Merge or update customers
+      const updatedCustomers = [...customers];
+      for (const coop of COOP_BALANCES) {
+        const cleanName = coop.nameAr.replace('جمعية ', '').replace(' التعاونية', '');
+        const existingIdx = updatedCustomers.findIndex(
+          (c) => c.code === coop.code || c.nameAr?.includes(cleanName)
+        );
+        if (existingIdx !== -1) {
+          updatedCustomers[existingIdx] = {
+            ...updatedCustomers[existingIdx],
+            openingBalance: coop.balance,
+            openingBalanceDate: '2026-08-01',
+            balance: updatedCustomers[existingIdx].balance || coop.balance,
+          };
+        } else {
+          updatedCustomers.push({
+            id: `cust-${coop.code}`,
+            code: coop.code,
+            nameAr: coop.nameAr,
+            nameEn: coop.nameEn,
+            phone: coop.phone,
+            city: coop.city,
+            governorate: coop.city,
+            address: coop.city,
+            openingBalance: coop.balance,
+            openingBalanceDate: '2026-08-01',
+            balance: coop.balance,
+            isActive: true,
+          } as Customer);
+        }
+      }
+      localDataStore.saveCustomers(updatedCustomers);
+      if (isSupabaseConfigured) {
+        await SupabaseDataService.saveCustomers(updatedCustomers).catch(() => {});
+      }
+
+      // Add Opening Journal Entry for 2026-08-01 if not already present
+      if (!hasOpeningJournal) {
+        const totalAmount = Number(totalCoopBalance.toFixed(3));
+        const newJournal: JournalEntry = {
+          id: 'jv-ob-2026-08-01',
+          entryNumber: 'JV-2026-0001',
+          date: '2026-08-01',
+          reference: 'OB-2026-08-01',
+          description: 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-08-01',
+          status: 'POSTED',
+          totalDebit: totalAmount,
+          totalCredit: totalAmount,
+          createdAt: '2026-08-01T00:00:00.000Z',
+          sourceModule: 'OPENING',
+          lines: [
+            {
+              id: 'line-ob-dr',
+              accountId: acc1120?.id || 'acc-1120',
+              accountCode: '1120',
+              accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+              memo: 'إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية بتاريخ 2026-08-01',
+              debit: totalAmount,
+              credit: 0,
+            },
+            {
+              id: 'line-ob-cr',
+              accountId: acc3100?.id || 'acc-3100',
+              accountCode: '3100',
+              accountNameAr: 'رأس المال المكتتب به / الأرصدة الافتتاحية',
+              memo: 'مقابل الأرصدة الافتتاحية المدينة بتاريخ 2026-08-01',
+              debit: 0,
+              credit: totalAmount,
+            },
+          ],
+        };
+        const updatedJournals = [newJournal, ...journals.filter((j) => j.id !== newJournal.id)];
+        localDataStore.saveJournals(updatedJournals);
+        if (isSupabaseConfigured) {
+          await SupabaseDataService.saveJournal(newJournal).catch(() => {});
+        }
+      }
+
+      // Update accounts dynamic balances
+      const refreshedAccounts = localDataStore.getAccounts().map((a) => {
+        if (a.code === '1120') return { ...a, balance: Number(totalCoopBalance.toFixed(3)) };
+        if (a.code === '3100') return { ...a, balance: Number(totalCoopBalance.toFixed(3)) };
+        return a;
+      });
+      localDataStore.saveAccounts(refreshedAccounts);
+      if (isSupabaseConfigured) {
+        await SupabaseDataService.saveAccounts(refreshedAccounts).catch(() => {});
+      }
+      openingBalancesAdded = true;
+    }
+
+    return { openingBalancesAdded, mainWarehouseAdded, generalRepAdded };
+  }
+
   public static async resetDatabase(): Promise<void> {
     const compId = localDataStore.getEffectiveCompanyId();
     localDataStore.resetToDefaults();
@@ -6307,6 +6524,8 @@ export class DataService {
     if (isSupabaseConfigured) {
       await SupabaseDataService.resetTenantData(compId || undefined);
     }
+    // Guarantee opening balances as of 2026-08-01, main warehouse, and general sales rep
+    await this.ensureOpeningBalancesAndMasterData();
   }
 
   public static async syncSystemIntegrity(): Promise<any> {

@@ -1994,7 +1994,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
   {
     id: 'wh-main-01',
     code: 'WH-MAIN-01',
-    nameAr: 'المستودع الرئيسي (الشويخ الصناعية)',
+    nameAr: 'مخزن رئيسي (المستودع الرئيسي - الشويخ)',
     nameEn: 'Main Warehouse - Shuwaikh',
     location: 'الشويخ الصناعية، ق 3',
     keeperName: 'سالم الكندري',
