@@ -18,6 +18,7 @@ import {
   resolveToSupabaseCompanyUUID,
   ALWALEED_CANONICAL_UUID,
   toValidUUID,
+  generateUUID,
   checkIsSupabaseConfigured,
 } from './supabaseClient.js';
 
@@ -28,6 +29,7 @@ export {
   resolveToSupabaseCompanyUUID,
   ALWALEED_CANONICAL_UUID,
   toValidUUID,
+  generateUUID,
   checkIsSupabaseConfigured,
 };
 import {
@@ -1176,7 +1178,8 @@ export class SupabaseDataService {
 
     // 2. Prepare modern invoice_items table rows
     const invoiceItemRows = formattedItems.map((it, idx) => {
-      const detailUuid = toValidUUID(`${invUuid}-item-${idx}`);
+      // Always generate a guaranteed fresh UUID to eliminate invoice_items_pkey unique violations
+      const detailUuid = generateUUID();
       const itemUuidCandidate = it.itemId ? toValidUUID(it.itemId) : null;
 
       return {
@@ -1266,7 +1269,7 @@ export class SupabaseDataService {
         let { error: itemErr } = await supabase.from('invoice_items').insert(invoiceItemRows);
         if (itemErr && (itemErr.message.includes('foreign key') || itemErr.message.includes('fkey') || itemErr.code === '23503')) {
           console.warn('[Supabase saveInvoice] item_id foreign key failed, retrying with item_id null...');
-          const safeRows = invoiceItemRows.map((r) => ({ ...r, item_id: null }));
+          const safeRows = invoiceItemRows.map((r) => ({ ...r, id: generateUUID(), item_id: null }));
           await supabase.from('invoice_items').insert(safeRows);
         }
       } catch (itemEx) {
@@ -1276,6 +1279,8 @@ export class SupabaseDataService {
 
     // Persist to backward-compatible tables (sales_master / sales_details) non-blockingly
     try {
+      // NOTE: sales_master only accepts exact valid columns in schema:
+      // id, company_id, invoice_number, date, customer_id, customer_name, subtotal, vat_amount, total_amount, paid_amount, due_amount, payment_status, status, payment_method, customer_snapshot, raw_data, created_at
       const masterPayload: any = {
         id: insertedRow.id,
         company_id: companyId,
@@ -1285,20 +1290,47 @@ export class SupabaseDataService {
         customer_name: invoicePayload.customer_name,
         subtotal: subtotal,
         vat_amount: taxAmount,
-        tax_amount: taxAmount,
         total_amount: totalAmount,
         paid_amount: paidAmount,
         due_amount: dueAmount,
         payment_status: paymentStatus,
         status: inv.status || 'POSTED',
         payment_method: inv.paymentTerms || 'CASH',
-        warehouse_id: effectiveWarehouseId,
         customer_snapshot: customerSnapshot,
         raw_data: invoicePayload.raw_data,
         created_at: inv.createdAt || new Date().toISOString(),
       };
 
       await supabase.from('sales_master').upsert([masterPayload], { onConflict: 'company_id, invoice_number' });
+
+      if (invoiceItemRows.length > 0) {
+        await supabase
+          .from('sales_details')
+          .delete()
+          .eq('company_id', companyId)
+          .or(`sales_master_id.eq.${insertedRow.id},invoice_id.eq.${insertedRow.id}`);
+
+        const detailRows = invoiceItemRows.map((it) => ({
+          id: generateUUID(),
+          company_id: companyId,
+          sales_master_id: insertedRow.id,
+          invoice_id: insertedRow.id,
+          item_id: null,
+          item_name: it.item_name,
+          quantity: it.quantity,
+          qty: it.quantity,
+          unit_price: it.unit_price,
+          total_price: it.total_price,
+          vat_rate: it.tax_rate,
+          vat_amount: it.tax_amount,
+          line_total: it.total_price,
+          total: it.total_price,
+          item_snapshot: it.item_snapshot,
+          raw_data: it.raw_data,
+        }));
+
+        await supabase.from('sales_details').insert(detailRows);
+      }
     } catch (compatEx) {
       // Non-fatal legacy compatibility notice
       console.warn('[Supabase saveInvoice] legacy sales_master notice:', compatEx);

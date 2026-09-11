@@ -29,12 +29,33 @@ export async function safeResponseJson<T>(response: Response, fallback: T): Prom
   }
 }
 
+let isApiBackendAvailable: boolean | null = null;
+
 export async function safeApiFetch<T>(
   url: string,
   options?: RequestInit,
   fallback: T | null = null
 ): Promise<T | null> {
   try {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname || '';
+      // If hosted on static cloud targets (e.g. Vercel, GitHub Pages, Netlify, Cloudflare Pages) where no Express backend is mounted
+      if (
+        hostname.endsWith('vercel.app') ||
+        hostname.endsWith('github.io') ||
+        hostname.endsWith('netlify.app') ||
+        hostname.endsWith('pages.dev')
+      ) {
+        if (url.startsWith('/api/')) {
+          return fallback;
+        }
+      }
+
+      if (isApiBackendAvailable === false && url.startsWith('/api/')) {
+        return fallback;
+      }
+    }
+
     const opts: RequestInit = { ...options };
     if (typeof window !== 'undefined') {
       const activeCompanyId = window.localStorage.getItem('supabase_company_id');
@@ -47,6 +68,11 @@ export async function safeApiFetch<T>(
     }
     const res = await fetch(url, opts);
     if (!res.ok) {
+      if (res.status === 405 || res.status === 404) {
+        if (url.startsWith('/api/')) {
+          isApiBackendAvailable = false;
+        }
+      }
       return fallback;
     }
     const text = await res.text();
@@ -55,6 +81,9 @@ export async function safeApiFetch<T>(
     }
     return JSON.parse(text) as T;
   } catch (error) {
+    if (url.startsWith('/api/')) {
+      isApiBackendAvailable = false;
+    }
     return fallback;
   }
 }
