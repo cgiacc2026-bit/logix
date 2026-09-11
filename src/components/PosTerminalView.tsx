@@ -100,8 +100,23 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   useEffect(() => {
     if (warehouses && warehouses.length > 0) {
       setAvailableWarehouses(warehouses);
+      if (!selectedWarehouseId) {
+        setSelectedWarehouseId(activeCompany.posDefaultWarehouseId || warehouses[0].id);
+      }
     }
-  }, [warehouses]);
+  }, [warehouses, activeCompany.posDefaultWarehouseId, selectedWarehouseId]);
+
+  useEffect(() => {
+    if (salesReps && salesReps.length > 0 && !selectedSalesRepId) {
+      setSelectedSalesRepId(salesReps[0].id);
+    }
+  }, [salesReps, selectedSalesRepId]);
+
+  useEffect(() => {
+    if (customers && customers.length > 0 && !selectedCustomerId) {
+      setSelectedCustomerId(customers[0].id);
+    }
+  }, [customers, selectedCustomerId]);
 
   // Tenant Branch State
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -436,14 +451,16 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
       return;
     }
 
-    // [ZERO DATA LOSS & ERP AUDIT ENFORCEMENT] Force warehouse and sales rep selection
-    if (!selectedWarehouseId || !selectedWarehouseId.trim()) {
-      alert('إلزامي وفق سياسة الرقابة المخزنية: الرجاء اختيار المستودع المصدر لصرف البضاعة');
-      return;
+    // Resolve effective warehouse and sales rep if not explicitly picked yet
+    let whId = selectedWarehouseId;
+    if (!whId || !whId.trim()) {
+      whId = availableWarehouses[0]?.id || activeCompany.posDefaultWarehouseId || 'wh-main-01';
+      setSelectedWarehouseId(whId);
     }
-    if (!selectedSalesRepId || !selectedSalesRepId.trim()) {
-      alert('إلزامي وفق سياسة التدقيق المالي: الرجاء اختيار مندوب المبيعات المسؤول عن عملية البيع');
-      return;
+    let repId = selectedSalesRepId;
+    if (!repId || !repId.trim()) {
+      repId = (salesReps && salesReps.length > 0) ? salesReps[0].id : 'rep-01';
+      setSelectedSalesRepId(repId);
     }
 
     // Check Credit Limits if Credit sale
@@ -469,8 +486,11 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   };
 
   const executeCheckout = async (supervisorApprovalNote?: string) => {
-    const cust = selectedCustomer;
-    const rep = salesReps.find((r) => r.id === selectedSalesRepId);
+    const effectiveWhId = selectedWarehouseId || activeCompany.posDefaultWarehouseId || (availableWarehouses.length > 0 ? availableWarehouses[0].id : 'wh-main-01');
+    const effectiveRepId = selectedSalesRepId || (salesReps && salesReps.length > 0 ? salesReps[0].id : 'rep-01');
+    const cust = selectedCustomer || (customers.length > 0 ? customers[0] : null);
+    const rep = salesReps.find((r) => r.id === effectiveRepId) || (salesReps.length > 0 ? salesReps[0] : null);
+    const wh = availableWarehouses.find((w) => w.id === effectiveWhId);
 
     setIsProcessing(true);
     try {
@@ -480,12 +500,12 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
         paymentTerms: paymentMethod === 'CREDIT' ? 'CREDIT' : 'CASH',
         entityId: cust ? cust.id : '',
         entityNameAr: cust ? cust.nameAr : 'عميل كاش نقدي',
-        salesPerson: rep ? rep.nameAr : undefined,
-        salesRepId: rep ? rep.id : undefined,
-        salesRepName: rep ? rep.nameAr : undefined,
-        warehouseId: selectedWarehouseId,
-        warehouse_id: selectedWarehouseId,
-        warehouseName: availableWarehouses.find((w) => w.id === selectedWarehouseId)?.nameAr || 'المستودع الرئيسي (الشويخ)',
+        salesPerson: rep ? rep.nameAr : 'المندوب العام',
+        salesRepId: effectiveRepId,
+        salesRepName: rep ? rep.nameAr : 'المندوب العام',
+        warehouseId: effectiveWhId,
+        warehouse_id: effectiveWhId,
+        warehouseName: wh?.nameAr || 'المستودع الرئيسي (الشويخ)',
         date: new Date().toISOString().split('T')[0],
         dueDate: new Date().toISOString().split('T')[0],
         discountType,
@@ -531,8 +551,8 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
           entityType: 'CUSTOMER',
           entityId: cust ? cust.id : '',
           entityNameAr: cust ? cust.nameAr : 'عميل كاش نقدي',
-          salesRepId: rep ? rep.id : undefined,
-          salesRepName: rep ? rep.nameAr : undefined,
+          salesRepId: effectiveRepId,
+          salesRepName: rep ? rep.nameAr : 'المندوب العام',
           amount: grandTotal,
           paymentMethod: paymentMethod === 'CASH' ? 'CASH' : 'BANK',
           invoiceId: createdInvoice.id,

@@ -1019,6 +1019,27 @@ export class SupabaseDataService {
     }
   }
 
+  public static async getNextUniqueInvoiceNumber(isSales: boolean, companyId: string): Promise<string> {
+    const prefix = isSales ? 'INV-SAL-2026-' : 'INV-PUR-2026-';
+    try {
+      const { data: rows } = await supabase
+        .from('invoices')
+        .select('invoice_number')
+        .eq('company_id', companyId)
+        .ilike('invoice_number', `${prefix}%`);
+      let maxNum = 0;
+      if (Array.isArray(rows)) {
+        for (const r of rows) {
+          const num = parseInt((r.invoice_number || '').replace(prefix, ''), 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      }
+      return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
+    } catch {
+      return `${prefix}${Date.now().toString().slice(-4)}`;
+    }
+  }
+
   public static async saveInvoice(inv: Invoice, targetCompanyId?: string): Promise<boolean> {
     const rawCompanyId = targetCompanyId || (inv as any).companyId || (inv as any).company_id || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -1063,10 +1084,35 @@ export class SupabaseDataService {
       const effectiveSalesPerson = inv.salesPerson || inv.salesRepName || 'المندوب العام';
       const effectiveSalesRepName = inv.salesRepName || inv.salesPerson || 'المندوب العام';
 
+      // Ensure valid and unique invoice_number
+      let finalInvoiceNumber = (inv.invoiceNumber || '').trim();
+      if (!finalInvoiceNumber || finalInvoiceNumber === 'undefined') {
+        finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type === 'SALES' || !inv.type, companyId);
+        inv.invoiceNumber = finalInvoiceNumber;
+      }
+
+      // Check for uniqueness collisions against existing invoices of other IDs
+      try {
+        const { data: existingRow } = await supabase
+          .from('invoices')
+          .select('id, invoice_number')
+          .eq('company_id', companyId)
+          .eq('invoice_number', finalInvoiceNumber)
+          .maybeSingle();
+
+        if (existingRow && existingRow.id !== invUuid) {
+          console.warn(`[Supabase saveInvoice] Auto-resolving collision on ${finalInvoiceNumber} (owned by ${existingRow.id})`);
+          finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type === 'SALES' || !inv.type, companyId);
+          inv.invoiceNumber = finalInvoiceNumber;
+        }
+      } catch (checkErr) {
+        console.warn('[Supabase saveInvoice] Collision check error:', checkErr);
+      }
+
       const invoicePayload: any = {
         id: invUuid,
         company_id: companyId,
-        invoice_number: inv.invoiceNumber || inv.id,
+        invoice_number: finalInvoiceNumber,
         invoice_date: inv.date || new Date().toISOString().split('T')[0],
         date: inv.date || new Date().toISOString().split('T')[0],
         customer_id: customerIdCandidate,
@@ -1091,6 +1137,7 @@ export class SupabaseDataService {
         raw_data: {
           ...inv,
           id: inv.id,
+          invoiceNumber: finalInvoiceNumber,
           companyId,
           customerSnapshot,
           warehouseId: effectiveWarehouseId,
@@ -1160,21 +1207,33 @@ export class SupabaseDataService {
             .eq('id', invUuid);
           return true;
         }
+        if (rpcErr) {
+          console.warn('[Supabase saveInvoice] RPC save_invoice_atomic notice:', rpcErr.message);
+        }
       } catch (rpcEx: any) {
-        // Graceful fallback to direct table write if RPC not yet installed on server
+        console.warn('[Supabase saveInvoice] RPC notice, falling back to direct table writes:', rpcEx);
       }
 
       // --- EXECUTE UPSERT ON INVOICES & INVOICE_ITEMS ---
       try {
         let { error: invErr } = await supabase
           .from('invoices')
-          .upsert([invoicePayload]);
+          .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' });
 
         if (invErr && (invErr.message.includes('foreign key') || invErr.message.includes('fkey'))) {
           console.warn('Foreign key customer_id candidate failed in invoices table, retrying with null...');
           invoicePayload.customer_id = null;
-          const retry = await supabase.from('invoices').upsert([invoicePayload]);
+          const retry = await supabase.from('invoices').upsert([invoicePayload], { onConflict: 'company_id, invoice_number' });
           invErr = retry.error;
+        }
+
+        if (invErr && (invErr.code === '23505' || invErr.message.includes('unique constraint') || invErr.message.includes('already exists'))) {
+          console.warn('[Supabase saveInvoice] Unique conflict on upsert, advancing sequence and retrying...');
+          finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type === 'SALES' || !inv.type, companyId);
+          inv.invoiceNumber = finalInvoiceNumber;
+          invoicePayload.invoice_number = finalInvoiceNumber;
+          const retryConflict = await supabase.from('invoices').upsert([invoicePayload], { onConflict: 'company_id, invoice_number' });
+          invErr = retryConflict.error;
         }
 
         if (!invErr || !invErr.message.includes('relation "public.invoices" does not exist')) {
@@ -1201,70 +1260,75 @@ export class SupabaseDataService {
       }
 
       // --- EXECUTE BACKWARD-COMPATIBLE UPSERT ON SALES_MASTER & SALES_DETAILS ---
-      const masterPayload: any = {
-        id: invUuid,
-        company_id: companyId,
-        invoice_number: inv.invoiceNumber || inv.id,
-        date: inv.date || new Date().toISOString().split('T')[0],
-        customer_id: customerIdCandidate,
-        customer_name: inv.entityNameAr || (inv as any).entityName || 'عميل نقدي',
-        subtotal: subtotal,
-        vat_amount: taxAmount,
-        tax_amount: taxAmount,
-        total_amount: totalAmount,
-        paid_amount: paidAmount,
-        due_amount: dueAmount,
-        payment_status: paymentStatus,
-        status: inv.status || 'POSTED',
-        payment_method: inv.paymentTerms || 'CASH',
-        warehouse_id: effectiveWarehouseId,
-        customer_snapshot: customerSnapshot,
-        raw_data: invoicePayload.raw_data,
-        created_at: inv.createdAt || new Date().toISOString(),
-      };
-
-      let { error: masterErr } = await supabase
-        .from('sales_master')
-        .upsert([masterPayload]);
-
-      if (masterErr && masterErr.message.includes('sales_master_customer_id_fkey')) {
-        masterPayload.customer_id = null;
-        const retryResult = await supabase
-          .from('sales_master')
-          .upsert([masterPayload]);
-        masterErr = retryResult.error;
-      }
-
-      // Sync sales_details
-      await supabase
-        .from('sales_details')
-        .delete()
-        .eq('company_id', companyId)
-        .or(`sales_master_id.eq.${invUuid},invoice_id.eq.${invUuid}`);
-
-      if (inv.lines && inv.lines.length > 0) {
-        const detailRows = invoiceItemRows.map((it) => ({
-          id: it.id,
+      try {
+        const masterPayload: any = {
+          id: invUuid,
           company_id: companyId,
-          sales_master_id: invUuid,
-          invoice_id: invUuid,
-          item_id: null, // item_id is safely kept in item_snapshot and raw_data to avoid FK issues
-          item_name: it.item_name,
-          quantity: it.quantity,
-          qty: it.quantity,
-          unit_price: it.unit_price,
-          total_price: it.total_price,
-          vat_rate: it.tax_rate,
-          vat_amount: it.tax_amount,
-          line_total: it.total_price,
-          total: it.total_price,
-          item_snapshot: it.item_snapshot,
-          raw_data: it.raw_data,
-        }));
+          invoice_number: invoicePayload.invoice_number,
+          date: inv.date || new Date().toISOString().split('T')[0],
+          customer_id: customerIdCandidate,
+          customer_name: inv.entityNameAr || (inv as any).entityName || 'عميل نقدي',
+          subtotal: subtotal,
+          vat_amount: taxAmount,
+          tax_amount: taxAmount,
+          total_amount: totalAmount,
+          paid_amount: paidAmount,
+          due_amount: dueAmount,
+          payment_status: paymentStatus,
+          status: inv.status || 'POSTED',
+          payment_method: inv.paymentTerms || 'CASH',
+          warehouse_id: effectiveWarehouseId,
+          customer_snapshot: customerSnapshot,
+          raw_data: invoicePayload.raw_data,
+          created_at: inv.createdAt || new Date().toISOString(),
+        };
 
-        await supabase
-          .from('sales_details')
-          .insert(detailRows);
+        let { error: masterErr } = await supabase
+          .from('sales_master')
+          .upsert([masterPayload], { onConflict: 'company_id, invoice_number' });
+
+        if (masterErr && (masterErr.message.includes('sales_master_customer_id_fkey') || masterErr.message.includes('fkey'))) {
+          masterPayload.customer_id = null;
+          const retryResult = await supabase
+            .from('sales_master')
+            .upsert([masterPayload], { onConflict: 'company_id, invoice_number' });
+          masterErr = retryResult.error;
+        }
+
+        if (!masterErr) {
+          await supabase
+            .from('sales_details')
+            .delete()
+            .eq('company_id', companyId)
+            .or(`sales_master_id.eq.${invUuid},invoice_id.eq.${invUuid}`);
+
+          if (inv.lines && inv.lines.length > 0) {
+            const detailRows = invoiceItemRows.map((it) => ({
+              id: it.id,
+              company_id: companyId,
+              sales_master_id: invUuid,
+              invoice_id: invUuid,
+              item_id: null, // item_id is safely kept in item_snapshot and raw_data to avoid FK issues
+              item_name: it.item_name,
+              quantity: it.quantity,
+              qty: it.quantity,
+              unit_price: it.unit_price,
+              total_price: it.total_price,
+              vat_rate: it.tax_rate,
+              vat_amount: it.tax_amount,
+              line_total: it.total_price,
+              total: it.total_price,
+              item_snapshot: it.item_snapshot,
+              raw_data: it.raw_data,
+            }));
+
+            await supabase
+              .from('sales_details')
+              .insert(detailRows);
+          }
+        }
+      } catch (masterEx: any) {
+        console.warn('Supabase sales_master notice:', masterEx?.message);
       }
 
       return true;

@@ -2399,18 +2399,45 @@ export class DataService {
     return localDataStore.deduplicateInvoices(localInvoices);
   }
 
+  public static async getNextInvoiceNumber(isSales: boolean, targetCompanyId?: string): Promise<string> {
+    const rawCompanyId = targetCompanyId || localDataStore.getEffectiveCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (isSupabaseConfigured && companyId) {
+      try {
+        const nextNum = await SupabaseDataService.getNextUniqueInvoiceNumber(isSales, companyId);
+        if (nextNum) return nextNum;
+      } catch (err) {
+        console.warn('[DataService] Error querying next invoice number from Supabase:', err);
+      }
+    }
+    const prefix = isSales ? 'INV-SAL-2026-' : 'INV-PUR-2026-';
+    const invoices = localDataStore.getInvoices();
+    let maxSeq = 0;
+    for (const inv of invoices) {
+      if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
+        const numPart = parseInt(inv.invoiceNumber.replace(prefix, ''), 10);
+        if (!isNaN(numPart) && numPart > maxSeq) {
+          maxSeq = numPart;
+        }
+      }
+    }
+    return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+  }
+
   public static async createInvoice(data: any): Promise<Invoice> {
     const invoices = localDataStore.getInvoices();
     const customers = isSupabaseConfigured ? await this.getCustomers() : localDataStore.getCustomers();
     const suppliers = isSupabaseConfigured ? await this.getSuppliers() : localDataStore.getSuppliers();
     const inventory = localDataStore.getInventory();
     
-    const isSales = data.type === 'SALES';
+    const isSales = data.type === 'SALES' || data.type === 'SALES_RETURN' || !data.type;
     const isSalesReturn = data.type === 'SALES_RETURN';
     const isPurchase = data.type === 'PURCHASE';
     const isPurchaseReturn = data.type === 'PURCHASE_RETURN';
     
-    const invoiceNumber = data.invoiceNumber || `${isSales ? 'INV-SAL' : 'INV-PUR'}-2026-${String(invoices.length + 1).padStart(4, '0')}`;
+    const invoiceNumber = (data.invoiceNumber && String(data.invoiceNumber).trim())
+      ? String(data.invoiceNumber).trim()
+      : await this.getNextInvoiceNumber(isSales, data.companyId || data.company_id);
     
     const lines = (data.lines || data.items || []).map((item: any, i: number) => {
       const q = Number(item.quantity) || 1;
@@ -2486,8 +2513,12 @@ export class DataService {
       if (supp) entityNameAr = supp.nameAr;
     }
 
+    const newId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : 'inv-' + Math.random().toString(36).substr(2, 9);
+
     const newInvoice: Invoice = {
-      id: 'inv-' + Math.random().toString(36).substr(2, 9),
+      id: newId,
       invoiceNumber,
       type: data.type || 'SALES',
       date: data.date || new Date().toISOString().split('T')[0],
@@ -2712,12 +2743,21 @@ export class DataService {
     // Immediate Synchronous Supabase Persistence for zero-lag consistency
     if (isSupabaseConfigured) {
       try {
-        await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
+        const saved = await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
+        if (!saved) {
+          console.warn('[DataService] First direct saveInvoice returned false, retrying...');
+          await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
+        }
+        // Keep local store strictly synced with resolved invoice number
+        localDataStore.saveInvoices(invoices);
+
         if (jEntry) {
-          await SupabaseDataService.saveJournal(jEntry, activeCompanyId);
+          await SupabaseDataService.saveJournal(jEntry, activeCompanyId).catch((jeErr) => {
+            console.warn('[DataService] Direct saveJournal notice:', jeErr);
+          });
         }
       } catch (syncErr) {
-        console.warn('[DataService] Direct saveInvoice / saveJournal notice:', syncErr);
+        console.error('[DataService] Direct saveInvoice notice:', syncErr);
       }
     }
     backgroundSync.enqueueInvoiceCreate(newInvoice, data, activeCompanyId);
@@ -3990,10 +4030,18 @@ export class DataService {
       if (inv) {
         inv.paidAmount = (inv.paidAmount || 0) + amount;
         inv.dueAmount = Math.max(0, inv.grandTotal - inv.paidAmount);
-        if (inv.dueAmount <= 0) inv.status = 'PAID';
-        else inv.status = 'PARTIALLY_PAID';
+        if (inv.dueAmount <= 0) {
+          inv.paymentStatus = 'PAID';
+          if (inv.status !== 'CANCELLED') inv.status = 'POSTED';
+        } else {
+          inv.paymentStatus = 'PARTIALLY_PAID';
+          if (inv.status !== 'CANCELLED') inv.status = 'POSTED';
+        }
         localDataStore.saveInvoices(invoices);
         syncToFirestore('erp_invoices', inv.id, inv);
+        if (isSupabaseConfigured) {
+          SupabaseDataService.saveInvoice(inv).catch(() => {});
+        }
       }
     }
 
