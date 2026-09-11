@@ -364,6 +364,8 @@ export interface Invoice {
   salesPerson?: string;
   salesRepId?: string;
   salesRepName?: string;
+  rep_id?: string;
+  sales_rep_id?: string;
   receiverName?: string;
   customerBranchId?: string;
   customerBranchName?: string;
@@ -381,6 +383,7 @@ export interface Invoice {
   pos_session_id?: string;
   posSessionId?: string;
   warehouseId?: string;
+  warehouse_id?: string;
   warehouseName?: string;
   cashierName?: string;
   cashTendered?: number;

@@ -224,13 +224,25 @@ export class SupabaseDataService {
     if (!companyId) return false;
     try {
       const itemUuid = toValidUUID(item.id);
+      const targetCode = item.sku || (item as any).code || item.id;
+
+      // Check if an existing item in Supabase has matching code/SKU or UUID to avoid duplicate orphaned rows
+      const { data: existingRows } = await supabase
+        .from('items')
+        .select('id, raw_data')
+        .eq('company_id', companyId)
+        .or(`code.eq.${targetCode},id.eq.${itemUuid}`)
+        .limit(1);
+
+      const targetId = (existingRows && existingRows.length > 0) ? existingRows[0].id : itemUuid;
+
       const { error } = await supabase
         .from('items')
         .upsert([
           {
-            id: itemUuid,
+            id: targetId,
             company_id: companyId,
-            code: item.sku || (item as any).code || item.id,
+            code: targetCode,
             name: item.nameAr || (item as any).name || 'صنف',
             item_name: item.nameAr || (item as any).name || 'صنف',
             name_ar: item.nameAr,
@@ -247,6 +259,7 @@ export class SupabaseDataService {
               ...item,
               id: item.id,
               companyId,
+              quantityOnHand: item.quantityOnHand || 0,
             },
             created_at: new Date().toISOString(),
           },
@@ -259,6 +272,63 @@ export class SupabaseDataService {
       return true;
     } catch (err: any) {
       console.warn('Supabase saveItem exception:', err?.message);
+      return false;
+    }
+  }
+
+  /**
+   * Directly and atomically adjusts stock quantity for an item in Supabase.
+   * Matches by SKU/code, barcode, or UUID to guarantee exact row update.
+   */
+  public static async adjustItemStock(
+    itemId?: string,
+    sku?: string,
+    barcode?: string,
+    newBalance?: number,
+    targetCompanyId?: string
+  ): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+
+    try {
+      let query = supabase.from('items').select('id, current_balance, raw_data').eq('company_id', companyId);
+      if (sku) {
+        query = query.eq('code', sku);
+      } else if (barcode) {
+        query = query.eq('barcode', barcode);
+      } else if (itemId) {
+        query = query.eq('id', toValidUUID(itemId));
+      } else {
+        return false;
+      }
+
+      const { data: matched } = await query.limit(1);
+      if (matched && matched.length > 0) {
+        const itemRow = matched[0];
+        const balance = typeof newBalance === 'number' ? newBalance : itemRow.current_balance;
+        const updatedRaw = { ...(itemRow.raw_data || {}), quantityOnHand: balance };
+
+        const { error } = await supabase
+          .from('items')
+          .update({
+            current_balance: balance,
+            qty_on_hand: balance,
+            raw_data: updatedRaw,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', itemRow.id);
+
+        if (error) {
+          console.warn('Supabase adjustItemStock error:', error.message);
+          return false;
+        }
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.warn('Supabase adjustItemStock exception:', err?.message);
       return false;
     }
   }
@@ -692,6 +762,12 @@ export class SupabaseDataService {
           const raw = inv.raw_data || {};
           const snapshot = inv.customer_snapshot || {};
           const lines = itemsByInvoice[inv.id] || raw.lines || [];
+          const warehouseId = inv.warehouse_id || raw.warehouseId || raw.warehouse_id || 'wh-main-01';
+          const warehouseName = raw.warehouseName || raw.warehouse_name || 'المستودع الرئيسي (الشويخ)';
+          const salesRepId = raw.salesRepId || raw.rep_id || raw.sales_rep_id || 'rep-01';
+          const salesPerson = raw.salesPerson || raw.salesRepName || 'المندوب العام';
+          const salesRepName = raw.salesRepName || raw.salesPerson || 'المندوب العام';
+
           return {
             ...raw,
             id: raw.id || inv.id,
@@ -704,6 +780,14 @@ export class SupabaseDataService {
             date: inv.invoice_date || inv.date || raw.date,
             dueDate: raw.dueDate || inv.invoice_date || inv.date,
             status: inv.payment_status || inv.status || raw.status || 'POSTED',
+            warehouseId,
+            warehouse_id: warehouseId,
+            warehouseName,
+            salesRepId,
+            rep_id: salesRepId,
+            sales_rep_id: salesRepId,
+            salesPerson,
+            salesRepName,
             lines,
             subtotal: Number(inv.subtotal ?? raw.subtotal ?? 0),
             vatTotal: Number(inv.tax_amount ?? inv.vat_amount ?? raw.vatTotal ?? 0),
@@ -846,6 +930,12 @@ export class SupabaseDataService {
       };
 
       // 1. Prepare modern invoices table payload
+      const effectiveWarehouseId = inv.warehouseId || (inv as any).warehouse_id || 'wh-main-01';
+      const effectiveWarehouseName = inv.warehouseName || (inv as any).warehouse_name || 'المستودع الرئيسي (الشويخ)';
+      const effectiveSalesRepId = inv.salesRepId || (inv as any).rep_id || (inv as any).sales_rep_id || 'rep-01';
+      const effectiveSalesPerson = inv.salesPerson || inv.salesRepName || 'المندوب العام';
+      const effectiveSalesRepName = inv.salesRepName || inv.salesPerson || 'المندوب العام';
+
       const invoicePayload: any = {
         id: invUuid,
         company_id: companyId,
@@ -864,6 +954,7 @@ export class SupabaseDataService {
         status: inv.status || 'POSTED',
         payment_method: inv.paymentTerms || 'CASH',
         invoice_type: inv.type || 'SALES',
+        warehouse_id: effectiveWarehouseId,
         items: inv.lines || [],
         customer_snapshot: customerSnapshot,
         raw_data: {
@@ -871,6 +962,14 @@ export class SupabaseDataService {
           id: inv.id,
           companyId,
           customerSnapshot,
+          warehouseId: effectiveWarehouseId,
+          warehouse_id: effectiveWarehouseId,
+          warehouseName: effectiveWarehouseName,
+          salesRepId: effectiveSalesRepId,
+          rep_id: effectiveSalesRepId,
+          sales_rep_id: effectiveSalesRepId,
+          salesPerson: effectiveSalesPerson,
+          salesRepName: effectiveSalesRepName,
         },
         created_at: inv.createdAt || new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -920,6 +1019,14 @@ export class SupabaseDataService {
         });
 
         if (!rpcErr && rpcRes && (rpcRes as any).success) {
+          // Immediately guarantee warehouse_id and complete raw_data (with rep_id) are updated on the invoice row
+          await supabase
+            .from('invoices')
+            .update({
+              warehouse_id: invoicePayload.warehouse_id,
+              raw_data: invoicePayload.raw_data,
+            })
+            .eq('id', invUuid);
           return true;
         }
       } catch (rpcEx: any) {
@@ -979,13 +1086,9 @@ export class SupabaseDataService {
         payment_status: paymentStatus,
         status: inv.status || 'POSTED',
         payment_method: inv.paymentTerms || 'CASH',
+        warehouse_id: effectiveWarehouseId,
         customer_snapshot: customerSnapshot,
-        raw_data: {
-          ...inv,
-          id: inv.id,
-          companyId,
-          customerSnapshot,
-        },
+        raw_data: invoicePayload.raw_data,
         created_at: inv.createdAt || new Date().toISOString(),
       };
 

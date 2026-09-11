@@ -672,6 +672,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       paidAmount: effectivePaidAmount,
       salesPerson: allSalesReps.find((r) => r.id === invSalesRepId)?.nameAr || invSalesPerson || '',
       salesRepId: invSalesRepId || undefined,
+      rep_id: invSalesRepId || undefined,
+      sales_rep_id: invSalesRepId || undefined,
       salesRepName: allSalesReps.find((r) => r.id === invSalesRepId)?.nameAr || invSalesPerson || undefined,
       branchId: invBranchId,
       branch_id: invBranchId,

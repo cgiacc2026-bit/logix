@@ -2392,9 +2392,12 @@ export class DataService {
       dueAmount,
       paymentTerms: data.paymentTerms || (paidAmount >= grandTotal && grandTotal > 0 ? 'CASH' : 'CREDIT'),
       salesPerson: data.salesPerson || data.salesRepName || '',
-      salesRepId: data.salesRepId || undefined,
+      salesRepId: data.salesRepId || data.rep_id || data.sales_rep_id || undefined,
       salesRepName: data.salesRepName || data.salesPerson || undefined,
-      warehouseId: data.warehouseId || undefined,
+      rep_id: data.rep_id || data.salesRepId || data.sales_rep_id || undefined,
+      sales_rep_id: data.salesRepId || data.rep_id || data.sales_rep_id || undefined,
+      warehouseId: data.warehouseId || data.warehouse_id || undefined,
+      warehouse_id: data.warehouse_id || data.warehouseId || undefined,
       warehouseName: data.warehouseName || undefined,
       pos_session_id: data.pos_session_id || data.posSessionId || undefined,
       posSessionId: data.posSessionId || data.pos_session_id || undefined,
@@ -2426,35 +2429,49 @@ export class DataService {
       }
     }
 
-    const effectiveWarehouseId = newInvoice.warehouseId || company?.posDefaultWarehouseId || 'wh-main-01';
+    const effectiveWarehouseId = newInvoice.warehouseId || newInvoice.warehouse_id || company?.posDefaultWarehouseId || 'wh-main-01';
     newInvoice.warehouseId = effectiveWarehouseId;
+    newInvoice.warehouse_id = effectiveWarehouseId;
     if (!newInvoice.warehouseName) {
       const allWh = localDataStore.getWarehouses();
       const matchWh = allWh.find((w) => w.id === effectiveWarehouseId);
       newInvoice.warehouseName = matchWh ? matchWh.nameAr : 'المستودع الرئيسي (الشويخ)';
     }
 
-    // Inventory Updates
-    lines.forEach((it: any) => {
-      const invItem = inventory.find((i) => i.id === it.itemId);
+    // Inventory Updates with robust identification and atomic Supabase stock sync
+    for (const it of lines) {
+      const invItem = inventory.find(
+        (i) => i.id === it.itemId ||
+               (it.itemSku && (i.sku === it.itemSku || (i as any).code === it.itemSku)) ||
+               (it.barcode && (i.barcode === it.barcode || (i as any).code === it.barcode)) ||
+               (it.itemNameAr && i.nameAr === it.itemNameAr)
+      );
       const isOutbound = isSales || isPurchaseReturn;
-      const qtyDelta = isOutbound ? -it.quantity : it.quantity;
+      const qtyDelta = isOutbound ? -Number(it.quantity) : Number(it.quantity);
 
       if (invItem) {
         if (isOutbound) {
           invItem.quantityOnHand = allowNegativeStock
-            ? invItem.quantityOnHand - it.quantity
-            : Math.max(0, invItem.quantityOnHand - it.quantity);
+            ? (invItem.quantityOnHand || 0) - Number(it.quantity)
+            : Math.max(0, (invItem.quantityOnHand || 0) - Number(it.quantity));
         } else {
-          invItem.quantityOnHand += it.quantity;
+          invItem.quantityOnHand = (invItem.quantityOnHand || 0) + Number(it.quantity);
         }
         syncToFirestore('erp_inventory', invItem.id, invItem);
-        if (isSupabaseConfigured) SupabaseDataService.saveItem(invItem).catch(() => {});
+        if (isSupabaseConfigured) {
+          await SupabaseDataService.adjustItemStock(
+            it.itemId,
+            it.itemSku || invItem.sku,
+            it.barcode || invItem.barcode,
+            invItem.quantityOnHand,
+            activeCompanyId
+          ).catch((e) => console.warn('Supabase adjustItemStock notice:', e));
+        }
       }
 
       // Warehouse-level stock update
       DataService.adjustWarehouseStock(effectiveWarehouseId, it.itemId, qtyDelta);
-    });
+    }
     localDataStore.saveInventory(inventory);
 
     // =========================================================================
@@ -2572,7 +2589,14 @@ export class DataService {
       this.recalculateSupplierBalance(newInvoice.entityId);
     }
 
-    // High-Performance Optimistic UI: Background Non-Blocking Persistence
+    // Immediate Synchronous Supabase Persistence for zero-lag consistency
+    if (isSupabaseConfigured) {
+      try {
+        await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
+      } catch (syncErr) {
+        console.warn('[DataService] Direct saveInvoice notice:', syncErr);
+      }
+    }
     backgroundSync.enqueueInvoiceCreate(newInvoice, data, activeCompanyId);
     syncToFirestore('erp_invoices', newInvoice.id, newInvoice);
 
