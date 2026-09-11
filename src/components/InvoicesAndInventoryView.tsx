@@ -63,6 +63,7 @@ import {
   FileText,
   ChevronDown,
   Wrench,
+  ArrowUpDown,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -79,7 +80,7 @@ interface InvoicesProps {
   activeSubTab?: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units';
   onSubTabChange?: (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units') => void;
   onRefreshAll?: () => Promise<void> | void;
-  onCreateInvoice: (data: any) => Promise<void>;
+  onCreateInvoice: (data: any) => Promise<any>;
   onUpdateInvoice?: (id: string, data: any) => Promise<void>;
   onPostInvoice: (id: string) => Promise<void>;
   onCancelInvoice?: (id: string, reason?: string) => Promise<void>;
@@ -252,6 +253,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [invPaymentTerms, setInvPaymentTerms] = useState<'CASH' | 'CREDIT'>('CREDIT');
   const [invSalesPerson, setInvSalesPerson] = useState('');
   const [invReceiverName, setInvReceiverName] = useState('');
+  const [localInvoices, setLocalInvoices] = useState<Invoice[]>(invoices || []);
+  React.useEffect(() => {
+    setLocalInvoices(invoices || []);
+  }, [invoices]);
+
+  const [invSearchQuery, setInvSearchQuery] = useState('');
+  const [invDateRange, setInvDateRange] = useState<'ALL' | 'TODAY' | 'THIS_MONTH'>('ALL');
+  const [invSortOrder, setInvSortOrder] = useState<'DESC' | 'ASC'>('DESC');
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+
   const [invFilterType, setInvFilterType] = useState<'ALL' | 'SALES' | 'PURCHASE' | 'RETURNS'>(
     initialInvoiceFilter || 'ALL'
   );
@@ -716,7 +727,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
           if (onRefreshAll) await onRefreshAll();
         }
       } else {
-        await onCreateInvoice(invoicePayload);
+        const created = await onCreateInvoice(invoicePayload);
+        if (created && created.id) {
+          setLocalInvoices((prev) => [created, ...prev.filter((i) => i.id !== created.id)]);
+        }
       }
       setRepairFeedback('✅ تم حفظ الفاتورة وترحيل القيد المحاسبي بنجاح إلى قاعدة البيانات Supabase!');
       setTimeout(() => setRepairFeedback(null), 7000);
@@ -1039,6 +1053,118 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     if (!confirm('هل تأكد حذف الفاتورة؟ (المسودات فقط يمكن حذفها)')) return;
     if (onDeleteInvoice) {
       await onDeleteInvoice(id);
+    }
+  };
+
+  // Invoices Processing: Filtering, Date Range, Search & Sorting
+  const processedInvoices = useMemo(() => {
+    let list = [...(localInvoices && localInvoices.length > 0 ? localInvoices : invoices || [])];
+
+    // 1. Transaction Type filter
+    if (invFilterType === 'SALES') {
+      list = list.filter((inv) => inv.type === 'SALES');
+    } else if (invFilterType === 'PURCHASE') {
+      list = list.filter((inv) => inv.type === 'PURCHASE');
+    } else if (invFilterType === 'RETURNS') {
+      list = list.filter((inv) => inv.type === 'SALES_RETURN' || inv.type === 'PURCHASE_RETURN');
+    }
+
+    // 2. Search query (Invoice # or Customer/Supplier Name)
+    if (invSearchQuery.trim()) {
+      const q = invSearchQuery.trim().toLowerCase();
+      list = list.filter((inv) => {
+        const num = (inv.invoiceNumber || '').toLowerCase();
+        const nameAr = (inv.entityNameAr || '').toLowerCase();
+        const nameEn = ((inv as any).entityNameEn || '').toLowerCase();
+        return num.includes(q) || nameAr.includes(q) || nameEn.includes(q);
+      });
+    }
+
+    // 3. Date Range filter (Today / This Month / All)
+    if (invDateRange !== 'ALL') {
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const thisMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      list = list.filter((inv) => {
+        const d = (inv.date || (inv.createdAt ? inv.createdAt.split('T')[0] : '') || '').trim();
+        if (invDateRange === 'TODAY') {
+          return d === todayStr;
+        }
+        if (invDateRange === 'THIS_MONTH') {
+          return d.startsWith(thisMonthPrefix);
+        }
+        return true;
+      });
+    }
+
+    // 4. Sort Order (DESC: Newest first, ASC: Oldest first)
+    list.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.date || 0).getTime();
+      const timeB = new Date(b.createdAt || b.date || 0).getTime();
+      if (invSortOrder === 'DESC') {
+        return timeB - timeA;
+      } else {
+        return timeA - timeB;
+      }
+    });
+
+    return list;
+  }, [localInvoices, invoices, invFilterType, invSearchQuery, invDateRange, invSortOrder]);
+
+  const isAllSelected = processedInvoices.length > 0 && selectedInvoiceIds.length === processedInvoices.length;
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedInvoiceIds([]);
+    } else {
+      setSelectedInvoiceIds(processedInvoices.map((inv) => inv.id));
+    }
+  };
+
+  const handleToggleSelectRow = (id: string) => {
+    setSelectedInvoiceIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleCancelSelectedInvoices = async () => {
+    const count = selectedInvoiceIds.length;
+    if (count === 0) return;
+
+    const sourceList = localInvoices.length > 0 ? localInvoices : invoices;
+    const targetInvoices = sourceList.filter((i) => selectedInvoiceIds.includes(i.id));
+    const activeTargets = targetInvoices.filter((i) => i.status !== 'CANCELLED');
+    if (activeTargets.length === 0) {
+      alert('جميع الفواتير المحددة تم إلغاؤها بالفعل');
+      return;
+    }
+
+    const reason = prompt(
+      `هل أنت متأكد من إلغاء (${activeTargets.length}) فاتورة محددة؟\nسيتم تغيير حالتها إلى (CANCELLED) وعكس قيودها المحاسبية ورد الكميات للمخازن دون حذفها من الجدول.\n\nالرجاء إدخال سبب الإلغاء:`,
+      'إلغاء بطلب الإدارة وعكس الأثر المالي والمخزني'
+    );
+    if (reason === null) return;
+
+    try {
+      for (const inv of activeTargets) {
+        if (onCancelInvoice) {
+          await onCancelInvoice(inv.id, reason);
+        } else {
+          await DataService.cancelInvoice(inv.id, reason);
+        }
+      }
+      setLocalInvoices((prev) =>
+        prev.map((i) =>
+          selectedInvoiceIds.includes(i.id) ? { ...i, status: 'CANCELLED' as const } : i
+        )
+      );
+      setSelectedInvoiceIds([]);
+      setRepairFeedback(`✅ تم إلغاء وعكس الأثر المالي والمخزني لـ (${activeTargets.length}) فاتورة بنجاح وتحويل حالتها إلى ملغاة`);
+      setTimeout(() => setRepairFeedback(null), 6000);
+      if (onRefreshAll) await onRefreshAll();
+    } catch (err: any) {
+      alert(`حدث خطأ أثناء إلغاء الفواتير: ${err?.message || 'خطأ غير معروف'}`);
     }
   };
 
@@ -1527,10 +1653,131 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             </div>
           )}
 
+          {/* Quick Filter, Search & Sort Bar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-[#FAF8F5] p-3 rounded-xl border border-[#E5E1DA]">
+            {/* Fast Search input */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8C8273]" />
+              <input
+                type="text"
+                value={invSearchQuery}
+                onChange={(e) => setInvSearchQuery(e.target.value)}
+                placeholder="بحث سريع برقم الفاتورة أو اسم العميل..."
+                className="w-full pr-9 pl-8 py-2 text-xs bg-white border border-[#E5E1DA] rounded-lg focus:outline-none focus:border-[#B8860B] focus:ring-1 focus:ring-[#B8860B] transition-all text-[#1A1A1A] placeholder-[#8C8273]"
+              />
+              {invSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setInvSearchQuery('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 text-xs px-1 cursor-pointer"
+                  title="مسح البحث"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Date Range Filter (Today / This Month / All) */}
+            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-[#E5E1DA] text-xs font-bold shrink-0">
+              <Calendar className="w-3.5 h-3.5 text-[#8C8273] mr-1.5 ml-1" />
+              {[
+                { id: 'ALL', label: 'الكل' },
+                { id: 'TODAY', label: 'اليوم' },
+                { id: 'THIS_MONTH', label: 'هذا الشهر' },
+              ].map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => setInvDateRange(d.id as any)}
+                  className={`px-3 py-1 rounded-md cursor-pointer transition-all ${
+                    invDateRange === d.id
+                      ? 'bg-[#1A1A1A] text-white shadow-xs'
+                      : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Sort Toggle (Newest First / Oldest First) */}
+            <button
+              type="button"
+              onClick={() => setInvSortOrder((prev) => (prev === 'DESC' ? 'ASC' : 'DESC'))}
+              className="px-3 py-2 bg-white hover:bg-[#F0EDE6] border border-[#E5E1DA] text-[#1A1A1A] rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shrink-0 shadow-2xs"
+              title="تبديل ترتيب الفرز"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-[#B8860B]" />
+              <span>{invSortOrder === 'DESC' ? 'الأحدث أولاً' : 'الأقدم أولاً'}</span>
+            </button>
+          </div>
+
+          {/* Row Selection & Actions Bar */}
+          {selectedInvoiceIds.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
+                <span className="w-6 h-6 rounded-full bg-amber-200 flex items-center justify-center text-amber-900 text-xs font-black">
+                  {selectedInvoiceIds.length}
+                </span>
+                <span>تم تحديد {selectedInvoiceIds.length} فاتورة</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Edit Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = (localInvoices.length > 0 ? localInvoices : invoices).find((i) =>
+                      selectedInvoiceIds.includes(i.id)
+                    );
+                    if (target) {
+                      handleOpenEditInvoice(target);
+                    }
+                  }}
+                  disabled={selectedInvoiceIds.length > 1}
+                  title={selectedInvoiceIds.length > 1 ? 'يرجى تحديد فاتورة واحدة فقط للتعديل' : 'تحميل بيانات الفاتورة للتعديل'}
+                  className="px-3 py-1.5 bg-[#D4AF37] hover:bg-[#b8860b] text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>تعديل الفاتورة</span>
+                </button>
+
+                {/* Cancel Button */}
+                <button
+                  type="button"
+                  onClick={handleCancelSelectedInvoices}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                  title="إلغاء الفواتير المحددة وعكس أثرها المالي والمخزني بالكامل دون حذفها"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>إلغاء وعكس الأثر ({selectedInvoiceIds.length})</span>
+                </button>
+
+                {/* Deselect All */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedInvoiceIds([])}
+                  className="px-2.5 py-1.5 text-xs text-[#6E6659] hover:text-[#1A1A1A] hover:bg-amber-100/60 rounded-lg transition-colors cursor-pointer"
+                >
+                  إلغاء التحديد
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs">
               <thead className="bg-[#F7F5F0] text-[#1A1A1A] font-bold border-b border-[#E5E1DA]">
                 <tr>
+                  <th className="py-3 px-3 text-center w-10">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={handleToggleSelectAll}
+                      title="تحديد الكل"
+                      className="w-4 h-4 rounded text-[#B8860B] focus:ring-[#B8860B] border-[#E5E1DA] cursor-pointer accent-[#B8860B]"
+                    />
+                  </th>
                   <th className="py-3 px-4">رقم المستند</th>
                   <th className="py-3 px-4">نوع المعاملة</th>
                   <th className="py-3 px-4">الطرف (العميل / المورد)</th>
@@ -1543,17 +1790,40 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E1DA]">
-                {invoices
-                  .filter((inv) => {
-                    if (invFilterType === 'SALES') return inv.type === 'SALES';
-                    if (invFilterType === 'PURCHASE') return inv.type === 'PURCHASE';
-                    if (invFilterType === 'RETURNS') return inv.type === 'SALES_RETURN' || inv.type === 'PURCHASE_RETURN';
-                    return true;
-                  })
-                  .map((inv) => {
+                {processedInvoices.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-[#8C8273]">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <ShoppingBag className="w-8 h-8 text-neutral-300 stroke-[1.5]" />
+                        <span className="text-xs font-bold text-neutral-500">
+                          {invSearchQuery || invDateRange !== 'ALL' || invFilterType !== 'ALL'
+                            ? 'لا توجد فواتير مطابقة لمعايير البحث والفلترة المحددة'
+                            : 'لا توجد أي فواتير مسجلة حتى الآن'}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  processedInvoices.map((inv) => {
                     const isReturn = inv.type === 'SALES_RETURN' || inv.type === 'PURCHASE_RETURN';
+                    const isSelected = selectedInvoiceIds.includes(inv.id);
                     return (
-                      <tr key={inv.id} className="hover:bg-[#FDFCFB] transition-all">
+                      <tr
+                        key={inv.id}
+                        className={`transition-all ${
+                          isSelected
+                            ? 'bg-amber-50/80 border-r-4 border-r-[#B8860B]'
+                            : 'hover:bg-[#FDFCFB]'
+                        }`}
+                      >
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectRow(inv.id)}
+                            className="w-4 h-4 rounded text-[#B8860B] focus:ring-[#B8860B] border-[#E5E1DA] cursor-pointer accent-[#B8860B]"
+                          />
+                        </td>
                         <td className="py-3 px-4 font-mono font-bold text-[#B8860B]">{inv.invoiceNumber}</td>
                         <td className="py-3 px-4 font-bold">
                           <div className="flex flex-col gap-1">
@@ -1740,7 +2010,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                         </td>
                       </tr>
                     );
-                  })}
+                  })
+                )}
               </tbody>
             </table>
           </div>

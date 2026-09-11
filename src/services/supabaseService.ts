@@ -825,7 +825,7 @@ export class SupabaseDataService {
         .from('invoices')
         .select('*')
         .eq('company_id', companyId)
-        .order('invoice_date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (!invErr && invTableData && invTableData.length > 0) {
         // Query related invoice_items
@@ -934,7 +934,7 @@ export class SupabaseDataService {
         .from('sales_master')
         .select('*')
         .eq('company_id', companyId)
-        .order('date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (masterErr) {
         console.warn('Supabase getInvoices masterErr:', masterErr.message);

@@ -2380,6 +2380,7 @@ export class DataService {
             }
           }
           const deduplicated = localDataStore.deduplicateInvoices(localInvoices);
+          deduplicated.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
           if (hasChanges || deduplicated.length !== localInvoices.length) {
             localDataStore.saveInvoices(deduplicated);
           }
@@ -2388,6 +2389,7 @@ export class DataService {
 
         if (validRemote.length > 0) {
           const deduplicated = localDataStore.deduplicateInvoices(validRemote);
+          deduplicated.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
           localDataStore.saveInvoices(deduplicated);
           return deduplicated;
         }
@@ -2396,7 +2398,8 @@ export class DataService {
       console.warn('Supabase getInvoices notice:', e);
     }
 
-    return localDataStore.deduplicateInvoices(localInvoices);
+    const finalLocal = localDataStore.deduplicateInvoices(localInvoices);
+    return finalLocal.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
   }
 
   public static async getNextInvoiceNumber(isSales: boolean, targetCompanyId?: string): Promise<string> {

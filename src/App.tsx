@@ -467,13 +467,14 @@ export default function App() {
   };
 
   const handleCreateInvoice = async (invoiceData: any) => {
-    await DataService.createInvoice(invoiceData);
-    setInvoices(DataService.getLocalInvoices());
+    const newInvoice = await DataService.createInvoice(invoiceData);
+    setInvoices((prev) => [newInvoice, ...prev.filter((i) => i.id !== newInvoice.id)]);
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
     setSuppliers(DataService.getLocalSuppliers());
     setInventory(DataService.getLocalInventory());
     refreshAllData(true);
+    return newInvoice;
   };
 
   const handleUpdateInvoice = async (id: string, invoiceData: any) => {
