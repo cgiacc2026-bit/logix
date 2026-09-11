@@ -2600,51 +2600,38 @@ export class DataService {
       }
       localDataStore.saveJournals(journals);
 
-      // 2. Restore Inventory Quantities
+      // 2. Restore Inventory Quantities & Warehouse Stock
       const inventory = localDataStore.getInventory();
+      const cancelWhId = inv.warehouseId || 'wh-main-01';
       (inv.lines || []).forEach((line: any) => {
         const invItem = inventory.find((i) => i.id === line.itemId);
+        const q = Number(line.quantity) || 0;
+        let cancelWhDelta = 0;
         if (invItem) {
           if (inv.type === 'SALES') {
-            invItem.quantityOnHand += Number(line.quantity) || 0;
+            invItem.quantityOnHand += q;
+            cancelWhDelta = q;
           } else if (inv.type === 'PURCHASE') {
-            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - (Number(line.quantity) || 0));
+            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            cancelWhDelta = -q;
           } else if (inv.type === 'SALES_RETURN') {
-            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - (Number(line.quantity) || 0));
+            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            cancelWhDelta = -q;
           } else if (inv.type === 'PURCHASE_RETURN') {
-            invItem.quantityOnHand += Number(line.quantity) || 0;
+            invItem.quantityOnHand += q;
+            cancelWhDelta = q;
           }
           syncToFirestore('erp_inventory', invItem.id, invItem);
         }
+        DataService.adjustWarehouseStock(cancelWhId, line.itemId, cancelWhDelta);
       });
       localDataStore.saveInventory(inventory);
 
       // 3. Reverse Customer/Supplier Balances
-      const effectiveDue = inv.dueAmount !== undefined ? inv.dueAmount : inv.grandTotal;
       if ((inv.type === 'SALES' || inv.type === 'SALES_RETURN') && inv.entityId) {
-        const customers = localDataStore.getCustomers();
-        const cust = customers.find((c) => c.id === inv.entityId);
-        if (cust) {
-          if (inv.type === 'SALES') {
-            cust.balance = Math.max(0, cust.balance - effectiveDue);
-          } else {
-            cust.balance = cust.balance + effectiveDue;
-          }
-          localDataStore.saveCustomers(customers);
-          syncToFirestore('erp_customers', cust.id, cust);
-        }
+        this.recalculateCustomerBalance(inv.entityId);
       } else if ((inv.type === 'PURCHASE' || inv.type === 'PURCHASE_RETURN') && inv.entityId) {
-        const suppliers = localDataStore.getSuppliers();
-        const supp = suppliers.find((s) => s.id === inv.entityId);
-        if (supp) {
-          if (inv.type === 'PURCHASE') {
-            supp.balance = Math.max(0, supp.balance - effectiveDue);
-          } else {
-            supp.balance = supp.balance + effectiveDue;
-          }
-          localDataStore.saveSuppliers(suppliers);
-          syncToFirestore('erp_suppliers', supp.id, supp);
-        }
+        this.recalculateSupplierBalance(inv.entityId);
       }
     }
 
@@ -2721,50 +2708,38 @@ export class DataService {
 
     // 1. If previously posted or paid, roll back original inventory and customer/supplier balances
     if (wasPostedOrPaid) {
-      // Rollback old stock impact
+      // Rollback old stock impact and warehouse stocks
       const inventory = localDataStore.getInventory();
+      const oldWhId = original.warehouseId || 'wh-main-01';
       (original.lines || []).forEach((line: any) => {
         const invItem = inventory.find((i) => i.id === line.itemId);
+        const q = Number(line.quantity) || 0;
+        let rollbackWhDelta = 0;
         if (invItem) {
-          const q = Number(line.quantity) || 0;
           if (original.type === 'SALES') {
             invItem.quantityOnHand += q;
+            rollbackWhDelta = q;
           } else if (original.type === 'PURCHASE') {
             invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            rollbackWhDelta = -q;
           } else if (original.type === 'SALES_RETURN') {
             invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            rollbackWhDelta = -q;
           } else if (original.type === 'PURCHASE_RETURN') {
             invItem.quantityOnHand += q;
+            rollbackWhDelta = q;
           }
           syncToFirestore('erp_inventory', invItem.id, invItem);
         }
+        DataService.adjustWarehouseStock(oldWhId, line.itemId, rollbackWhDelta);
       });
       localDataStore.saveInventory(inventory);
 
-      // Rollback old customer/supplier balance
-      const oldDue = original.dueAmount !== undefined ? original.dueAmount : original.grandTotal;
+      // Rollback old customer/supplier balance from first principles
       if ((original.type === 'SALES' || original.type === 'SALES_RETURN') && original.entityId) {
-        const oldCust = customers.find((c) => c.id === original.entityId);
-        if (oldCust) {
-          if (original.type === 'SALES') {
-            oldCust.balance = Math.max(0, oldCust.balance - oldDue);
-          } else {
-            oldCust.balance += oldDue;
-          }
-          localDataStore.saveCustomers(customers);
-          syncToFirestore('erp_customers', oldCust.id, oldCust);
-        }
+        this.recalculateCustomerBalance(original.entityId);
       } else if ((original.type === 'PURCHASE' || original.type === 'PURCHASE_RETURN') && original.entityId) {
-        const oldSupp = suppliers.find((s) => s.id === original.entityId);
-        if (oldSupp) {
-          if (original.type === 'PURCHASE') {
-            oldSupp.balance = Math.max(0, oldSupp.balance - oldDue);
-          } else {
-            oldSupp.balance += oldDue;
-          }
-          localDataStore.saveSuppliers(suppliers);
-          syncToFirestore('erp_suppliers', oldSupp.id, oldSupp);
-        }
+        this.recalculateSupplierBalance(original.entityId);
       }
     }
 
@@ -2871,56 +2846,55 @@ export class DataService {
     const isNowActive = updatedStatus === 'POSTED' || updatedStatus === 'PAID' || updatedStatus === 'PARTIALLY_PAID';
 
     if (isNowActive) {
-      // Apply new inventory movements
+      // Apply new inventory movements and warehouse stock
       const inventory = localDataStore.getInventory();
+      const newWhId = updatedInvoice.warehouseId || original.warehouseId || 'wh-main-01';
       updatedLines.forEach((it: any) => {
         const invItem = inventory.find((i) => i.id === it.itemId);
+        const q = Number(it.quantity) || 0;
+        let applyWhDelta = 0;
         if (invItem) {
-          const q = Number(it.quantity) || 0;
           if (isSales) {
             invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            applyWhDelta = -q;
           } else if (isSalesReturn) {
             invItem.quantityOnHand += q;
+            applyWhDelta = q;
           } else if (isPurchase) {
             invItem.quantityOnHand += q;
+            applyWhDelta = q;
           } else if (isPurchaseReturn) {
             invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            applyWhDelta = -q;
           }
           syncToFirestore('erp_inventory', invItem.id, invItem);
         }
+        DataService.adjustWarehouseStock(newWhId, it.itemId, applyWhDelta);
       });
       localDataStore.saveInventory(inventory);
 
-      // Apply new customer/supplier balance
-      if ((isSales || isSalesReturn) && newEntityId) {
-        const cust = customers.find((c) => c.id === newEntityId);
-        if (cust) {
-          if (isSales) {
-            cust.balance += dueAmount;
-          } else {
-            cust.balance = Math.max(0, cust.balance - dueAmount);
-          }
-          localDataStore.saveCustomers(customers);
-          syncToFirestore('erp_customers', cust.id, cust);
-        }
-      } else if ((isPurchase || isPurchaseReturn) && newEntityId) {
-        const supp = suppliers.find((s) => s.id === newEntityId);
-        if (supp) {
-          if (isPurchase) {
-            supp.balance += dueAmount;
-          } else {
-            supp.balance = Math.max(0, supp.balance - dueAmount);
-          }
-          localDataStore.saveSuppliers(suppliers);
-          syncToFirestore('erp_suppliers', supp.id, supp);
-        }
+      // Apply new customer/supplier balance from first principles
+      if (original.entityId && original.entityId !== newEntityId) {
+        if (isSales || isSalesReturn) this.recalculateCustomerBalance(original.entityId);
+        else this.recalculateSupplierBalance(original.entityId);
+      }
+      if (newEntityId) {
+        if (isSales || isSalesReturn) this.recalculateCustomerBalance(newEntityId);
+        else this.recalculateSupplierBalance(newEntityId);
       }
 
-      // Generate or update double-entry journal entry
+      // Generate or update double-entry journal entry with perpetual inventory, COGS, and VAT
       const resolved = this.getResolvedAccounts();
+      const computedVatTotal = updatedLines.reduce((s: number, it: any) => s + (it.vatAmount || 0), 0);
+      const totalCost = updatedLines.reduce((sum: number, line: any) => {
+        const invItem = inventory.find((i) => i.id === line.itemId);
+        return sum + ((invItem ? (Number(invItem.costPrice || invItem.purchasePrice || 0)) : 0) * line.quantity);
+      }, 0);
+
       let jLines: any[] = [];
 
       if (isSales) {
+        const netRevenue = Math.max(0, grandTotal - computedVatTotal);
         if (paidAmount > 0 && dueAmount > 0) {
           jLines.push({
             id: 'jl-1',
@@ -2939,6 +2913,8 @@ export class DataService {
             debit: dueAmount,
             credit: 0,
             memo: `المبلغ الآجل المستحق - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+            entityType: 'CUSTOMER' as const,
+            entityId: newEntityId,
           });
         } else {
           const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
@@ -2950,6 +2926,7 @@ export class DataService {
             debit: grandTotal,
             credit: 0,
             memo: `فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+            ...(paymentAcc.id === resolved.receivable.id ? { entityType: 'CUSTOMER' as const, entityId: newEntityId } : {}),
           });
         }
         jLines.push({
@@ -2958,22 +2935,65 @@ export class DataService {
           accountCode: resolved.sales.code,
           accountNameAr: resolved.sales.nameAr,
           debit: 0,
-          credit: grandTotal,
+          credit: netRevenue,
           memo: `إيراد مبيعات فاتورة ${invoiceNumber}`,
         });
+        if (computedVatTotal > 0) {
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.vat.id,
+            accountCode: resolved.vat.code,
+            accountNameAr: resolved.vat.nameAr,
+            debit: 0,
+            credit: computedVatTotal,
+            memo: `ضريبة القيمة المضافة المحصلة - فاتورة ${invoiceNumber}`,
+          });
+        }
+        if (totalCost > 0) {
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.cogs.id,
+            accountCode: resolved.cogs.code,
+            accountNameAr: resolved.cogs.nameAr,
+            debit: totalCost,
+            credit: 0,
+            memo: `تكلفة بضاعة مباعة - فاتورة ${invoiceNumber}`,
+          });
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.inventory.id,
+            accountCode: resolved.inventory.code,
+            accountNameAr: resolved.inventory.nameAr,
+            debit: 0,
+            credit: totalCost,
+            memo: `تخفيض المخزون المباع - فاتورة ${invoiceNumber}`,
+          });
+        }
       } else if (isSalesReturn) {
+        const netRevenue = Math.max(0, grandTotal - computedVatTotal);
         jLines.push({
           id: 'jl-1',
           accountId: resolved.sales.id,
           accountCode: resolved.sales.code,
           accountNameAr: resolved.sales.nameAr,
-          debit: grandTotal,
+          debit: netRevenue,
           credit: 0,
           memo: `مردودات ومسموحات المبيعات ${invoiceNumber} - ${entityNameAr}`,
         });
+        if (computedVatTotal > 0) {
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.vat.id,
+            accountCode: resolved.vat.code,
+            accountNameAr: resolved.vat.nameAr,
+            debit: computedVatTotal,
+            credit: 0,
+            memo: `عكس ضريبة مبيعات مرتجعة - مرتجع ${invoiceNumber}`,
+          });
+        }
         if (paidAmount > 0 && dueAmount > 0) {
           jLines.push({
-            id: 'jl-2',
+            id: `jl-${jLines.length + 1}`,
             accountId: resolved.cash.id,
             accountCode: resolved.cash.code,
             accountNameAr: resolved.cash.nameAr,
@@ -2982,39 +3002,74 @@ export class DataService {
             memo: `رد نقدي مسدد للعميل - مرتجع مبيعات ${invoiceNumber}`,
           });
           jLines.push({
-            id: 'jl-3',
+            id: `jl-${jLines.length + 1}`,
             accountId: resolved.receivable.id,
             accountCode: resolved.receivable.code,
             accountNameAr: resolved.receivable.nameAr,
             debit: 0,
             credit: dueAmount,
             memo: `تخفيض حساب العميل الآجل ${entityNameAr}`,
+            entityType: 'CUSTOMER' as const,
+            entityId: newEntityId,
           });
         } else {
           const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
           jLines.push({
-            id: 'jl-2',
+            id: `jl-${jLines.length + 1}`,
             accountId: paymentAcc.id,
             accountCode: paymentAcc.code,
             accountNameAr: paymentAcc.nameAr,
             debit: 0,
             credit: grandTotal,
             memo: `تخفيض حساب العميل ${entityNameAr}`,
+            ...(paymentAcc.id === resolved.receivable.id ? { entityType: 'CUSTOMER' as const, entityId: newEntityId } : {}),
+          });
+        }
+        if (totalCost > 0) {
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.inventory.id,
+            accountCode: resolved.inventory.code,
+            accountNameAr: resolved.inventory.nameAr,
+            debit: totalCost,
+            credit: 0,
+            memo: `رد بضاعة للمخزون - مرتجع ${invoiceNumber}`,
+          });
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.cogs.id,
+            accountCode: resolved.cogs.code,
+            accountNameAr: resolved.cogs.nameAr,
+            debit: 0,
+            credit: totalCost,
+            memo: `تخفيض تكلفة بضاعة مباعة - مرتجع ${invoiceNumber}`,
           });
         }
       } else if (isPurchase) {
+        const netPurchase = Math.max(0, grandTotal - computedVatTotal);
         jLines.push({
           id: 'jl-1',
           accountId: resolved.inventory.id,
           accountCode: resolved.inventory.code,
           accountNameAr: resolved.inventory.nameAr,
-          debit: grandTotal,
+          debit: netPurchase,
           credit: 0,
-          memo: `فاتورة مشتريات ${invoiceNumber} - ${entityNameAr}`,
+          memo: `شراء بضاعة للمخزون - فاتورة ${invoiceNumber} - ${entityNameAr}`,
         });
+        if (computedVatTotal > 0) {
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.vat.id,
+            accountCode: resolved.vat.code,
+            accountNameAr: resolved.vat.nameAr,
+            debit: computedVatTotal,
+            credit: 0,
+            memo: `ضريبة القيمة المضافة المدفوعة - فاتورة ${invoiceNumber}`,
+          });
+        }
         if (paidAmount > 0 && dueAmount > 0) {
           jLines.push({
-            id: 'jl-2',
+            id: `jl-${jLines.length + 1}`,
             accountId: resolved.cash.id,
             accountCode: resolved.cash.code,
             accountNameAr: resolved.cash.nameAr,
@@ -3023,28 +3078,32 @@ export class DataService {
             memo: `سداد نقدي فوري لمشتريات فاتورة ${invoiceNumber}`,
           });
           jLines.push({
-            id: 'jl-3',
+            id: `jl-${jLines.length + 1}`,
             accountId: resolved.payable.id,
             accountCode: resolved.payable.code,
             accountNameAr: resolved.payable.nameAr,
             debit: 0,
             credit: dueAmount,
             memo: `استحقاق آجل للمورد ${entityNameAr} - فاتورة ${invoiceNumber}`,
+            entityType: 'SUPPLIER' as const,
+            entityId: newEntityId,
           });
         } else {
           const purchasePaymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.payable;
           jLines.push({
-            id: 'jl-2',
+            id: `jl-${jLines.length + 1}`,
             accountId: purchasePaymentAcc.id,
             accountCode: purchasePaymentAcc.code,
             accountNameAr: purchasePaymentAcc.nameAr,
             debit: 0,
             credit: grandTotal,
             memo: `استحقاق مشتريات فاتورة ${invoiceNumber}`,
+            ...(purchasePaymentAcc.id === resolved.payable.id ? { entityType: 'SUPPLIER' as const, entityId: newEntityId } : {}),
           });
         }
       } else {
         // PURCHASE_RETURN
+        const netPurchase = Math.max(0, grandTotal - computedVatTotal);
         if (paidAmount > 0 && dueAmount > 0) {
           jLines.push({
             id: 'jl-1',
@@ -3063,6 +3122,8 @@ export class DataService {
             debit: dueAmount,
             credit: 0,
             memo: `تخفيض حساب المورد الآجل ${entityNameAr}`,
+            entityType: 'SUPPLIER' as const,
+            entityId: newEntityId,
           });
         } else {
           const purchasePaymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.payable;
@@ -3074,6 +3135,7 @@ export class DataService {
             debit: grandTotal,
             credit: 0,
             memo: `تخفيض حساب المورد ${entityNameAr} - مرتجع مشتريات`,
+            ...(purchasePaymentAcc.id === resolved.payable.id ? { entityType: 'SUPPLIER' as const, entityId: newEntityId } : {}),
           });
         }
         jLines.push({
@@ -3082,10 +3144,24 @@ export class DataService {
           accountCode: resolved.inventory.code,
           accountNameAr: resolved.inventory.nameAr,
           debit: 0,
-          credit: grandTotal,
+          credit: netPurchase,
           memo: `تخفيض المخزون لمرتجع المشتريات ${invoiceNumber}`,
         });
+        if (computedVatTotal > 0) {
+          jLines.push({
+            id: `jl-${jLines.length + 1}`,
+            accountId: resolved.vat.id,
+            accountCode: resolved.vat.code,
+            accountNameAr: resolved.vat.nameAr,
+            debit: 0,
+            credit: computedVatTotal,
+            memo: `عكس ضريبة مشتريات مستردة - مرتجع ${invoiceNumber}`,
+          });
+        }
       }
+
+      const entryDebit = jLines.reduce((s, l) => s + (l.debit || 0), 0);
+      const entryCredit = jLines.reduce((s, l) => s + (l.credit || 0), 0);
 
       const journals = localDataStore.getJournals();
       let linkedJournal = journals.find(
@@ -3094,8 +3170,8 @@ export class DataService {
 
       if (linkedJournal) {
         linkedJournal.lines = jLines;
-        linkedJournal.totalDebit = grandTotal;
-        linkedJournal.totalCredit = grandTotal;
+        linkedJournal.totalDebit = entryDebit;
+        linkedJournal.totalCredit = entryCredit;
         linkedJournal.date = updatedInvoice.date;
         linkedJournal.description = `قيد ترحيل فاتورة ${isSales ? 'مبيعات' : 'مشتريات'} معدلة رقم (${invoiceNumber}) - ${entityNameAr}`;
         linkedJournal.status = 'POSTED';
@@ -3111,8 +3187,8 @@ export class DataService {
           description: `قيد ترحيل فاتورة ${isSales ? 'مبيعات' : 'مشتريات'} رقم (${invoiceNumber}) - ${entityNameAr}`,
           status: 'POSTED',
           lines: jLines,
-          totalDebit: grandTotal,
-          totalCredit: grandTotal,
+          totalDebit: entryDebit,
+          totalCredit: entryCredit,
           createdAt: new Date().toISOString(),
           postedAt: new Date().toISOString(),
           isAutoGenerated: true,
@@ -4304,6 +4380,94 @@ export class DataService {
       currentBalance: updatedBalance,
     };
     localDataStore.saveCustomers(list);
+
+    if (diff !== 0) {
+      const resolved = this.getResolvedAccounts();
+      const accounts = localDataStore.getAccounts();
+      const equityAcc = accounts.find((a) => a.code === '3100' || a.category === 'EQUITY') || {
+        id: 'acc-equity-01',
+        code: '3100',
+        nameAr: 'رأس المال والاحتياطيات',
+      };
+      const journals = localDataStore.getJournals();
+      const existingJ = journals.find((j) => (j.sourceModule as string) === 'CUSTOMER_OPENING_BALANCE' && j.sourceId === id);
+
+      if (newOpening > 0) {
+        if (existingJ) {
+          existingJ.lines = [
+            {
+              id: 'jl-1',
+              accountId: resolved.receivable.id,
+              accountCode: resolved.receivable.code,
+              accountNameAr: resolved.receivable.nameAr,
+              debit: newOpening,
+              credit: 0,
+              memo: `رصيد أول المدة - ${list[idx].nameAr}`,
+              entityType: 'CUSTOMER',
+              entityId: id,
+            },
+            {
+              id: 'jl-2',
+              accountId: equityAcc.id,
+              accountCode: equityAcc.code,
+              accountNameAr: equityAcc.nameAr,
+              debit: 0,
+              credit: newOpening,
+              memo: `حقوق الملكية / أرصدة افتتاحية - ${list[idx].nameAr}`,
+            },
+          ];
+          existingJ.totalDebit = newOpening;
+          existingJ.totalCredit = newOpening;
+          existingJ.status = 'POSTED';
+          syncToFirestore('erp_journals', existingJ.id, existingJ);
+        } else {
+          const jEntry: JournalEntry = {
+            id: 'jv-cust-op-' + Math.random().toString(36).substr(2, 9),
+            entryNumber: `JV-OP-CUST-${list[idx].code || id.slice(-4)}`,
+            date: list[idx].openingBalanceDate || '2026-07-01',
+            reference: `OP-${list[idx].code || id.slice(-4)}`,
+            description: `قيد رصيد افتتاحي للعميل (${list[idx].nameAr})`,
+            status: 'POSTED',
+            lines: [
+              {
+                id: 'jl-1',
+                accountId: resolved.receivable.id,
+                accountCode: resolved.receivable.code,
+                accountNameAr: resolved.receivable.nameAr,
+                debit: newOpening,
+                credit: 0,
+                memo: `رصيد أول المدة - ${list[idx].nameAr}`,
+                entityType: 'CUSTOMER',
+                entityId: id,
+              },
+              {
+                id: 'jl-2',
+                accountId: equityAcc.id,
+                accountCode: equityAcc.code,
+                accountNameAr: equityAcc.nameAr,
+                debit: 0,
+                credit: newOpening,
+                memo: `حقوق الملكية / أرصدة افتتاحية - ${list[idx].nameAr}`,
+              },
+            ],
+            totalDebit: newOpening,
+            totalCredit: newOpening,
+            createdAt: new Date().toISOString(),
+            postedAt: new Date().toISOString(),
+            isAutoGenerated: true,
+            sourceModule: 'CUSTOMER_OPENING_BALANCE' as any,
+            sourceId: id,
+          };
+          journals.unshift(jEntry);
+          syncToFirestore('erp_journals', jEntry.id, jEntry);
+        }
+      } else if (existingJ) {
+        existingJ.status = 'CANCELLED';
+        syncToFirestore('erp_journals', existingJ.id, existingJ);
+      }
+      localDataStore.saveJournals(journals);
+      this.recalculateCustomerBalance(id);
+    }
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
     cacheService.setCustomers(compId, list);
     try {
@@ -4518,6 +4682,94 @@ export class DataService {
       currentBalance: updatedBalance,
     };
     localDataStore.saveSuppliers(list);
+
+    if (diff !== 0) {
+      const resolved = this.getResolvedAccounts();
+      const accounts = localDataStore.getAccounts();
+      const equityAcc = accounts.find((a) => a.code === '3100' || a.category === 'EQUITY') || {
+        id: 'acc-equity-01',
+        code: '3100',
+        nameAr: 'رأس المال والاحتياطيات',
+      };
+      const journals = localDataStore.getJournals();
+      const existingJ = journals.find((j) => (j.sourceModule as string) === 'SUPPLIER_OPENING_BALANCE' && j.sourceId === id);
+
+      if (newOpening > 0) {
+        if (existingJ) {
+          existingJ.lines = [
+            {
+              id: 'jl-1',
+              accountId: equityAcc.id,
+              accountCode: equityAcc.code,
+              accountNameAr: equityAcc.nameAr,
+              debit: newOpening,
+              credit: 0,
+              memo: `حقوق الملكية / أرصدة افتتاحية - ${list[idx].nameAr}`,
+            },
+            {
+              id: 'jl-2',
+              accountId: resolved.payable.id,
+              accountCode: resolved.payable.code,
+              accountNameAr: resolved.payable.nameAr,
+              debit: 0,
+              credit: newOpening,
+              memo: `رصيد أول المدة للمورد - ${list[idx].nameAr}`,
+              entityType: 'SUPPLIER',
+              entityId: id,
+            },
+          ];
+          existingJ.totalDebit = newOpening;
+          existingJ.totalCredit = newOpening;
+          existingJ.status = 'POSTED';
+          syncToFirestore('erp_journals', existingJ.id, existingJ);
+        } else {
+          const jEntry: JournalEntry = {
+            id: 'jv-supp-op-' + Math.random().toString(36).substr(2, 9),
+            entryNumber: `JV-OP-SUPP-${list[idx].code || id.slice(-4)}`,
+            date: list[idx].openingBalanceDate || '2026-07-01',
+            reference: `OP-${list[idx].code || id.slice(-4)}`,
+            description: `قيد رصيد افتتاحي للمورد (${list[idx].nameAr})`,
+            status: 'POSTED',
+            lines: [
+              {
+                id: 'jl-1',
+                accountId: equityAcc.id,
+                accountCode: equityAcc.code,
+                accountNameAr: equityAcc.nameAr,
+                debit: newOpening,
+                credit: 0,
+                memo: `حقوق الملكية / أرصدة افتتاحية - ${list[idx].nameAr}`,
+              },
+              {
+                id: 'jl-2',
+                accountId: resolved.payable.id,
+                accountCode: resolved.payable.code,
+                accountNameAr: resolved.payable.nameAr,
+                debit: 0,
+                credit: newOpening,
+                memo: `رصيد أول المدة للمورد - ${list[idx].nameAr}`,
+                entityType: 'SUPPLIER',
+                entityId: id,
+              },
+            ],
+            totalDebit: newOpening,
+            totalCredit: newOpening,
+            createdAt: new Date().toISOString(),
+            postedAt: new Date().toISOString(),
+            isAutoGenerated: true,
+            sourceModule: 'SUPPLIER_OPENING_BALANCE' as any,
+            sourceId: id,
+          };
+          journals.unshift(jEntry);
+          syncToFirestore('erp_journals', jEntry.id, jEntry);
+        }
+      } else if (existingJ) {
+        existingJ.status = 'CANCELLED';
+        syncToFirestore('erp_journals', existingJ.id, existingJ);
+      }
+      localDataStore.saveJournals(journals);
+      this.recalculateSupplierBalance(id);
+    }
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
     cacheService.setSuppliers(compId, list);
     try {
@@ -4903,8 +5155,98 @@ export class DataService {
     const idx = list.findIndex((i) => i.id === id);
     if (idx === -1) return null;
 
+    const oldCost = Number(list[idx].costPrice || list[idx].purchasePrice || 0);
+    const oldOpeningQty = Number((list[idx] as any).openingBalance ?? (list[idx] as any).openingStock ?? 0);
+    const newCost = Number(data.costPrice !== undefined ? data.costPrice : oldCost);
+    const newOpeningQty = Number(data.openingBalance !== undefined ? data.openingBalance : (data.openingStock !== undefined ? data.openingStock : oldOpeningQty));
+    const valuationChanged = (newCost !== oldCost) || (newOpeningQty !== oldOpeningQty);
+
     list[idx] = { ...list[idx], ...data };
     localDataStore.saveInventory(list);
+
+    if (valuationChanged) {
+      const newValuation = Math.max(0, newOpeningQty * newCost);
+      const resolved = this.getResolvedAccounts();
+      const accounts = localDataStore.getAccounts();
+      const equityAcc = accounts.find((a) => a.code === '3100' || a.category === 'EQUITY') || {
+        id: 'acc-equity-01',
+        code: '3100',
+        nameAr: 'رأس المال والاحتياطيات',
+      };
+      const journals = localDataStore.getJournals();
+      const existingJ = journals.find((j) => (j.sourceModule as string) === 'INVENTORY_OPENING_BALANCE' && j.sourceId === id);
+
+      if (newValuation > 0) {
+        if (existingJ) {
+          existingJ.lines = [
+            {
+              id: 'jl-1',
+              accountId: resolved.inventory.id,
+              accountCode: resolved.inventory.code,
+              accountNameAr: resolved.inventory.nameAr,
+              debit: newValuation,
+              credit: 0,
+              memo: `إثبات مخزون أول المدة للصنف ${list[idx].nameAr}`,
+            },
+            {
+              id: 'jl-2',
+              accountId: equityAcc.id,
+              accountCode: equityAcc.code,
+              accountNameAr: equityAcc.nameAr,
+              debit: 0,
+              credit: newValuation,
+              memo: `حقوق الملكية / أرصدة افتتاحية - مخزون ${list[idx].nameAr}`,
+            },
+          ];
+          existingJ.totalDebit = newValuation;
+          existingJ.totalCredit = newValuation;
+          existingJ.status = 'POSTED';
+          syncToFirestore('erp_journals', existingJ.id, existingJ);
+        } else {
+          const jEntry: JournalEntry = {
+            id: 'jv-inv-op-' + Math.random().toString(36).substr(2, 9),
+            entryNumber: `JV-OP-INV-${list[idx].sku || id.slice(-4)}`,
+            date: '2026-07-01',
+            reference: `OP-${list[idx].sku || id.slice(-4)}`,
+            description: `قيد مخزون أول المدة للصنف (${list[idx].nameAr})`,
+            status: 'POSTED',
+            lines: [
+              {
+                id: 'jl-1',
+                accountId: resolved.inventory.id,
+                accountCode: resolved.inventory.code,
+                accountNameAr: resolved.inventory.nameAr,
+                debit: newValuation,
+                credit: 0,
+                memo: `إثبات مخزون أول المدة للصنف ${list[idx].nameAr}`,
+              },
+              {
+                id: 'jl-2',
+                accountId: equityAcc.id,
+                accountCode: equityAcc.code,
+                accountNameAr: equityAcc.nameAr,
+                debit: 0,
+                credit: newValuation,
+                memo: `حقوق الملكية / أرصدة افتتاحية - مخزون ${list[idx].nameAr}`,
+              },
+            ],
+            totalDebit: newValuation,
+            totalCredit: newValuation,
+            createdAt: new Date().toISOString(),
+            postedAt: new Date().toISOString(),
+            isAutoGenerated: true,
+            sourceModule: 'INVENTORY_OPENING_BALANCE' as any,
+            sourceId: id,
+          };
+          journals.unshift(jEntry);
+          syncToFirestore('erp_journals', jEntry.id, jEntry);
+        }
+      } else if (existingJ) {
+        existingJ.status = 'CANCELLED';
+        syncToFirestore('erp_journals', existingJ.id, existingJ);
+      }
+      localDataStore.saveJournals(journals);
+    }
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
     cacheService.setItems(compId, list);
     try {
@@ -6009,7 +6351,7 @@ export class DataService {
   // ==========================================
   // SALES REPS API
   // ==========================================
-  public static async getSalesReps(): Promise<SalesRep[]> {
+  public static getSalesReps(): SalesRep[] {
     return localDataStore.getSalesReps();
   }
 
@@ -6035,7 +6377,7 @@ export class DataService {
   // ==========================================
   // WAREHOUSES & STOCK MOVEMENT API
   // ==========================================
-  public static async getWarehouses(): Promise<Warehouse[]> {
+  public static getWarehouses(): Warehouse[] {
     return localDataStore.getWarehouses();
   }
 
