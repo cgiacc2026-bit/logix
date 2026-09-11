@@ -393,6 +393,7 @@ export interface Invoice {
   cashierName?: string;
   cashTendered?: number;
   changeDue?: number;
+  paymentStatus?: 'PAID' | 'PARTIALLY_PAID' | 'UNPAID';
   paymentMethod?: 'CASH' | 'CARD' | 'CREDIT' | 'SPLIT' | string;
   is_deleted?: boolean;
   deleted_at?: string;

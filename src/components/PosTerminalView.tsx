@@ -106,18 +106,6 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
     }
   }, [warehouses, activeCompany.posDefaultWarehouseId, selectedWarehouseId]);
 
-  useEffect(() => {
-    if (salesReps && salesReps.length > 0 && !selectedSalesRepId) {
-      setSelectedSalesRepId(salesReps[0].id);
-    }
-  }, [salesReps, selectedSalesRepId]);
-
-  useEffect(() => {
-    if (customers && customers.length > 0 && !selectedCustomerId) {
-      setSelectedCustomerId(customers[0].id);
-    }
-  }, [customers, selectedCustomerId]);
-
   // Tenant Branch State
   const [branches, setBranches] = useState<Branch[]>([]);
   const [activeBranch, setActiveBranch] = useState<Branch>(() => branchService.getActiveBranch(activeCompany.id));
@@ -144,6 +132,18 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   const [selectedSalesRepId, setSelectedSalesRepId] = useState<string>(() => {
     return salesReps && salesReps.length > 0 ? salesReps[0].id : '';
   });
+
+  useEffect(() => {
+    if (salesReps && salesReps.length > 0 && !selectedSalesRepId) {
+      setSelectedSalesRepId(salesReps[0].id);
+    }
+  }, [salesReps, selectedSalesRepId]);
+
+  useEffect(() => {
+    if (customers && customers.length > 0 && !selectedCustomerId) {
+      setSelectedCustomerId(customers[0].id);
+    }
+  }, [customers, selectedCustomerId]);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'CREDIT'>('CASH');
   const [cashTendered, setCashTendered] = useState<number>(0);
 

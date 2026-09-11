@@ -104,37 +104,7 @@ const ROUTE_TO_TAB: Record<string, TabType> = {
   '/system-reset': 'system-reset',
 };
 
-const TAB_TO_ROUTE: Partial<Record<TabType, string>> = {
-  'dashboard': '/dashboard',
-  'pos': '/pos',
-  'sales-invoices': '/invoices',
-  'invoices': '/invoices',
-  'purchase-invoices': '/purchase-invoices',
-  'quotations': '/quotations',
-  'ledger': '/ledger',
-  'journals': '/journals',
-  'trial-balance': '/trial-balance',
-  'financials': '/financials',
-  'accounts': '/coa',
-  'inventory': '/inventory',
-  'stock-ledger': '/stock-movement',
-  'warehouses': '/warehouses',
-  'vouchers': '/vouchers',
-  'receipt-vouchers': '/vouchers',
-  'payment-vouchers': '/payment-vouchers',
-  'customers': '/customers',
-  'suppliers': '/suppliers',
-  'customer-statements': '/customer-statements',
-  'supplier-statements': '/supplier-statements',
-  'sales-reps': '/sales-reps',
-  'production': '/production',
-  'branches': '/settings/pos',
-  'company': '/company',
-  'users': '/users',
-  'backup-restore': '/backup-restore',
-  'reports': '/reports',
-  'system-reset': '/system-reset',
-};
+const TAB_STORAGE_KEY = 'logix_erp_active_tab';
 
 const TAB_TITLES: Partial<Record<TabType, string>> = {
   'dashboard': 'لوحة المؤشرات العامة',
@@ -168,6 +138,16 @@ const TAB_TITLES: Partial<Record<TabType, string>> = {
 
 function getTabFromCurrentUrl(): TabType {
   if (typeof window === 'undefined') return 'dashboard';
+  
+  // 1. First check persisted session tab
+  try {
+    const saved = sessionStorage.getItem(TAB_STORAGE_KEY) as TabType;
+    if (saved && TAB_TITLES[saved]) {
+      return saved;
+    }
+  } catch (_) {}
+
+  // 2. Check if a legacy subpath was passed on initial entry
   const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
   if (ROUTE_TO_TAB[path]) {
     return ROUTE_TO_TAB[path];
@@ -182,38 +162,33 @@ function getTabFromCurrentUrl(): TabType {
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>(() => getTabFromCurrentUrl());
 
+  // Radical Subpath Elimination: Always force URL bar to the clean root domain ('/')
   const navigateToTab = (newTab: TabType) => {
     setActiveTab(newTab);
-    const targetRoute = TAB_TO_ROUTE[newTab] || `/${newTab}`;
     if (typeof window !== 'undefined') {
-      if (window.location.pathname !== targetRoute) {
-        window.history.pushState({ tab: newTab }, '', targetRoute);
+      try {
+        sessionStorage.setItem(TAB_STORAGE_KEY, newTab);
+      } catch (_) {}
+
+      // Clean away any subpaths or hashes radically, keeping strictly to root '/'
+      if (window.location.pathname !== '/' || window.location.hash || window.location.search) {
+        window.history.replaceState({ tab: newTab }, '', '/');
       }
-      const title = TAB_TITLES[newTab] || 'نظام المحاسبة السحابي المتكامل';
-      document.title = `${title} | ERP System`;
+      const title = TAB_TITLES[newTab] || 'نظام لوجيكس المحاسبي المتكامل';
+      document.title = `${title} | LOGIX ERP`;
     }
   };
 
   useEffect(() => {
-    const handleUrlChange = () => {
-      const resolvedTab = getTabFromCurrentUrl();
-      setActiveTab(resolvedTab);
-      const title = TAB_TITLES[resolvedTab] || 'نظام المحاسبة السحابي المتكامل';
-      document.title = `${title} | ERP System`;
-    };
-
-    window.addEventListener('popstate', handleUrlChange);
-    window.addEventListener('hashchange', handleUrlChange);
-
-    // Initial page title set
-    const initialTitle = TAB_TITLES[activeTab] || 'نظام المحاسبة السحابي المتكامل';
-    document.title = `${initialTitle} | ERP System`;
-
-    return () => {
-      window.removeEventListener('popstate', handleUrlChange);
-      window.removeEventListener('hashchange', handleUrlChange);
-    };
-  }, []);
+    // Radical Elimination of Subpaths: Immediately strip any subpath or hash from URL
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname !== '/' || window.location.hash || window.location.search) {
+        window.history.replaceState({ tab: activeTab }, '', '/');
+      }
+      const initialTitle = TAB_TITLES[activeTab] || 'نظام لوجيكس المحاسبي المتكامل';
+      document.title = `${initialTitle} | LOGIX ERP`;
+    }
+  }, [activeTab]);
 
   const [currency, setCurrency] = useState<string>('KWD');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
