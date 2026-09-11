@@ -9,6 +9,7 @@ import {
   PosSession,
   ParkedCart,
   CustomerCreditEvaluation,
+  Warehouse as WarehouseType,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { DataService } from '../services/dataService.ts';
@@ -56,12 +57,14 @@ import {
   Check,
   FileSpreadsheet,
   RefreshCw,
+  Warehouse as WarehouseIcon,
 } from 'lucide-react';
 
 interface PosTerminalViewProps {
   inventory: InventoryItem[];
   customers: Customer[];
   salesReps: SalesRep[];
+  warehouses?: WarehouseType[];
   company: CompanyProfile | null;
   currency: string;
   onRefreshAll: () => Promise<void> | void;
@@ -78,12 +81,26 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   inventory,
   customers,
   salesReps,
+  warehouses,
   company,
   currency,
   onRefreshAll,
 }) => {
   const activeCompany = resolveActiveCompany(company);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const [availableWarehouses, setAvailableWarehouses] = useState<WarehouseType[]>(() => {
+    return warehouses && warehouses.length > 0 ? warehouses : DataService.getWarehouses();
+  });
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(() => {
+    return activeCompany.posDefaultWarehouseId || (warehouses && warehouses.length > 0 ? warehouses[0].id : 'wh-main-01');
+  });
+
+  useEffect(() => {
+    if (warehouses && warehouses.length > 0) {
+      setAvailableWarehouses(warehouses);
+    }
+  }, [warehouses]);
 
   // Tenant Branch State
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -453,6 +470,8 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
         salesPerson: rep ? rep.nameAr : undefined,
         salesRepId: rep ? rep.id : undefined,
         salesRepName: rep ? rep.nameAr : undefined,
+        warehouseId: selectedWarehouseId,
+        warehouseName: availableWarehouses.find((w) => w.id === selectedWarehouseId)?.nameAr || 'المستودع الرئيسي (الشويخ)',
         date: new Date().toISOString().split('T')[0],
         dueDate: new Date().toISOString().split('T')[0],
         discountType,
@@ -546,6 +565,21 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
               {branches.map((b) => (
                 <option key={b.id} value={b.id} className="bg-slate-900 text-white">
                   {b.nameAr}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="h-4 w-px bg-slate-700"></div>
+          <div className="flex items-center gap-2 text-xs" title="المستودع المصدر لصرف بضاعة نقطة البيع">
+            <WarehouseIcon className="w-4 h-4 text-amber-400" />
+            <select
+              value={selectedWarehouseId}
+              onChange={(e) => setSelectedWarehouseId(e.target.value)}
+              className="bg-transparent text-amber-300 outline-none cursor-pointer font-semibold max-w-[140px] truncate"
+            >
+              {availableWarehouses.map((w) => (
+                <option key={w.id} value={w.id} className="bg-slate-900 text-white">
+                  {w.nameAr}
                 </option>
               ))}
             </select>
@@ -1123,16 +1157,22 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
                       </span>
                     </div>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const closed = posSessionService.closeSession({
                           actual_cash: actualCashCount,
                           notes: `إغلاق الوردية من قبل الكاشير`,
                         });
+                        try {
+                          await DataService.recordPosShiftClosingGL(closed);
+                          if (onRefreshAll) await onRefreshAll();
+                        } catch (err) {
+                          console.warn('POS Shift GL record notice:', err);
+                        }
                         setZReportData(closed);
                         refreshSession();
                         setIsSessionModalOpen(false);
                         alert(
-                          `تم إغلاق وردية الكاشير بنجاح! الفارق: ${formatCurrency(
+                          `تم إغلاق وردية الكاشير بنجاح وترحيل قيود التسوية آلياً! الفارق: ${formatCurrency(
                             closed.difference || 0,
                             currency
                           )}`

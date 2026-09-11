@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrialBalanceReport } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
-import { Scale, CheckCircle2, AlertTriangle, Printer, Download } from 'lucide-react';
+import { Scale, CheckCircle2, AlertTriangle, Printer, Download, ShieldCheck, X, RefreshCw } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
 
 interface TrialBalanceProps {
@@ -12,6 +12,14 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
   const [asOfDate, setAsOfDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [report, setReport] = useState<TrialBalanceReport | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+  const [auditResult, setAuditResult] = useState<ReturnType<typeof DataService.performSelfAuditing> | null>(null);
+
+  const handleRunAudit = () => {
+    const res = DataService.performSelfAuditing();
+    setAuditResult(res);
+    setIsAuditModalOpen(true);
+  };
 
   const fetchTrialBalance = async () => {
     setLoading(true);
@@ -61,6 +69,14 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
         </div>
 
         <div className="flex items-center gap-3 no-print">
+          <button
+            onClick={handleRunAudit}
+            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-md text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
+            title="فحص وتطابق الحسابات الأستاذية المساعدة مع حسابات المراقبة العامة وميزان المراجعة"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-200" />
+            <span>الفحص والتدقيق الذاتي (Self-Audit)</span>
+          </button>
           <button
             onClick={handleExportCSV}
             className="px-3.5 py-2 bg-[#F2EFE9] hover:bg-[#E5E1DA] text-[#1A1A1A] border border-[#E5E1DA] rounded-md text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
@@ -198,6 +214,204 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Self-Auditing Reconciliation Modal */}
+      {isAuditModalOpen && auditResult && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-[#E5E1DA] rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-[#1A1A1A] text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-lg">تقرير التدقيق والمطابقة المحاسبية الذاتية</h3>
+                  <p className="text-xs text-neutral-400">
+                    التحقق الآلي من توازن الدفاتر ومطابقة الأستاذ المساعد لحسابات المراقبة (IFRS)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAuditModalOpen(false)}
+                className="p-1 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Overall Status */}
+              <div
+                className={`p-4 rounded-lg border flex items-center gap-3 ${
+                  auditResult.isFullyAudited
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                }`}
+              >
+                {auditResult.isFullyAudited ? (
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
+                )}
+                <div>
+                  <h4 className="font-bold text-sm">
+                    {auditResult.isFullyAudited
+                      ? 'جميع الحسابات متطابقة تماماً ومتوازنة دون أي فروقات'
+                      : 'تم رصد بعض الفروقات المحاسبية أو عدم التطابق التي تتطلب مراجعة القيود'}
+                  </h4>
+                  <p className="text-xs mt-0.5 opacity-90">{auditResult.statusMessage}</p>
+                </div>
+              </div>
+
+              {/* 4 Pillars of Reconciliation */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 1. Trial Balance */}
+                <div className="p-3.5 bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-neutral-700">1. توازن ميزان المراجعة</span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        auditResult.trialBalanceBalanced
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {auditResult.trialBalanceBalanced ? 'متطابق' : 'فارق'}
+                    </span>
+                  </div>
+                  <div className="text-xs space-y-1 font-mono text-neutral-600">
+                    <div className="flex justify-between">
+                      <span>إجمالي المدين:</span>
+                      <span className="font-bold text-[#2D6A4F]">{formatCurrency(auditResult.totalDebit, currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>إجمالي الدائن:</span>
+                      <span className="font-bold text-[#9E2A2B]">{formatCurrency(auditResult.totalCredit, currency)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. AR (Customers) */}
+                <div className="p-3.5 bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-neutral-700">2. أستاذ العملاء vs مراقبة (1120)</span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        auditResult.receivableMatched
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {auditResult.receivableMatched ? 'مطابق' : 'فارق'}
+                    </span>
+                  </div>
+                  <div className="text-xs space-y-1 font-mono text-neutral-600">
+                    <div className="flex justify-between">
+                      <span>أرصدة العملاء:</span>
+                      <span className="font-bold">{formatCurrency(auditResult.receivableSubledger, currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>حساب المراقبة:</span>
+                      <span className="font-bold">{formatCurrency(auditResult.receivableControl, currency)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. AP (Suppliers) */}
+                <div className="p-3.5 bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-neutral-700">3. أستاذ الموردين vs مراقبة (2110)</span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        auditResult.payableMatched
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {auditResult.payableMatched ? 'مطابق' : 'فارق'}
+                    </span>
+                  </div>
+                  <div className="text-xs space-y-1 font-mono text-neutral-600">
+                    <div className="flex justify-between">
+                      <span>أرصدة الموردين:</span>
+                      <span className="font-bold">{formatCurrency(auditResult.payableSubledger, currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>حساب المراقبة:</span>
+                      <span className="font-bold">{formatCurrency(auditResult.payableControl, currency)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Inventory */}
+                <div className="p-3.5 bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-neutral-700">4. تقييم المخزون vs مراقبة (1130)</span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        auditResult.inventoryMatched
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {auditResult.inventoryMatched ? 'مطابق' : 'فارق'}
+                    </span>
+                  </div>
+                  <div className="text-xs space-y-1 font-mono text-neutral-600">
+                    <div className="flex justify-between">
+                      <span>تقييم الأصناف:</span>
+                      <span className="font-bold">{formatCurrency(auditResult.inventorySubledger, currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>حساب المراقبة:</span>
+                      <span className="font-bold">{formatCurrency(auditResult.inventoryControl, currency)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Discrepancies Details if any */}
+              {auditResult.discrepancies.length > 0 && (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg space-y-2">
+                  <h5 className="font-bold text-xs text-rose-900 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
+                    تفاصيل الفروقات المرصودة:
+                  </h5>
+                  <ul className="text-xs text-rose-800 space-y-1 list-disc list-inside">
+                    {auditResult.discrepancies.map((d, idx) => (
+                      <li key={idx}>{d}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-[#F7F5F0] border-t border-[#E5E1DA] flex items-center justify-between">
+              <span className="text-[11px] text-neutral-500 font-mono">
+                تاريخ الفحص: {auditResult.reconciledDate}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRunAudit}
+                  className="px-3 py-1.5 bg-white border border-[#E5E1DA] hover:bg-neutral-50 text-neutral-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-neutral-500" />
+                  إعادة الفحص
+                </button>
+                <button
+                  onClick={() => setIsAuditModalOpen(false)}
+                  className="px-4 py-1.5 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-xs font-bold cursor-pointer shadow-xs"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

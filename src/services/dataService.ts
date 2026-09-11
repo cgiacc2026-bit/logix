@@ -28,6 +28,8 @@ import {
   Quotation,
   QuotationLine,
   SalesRep,
+  Warehouse,
+  ItemWarehouseStock,
 } from '../types.js';
 import {
   DEFAULT_COMPANY_PROFILE,
@@ -39,6 +41,7 @@ import {
   INITIAL_JOURNALS,
   INITIAL_INVOICES,
   INITIAL_UNITS,
+  INITIAL_WAREHOUSES,
 } from '../server/defaultData.js';
 import { safeJsonParse, safeApiFetch } from '../utils/safeJson.js';
 import { SupabaseDataService } from './supabaseService.js';
@@ -74,6 +77,8 @@ const STORAGE_KEYS = {
   MANUFACTURING_SETTINGS: 'alwaleed_erp_mfg_settings',
   QUOTATIONS: 'alwaleed_erp_quotations',
   SALES_REPS: 'alwaleed_erp_sales_reps',
+  WAREHOUSES: 'alwaleed_erp_warehouses',
+  WAREHOUSE_STOCKS: 'alwaleed_erp_warehouse_stocks',
 };
 
 export const DEFAULT_MANUFACTURING_PROFILES: Record<ManufacturingIndustryType, ManufacturingStandardSettings> = {
@@ -1235,6 +1240,32 @@ class LocalDataStore {
     this.markTenantInitialized();
   }
 
+  public getWarehouses(): Warehouse[] {
+    const list = this.getLocal<Warehouse[] | null>(this.getKey(STORAGE_KEYS.WAREHOUSES), null);
+    if (list === null) {
+      if (this.isTenantInitialized()) {
+        return [];
+      }
+      this.saveWarehouses(INITIAL_WAREHOUSES);
+      this.markTenantInitialized();
+      return INITIAL_WAREHOUSES;
+    }
+    return list;
+  }
+
+  public saveWarehouses(warehouses: Warehouse[]): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.WAREHOUSES), warehouses);
+    this.markTenantInitialized();
+  }
+
+  public getWarehouseStocks(): ItemWarehouseStock[] {
+    return this.getLocal<ItemWarehouseStock[]>(this.getKey(STORAGE_KEYS.WAREHOUSE_STOCKS), []);
+  }
+
+  public saveWarehouseStocks(stocks: ItemWarehouseStock[]): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.WAREHOUSE_STOCKS), stocks);
+  }
+
   public resetToDefaults(): void {
     const cleanAccounts = INITIAL_ACCOUNTS.map((a) => ({ ...a, balance: 0 }));
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), this.getCompany());
@@ -2224,7 +2255,14 @@ export class DataService {
       paidAmount,
       dueAmount,
       paymentTerms: data.paymentTerms || (paidAmount >= grandTotal && grandTotal > 0 ? 'CASH' : 'CREDIT'),
-      salesPerson: data.salesPerson || '',
+      salesPerson: data.salesPerson || data.salesRepName || '',
+      salesRepId: data.salesRepId || undefined,
+      salesRepName: data.salesRepName || data.salesPerson || undefined,
+      warehouseId: data.warehouseId || undefined,
+      warehouseName: data.warehouseName || undefined,
+      pos_session_id: data.pos_session_id || data.posSessionId || undefined,
+      posSessionId: data.posSessionId || data.pos_session_id || undefined,
+      cashierName: data.cashierName || undefined,
       receiverName: data.receiverName || '',
       customerBranchId: data.customerBranchId || undefined,
       customerBranchName: data.customerBranchName || undefined,
@@ -2236,19 +2274,50 @@ export class DataService {
     };
 
     const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
-    
+    const company = localDataStore.getCompany();
+    const allowNegativeStock = Boolean(data.allowNegativeStock || company?.allowNegativeInventory);
+
+    // Negative Inventory Check
+    if ((isSales || isPurchaseReturn) && !allowNegativeStock) {
+      for (const it of lines) {
+        const invItem = inventory.find((i) => i.id === it.itemId);
+        const currentQty = invItem ? Number(invItem.quantityOnHand) : 0;
+        if (currentQty < it.quantity) {
+          throw new Error(
+            `لا يمكن إتمام الفاتورة: رصيد الصنف (${it.itemNameAr}) غير كافٍ في المخزن. المتوفر حالياً: ${currentQty} والكمية المطلوبة: ${it.quantity}. يرجى فحص المخزون أو تفعيل خيار السماح بالبيع بالسالب من إعدادات الشركة.`
+          );
+        }
+      }
+    }
+
+    const effectiveWarehouseId = newInvoice.warehouseId || company?.posDefaultWarehouseId || 'wh-main-01';
+    newInvoice.warehouseId = effectiveWarehouseId;
+    if (!newInvoice.warehouseName) {
+      const allWh = localDataStore.getWarehouses();
+      const matchWh = allWh.find((w) => w.id === effectiveWarehouseId);
+      newInvoice.warehouseName = matchWh ? matchWh.nameAr : 'المستودع الرئيسي (الشويخ)';
+    }
+
     // Inventory Updates
     lines.forEach((it: any) => {
       const invItem = inventory.find((i) => i.id === it.itemId);
+      const isOutbound = isSales || isPurchaseReturn;
+      const qtyDelta = isOutbound ? -it.quantity : it.quantity;
+
       if (invItem) {
-        if (isSales || isPurchaseReturn) {
-          invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - it.quantity);
-        } else if (isPurchase || isSalesReturn) {
+        if (isOutbound) {
+          invItem.quantityOnHand = allowNegativeStock
+            ? invItem.quantityOnHand - it.quantity
+            : Math.max(0, invItem.quantityOnHand - it.quantity);
+        } else {
           invItem.quantityOnHand += it.quantity;
         }
         syncToFirestore('erp_inventory', invItem.id, invItem);
         if (isSupabaseConfigured) SupabaseDataService.saveItem(invItem).catch(() => {});
       }
+
+      // Warehouse-level stock update
+      DataService.adjustWarehouseStock(effectiveWarehouseId, it.itemId, qtyDelta);
     });
     localDataStore.saveInventory(inventory);
 
@@ -2387,6 +2456,85 @@ export class DataService {
     syncToFirestore('erp_invoices', id, inv);
     await safeApiFetch(`/api/invoices/${id}/post`, { method: 'POST' });
     return inv;
+  }
+
+  public static async recordPosShiftClosingGL(session: any): Promise<JournalEntry | null> {
+    const diff = Number(session.difference) || 0;
+    if (Math.abs(diff) < 0.001) {
+      return null;
+    }
+    const absAmount = Math.abs(diff);
+    const resolved = this.getResolvedAccounts();
+    const diffExpenseAcc = { id: 'acc-5290', code: '5290', nameAr: 'مصروفات عجز وفروقات الصندوق والوردية' };
+    const diffRevenueAcc = { id: 'acc-4200', code: '4200', nameAr: 'إيرادات وفروقات الصندوق والوردية المتنوعة' };
+
+    const jLines = diff < 0
+      ? [
+          {
+            id: 'jl-1',
+            accountId: diffExpenseAcc.id,
+            accountCode: diffExpenseAcc.code,
+            accountNameAr: diffExpenseAcc.nameAr,
+            debit: absAmount,
+            credit: 0,
+            memo: `إثبات عجز نقدي في وردية الكاشير رقم ${session.session_number || session.id}`,
+          },
+          {
+            id: 'jl-2',
+            accountId: resolved.cash.id,
+            accountCode: resolved.cash.code,
+            accountNameAr: resolved.cash.nameAr,
+            debit: 0,
+            credit: absAmount,
+            memo: `تسوية صندوق الكاشير بعد إغلاق الوردية ${session.session_number || session.id}`,
+          },
+        ]
+      : [
+          {
+            id: 'jl-1',
+            accountId: resolved.cash.id,
+            accountCode: resolved.cash.code,
+            accountNameAr: resolved.cash.nameAr,
+            debit: absAmount,
+            credit: 0,
+            memo: `إثبات زيادة نقدية في وردية الكاشير رقم ${session.session_number || session.id}`,
+          },
+          {
+            id: 'jl-2',
+            accountId: diffRevenueAcc.id,
+            accountCode: diffRevenueAcc.code,
+            accountNameAr: diffRevenueAcc.nameAr,
+            debit: 0,
+            credit: absAmount,
+            memo: `تسوية صندوق الكاشير فائض الوردية ${session.session_number || session.id}`,
+          },
+        ];
+
+    const jEntry: JournalEntry = {
+      id: 'jv-pos-' + Math.random().toString(36).substr(2, 9),
+      entryNumber: `JV-POS-${session.session_number || session.id.slice(-4)}`,
+      date: new Date().toISOString().split('T')[0],
+      reference: `POS-SHIFT-${session.session_number || session.id}`,
+      description: `قيد تسوية الفوارق النقدية لإغلاق وردية كاشير (${session.user_name || 'الكاشير'}) - ${diff < 0 ? 'عجز' : 'فائض'} بقيمة ${absAmount.toFixed(3)}`,
+      status: 'POSTED',
+      lines: jLines,
+      totalDebit: absAmount,
+      totalCredit: absAmount,
+      createdAt: new Date().toISOString(),
+      postedAt: new Date().toISOString(),
+      isAutoGenerated: true,
+      sourceModule: 'POS_SHIFT' as any,
+      sourceId: session.id,
+    };
+
+    const journals = localDataStore.getJournals();
+    journals.unshift(jEntry);
+    localDataStore.saveJournals(journals);
+    syncToFirestore('erp_journals', jEntry.id, jEntry);
+    if (isSupabaseConfigured) {
+      SupabaseDataService.saveJournal(jEntry).catch(() => {});
+    }
+    return jEntry;
   }
 
   public static async cancelInvoice(id: string, reason?: string): Promise<Invoice | null> {
@@ -3487,6 +3635,8 @@ export class DataService {
       entityId: data.entityId || '',
       entityNameAr,
       invoiceId: data.invoiceId,
+      salesRepId: data.salesRepId || undefined,
+      salesRepName: data.salesRepName || undefined,
       reference: data.reference || data.referenceNumber || '',
       notes: data.notes || '',
       createdAt: new Date().toISOString(),
@@ -4075,6 +4225,55 @@ export class DataService {
       console.warn('Supabase saveCustomer notice:', e);
     }
     syncToFirestore('erp_customers', newCust.id, newCust);
+
+    // [ARCHITECT] Automated Balanced GL Opening Entry Generation
+    if (newCust.openingBalance && Number(newCust.openingBalance) > 0) {
+      const openAmount = Number(newCust.openingBalance);
+      const resolved = this.getResolvedAccounts();
+      const equityAcc = (resolved as any).retainedEarnings || (resolved as any).capital || { id: 'acc-3200', code: '3200', nameAr: 'الأرباح المرحلة / الأرصدة الافتتاحية' };
+      const jEntry: JournalEntry = {
+        id: 'jv-' + Math.random().toString(36).substr(2, 9),
+        entryNumber: `JV-OP-CUST-${newCust.id.slice(-4)}`,
+        date: newCust.openingBalanceDate || new Date().toISOString().split('T')[0],
+        reference: `OP-${newCust.nameAr}`,
+        description: `قيد رصيد أول المدة الافتتاحي للعميل (${newCust.nameAr})`,
+        status: 'POSTED',
+        lines: [
+          {
+            id: 'jl-1',
+            accountId: resolved.receivable.id,
+            accountCode: resolved.receivable.code,
+            accountNameAr: resolved.receivable.nameAr,
+            debit: openAmount,
+            credit: 0,
+            memo: `رصيد أول المدة للعميل ${newCust.nameAr}`,
+            entityType: 'CUSTOMER',
+            entityId: newCust.id,
+          },
+          {
+            id: 'jl-2',
+            accountId: equityAcc.id,
+            accountCode: equityAcc.code,
+            accountNameAr: equityAcc.nameAr,
+            debit: 0,
+            credit: openAmount,
+            memo: `حقوق الملكية / أرصدة افتتاحية - ${newCust.nameAr}`,
+          },
+        ],
+        totalDebit: openAmount,
+        totalCredit: openAmount,
+        createdAt: new Date().toISOString(),
+        postedAt: new Date().toISOString(),
+        isAutoGenerated: true,
+        sourceModule: 'CUSTOMER_OPENING_BALANCE' as any,
+        sourceId: newCust.id,
+      };
+      const journals = localDataStore.getJournals();
+      journals.unshift(jEntry);
+      localDataStore.saveJournals(journals);
+      syncToFirestore('erp_journals', jEntry.id, jEntry);
+    }
+
     await safeApiFetch('/api/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4240,6 +4439,55 @@ export class DataService {
       console.warn('Supabase saveSupplier notice:', e);
     }
     syncToFirestore('erp_suppliers', newSupp.id, newSupp);
+
+    // [ARCHITECT] Automated Balanced GL Opening Entry Generation
+    if (newSupp.openingBalance && Number(newSupp.openingBalance) > 0) {
+      const openAmount = Number(newSupp.openingBalance);
+      const resolved = this.getResolvedAccounts();
+      const equityAcc = (resolved as any).retainedEarnings || (resolved as any).capital || { id: 'acc-3200', code: '3200', nameAr: 'الأرباح المرحلة / الأرصدة الافتتاحية' };
+      const jEntry: JournalEntry = {
+        id: 'jv-' + Math.random().toString(36).substr(2, 9),
+        entryNumber: `JV-OP-SUPP-${newSupp.id.slice(-4)}`,
+        date: newSupp.openingBalanceDate || new Date().toISOString().split('T')[0],
+        reference: `OP-${newSupp.nameAr}`,
+        description: `قيد رصيد أول المدة الافتتاحي للمورد (${newSupp.nameAr})`,
+        status: 'POSTED',
+        lines: [
+          {
+            id: 'jl-1',
+            accountId: equityAcc.id,
+            accountCode: equityAcc.code,
+            accountNameAr: equityAcc.nameAr,
+            debit: openAmount,
+            credit: 0,
+            memo: `حقوق الملكية / أرصدة افتتاحية - ${newSupp.nameAr}`,
+          },
+          {
+            id: 'jl-2',
+            accountId: resolved.payable.id,
+            accountCode: resolved.payable.code,
+            accountNameAr: resolved.payable.nameAr,
+            debit: 0,
+            credit: openAmount,
+            memo: `رصيد أول المدة للمورد ${newSupp.nameAr}`,
+            entityType: 'SUPPLIER',
+            entityId: newSupp.id,
+          },
+        ],
+        totalDebit: openAmount,
+        totalCredit: openAmount,
+        createdAt: new Date().toISOString(),
+        postedAt: new Date().toISOString(),
+        isAutoGenerated: true,
+        sourceModule: 'SUPPLIER_OPENING_BALANCE' as any,
+        sourceId: newSupp.id,
+      };
+      const journals = localDataStore.getJournals();
+      journals.unshift(jEntry);
+      localDataStore.saveJournals(journals);
+      syncToFirestore('erp_journals', jEntry.id, jEntry);
+    }
+
     await safeApiFetch('/api/suppliers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4407,6 +4655,53 @@ export class DataService {
       console.warn('Supabase saveItem notice:', e);
     }
     syncToFirestore('erp_inventory', newItem.id, newItem);
+
+    // [ARCHITECT] Automated Balanced GL Opening Entry Generation
+    const initialValuation = (Number(newItem.quantityOnHand) || 0) * (Number(newItem.purchasePrice) || 0);
+    if (initialValuation > 0) {
+      const resolved = this.getResolvedAccounts();
+      const equityAcc = (resolved as any).retainedEarnings || (resolved as any).capital || { id: 'acc-3200', code: '3200', nameAr: 'الأرباح المرحلة / الأرصدة الافتتاحية' };
+      const jEntry: JournalEntry = {
+        id: 'jv-' + Math.random().toString(36).substr(2, 9),
+        entryNumber: `JV-OP-INV-${newItem.id.slice(-4)}`,
+        date: new Date().toISOString().split('T')[0],
+        reference: `OP-${newItem.sku}`,
+        description: `قيد إثبات رصيد أول المدة للصنف (${newItem.nameAr}) - كمية ${newItem.quantityOnHand}`,
+        status: 'POSTED',
+        lines: [
+          {
+            id: 'jl-1',
+            accountId: resolved.inventory.id,
+            accountCode: resolved.inventory.code,
+            accountNameAr: resolved.inventory.nameAr,
+            debit: initialValuation,
+            credit: 0,
+            memo: `إثبات مخزون أول المدة للصنف ${newItem.nameAr}`,
+          },
+          {
+            id: 'jl-2',
+            accountId: equityAcc.id,
+            accountCode: equityAcc.code,
+            accountNameAr: equityAcc.nameAr,
+            debit: 0,
+            credit: initialValuation,
+            memo: `حقوق الملكية / أرصدة افتتاحية - مخزون ${newItem.nameAr}`,
+          },
+        ],
+        totalDebit: initialValuation,
+        totalCredit: initialValuation,
+        createdAt: new Date().toISOString(),
+        postedAt: new Date().toISOString(),
+        isAutoGenerated: true,
+        sourceModule: 'INVENTORY_OPENING_BALANCE' as any,
+        sourceId: newItem.id,
+      };
+      const journals = localDataStore.getJournals();
+      journals.unshift(jEntry);
+      localDataStore.saveJournals(journals);
+      syncToFirestore('erp_journals', jEntry.id, jEntry);
+    }
+
     await safeApiFetch('/api/inventory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5735,6 +6030,206 @@ export class DataService {
     const filtered = list.filter((r) => r.id !== id);
     localDataStore.saveSalesReps(filtered);
     return true;
+  }
+
+  // ==========================================
+  // WAREHOUSES & STOCK MOVEMENT API
+  // ==========================================
+  public static async getWarehouses(): Promise<Warehouse[]> {
+    return localDataStore.getWarehouses();
+  }
+
+  public static async saveWarehouse(warehouse: Warehouse): Promise<Warehouse> {
+    const list = localDataStore.getWarehouses();
+    const idx = list.findIndex((w) => w.id === warehouse.id);
+    if (idx !== -1) {
+      list[idx] = warehouse;
+    } else {
+      list.push(warehouse);
+    }
+    localDataStore.saveWarehouses(list);
+    return warehouse;
+  }
+
+  public static async deleteWarehouse(id: string): Promise<boolean> {
+    const list = localDataStore.getWarehouses();
+    const filtered = list.filter((w) => w.id !== id);
+    localDataStore.saveWarehouses(filtered);
+    return true;
+  }
+
+  public static getWarehouseStock(warehouseId: string, itemId: string): number {
+    const stocks = localDataStore.getWarehouseStocks();
+    const entry = stocks.find((s) => s.warehouseId === warehouseId && s.itemId === itemId);
+    if (entry) return entry.quantityOnHand;
+    const inventory = localDataStore.getInventory();
+    const item = inventory.find((i) => i.id === itemId);
+    return item ? item.quantityOnHand : 0;
+  }
+
+  public static adjustWarehouseStock(warehouseId: string, itemId: string, delta: number): void {
+    const stocks = localDataStore.getWarehouseStocks();
+    const idx = stocks.findIndex((s) => s.warehouseId === warehouseId && s.itemId === itemId);
+    if (idx !== -1) {
+      stocks[idx].quantityOnHand += delta;
+    } else {
+      const inventory = localDataStore.getInventory();
+      const item = inventory.find((i) => i.id === itemId);
+      const baseQty = item ? item.quantityOnHand : 0;
+      stocks.push({
+        id: 'ws-' + Math.random().toString(36).substr(2, 9),
+        warehouseId,
+        itemId,
+        quantityOnHand: baseQty + delta,
+      });
+    }
+    localDataStore.saveWarehouseStocks(stocks);
+  }
+
+  // ==========================================
+  // [ARCHITECT] SELF-AUDITING ENGINE (تطابق الأرصدة والتحقق الذاتي)
+  // ==========================================
+  public static performSelfAuditing(): {
+    isFullyAudited: boolean;
+    trialBalanceBalanced: boolean;
+    totalDebit: number;
+    totalCredit: number;
+    trialBalanceDiff: number;
+    receivableMatched: boolean;
+    receivableSubledger: number;
+    receivableControl: number;
+    receivableDiff: number;
+    payableMatched: boolean;
+    payableSubledger: number;
+    payableControl: number;
+    payableDiff: number;
+    inventoryMatched: boolean;
+    inventorySubledger: number;
+    inventoryControl: number;
+    inventoryDiff: number;
+    statusMessage: string;
+    discrepancies: string[];
+    reconciledDate: string;
+  } {
+    const customers = localDataStore.getCustomers();
+    const suppliers = localDataStore.getSuppliers();
+    const inventory = localDataStore.getInventory();
+    const journals = localDataStore.getJournals();
+    const resolved = this.getResolvedAccounts();
+
+    // 1. Trial Balance Equilibrium (ميزان المراجعة وتساوي المدين والدائن)
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (const j of journals) {
+      for (const line of j.lines || []) {
+        totalDebit += Number(line.debit) || 0;
+        totalCredit += Number(line.credit) || 0;
+      }
+    }
+    const trialBalanceDiff = Math.abs(totalDebit - totalCredit);
+    const trialBalanceBalanced = trialBalanceDiff < 0.01;
+
+    // 2. Customers Subsidiary Ledger vs Accounts Receivable Control Account (1120)
+    let receivableSubledger = 0;
+    for (const c of customers) {
+      const b = Number(c.balance !== undefined ? c.balance : c.openingBalance) || 0;
+      receivableSubledger += b;
+    }
+
+    let receivableControl = 0;
+    const recAccId = resolved.receivable.id;
+    const recAccCode = resolved.receivable.code;
+    for (const j of journals) {
+      for (const line of j.lines || []) {
+        if (line.accountId === recAccId || line.accountCode === recAccCode) {
+          receivableControl += (Number(line.debit) || 0) - (Number(line.credit) || 0);
+        }
+      }
+    }
+    const receivableDiff = Math.abs(receivableSubledger - receivableControl);
+    const receivableMatched = receivableDiff < 0.05;
+
+    // 3. Suppliers Subsidiary Ledger vs Accounts Payable Control Account (2110)
+    let payableSubledger = 0;
+    for (const s of suppliers) {
+      const b = Number(s.balance !== undefined ? s.balance : s.openingBalance) || 0;
+      payableSubledger += b;
+    }
+
+    let payableControl = 0;
+    const payAccId = resolved.payable.id;
+    const payAccCode = resolved.payable.code;
+    for (const j of journals) {
+      for (const line of j.lines || []) {
+        if (line.accountId === payAccId || line.accountCode === payAccCode) {
+          payableControl += (Number(line.credit) || 0) - (Number(line.debit) || 0);
+        }
+      }
+    }
+    const payableDiff = Math.abs(payableSubledger - payableControl);
+    const payableMatched = payableDiff < 0.05;
+
+    // 4. Inventory Subsidiary Valuation vs Inventory Control Account (1130 / 1140)
+    let inventorySubledger = 0;
+    for (const it of inventory) {
+      const qty = Number(it.quantityOnHand) || 0;
+      const cost = Number(it.costPrice || it.purchasePrice || 0);
+      inventorySubledger += qty * cost;
+    }
+
+    let inventoryControl = 0;
+    const invAccId = resolved.inventory.id;
+    const invAccCode = resolved.inventory.code;
+    for (const j of journals) {
+      for (const line of j.lines || []) {
+        if (line.accountId === invAccId || line.accountCode === invAccCode) {
+          inventoryControl += (Number(line.debit) || 0) - (Number(line.credit) || 0);
+        }
+      }
+    }
+    const inventoryDiff = Math.abs(inventorySubledger - inventoryControl);
+    const inventoryMatched = inventoryDiff < 0.05;
+
+    const discrepancies: string[] = [];
+    if (!trialBalanceBalanced) {
+      discrepancies.push(`عدم توازن ميزان المراجعة العام: إجمالي المدين (${totalDebit.toFixed(3)}) لا يساوي إجمالي الدائن (${totalCredit.toFixed(3)}) بفارق (${trialBalanceDiff.toFixed(3)}).`);
+    }
+    if (!receivableMatched) {
+      discrepancies.push(`عدم تطابق أستاذ العملاء: إجمالي أرصدة العملاء (${receivableSubledger.toFixed(3)}) يختلف عن حساب المراقبة العام (${receivableControl.toFixed(3)}) بفارق (${receivableDiff.toFixed(3)}).`);
+    }
+    if (!payableMatched) {
+      discrepancies.push(`عدم تطابق أستاذ الموردين: إجمالي أرصدة الموردين (${payableSubledger.toFixed(3)}) يختلف عن حساب المراقبة العام (${payableControl.toFixed(3)}) بفارق (${payableDiff.toFixed(3)}).`);
+    }
+    if (!inventoryMatched) {
+      discrepancies.push(`فارق تقييم المخزون: إجمالي تقييم أصناف المخزن (${inventorySubledger.toFixed(3)}) يختلف عن حساب مراقبة المخزون بالدفتر العام (${inventoryControl.toFixed(3)}) بفارق (${inventoryDiff.toFixed(3)}).`);
+    }
+
+    const isFullyAudited = trialBalanceBalanced && receivableMatched && payableMatched && inventoryMatched;
+
+    return {
+      isFullyAudited,
+      trialBalanceBalanced,
+      totalDebit,
+      totalCredit,
+      trialBalanceDiff,
+      receivableMatched,
+      receivableSubledger,
+      receivableControl,
+      receivableDiff,
+      payableMatched,
+      payableSubledger,
+      payableControl,
+      payableDiff,
+      inventoryMatched,
+      inventorySubledger,
+      inventoryControl,
+      inventoryDiff,
+      statusMessage: isFullyAudited
+        ? 'تم التحقق الذاتي الكامل: جميع حسابات الأستاذ المساعد متطابقة 100% مع الحسابات الرقابية (Control Accounts) وميزان المراجعة متوازن تماماً.'
+        : `تنبيه تدقيق داخلي: تم رصد ${discrepancies.length} فروقات محاسبية تتطلب المراجعة.`,
+      discrepancies,
+      reconciledDate: new Date().toISOString(),
+    };
   }
 
   /**

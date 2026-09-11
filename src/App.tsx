@@ -15,6 +15,7 @@ import {
   SystemUser,
   Quotation,
   SalesRep,
+  Warehouse,
 } from './types.js';
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
@@ -72,6 +73,7 @@ export default function App() {
   const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]);
 
   const [units, setUnits] = useState<UnitDefinition[]>([]);
@@ -175,7 +177,7 @@ export default function App() {
       const accsData = await DataService.getAccounts();
       const kpisData = await DataService.getKPIs();
 
-      const [invData, vData, cData, sData, iData, uData, prdData, quoData, repsData, usersData] =
+      const [invData, vData, cData, sData, iData, uData, prdData, quoData, repsData, usersData, whData] =
         await Promise.all([
           DataService.getInvoices(),
           DataService.getVouchers(),
@@ -187,6 +189,7 @@ export default function App() {
           DataService.getQuotations(),
           DataService.getSalesReps(),
           DataService.getUsers(),
+          DataService.getWarehouses(),
         ]);
 
       setCompany(compData);
@@ -205,6 +208,7 @@ export default function App() {
       setProductionOrders(prdData || []);
       setQuotations(quoData || []);
       setSalesReps(repsData || []);
+      setWarehouses(whData || []);
       if (usersData && usersData.length > 0) {
         setUsers(usersData);
       }
@@ -671,6 +675,7 @@ export default function App() {
               inventory={inventory}
               customers={customers}
               salesReps={salesReps}
+              warehouses={warehouses}
               company={activeCompany}
               currency={currency}
               onRefreshAll={refreshAllData}
@@ -719,6 +724,8 @@ export default function App() {
               inventory={inventory}
               invoices={invoices}
               vouchers={vouchers}
+              salesReps={salesReps}
+              warehouses={warehouses}
               units={units}
               currency={currency}
               activeSubTab={

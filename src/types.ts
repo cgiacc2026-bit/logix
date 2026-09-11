@@ -337,6 +337,8 @@ export interface InvoiceLine {
   vatRate: number; // e.g. 0 for 0%
   vatAmount: number;
   total: number;
+  warehouseId?: string;
+  warehouseName?: string;
   notes?: string;
 }
 
@@ -378,6 +380,8 @@ export interface Invoice {
   branchId?: string;
   pos_session_id?: string;
   posSessionId?: string;
+  warehouseId?: string;
+  warehouseName?: string;
   cashierName?: string;
   cashTendered?: number;
   changeDue?: number;
@@ -704,6 +708,13 @@ export interface CompanyProfile {
   
   // Default Accounts Mapping (الربط المحاسبي الافتراضي بدليل الحسابات)
   defaultAccounts?: DefaultAccountsMapping;
+
+  // POS Terminal Configuration (إعدادات نقاط البيع الافتراضية)
+  posTerminalName?: string;
+  posDefaultWarehouseId?: string;
+  posDefaultWarehouseName?: string;
+  posDefaultAccountId?: string;
+  posDefaultAccountName?: string;
 
   // Signatories
   generalManager: string;

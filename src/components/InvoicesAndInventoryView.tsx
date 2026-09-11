@@ -8,7 +8,9 @@ import {
   CompanyProfile,
   UnitDefinition,
   ProductionOrder,
-  Account
+  Account,
+  SalesRep,
+  Warehouse,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
@@ -97,6 +99,8 @@ interface InvoicesProps {
   onUpdateUnit?: (id: string, data: any) => Promise<void>;
   onDeleteUnit?: (id: string) => Promise<void>;
   productionOrders?: ProductionOrder[];
+  salesReps?: SalesRep[];
+  warehouses?: Warehouse[];
 }
 
 export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
@@ -134,7 +138,17 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   onUpdateUnit,
   onDeleteUnit,
   productionOrders = [],
+  salesReps,
+  warehouses,
 }) => {
+  const allSalesReps = useMemo(() => {
+    return salesReps && salesReps.length > 0 ? salesReps : DataService.getSalesReps();
+  }, [salesReps]);
+
+  const allWarehouses = useMemo(() => {
+    return warehouses && warehouses.length > 0 ? warehouses : DataService.getWarehouses();
+  }, [warehouses]);
+
   const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units'>(
     activeSubTab || 'invoices'
   );
@@ -227,6 +241,9 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [invDiscountType, setInvDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
   const [invDiscountValue, setInvDiscountValue] = useState<number>(0);
   const [invPaidAmount, setInvPaidAmount] = useState<number>(0);
+  const [invWarehouseId, setInvWarehouseId] = useState<string>(() => company?.posDefaultWarehouseId || 'wh-main-01');
+  const [invSalesRepId, setInvSalesRepId] = useState<string>('');
+  const [vouchSalesRepId, setVouchSalesRepId] = useState<string>('');
   const [invLines, setInvLines] = useState<
     {
       itemId: string;
@@ -479,6 +496,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvDiscountType('FIXED');
     setInvDiscountValue(0);
     setInvPaidAmount(0);
+    setInvWarehouseId(company?.posDefaultWarehouseId || (allWarehouses.length > 0 ? allWarehouses[0].id : 'wh-main-01'));
+    setInvSalesRepId('');
     setInvLines([
       {
         itemId: '',
@@ -513,6 +532,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvNotes(inv.notes || '');
     setInvDiscountType(inv.discountType || 'FIXED');
     setInvDiscountValue(Number(inv.discountValue) || 0);
+    setInvWarehouseId(inv.warehouseId || company?.posDefaultWarehouseId || (allWarehouses.length > 0 ? allWarehouses[0].id : 'wh-main-01'));
+    setInvSalesRepId(inv.salesRepId || '');
 
     const mappedLines = (inv.lines && inv.lines.length > 0)
       ? inv.lines.map((l: any) => ({
@@ -612,7 +633,11 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       dueDate: invDueDate || invDate || new Date().toISOString().split('T')[0],
       paymentTerms: invPaymentTerms,
       paidAmount: effectivePaidAmount,
-      salesPerson: invSalesPerson,
+      salesPerson: allSalesReps.find((r) => r.id === invSalesRepId)?.nameAr || invSalesPerson || '',
+      salesRepId: invSalesRepId || undefined,
+      salesRepName: allSalesReps.find((r) => r.id === invSalesRepId)?.nameAr || invSalesPerson || undefined,
+      warehouseId: invWarehouseId,
+      warehouseName: allWarehouses.find((w) => w.id === invWarehouseId)?.nameAr || 'المستودع الرئيسي (الشويخ)',
       receiverName: invReceiverName,
       customerBranchId: invCustomerBranchId || undefined,
       customerBranchName: invCustomerBranchName || undefined,
@@ -728,6 +753,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         entityId: vouchEntityId,
         amount: vouchAmount,
         bankAccountId: vouchBankAcc,
+        salesRepId: vouchSalesRepId || undefined,
+        salesRepName: allSalesReps.find((r) => r.id === vouchSalesRepId)?.nameAr || undefined,
         notes: vouchNotes,
       });
       setIsVoucherModalOpen(false);
@@ -1414,7 +1441,21 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-4 font-bold text-[#1A1A1A]">{inv.entityNameAr || '-'}</td>
+                        <td className="py-3 px-4 font-bold text-[#1A1A1A]">
+                          <div>{inv.entityNameAr || '-'}</div>
+                          <div className="flex flex-wrap gap-1 mt-1 font-normal text-[10px]">
+                            {(inv.salesRepName || inv.salesPerson) && (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                👤 {inv.salesRepName || inv.salesPerson}
+                              </span>
+                            )}
+                            {inv.warehouseName && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                                🏢 {inv.warehouseName}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-4 font-mono text-[#6E6659]">{inv.date}</td>
                         <td className="py-3 px-4 text-left font-mono font-semibold text-[#1A1A1A]">
                           {formatCurrency(inv.subtotal, currency)}
@@ -2578,15 +2619,40 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="block font-bold text-[#1A1A1A] mb-1">اسم البائع / مندوب المبيعات</label>
-                    <input
-                      type="text"
-                      placeholder="اسم مسؤول المبيعات والتسليم..."
-                      value={invSalesPerson}
-                      onChange={(e) => setInvSalesPerson(e.target.value)}
-                      className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2 text-[#1A1A1A] font-semibold"
-                    />
+                  <div>
+                    <label className="block font-bold text-[#1A1A1A] mb-1">المستودع المصدر / المخزن *</label>
+                    <select
+                      value={invWarehouseId}
+                      onChange={(e) => setInvWarehouseId(e.target.value)}
+                      className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 text-[#1A1A1A] font-bold"
+                    >
+                      {allWarehouses.map((wh) => (
+                        <option key={wh.id} value={wh.id}>
+                          {wh.nameAr} ({wh.code}) {wh.isDefault ? '⭐ افتراضي' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-[#1A1A1A] mb-1">مندوب المبيعات / مسؤول التوزيع</label>
+                    <select
+                      value={invSalesRepId}
+                      onChange={(e) => {
+                        const repId = e.target.value;
+                        setInvSalesRepId(repId);
+                        const matchRep = allSalesReps.find((r) => r.id === repId);
+                        if (matchRep) setInvSalesPerson(matchRep.nameAr);
+                      }}
+                      className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 text-[#1A1A1A] font-semibold"
+                    >
+                      <option value="">-- بدون مندوب محدد --</option>
+                      {allSalesReps.map((rep) => (
+                        <option key={rep.id} value={rep.id}>
+                          {rep.nameAr} ({rep.code})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="sm:col-span-2">
@@ -3087,6 +3153,24 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   <option value="acc-1112">الصندوق الرئيسي (الخزينة النقدية)</option>
                 </select>
               </div>
+
+              {vouchType === 'RECEIPT' && (
+                <div>
+                  <label className="block font-bold text-[#1A1A1A] mb-1">مندوب المبيعات والتحصيل</label>
+                  <select
+                    value={vouchSalesRepId}
+                    onChange={(e) => setVouchSalesRepId(e.target.value)}
+                    className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 text-[#1A1A1A] font-semibold"
+                  >
+                    <option value="">-- بدون مندوب محدد --</option>
+                    {allSalesReps.map((rep) => (
+                      <option key={rep.id} value={rep.id}>
+                        {rep.nameAr} ({rep.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block font-bold text-[#1A1A1A] mb-1">البيان والشرح التفصيلي</label>

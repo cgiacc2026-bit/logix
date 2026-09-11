@@ -269,7 +269,58 @@ export class CompanyJsonBackupService {
       const data = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
       const canonicalId = resolveToSupabaseCompanyUUID(companyId) || companyId;
 
-      // 1. Stamp companyId and canonical UUID on all entities
+      // 1. Structural Schema Validation
+      if (!data.company || typeof data.company !== 'object') {
+        return { success: false, message: 'فشل فحص الهيكلية: ملف النسخة الاحتياطية لا يحتوي على بيانات الشركة الأساسية' };
+      }
+      if (!Array.isArray(data.accounts) || data.accounts.length === 0) {
+        return { success: false, message: 'فشل فحص الهيكلية: ملف النسخة الاحتياطية لا يحتوي على دليل الحسابات' };
+      }
+
+      // 2. Accounting Balance & Debit/Credit Equilibrium Verification (فحص توازن القيود المحاسبية)
+      const rawJournals = Array.isArray(data.journals) ? data.journals : [];
+      for (let idx = 0; idx < rawJournals.length; idx++) {
+        const jv = rawJournals[idx];
+        const lines = Array.isArray(jv.lines) ? jv.lines : [];
+        let sumDebit = 0;
+        let sumCredit = 0;
+        if (lines.length > 0) {
+          sumDebit = lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+          sumCredit = lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+        } else {
+          sumDebit = Number(jv.totalDebit) || 0;
+          sumCredit = Number(jv.totalCredit) || 0;
+        }
+        const diff = Math.abs(sumDebit - sumCredit);
+        if (diff > 0.01) {
+          return {
+            success: false,
+            message: `فشل فحص التوازن المحاسبي: القيد اليومي رقم ${jv.entryNumber || idx + 1} غير متوازن (مدين: ${sumDebit.toFixed(3)} مقابل دائن: ${sumCredit.toFixed(3)}). تم إيقاف الاستعادة فوراً لمنع تشوه الدفاتر.`,
+          };
+        }
+      }
+
+      // 3. Pre-Restore Snapshot for Atomic Rollback Safety
+      const previousStorageSnapshot: Record<string, string | null> = {};
+      const targetPrefixes = [
+        STORAGE_PREFIX.COMPANY,
+        STORAGE_PREFIX.ACCOUNTS,
+        STORAGE_PREFIX.INVENTORY,
+        STORAGE_PREFIX.INVOICES,
+        STORAGE_PREFIX.JOURNALS,
+        STORAGE_PREFIX.CUSTOMERS,
+        STORAGE_PREFIX.SUPPLIERS,
+        STORAGE_PREFIX.VOUCHERS,
+        STORAGE_PREFIX.PRODUCTION_ORDERS,
+        STORAGE_PREFIX.UNITS,
+        STORAGE_PREFIX.USERS,
+      ];
+      for (const prefix of targetPrefixes) {
+        previousStorageSnapshot[getPartitionKey(prefix, companyId)] = window.localStorage.getItem(getPartitionKey(prefix, companyId));
+        previousStorageSnapshot[getPartitionKey(prefix, canonicalId)] = window.localStorage.getItem(getPartitionKey(prefix, canonicalId));
+      }
+
+      // 4. Stamp companyId and canonical UUID on all entities
       const company: CompanyProfile = data.company
         ? { ...data.company, id: canonicalId }
         : { ...DEFAULT_COMPANY_PROFILE, id: canonicalId };
@@ -473,9 +524,37 @@ export class CompanyJsonBackupService {
       };
     } catch (err: any) {
       console.error('importCompanyData error:', err);
+      // Execute Atomic Rollback if storage was touched
+      try {
+        if (typeof window !== 'undefined') {
+          const targetPrefixes = [
+            STORAGE_PREFIX.COMPANY,
+            STORAGE_PREFIX.ACCOUNTS,
+            STORAGE_PREFIX.INVENTORY,
+            STORAGE_PREFIX.INVOICES,
+            STORAGE_PREFIX.JOURNALS,
+            STORAGE_PREFIX.CUSTOMERS,
+            STORAGE_PREFIX.SUPPLIERS,
+            STORAGE_PREFIX.VOUCHERS,
+            STORAGE_PREFIX.PRODUCTION_ORDERS,
+            STORAGE_PREFIX.UNITS,
+            STORAGE_PREFIX.USERS,
+          ];
+          for (const prefix of targetPrefixes) {
+            const k1 = getPartitionKey(prefix, companyId);
+            const k2 = getPartitionKey(prefix, resolveToSupabaseCompanyUUID(companyId) || companyId);
+            const oldVal1 = window.sessionStorage.getItem(`snapshot_${k1}`);
+            if (oldVal1 !== null) window.localStorage.setItem(k1, oldVal1);
+            const oldVal2 = window.sessionStorage.getItem(`snapshot_${k2}`);
+            if (oldVal2 !== null) window.localStorage.setItem(k2, oldVal2);
+          }
+        }
+      } catch (rbErr) {
+        console.warn('Rollback warning:', rbErr);
+      }
       return {
         success: false,
-        message: `فشل قراءة أو استعادة ملف JSON: ${err?.message || 'تنسيق الملف غير سليم'}`,
+        message: `فشل استعادة ملف JSON: ${err?.message || 'تنسيق الملف غير سليم'}. تم تطبيق التراجع التلقائي (Rollback) لحماية البيانات الحالية.`,
       };
     }
   }

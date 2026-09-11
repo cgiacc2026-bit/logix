@@ -1,4 +1,4 @@
-import { Account, Customer, Supplier, InventoryItem, JournalEntry, Invoice, CompanyProfile, SystemUser, UnitDefinition } from '../types.js';
+import { Account, Customer, Supplier, InventoryItem, JournalEntry, Invoice, CompanyProfile, SystemUser, UnitDefinition, Warehouse } from '../types.js';
 
 export const INITIAL_USERS: SystemUser[] = [
   {
@@ -1989,4 +1989,38 @@ export const INITIAL_UNITS: UnitDefinition[] = [
   { id: 'u-8', code: 'BAG', nameAr: 'شوال / خيشة', nameEn: 'Sack/Bag', conversionFactor: 50, isBaseUnit: false, description: 'كيس شوال كبير (مثلاً 50 كجم)' },
   { id: 'u-9', code: 'TON', nameAr: 'طن متري', nameEn: 'Ton', conversionFactor: 1000, isBaseUnit: false, description: 'طن متري (1000 كجم)' },
 ];
+
+export const INITIAL_WAREHOUSES: Warehouse[] = [
+  {
+    id: 'wh-main-01',
+    code: 'WH-MAIN-01',
+    nameAr: 'المستودع الرئيسي (الشويخ الصناعية)',
+    nameEn: 'Main Warehouse - Shuwaikh',
+    location: 'الشويخ الصناعية، ق 3',
+    keeperName: 'سالم الكندري',
+    isDefault: true,
+    isActive: true,
+  },
+  {
+    id: 'wh-pos-01',
+    code: 'WH-POS-01',
+    nameAr: 'مستودع المعرض ونقطة البيع (الري)',
+    nameEn: 'POS & Showroom Warehouse - Rai',
+    location: 'الري، مجمع المعارض',
+    keeperName: 'فهد العتيبي',
+    isDefault: false,
+    isActive: true,
+  },
+  {
+    id: 'wh-mfg-01',
+    code: 'WH-MFG-01',
+    nameAr: 'مستودع المواد الخام والمطحنة (صبحان)',
+    nameEn: 'Raw Materials & Milling Warehouse - Subhan',
+    location: 'صبحان الصناعية، ق 1',
+    keeperName: 'أحمد العنزي',
+    isDefault: false,
+    isActive: true,
+  },
+];
+
 

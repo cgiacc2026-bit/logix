@@ -1079,28 +1079,80 @@ class DatabaseStore {
     };
   }
 
+  /**
+   * [ARCHITECT & DISASTER RECOVERY]
+   * Transactional JSON Restore Engine with Structural & Accounting Balance Verification and Atomic Rollback.
+   */
   public importBackup(backupObj: any) {
     if (!backupObj || typeof backupObj !== 'object') {
-      throw new Error('ملف النسخة الاحتياطية غير صالح');
+      throw new Error('ملف النسخة الاحتياطية غير صالح أو فارغ (Structural Validation Error)');
     }
+
     const incomingData = backupObj.data || backupObj;
-    if (!incomingData.accounts || !incomingData.company) {
-      throw new Error('محتوى النسخة الاحتياطية غير مكتمل أو مفقود');
+    if (!incomingData || typeof incomingData !== 'object') {
+      throw new Error('بيانات النسخة الاحتياطية غير صحيحة');
     }
-    this.data = {
-      company: incomingData.company,
-      users: incomingData.users || [],
-      accounts: incomingData.accounts || [],
-      customers: incomingData.customers || [],
-      suppliers: incomingData.suppliers || [],
-      inventory: incomingData.inventory || [],
-      journals: incomingData.journals || [],
-      invoices: incomingData.invoices || [],
-      vouchers: incomingData.vouchers || [],
-      units: incomingData.units || [],
-    };
-    this.save();
-    return true;
+
+    // 1. Structural Schema Verification
+    if (!incomingData.company || typeof incomingData.company !== 'object') {
+      throw new Error('فشل فحص الهيكلية: ملف النسخة الاحتياطية يفتقد لبيانات المنشأة (Company Profile)');
+    }
+    if (!Array.isArray(incomingData.accounts) || incomingData.accounts.length === 0) {
+      throw new Error('فشل فحص الهيكلية: ملف النسخة الاحتياطية يفتقد لشجرة الحسابات (Chart of Accounts)');
+    }
+
+    // 2. Accounting Balance & Debit/Credit Equilibrium Verification (فحص توازن القيود المحاسبية)
+    const journals = Array.isArray(incomingData.journals) ? incomingData.journals : [];
+    for (let idx = 0; idx < journals.length; idx++) {
+      const jv = journals[idx];
+      const lines = Array.isArray(jv.lines) ? jv.lines : [];
+      let sumDebit = 0;
+      let sumCredit = 0;
+
+      if (lines.length > 0) {
+        sumDebit = lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+        sumCredit = lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+      } else {
+        sumDebit = Number(jv.totalDebit) || 0;
+        sumCredit = Number(jv.totalCredit) || 0;
+      }
+
+      const diff = Math.abs(sumDebit - sumCredit);
+      if (diff > 0.01) {
+        throw new Error(
+          `فشل فحص التوازن المحاسبي: القيد رقم ${jv.entryNumber || idx + 1} غير متوازن (مدين: ${sumDebit.toFixed(3)} مقابل دائن: ${sumCredit.toFixed(3)} بفارق ${diff.toFixed(3)}). تم إيقاف الاستعادة فوراً.`
+        );
+      }
+    }
+
+    // 3. Disaster Recovery & Atomic Transaction with Snapshot Rollback
+    const rollbackSnapshot = JSON.parse(JSON.stringify(this.data));
+
+    try {
+      this.data = {
+        company: incomingData.company,
+        users: Array.isArray(incomingData.users) ? incomingData.users : [],
+        accounts: incomingData.accounts,
+        customers: Array.isArray(incomingData.customers) ? incomingData.customers : [],
+        suppliers: Array.isArray(incomingData.suppliers) ? incomingData.suppliers : [],
+        inventory: Array.isArray(incomingData.inventory) ? incomingData.inventory : [],
+        journals: journals,
+        invoices: Array.isArray(incomingData.invoices) ? incomingData.invoices : [],
+        vouchers: Array.isArray(incomingData.vouchers) ? incomingData.vouchers : [],
+        units: Array.isArray(incomingData.units) ? incomingData.units : (this.data.units || []),
+      };
+
+      this.save();
+      return {
+        success: true,
+        message: 'تمت استعادة البيانات واجتياز فحوصات التوازن والهيكلية بنجاح داخل معاملة مؤمنة.',
+      };
+    } catch (err: any) {
+      // Execute Immediate Rollback
+      this.data = rollbackSnapshot;
+      this.save();
+      throw new Error(`حدث خطأ أثناء تطبيق الاستعادة. تم التراجع التلقائي (Rollback) وحماية البيانات القائمة: ${err.message}`);
+    }
   }
 }
 
