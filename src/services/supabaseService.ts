@@ -534,13 +534,17 @@ export class SupabaseDataService {
           name_en: b.nameEn || '',
           governorate: b.governorate || '',
           city: b.city || '',
-          detailed_address: b.detailedAddress || '',
+          detailed_address: b.detailedAddress || b.address || '',
           contact_person: b.contactPerson || '',
-          contact_phone: b.contactPhone || '',
+          contact_phone: b.contactPhone || b.phone || '',
           is_default: !!b.isDefault,
           is_active: b.isActive !== false,
         }));
-        await supabase.from('customer_branches').upsert(branchRows).catch((e) => console.warn('Supabase branch sync notice:', e));
+        try {
+          await supabase.from('customer_branches').upsert(branchRows);
+        } catch (e) {
+          console.warn('Supabase branch sync notice:', e);
+        }
       }
 
       return true;
@@ -613,7 +617,11 @@ export class SupabaseDataService {
       if (allBranchRows.length > 0) {
         for (let i = 0; i < allBranchRows.length; i += 50) {
           const batch = allBranchRows.slice(i, i + 50);
-          await supabase.from('customer_branches').upsert(batch).catch((e) => console.warn('Supabase batch branch notice:', e));
+          try {
+            await supabase.from('customer_branches').upsert(batch);
+          } catch (e) {
+            console.warn('Supabase batch branch notice:', e);
+          }
         }
       }
 
@@ -1974,6 +1982,32 @@ export class SupabaseDataService {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('sales_reps').upsert(payload);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  public static async deleteSalesRep(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const { error } = await supabase.from('sales_reps').delete().eq('id', id).eq('company_id', companyId);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  public static async deleteWarehouse(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      const { error } = await supabase.from('warehouses').delete().eq('id', id).eq('company_id', companyId);
       return !error;
     } catch {
       return false;

@@ -59,10 +59,14 @@ import { Lock } from 'lucide-react';
 const DEFAULT_COMPANY: CompanyProfile = DEFAULT_COMPANY_PROFILE;
 
 const ROUTE_TO_TAB: Record<string, TabType> = {
+  '/': 'dashboard',
+  '/dashboard': 'dashboard',
   '/pos': 'pos',
   '/invoices': 'sales-invoices',
   '/sales-invoices': 'sales-invoices',
   '/purchase-invoices': 'purchase-invoices',
+  '/invoices/sales': 'sales-invoices',
+  '/invoices/purchases': 'purchase-invoices',
   '/quotations': 'quotations',
   '/ledger': 'ledger',
   '/journal-entries': 'journals',
@@ -78,30 +82,37 @@ const ROUTE_TO_TAB: Record<string, TabType> = {
   '/vouchers': 'receipt-vouchers',
   '/receipt-vouchers': 'receipt-vouchers',
   '/payment-vouchers': 'payment-vouchers',
+  '/vouchers/receipt': 'receipt-vouchers',
+  '/vouchers/payment': 'payment-vouchers',
   '/customers': 'customers',
   '/suppliers': 'suppliers',
   '/customer-statements': 'customer-statements',
   '/supplier-statements': 'supplier-statements',
   '/sales-reps': 'sales-reps',
   '/production': 'production',
+  '/settings': 'company',
+  '/settings/company': 'company',
   '/settings/pos': 'branches',
+  '/settings/users': 'users',
+  '/settings/backup': 'backup-restore',
+  '/settings/reset': 'system-reset',
   '/branches': 'branches',
   '/company': 'company',
   '/users': 'users',
   '/backup-restore': 'backup-restore',
   '/reports': 'reports',
   '/system-reset': 'system-reset',
-  '/dashboard': 'dashboard',
 };
 
 const TAB_TO_ROUTE: Partial<Record<TabType, string>> = {
+  'dashboard': '/dashboard',
   'pos': '/pos',
   'sales-invoices': '/invoices',
   'invoices': '/invoices',
   'purchase-invoices': '/purchase-invoices',
   'quotations': '/quotations',
   'ledger': '/ledger',
-  'journals': '/journal-entries',
+  'journals': '/journals',
   'trial-balance': '/trial-balance',
   'financials': '/financials',
   'accounts': '/coa',
@@ -123,35 +134,85 @@ const TAB_TO_ROUTE: Partial<Record<TabType, string>> = {
   'backup-restore': '/backup-restore',
   'reports': '/reports',
   'system-reset': '/system-reset',
-  'dashboard': '/dashboard',
 };
 
+const TAB_TITLES: Partial<Record<TabType, string>> = {
+  'dashboard': 'لوحة المؤشرات العامة',
+  'pos': 'نقطة البيع - الكاشير السريع',
+  'sales-invoices': 'فواتير المبيعات',
+  'purchase-invoices': 'فواتير المشتريات',
+  'quotations': 'عروض الأسعار',
+  'ledger': 'الأستاذ العام',
+  'journals': 'قيود اليومية العامة',
+  'trial-balance': 'ميزان المراجعة بالمجاميع والأرصدة',
+  'financials': 'القوائم المالية والختامية',
+  'accounts': 'دليل وشجرة الحسابات (COA)',
+  'inventory': 'إدارة المخزون والأصناف',
+  'stock-ledger': 'حركة المخزون التفصيلية',
+  'warehouses': 'المستودعات والمخازن',
+  'receipt-vouchers': 'سندات القبض',
+  'payment-vouchers': 'سندات الصرف',
+  'customers': 'دليل العملاء والفروع',
+  'suppliers': 'دليل الموردين',
+  'customer-statements': 'كشوف حسابات العملاء',
+  'supplier-statements': 'كشوف حسابات الموردين',
+  'sales-reps': 'المناديب ومسؤولو المبيعات',
+  'production': 'التصنيع وتكاليف الإنتاج',
+  'branches': 'إعدادات نقاط البيع والفروع',
+  'company': 'بيانات الشركة والفرع',
+  'users': 'المستخدمين والصلاحيات',
+  'backup-restore': 'النسخ الاحتياطي والأرشفة',
+  'reports': 'التقارير التحليلية والمالية',
+  'system-reset': 'تهيئة وتصفير النظام',
+};
+
+function getTabFromCurrentUrl(): TabType {
+  if (typeof window === 'undefined') return 'dashboard';
+  const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
+  if (ROUTE_TO_TAB[path]) {
+    return ROUTE_TO_TAB[path];
+  }
+  const rawHash = window.location.hash.replace(/^#\/?/, '/').toLowerCase().replace(/\/$/, '') || '/';
+  if (ROUTE_TO_TAB[rawHash]) {
+    return ROUTE_TO_TAB[rawHash];
+  }
+  return 'dashboard';
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabType>(() => {
-    const rawHash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
-    if (rawHash && ROUTE_TO_TAB[rawHash]) {
-      return ROUTE_TO_TAB[rawHash];
-    }
-    return 'dashboard';
-  });
+  const [activeTab, setActiveTab] = useState<TabType>(() => getTabFromCurrentUrl());
 
   const navigateToTab = (newTab: TabType) => {
     setActiveTab(newTab);
     const targetRoute = TAB_TO_ROUTE[newTab] || `/${newTab}`;
-    if (typeof window !== 'undefined' && window.location.hash !== `#${targetRoute}`) {
-      window.location.hash = targetRoute;
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname !== targetRoute) {
+        window.history.pushState({ tab: newTab }, '', targetRoute);
+      }
+      const title = TAB_TITLES[newTab] || 'نظام المحاسبة السحابي المتكامل';
+      document.title = `${title} | ERP System`;
     }
   };
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const rawHash = window.location.hash.replace(/^#/, '');
-      if (rawHash && ROUTE_TO_TAB[rawHash]) {
-        setActiveTab(ROUTE_TO_TAB[rawHash]);
-      }
+    const handleUrlChange = () => {
+      const resolvedTab = getTabFromCurrentUrl();
+      setActiveTab(resolvedTab);
+      const title = TAB_TITLES[resolvedTab] || 'نظام المحاسبة السحابي المتكامل';
+      document.title = `${title} | ERP System`;
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+
+    // Initial page title set
+    const initialTitle = TAB_TITLES[activeTab] || 'نظام المحاسبة السحابي المتكامل';
+    document.title = `${initialTitle} | ERP System`;
+
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
   }, []);
 
   const [currency, setCurrency] = useState<string>('KWD');

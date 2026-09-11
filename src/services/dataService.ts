@@ -7023,11 +7023,7 @@ export class DataService {
     const filtered = list.filter((w) => w.id !== id);
     localDataStore.saveWarehouses(filtered);
     if (isSupabaseConfigured) {
-      const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
-      const companyId = resolveToSupabaseCompanyUUID(activeCompanyId);
-      if (companyId) {
-        await supabase.from('warehouses').delete().eq('id', id).eq('company_id', companyId).catch(() => {});
-      }
+      await SupabaseDataService.deleteWarehouse(id).catch(() => {});
     }
     return true;
   }

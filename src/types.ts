@@ -179,7 +179,12 @@ export interface CustomerBranch {
   contactPerson?: string;
   address?: string;
   city?: string;
+  governorate?: string;
+  detailedAddress?: string;
+  contactPhone?: string;
+  customerId?: string;
   isDefault?: boolean;
+  isActive?: boolean;
   notes?: string;
 }
 
