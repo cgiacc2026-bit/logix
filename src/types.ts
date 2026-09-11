@@ -798,7 +798,9 @@ export interface Warehouse {
   nameEn?: string;
   location?: string;
   keeperName?: string;
+  managerName?: string;
   phone?: string;
+  notes?: string;
   isDefault?: boolean;
   isActive?: boolean;
   createdAt?: string;
@@ -987,6 +989,8 @@ export interface Branch {
   city?: string;
   commercialRegNumber?: string;
   taxNumber?: string;
+  warehouseId?: string;
+  defaultAccountId?: string;
   isDefault: boolean;
   isActive: boolean;
   is_deleted?: boolean;

@@ -11,9 +11,11 @@ import {
   Account,
   SalesRep,
   Warehouse,
+  Branch,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
+import { branchService } from '../services/branchService.ts';
 import { PrintDocumentModal } from './PrintDocumentModal';
 import { DataImportModal } from './DataImportModal';
 import { PriceManagementModal } from './PriceManagementModal';
@@ -101,6 +103,11 @@ interface InvoicesProps {
   productionOrders?: ProductionOrder[];
   salesReps?: SalesRep[];
   warehouses?: Warehouse[];
+  initialInvoiceFilter?: 'ALL' | 'SALES' | 'PURCHASE' | 'RETURNS';
+  initialEntityFilter?: 'ALL' | 'CUSTOMER' | 'SUPPLIER';
+  initialVoucherFilter?: 'ALL' | 'RECEIPT' | 'PAYMENT';
+  hideSubTabBar?: boolean;
+  customViewTitle?: string;
 }
 
 export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
@@ -140,6 +147,11 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   productionOrders = [],
   salesReps,
   warehouses,
+  initialInvoiceFilter,
+  initialEntityFilter,
+  initialVoucherFilter,
+  hideSubTabBar = false,
+  customViewTitle,
 }) => {
   const allSalesReps = useMemo(() => {
     return salesReps && salesReps.length > 0 ? salesReps : DataService.getSalesReps();
@@ -148,6 +160,14 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const allWarehouses = useMemo(() => {
     return warehouses && warehouses.length > 0 ? warehouses : DataService.getWarehouses();
   }, [warehouses]);
+
+  const availableBranches = useMemo(() => {
+    return branchService.getBranchesForCurrentCompany(company?.id);
+  }, [company?.id]);
+
+  const [invBranchId, setInvBranchId] = useState<string>(() => {
+    return branchService.getActiveBranch(company?.id).id;
+  });
 
   const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units'>(
     activeSubTab || 'invoices'
@@ -232,7 +252,24 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [invPaymentTerms, setInvPaymentTerms] = useState<'CASH' | 'CREDIT'>('CREDIT');
   const [invSalesPerson, setInvSalesPerson] = useState('');
   const [invReceiverName, setInvReceiverName] = useState('');
-  const [invFilterType, setInvFilterType] = useState<'ALL' | 'SALES' | 'PURCHASE' | 'RETURNS'>('ALL');
+  const [invFilterType, setInvFilterType] = useState<'ALL' | 'SALES' | 'PURCHASE' | 'RETURNS'>(
+    initialInvoiceFilter || 'ALL'
+  );
+  const [entityTypeFilter, setEntityTypeFilter] = useState<'ALL' | 'CUSTOMER' | 'SUPPLIER'>(
+    initialEntityFilter || 'ALL'
+  );
+
+  React.useEffect(() => {
+    if (initialInvoiceFilter) {
+      setInvFilterType(initialInvoiceFilter);
+    }
+  }, [initialInvoiceFilter]);
+
+  React.useEffect(() => {
+    if (initialEntityFilter) {
+      setEntityTypeFilter(initialEntityFilter);
+    }
+  }, [initialEntityFilter]);
   const [invEntityId, setInvEntityId] = useState('');
   const [invCustomerBranchId, setInvCustomerBranchId] = useState('');
   const [invCustomerBranchName, setInvCustomerBranchName] = useState('');
@@ -636,7 +673,11 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       salesPerson: allSalesReps.find((r) => r.id === invSalesRepId)?.nameAr || invSalesPerson || '',
       salesRepId: invSalesRepId || undefined,
       salesRepName: allSalesReps.find((r) => r.id === invSalesRepId)?.nameAr || invSalesPerson || undefined,
+      branchId: invBranchId,
+      branch_id: invBranchId,
+      branchName: availableBranches.find((b) => b.id === invBranchId)?.nameAr,
       warehouseId: invWarehouseId,
+      warehouse_id: invWarehouseId,
       warehouseName: allWarehouses.find((w) => w.id === invWarehouseId)?.nameAr || 'المستودع الرئيسي (الشويخ)',
       receiverName: invReceiverName,
       customerBranchId: invCustomerBranchId || undefined,
@@ -1281,52 +1322,100 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         <div>
           <h2 className="text-2xl font-bold text-[#1A1A1A] flex items-center gap-2">
             <ShoppingBag className="w-6 h-6 text-[#D4AF37]" />
-            إدارة الفواتير والمخزون وسندات القبض والصرف
+            {customViewTitle || (
+              subTab === 'invoices'
+                ? invFilterType === 'PURCHASE'
+                  ? 'فواتير ومردودات المشتريات والموردين'
+                  : 'فواتير ومرتجعات المبيعات والعملاء'
+                : subTab === 'vouchers'
+                ? initialVoucherFilter === 'PAYMENT'
+                  ? 'سندات الصرف وسداد الموردين'
+                  : 'سندات القبض وتحصيلات العملاء'
+                : subTab === 'entities'
+                ? entityTypeFilter === 'SUPPLIER'
+                  ? 'سجلات ودليل الموردين والمطاحن'
+                  : 'سجلات ودليل العملاء والجمعيات'
+                : subTab === 'inventory'
+                ? 'سجل الأصناف وكارت الصنف'
+                : 'وحدات القياس والشد (Units)'
+            )}
           </h2>
           <p className="text-xs text-[#8C8273] mt-1 leading-relaxed">
-            إدارة متكاملة لجميع الفواتير والمشتريات وتتبع حركة المخزون مع حاسبة الشد والوحدة والطباعة الفورية المعتمدة.
+            {subTab === 'invoices' && invFilterType === 'PURCHASE'
+              ? 'تسجيل ومتابعة فواتير الشراء، التوريدات، والتكاليف المرتبطة بالمخزون.'
+              : subTab === 'invoices'
+              ? 'إصدار ومتابعة فواتير البيع للعملاء والجمعيات مع التحصيل المباشر وتحديث المخزون.'
+              : subTab === 'entities' && entityTypeFilter === 'SUPPLIER'
+              ? 'إدارة دليل الموردين والمطاحن، الأرصدة الافتتاحية، وكشوف الحسابات المعتمدة.'
+              : subTab === 'entities'
+              ? 'إدارة بيانات العملاء والجمعيات، فروع التسليم، قوائم الأسعار، والأرصدة.'
+              : 'إدارة متكاملة لجميع الفواتير والمشتريات وتتبع حركة المخزون مع حاسبة الشد والوحدة والطباعة الفورية المعتمدة.'}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleOpenCreateInvoice('SALES')}
-            className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
-          >
-            <Plus className="w-4 h-4 text-[#D4AF37]" /> فاتورة جديدة
-          </button>
-          <button
-            onClick={() => setIsVoucherModalOpen(true)}
-            className="px-4 py-2 bg-[#F7F5F0] hover:bg-[#E5E1DA] text-[#1A1A1A] rounded-lg text-xs font-bold flex items-center gap-1.5 border border-[#E5E1DA] shadow-xs cursor-pointer transition-all"
-          >
-            <Plus className="w-4 h-4 text-[#B8860B]" /> سند قبض / صرف
-          </button>
+          {subTab === 'invoices' && (
+            <button
+              onClick={() => handleOpenCreateInvoice(invFilterType === 'PURCHASE' ? 'PURCHASE' : 'SALES')}
+              className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+            >
+              <Plus className="w-4 h-4 text-[#D4AF37]" /> {invFilterType === 'PURCHASE' ? 'فاتورة شراء جديدة' : 'فاتورة مبيعات جديدة'}
+            </button>
+          )}
+          {subTab === 'vouchers' && (
+            <button
+              onClick={() => setIsVoucherModalOpen(true)}
+              className="px-4 py-2 bg-[#F7F5F0] hover:bg-[#E5E1DA] text-[#1A1A1A] rounded-lg text-xs font-bold flex items-center gap-1.5 border border-[#E5E1DA] shadow-xs cursor-pointer transition-all"
+            >
+              <Plus className="w-4 h-4 text-[#B8860B]" /> {initialVoucherFilter === 'PAYMENT' ? 'سند صرف جديد' : 'سند قبض جديد'}
+            </button>
+          )}
+          {subTab === 'entities' && (
+            <button
+              onClick={() => openAddEntityModal(entityTypeFilter === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER')}
+              className={`px-4 py-2 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all ${
+                entityTypeFilter === 'SUPPLIER' ? 'bg-[#8B0000] hover:bg-[#660000]' : 'bg-[#1A1A1A] hover:bg-black'
+              }`}
+            >
+              <Plus className="w-4 h-4 text-white" /> {entityTypeFilter === 'SUPPLIER' ? 'إضافة مورد جديد' : 'إضافة عميل جديد'}
+            </button>
+          )}
+          {subTab === 'inventory' && (
+            <button
+              onClick={openAddItemModal}
+              className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+            >
+              <Plus className="w-4 h-4 text-[#D4AF37]" /> إضافة صنف جديد
+            </button>
+          )}
         </div>
       </div>
 
       {/* Sub tabs */}
-      <div className="flex items-center gap-2 bg-[#F7F5F0] border border-[#E5E1DA] p-2 rounded-xl overflow-x-auto">
-        {[
-          { id: 'invoices', label: 'فواتير المبيعات والمشتريات', icon: ShoppingBag },
-          { id: 'vouchers', label: 'سندات القبض والصرف', icon: DollarSign },
-          { id: 'entities', label: 'دليل العملاء والموردين', icon: Users },
-          { id: 'inventory', label: 'دليل المنتجات والشد والمخزون', icon: Package },
-          { id: 'units', label: 'وحدات القياس والشد (Units)', icon: Ruler },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => handleSwitchSubTab(t.id as any)}
-            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-              subTab === t.id
-                ? 'bg-[#1A1A1A] text-white shadow-xs border border-[#1A1A1A]'
-                : 'text-[#6E6659] hover:text-[#1A1A1A] hover:bg-white'
-            }`}
-          >
-            <t.icon className="w-4 h-4" />
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
+      {!hideSubTabBar && (
+        <div className="flex items-center gap-2 bg-[#F7F5F0] border border-[#E5E1DA] p-2 rounded-xl overflow-x-auto">
+          {[
+            { id: 'invoices', label: 'فواتير المبيعات والمشتريات', icon: ShoppingBag },
+            { id: 'vouchers', label: 'سندات القبض والصرف', icon: DollarSign },
+            { id: 'entities', label: 'دليل العملاء والموردين', icon: Users },
+            { id: 'inventory', label: 'دليل المنتجات والشد والمخزون', icon: Package },
+            { id: 'units', label: 'وحدات القياس والشد (Units)', icon: Ruler },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => handleSwitchSubTab(t.id as any)}
+              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                subTab === t.id
+                  ? 'bg-[#1A1A1A] text-white shadow-xs border border-[#1A1A1A]'
+                  : 'text-[#6E6659] hover:text-[#1A1A1A] hover:bg-white'
+              }`}
+            >
+              <t.icon className="w-4 h-4" />
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* TAB 1: INVOICES */}
       {subTab === 'invoices' && (
@@ -1626,6 +1715,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
           onDeleteVoucher={onDeleteVoucher}
           onPrintVoucher={(v) => setPrintDoc({ type: 'VOUCHER', data: v })}
           onRefreshAll={onRefreshAll}
+          initialTypeFilter={initialVoucherFilter}
         />
       )}
 
@@ -1634,38 +1724,90 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#F7F5F0] p-4 rounded-xl border border-[#E5E1DA]">
             <div className="space-y-1">
-              <h3 className="text-sm font-bold text-[#1A1A1A]">سجل العملاء والموردين والجمعيات الأهلية</h3>
+              <h3 className="text-sm font-bold text-[#1A1A1A]">
+                {entityTypeFilter === 'CUSTOMER'
+                  ? 'دليل وسجلات العملاء والجمعيات التعاونية'
+                  : entityTypeFilter === 'SUPPLIER'
+                  ? 'دليل وسجلات الموردين والشركات والمطاحن'
+                  : 'سجل العملاء والموردين والجمعيات الأهلية'}
+              </h3>
               <p className="text-xs text-[#8C8273]">إدارة أرقام الحسابات والأرصدة الافتتاحية والاستيراد الجماعي وطباعة كشوف الحسابات الرسمية</p>
             </div>
+
+            {/* Filter Pills for switching between All, Customers, Suppliers */}
+            <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-[#E5E1DA]">
+              <button
+                type="button"
+                onClick={() => setEntityTypeFilter('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  entityTypeFilter === 'ALL'
+                    ? 'bg-[#1A1A1A] text-white shadow-xs'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                }`}
+              >
+                الكل ({scopedCustomers.length + scopedSuppliers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntityTypeFilter('CUSTOMER')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  entityTypeFilter === 'CUSTOMER'
+                    ? 'bg-[#1A1A1A] text-white shadow-xs'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                }`}
+              >
+                العملاء ({scopedCustomers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntityTypeFilter('SUPPLIER')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  entityTypeFilter === 'SUPPLIER'
+                    ? 'bg-[#8B0000] text-white shadow-xs'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                }`}
+              >
+                الموردين ({scopedSuppliers.length})
+              </button>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => handleOpenImport('CUSTOMERS')}
-                className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-                title="استيراد دليل العملاء مع أرصدة أول المدة من ملف Excel أو نسخ ولصق مباشر"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-cyan-300" />
-                <span>استيراد العملاء + رصيد أول المدة</span>
-              </button>
-              <button
-                onClick={() => handleOpenImport('SUPPLIERS')}
-                className="px-3 py-2 bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-                title="استيراد دليل الموردين مع أرصدة أول المدة من ملف Excel أو نسخ ولصق مباشر"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-cyan-300" />
-                <span>استيراد الموردين + رصيد أول المدة</span>
-              </button>
-              <button
-                onClick={() => openAddEntityModal('CUSTOMER')}
-                className="px-3.5 py-2 bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-              >
-                <Plus className="w-4 h-4 text-[#D4AF37]" /> إضافة عميل
-              </button>
-              <button
-                onClick={() => openAddEntityModal('SUPPLIER')}
-                className="px-3.5 py-2 bg-[#8B0000] hover:bg-[#660000] text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-              >
-                <Plus className="w-4 h-4 text-white" /> إضافة مورد
-              </button>
+              {entityTypeFilter !== 'SUPPLIER' && (
+                <>
+                  <button
+                    onClick={() => handleOpenImport('CUSTOMERS')}
+                    className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                    title="استيراد دليل العملاء مع أرصدة أول المدة من ملف Excel أو نسخ ولصق مباشر"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-cyan-300" />
+                    <span>استيراد العملاء</span>
+                  </button>
+                  <button
+                    onClick={() => openAddEntityModal('CUSTOMER')}
+                    className="px-3.5 py-2 bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                  >
+                    <Plus className="w-4 h-4 text-[#D4AF37]" /> إضافة عميل
+                  </button>
+                </>
+              )}
+              {entityTypeFilter !== 'CUSTOMER' && (
+                <>
+                  <button
+                    onClick={() => handleOpenImport('SUPPLIERS')}
+                    className="px-3 py-2 bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                    title="استيراد دليل الموردين مع أرصدة أول المدة من ملف Excel أو نسخ ولصق مباشر"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-cyan-300" />
+                    <span>استيراد الموردين</span>
+                  </button>
+                  <button
+                    onClick={() => openAddEntityModal('SUPPLIER')}
+                    className="px-3.5 py-2 bg-[#8B0000] hover:bg-[#660000] text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                  >
+                    <Plus className="w-4 h-4 text-white" /> إضافة مورد
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1681,161 +1823,165 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className={`grid gap-6 ${entityTypeFilter === 'ALL' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
             {/* Customers List */}
-            <div className="bg-white border border-[#E5E1DA] rounded-2xl p-5 shadow-xs space-y-3">
-              <h4 className="text-xs font-bold text-[#B8860B] flex items-center justify-between border-b pb-2">
-                <span>قائمة العملاء والجمعيات التعاونية (Customers)</span>
-                <span>العدد: {scopedCustomers.length}</span>
-              </h4>
-              <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
-                {scopedCustomers
-                  .filter((c) =>
-                    !entitySearch ||
-                    matchesSearch(c.nameAr, entitySearch) ||
-                    matchesSearch((c as any).nameEn, entitySearch) ||
-                    matchesSearch(c.code, entitySearch) ||
-                    matchesSearch(c.phone, entitySearch)
-                  )
-                  .map((c) => (
-                    <div key={c.id} className="py-3.5 space-y-2 text-xs">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-extrabold text-[#1A1A1A] text-sm flex items-center gap-2">
-                            <span>{c.nameAr}</span>
-                            {c.code && <span className="text-[10px] bg-[#F7F5F0] px-2 py-0.5 rounded-md border border-[#E5E1DA] text-[#8C8273] font-mono">{c.code}</span>}
-                          </div>
-                          <div className="text-[11px] text-[#8C8273] mt-0.5 space-x-2 space-x-reverse">
-                            <span>هاتف: {c.phone || '-'}</span>
-                            <span>• الضريبي: {c.taxNumber || 'غير مدخل'}</span>
-                            {c.governorate && <span>• {c.governorate}</span>}
-                          </div>
-                          <div className="text-[10px] text-[#9E2A2B] font-semibold mt-1">
-                            الرصيد الافتتاحي ({c.openingBalanceDate || '2026-07-01'}): {formatCurrency(c.openingBalance || 0, currency)}
-                          </div>
-                          {/* Branches & Price List indicators */}
-                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                              <Building2 className="w-2.5 h-2.5 text-blue-600" />
-                              {c.branches && c.branches.length > 0 ? `${c.branches.length} فروع ومواقع` : 'بدون أفرع إضافية'}
-                            </span>
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                              <Tag className="w-2.5 h-2.5 text-amber-600" />
-                              {c.priceListName || 'قائمة الأسعار القياسية'}
-                              {c.defaultDiscountRate ? ` (خصم ${c.defaultDiscountRate}%)` : ''}
-                            </span>
-                            {c.customPrices && c.customPrices.length > 0 && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
-                                {c.customPrices.length} صنف مسعر
+            {entityTypeFilter !== 'SUPPLIER' && (
+              <div className="bg-white border border-[#E5E1DA] rounded-2xl p-5 shadow-xs space-y-3">
+                <h4 className="text-xs font-bold text-[#B8860B] flex items-center justify-between border-b pb-2">
+                  <span>قائمة العملاء والجمعيات التعاونية (Customers)</span>
+                  <span>العدد: {scopedCustomers.length}</span>
+                </h4>
+                <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
+                  {scopedCustomers
+                    .filter((c) =>
+                      !entitySearch ||
+                      matchesSearch(c.nameAr, entitySearch) ||
+                      matchesSearch((c as any).nameEn, entitySearch) ||
+                      matchesSearch(c.code, entitySearch) ||
+                      matchesSearch(c.phone, entitySearch)
+                    )
+                    .map((c) => (
+                      <div key={c.id} className="py-3.5 space-y-2 text-xs">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-extrabold text-[#1A1A1A] text-sm flex items-center gap-2">
+                              <span>{c.nameAr}</span>
+                              {c.code && <span className="text-[10px] bg-[#F7F5F0] px-2 py-0.5 rounded-md border border-[#E5E1DA] text-[#8C8273] font-mono">{c.code}</span>}
+                            </div>
+                            <div className="text-[11px] text-[#8C8273] mt-0.5 space-x-2 space-x-reverse">
+                              <span>هاتف: {c.phone || '-'}</span>
+                              <span>• الضريبي: {c.taxNumber || 'غير مدخل'}</span>
+                              {c.governorate && <span>• {c.governorate}</span>}
+                            </div>
+                            <div className="text-[10px] text-[#9E2A2B] font-semibold mt-1">
+                              الرصيد الافتتاحي ({c.openingBalanceDate || '2026-07-01'}): {formatCurrency(c.openingBalance || 0, currency)}
+                            </div>
+                            {/* Branches & Price List indicators */}
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                <Building2 className="w-2.5 h-2.5 text-blue-600" />
+                                {c.branches && c.branches.length > 0 ? `${c.branches.length} فروع ومواقع` : 'بدون أفرع إضافية'}
                               </span>
-                            )}
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                <Tag className="w-2.5 h-2.5 text-amber-600" />
+                                {c.priceListName || 'قائمة الأسعار القياسية'}
+                                {c.defaultDiscountRate ? ` (خصم ${c.defaultDiscountRate}%)` : ''}
+                              </span>
+                              {c.customPrices && c.customPrices.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+                                  {c.customPrices.length} صنف مسعر
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-left font-black text-sm text-[#B8860B] bg-[#FFFDF0] px-3 py-1.5 rounded-xl border border-[#F3E5AB]">
+                            <span className="text-[10px] text-[#8C8273] font-normal block">الرصيد الحالي</span>
+                            {formatCurrency(getCustomerCurrentBalance(c), currency)}
                           </div>
                         </div>
-                        <div className="text-left font-black text-sm text-[#B8860B] bg-[#FFFDF0] px-3 py-1.5 rounded-xl border border-[#F3E5AB]">
-                          <span className="text-[10px] text-[#8C8273] font-normal block">الرصيد الحالي</span>
-                          {formatCurrency(getCustomerCurrentBalance(c), currency)}
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2 pt-1 border-t border-dashed border-[#F0ECE1] flex-wrap">
+                          <button
+                            onClick={() => setSelectedCustomerForBranchesAndPrices(c)}
+                            className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-blue-200 shadow-xs"
+                            title="إدارة فروع العميل وقائمة الأسعار والتسعيرة الخاصة"
+                          >
+                            <Building2 className="w-3 h-3 text-blue-600" />
+                            الأفرع والتسعيرة ({c.branches?.length || 0})
+                          </button>
+                          <button
+                            onClick={() => handleOpenStatement(c.id, 'CUSTOMER')}
+                            className="px-2.5 py-1 bg-[#1A1A1A] hover:bg-black text-white text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all"
+                          >
+                            <Printer className="w-3 h-3 text-[#D4AF37]" />
+                            كشف حساب تفصيلي
+                          </button>
+                          <button
+                            onClick={() => openEditEntityModal(c, 'CUSTOMER')}
+                            className="px-2.5 py-1 bg-[#F7F5F0] hover:bg-[#E5E1DA] text-[#1A1A1A] text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-[#E5E1DA]"
+                          >
+                            تعديل البيانات
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEntity(c.id, c.nameAr, 'CUSTOMER')}
+                            className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-red-200"
+                          >
+                            حذف
+                          </button>
                         </div>
                       </div>
-
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-2 pt-1 border-t border-dashed border-[#F0ECE1] flex-wrap">
-                        <button
-                          onClick={() => setSelectedCustomerForBranchesAndPrices(c)}
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-blue-200 shadow-xs"
-                          title="إدارة فروع العميل وقائمة الأسعار والتسعيرة الخاصة"
-                        >
-                          <Building2 className="w-3 h-3 text-blue-600" />
-                          الأفرع والتسعيرة ({c.branches?.length || 0})
-                        </button>
-                        <button
-                          onClick={() => handleOpenStatement(c.id, 'CUSTOMER')}
-                          className="px-2.5 py-1 bg-[#1A1A1A] hover:bg-black text-white text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all"
-                        >
-                          <Printer className="w-3 h-3 text-[#D4AF37]" />
-                          كشف حساب تفصيلي
-                        </button>
-                        <button
-                          onClick={() => openEditEntityModal(c, 'CUSTOMER')}
-                          className="px-2.5 py-1 bg-[#F7F5F0] hover:bg-[#E5E1DA] text-[#1A1A1A] text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-[#E5E1DA]"
-                        >
-                          تعديل البيانات
-                        </button>
-                        <button
-                          onClick={() => handleDeleteEntity(c.id, c.nameAr, 'CUSTOMER')}
-                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-red-200"
-                        >
-                          حذف
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Suppliers List */}
-            <div className="bg-white border border-[#E5E1DA] rounded-2xl p-5 shadow-xs space-y-3">
-              <h4 className="text-xs font-bold text-[#9E2A2B] flex items-center justify-between border-b pb-2">
-                <span>قائمة الموردين والشركات الموردة (Suppliers)</span>
-                <span>العدد: {scopedSuppliers.length}</span>
-              </h4>
-              <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
-                {scopedSuppliers
-                  .filter((s) =>
-                    !entitySearch ||
-                    matchesSearch(s.nameAr, entitySearch) ||
-                    matchesSearch((s as any).nameEn, entitySearch) ||
-                    matchesSearch(s.code, entitySearch) ||
-                    matchesSearch(s.phone, entitySearch)
-                  )
-                  .map((s) => (
-                    <div key={s.id} className="py-3.5 space-y-2 text-xs">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-extrabold text-[#1A1A1A] text-sm flex items-center gap-2">
-                            <span>{s.nameAr}</span>
-                            {s.code && <span className="text-[10px] bg-[#F7F5F0] px-2 py-0.5 rounded-md border border-[#E5E1DA] text-[#8C8273] font-mono">{s.code}</span>}
+            {entityTypeFilter !== 'CUSTOMER' && (
+              <div className="bg-white border border-[#E5E1DA] rounded-2xl p-5 shadow-xs space-y-3">
+                <h4 className="text-xs font-bold text-[#9E2A2B] flex items-center justify-between border-b pb-2">
+                  <span>قائمة الموردين والشركات الموردة (Suppliers)</span>
+                  <span>العدد: {scopedSuppliers.length}</span>
+                </h4>
+                <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
+                  {scopedSuppliers
+                    .filter((s) =>
+                      !entitySearch ||
+                      matchesSearch(s.nameAr, entitySearch) ||
+                      matchesSearch((s as any).nameEn, entitySearch) ||
+                      matchesSearch(s.code, entitySearch) ||
+                      matchesSearch(s.phone, entitySearch)
+                    )
+                    .map((s) => (
+                      <div key={s.id} className="py-3.5 space-y-2 text-xs">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-extrabold text-[#1A1A1A] text-sm flex items-center gap-2">
+                              <span>{s.nameAr}</span>
+                              {s.code && <span className="text-[10px] bg-[#F7F5F0] px-2 py-0.5 rounded-md border border-[#E5E1DA] text-[#8C8273] font-mono">{s.code}</span>}
+                            </div>
+                            <div className="text-[11px] text-[#8C8273] mt-0.5 space-x-2 space-x-reverse">
+                              <span>هاتف: {s.phone || '-'}</span>
+                              <span>• الضريبي: {s.taxNumber || 'غير مدخل'}</span>
+                            </div>
+                            <div className="text-[10px] text-[#2D6A4F] font-semibold mt-1">
+                              الرصيد الافتتاحي ({s.openingBalanceDate || '2026-07-01'}): {formatCurrency(s.openingBalance || 0, currency)}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-[#8C8273] mt-0.5 space-x-2 space-x-reverse">
-                            <span>هاتف: {s.phone || '-'}</span>
-                            <span>• الضريبي: {s.taxNumber || 'غير مدخل'}</span>
-                          </div>
-                          <div className="text-[10px] text-[#2D6A4F] font-semibold mt-1">
-                            الرصيد الافتتاحي ({s.openingBalanceDate || '2026-07-01'}): {formatCurrency(s.openingBalance || 0, currency)}
+                          <div className="text-left font-black text-sm text-[#9E2A2B] bg-[#FFF5F5] px-3 py-1.5 rounded-xl border border-[#FFD8D8]">
+                            <span className="text-[10px] text-[#8C8273] font-normal block">الرصيد المستحق</span>
+                            {formatCurrency(getSupplierCurrentBalance(s), currency)}
                           </div>
                         </div>
-                        <div className="text-left font-black text-sm text-[#9E2A2B] bg-[#FFF5F5] px-3 py-1.5 rounded-xl border border-[#FFD8D8]">
-                          <span className="text-[10px] text-[#8C8273] font-normal block">الرصيد المستحق</span>
-                          {formatCurrency(getSupplierCurrentBalance(s), currency)}
-                        </div>
-                      </div>
 
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-2 pt-1 border-t border-dashed border-[#F0ECE1]">
-                        <button
-                          onClick={() => handleOpenStatement(s.id, 'SUPPLIER')}
-                          className="px-2.5 py-1 bg-[#8B0000] hover:bg-[#660000] text-white text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all"
-                        >
-                          <Printer className="w-3 h-3 text-white" />
-                          كشف حساب تفصيلي
-                        </button>
-                        <button
-                          onClick={() => openEditEntityModal(s, 'SUPPLIER')}
-                          className="px-2.5 py-1 bg-[#F7F5F0] hover:bg-[#E5E1DA] text-[#1A1A1A] text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-[#E5E1DA]"
-                        >
-                          تعديل البيانات
-                        </button>
-                        <button
-                          onClick={() => handleDeleteEntity(s.id, s.nameAr, 'SUPPLIER')}
-                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-red-200"
-                        >
-                          حذف
-                        </button>
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2 pt-1 border-t border-dashed border-[#F0ECE1]">
+                          <button
+                            onClick={() => handleOpenStatement(s.id, 'SUPPLIER')}
+                            className="px-2.5 py-1 bg-[#8B0000] hover:bg-[#660000] text-white text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all"
+                          >
+                            <Printer className="w-3 h-3 text-white" />
+                            كشف حساب تفصيلي
+                          </button>
+                          <button
+                            onClick={() => openEditEntityModal(s, 'SUPPLIER')}
+                            className="px-2.5 py-1 bg-[#F7F5F0] hover:bg-[#E5E1DA] text-[#1A1A1A] text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-[#E5E1DA]"
+                          >
+                            تعديل البيانات
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEntity(s.id, s.nameAr, 'SUPPLIER')}
+                            className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-red-200"
+                          >
+                            حذف
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -2627,6 +2773,21 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                       onChange={(e) => setInvNotes(e.target.value)}
                       className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 text-[#1A1A1A] font-semibold"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-[#1A1A1A] mb-1">فرع المنشأة المصدر *</label>
+                    <select
+                      value={invBranchId}
+                      onChange={(e) => setInvBranchId(e.target.value)}
+                      className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 text-[#1A1A1A] font-bold"
+                    >
+                      {availableBranches.map((br) => (
+                        <option key={br.id} value={br.id}>
+                          {br.nameAr} ({br.code}) {br.isDefault ? '⭐ رئيسي' : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>

@@ -204,29 +204,18 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="sm:hidden">إصلاح</span>
           </button>
 
-          {/* Full System Excel Backup Export Button */}
-          <button
-            onClick={handleExcelBackup}
-            disabled={isExcelExporting}
-            title="تصدير وتحميل نسخة احتياطية شاملة لجميع بيانات النظام بالكامل في ملف Excel"
-            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 border border-emerald-400/40 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
-          >
-            <FileSpreadsheet className={`w-3.5 h-3.5 text-emerald-100 ${isExcelExporting ? 'animate-bounce' : ''}`} />
-            <span className="hidden sm:inline">{isExcelExporting ? 'جاري التجهيز...' : 'نسخة Excel'}</span>
-            <span className="sm:hidden">Excel</span>
-          </button>
-
-          {/* Dedicated Import Backup Button (أيقونة وزر استيراد نسخة احتياطية مباشرة في الواجهة) */}
-          <button
-            onClick={onOpenJsonBackup || handleQuickBackup}
-            disabled={isExporting}
-            title="استيراد واستعادة نسخة احتياطية (ملف JSON) لقاعدة البيانات السحابية والمحلية"
-            className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 border border-amber-400/50 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
-          >
-            <FolderUp className={`w-3.5 h-3.5 text-amber-200 ${isExporting ? 'animate-bounce' : ''}`} />
-            <span className="hidden sm:inline">استيراد نسخة (JSON)</span>
-            <span className="sm:hidden">استيراد</span>
-          </button>
+          {/* Single Unified Backup & Restore Hub Trigger (تجميع كافة عمليات النسخ في مكان موحد) */}
+          {onOpenJsonBackup && (
+            <button
+              onClick={onOpenJsonBackup}
+              title="مركز النسخ الاحتياطي والاستعادة الموحد (JSON / Excel / Rollback)"
+              className="px-2.5 py-1 rounded-lg bg-[#1E3E62] hover:bg-[#2A5485] text-cyan-200 hover:text-white text-xs font-bold flex items-center gap-1.5 border border-cyan-500/30 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              <FolderUp className="w-3.5 h-3.5 text-cyan-300" />
+              <span className="hidden sm:inline">مركز النسخ والاستعادة</span>
+              <span className="sm:hidden">النسخ</span>
+            </button>
+          )}
 
           {/* Super Admin Company Activation Portal - Strictly Restricted to Super Admin */}
           {onOpenSuperAdminPortal && Boolean(currentUser?.isPlatformAdmin || currentUser?.role === 'SUPER_ADMIN' || currentUser?.email === 'cgiacc2026@gmail.com') && (

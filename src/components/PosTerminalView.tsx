@@ -484,6 +484,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
         salesRepId: rep ? rep.id : undefined,
         salesRepName: rep ? rep.nameAr : undefined,
         warehouseId: selectedWarehouseId,
+        warehouse_id: selectedWarehouseId,
         warehouseName: availableWarehouses.find((w) => w.id === selectedWarehouseId)?.nameAr || 'المستودع الرئيسي (الشويخ)',
         date: new Date().toISOString().split('T')[0],
         dueDate: new Date().toISOString().split('T')[0],

@@ -123,6 +123,17 @@ function deduplicateLatest<T>(
 
 export class ERPBackupImportService {
   /**
+   * Universal alias for importBackupData to maintain backward and forward compatibility
+   */
+  public static async importBackupData(
+    jsonInput: string | any,
+    targetCompanyId: string,
+    onProgress?: (progress: ImportProgress) => void
+  ): Promise<ImportResultReport> {
+    return this.importCompanyJsonData(targetCompanyId, jsonInput, onProgress);
+  }
+
+  /**
    * Imports ERP Backup JSON into Supabase and local storage with strict tenant scoping:
    * 1. Ignores legacy company IDs like "company-kw-01", forcing active tenant UUID.
    * 2. Sanitizes old IDs ("acc-1000", "inv-101", "cust-9407") into valid UUIDs with an in-memory mapping.
@@ -153,6 +164,8 @@ export class ERPBackupImportService {
       },
       errors: [],
     };
+
+    let localStoreSnapshot: any = null;
 
     try {
       const parsed = typeof jsonInput === 'string' ? JSON.parse(jsonInput) : jsonInput;

@@ -307,6 +307,10 @@ export class SupabaseDataService {
     }
   }
 
+  public static async saveInventory(items: InventoryItem[], targetCompanyId?: string): Promise<boolean> {
+    return this.saveItems(items, targetCompanyId);
+  }
+
   public static async deleteItem(id: string, targetCompanyId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();

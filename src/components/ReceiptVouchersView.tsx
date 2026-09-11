@@ -44,6 +44,7 @@ interface ReceiptVouchersViewProps {
   onDeleteVoucher?: (id: string) => Promise<void>;
   onPrintVoucher?: (voucher: PaymentVoucher) => void;
   onRefreshAll?: () => Promise<void> | void;
+  initialTypeFilter?: 'ALL' | 'RECEIPT' | 'PAYMENT';
 }
 
 export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
@@ -60,10 +61,17 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
   onDeleteVoucher,
   onPrintVoucher,
   onRefreshAll,
+  initialTypeFilter,
 }) => {
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | 'RECEIPT' | 'PAYMENT'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'RECEIPT' | 'PAYMENT'>(initialTypeFilter || 'ALL');
+
+  React.useEffect(() => {
+    if (initialTypeFilter) {
+      setTypeFilter(initialTypeFilter);
+    }
+  }, [initialTypeFilter]);
   const [accountFilter, setAccountFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'POSTED' | 'CANCELLED'>('ALL');
 

@@ -23,14 +23,19 @@ import {
   RotateCcw,
   BarChart3,
   FolderUp,
+  Warehouse,
+  ShoppingCart,
+  UserCheck,
+  Store,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Layers,
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
-import { CompanyProfile } from '../types.js';
+import { CompanyProfile, SystemUser } from '../types.js';
 import { isDemoActive } from '../services/demoService.js';
 import { checkIsSupabaseConfigured } from '../services/supabaseClient.ts';
 import { useTheme } from '../services/themeService.ts';
-
-import { SystemUser } from '../types.js';
 
 interface SidebarProps {
   currentUser?: SystemUser | null;
@@ -75,6 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     activePalette,
   } = useTheme(company);
 
+  // Define the 6 clean enterprise modules
   const sections: NavSection[] = [
     {
       id: 'main',
@@ -89,55 +95,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      id: 'sales',
-      title: 'قسم المبيعات ونقاط البيع',
+      id: 'accounting',
+      title: '1. المحاسبة المالية (Accounting)',
       items: [
         {
-          id: 'quotations',
-          label: 'عروض الأسعار والتحويل',
-          icon: FileText,
-          color: 'text-sky-400',
-        },
-        {
-          id: 'pos',
-          label: 'نقاط البيع POS',
-          icon: ShoppingBag,
-          color: 'text-emerald-400',
-        },
-        {
-          id: 'invoices',
-          label: 'فواتير المبيعات',
-          icon: FileText,
-          badge: unpaidCount > 0 ? unpaidCount : undefined,
-          color: 'text-blue-400',
-        },
-        {
-          id: 'vouchers',
-          label: 'سندات القبض والصرف',
-          icon: DollarSign,
+          id: 'accounts',
+          label: 'دليل الحسابات',
+          icon: FolderTree,
           color: 'text-teal-400',
         },
-      ],
-    },
-    {
-      id: 'manufacturing',
-      title: 'قسم التصنيع والإنتاج',
-      items: [
-        {
-          id: 'production',
-          label: 'أوامر التصنيع والتشغيل',
-          icon: Factory,
-          color: 'text-amber-400',
-        },
-      ],
-    },
-    {
-      id: 'accounting',
-      title: 'قسم الحسابات والمالية',
-      items: [
         {
           id: 'journals',
-          label: 'القيود اليومية',
+          label: 'القيود اليومية المتوازنة',
           icon: FileText,
           color: 'text-cyan-400',
         },
@@ -146,12 +115,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: 'دفتر الأستاذ العام',
           icon: BookOpen,
           color: 'text-indigo-400',
-        },
-        {
-          id: 'statements',
-          label: 'كشوفات الحسابات IFRS',
-          icon: FileText,
-          color: 'text-amber-400',
         },
         {
           id: 'trial-balance',
@@ -165,75 +128,166 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon: LineChart,
           color: 'text-green-400',
         },
+      ],
+    },
+    {
+      id: 'sales',
+      title: '2. المبيعات والعملاء (Sales)',
+      items: [
         {
-          id: 'accounts',
-          label: 'الدليل المحاسبي',
-          icon: FolderTree,
+          id: 'sales-invoices',
+          label: 'فواتير ومرتجعات المبيعات',
+          icon: ShoppingBag,
+          badge: unpaidCount > 0 ? unpaidCount : undefined,
+          color: 'text-blue-400',
+        },
+        {
+          id: 'quotations',
+          label: 'عروض الأسعار',
+          icon: FileText,
+          color: 'text-sky-400',
+        },
+        {
+          id: 'customers',
+          label: 'سجلات العملاء والجمعيات',
+          icon: Users2,
+          color: 'text-indigo-400',
+        },
+        {
+          id: 'receipt-vouchers',
+          label: 'التحصيلات (سندات القبض)',
+          icon: ArrowDownLeft,
           color: 'text-teal-400',
+        },
+        {
+          id: 'customer-statements',
+          label: 'كشوف حسابات العملاء',
+          icon: BookOpen,
+          color: 'text-amber-400',
+        },
+        {
+          id: 'sales-reps',
+          label: 'مناديب المبيعات والعمولات',
+          icon: UserCheck,
+          color: 'text-cyan-400',
+        },
+      ],
+    },
+    {
+      id: 'purchasing',
+      title: '3. المشتريات والموردين (Purchasing)',
+      items: [
+        {
+          id: 'purchase-invoices',
+          label: 'فواتير ومردودات الشراء',
+          icon: ShoppingCart,
+          color: 'text-amber-400',
+        },
+        {
+          id: 'suppliers',
+          label: 'سجلات الموردين والمطاحن',
+          icon: Building2,
+          color: 'text-orange-400',
+        },
+        {
+          id: 'payment-vouchers',
+          label: 'سداد الموردين (سندات الصرف)',
+          icon: ArrowUpRight,
+          color: 'text-rose-400',
+        },
+        {
+          id: 'supplier-statements',
+          label: 'كشوف حسابات الموردين',
+          icon: BookOpen,
+          color: 'text-amber-300',
         },
       ],
     },
     {
       id: 'inventory',
-      title: 'قسم إدارة المخزون والجرد',
+      title: '4. إدارة المخازن (Inventory)',
       items: [
         {
           id: 'inventory',
-          label: 'الأصناف والمخزون',
+          label: 'سجل الأصناف وكارت الصنف',
           icon: Package,
+          color: 'text-emerald-400',
+        },
+        {
+          id: 'stock-ledger',
+          label: 'أذون الحركات والجرد',
+          icon: Layers,
+          color: 'text-teal-400',
+        },
+        {
+          id: 'warehouses',
+          label: 'المستودعات ومواقع التخزين',
+          icon: Warehouse,
           color: 'text-amber-400',
         },
         {
           id: 'units',
-          label: 'وحدات القياس والتحويل',
+          label: 'وحدات القياس والشد',
           icon: Ruler,
+          color: 'text-purple-400',
+        },
+        {
+          id: 'production',
+          label: 'قسم التصنيع والتشغيل',
+          icon: Factory,
+          color: 'text-amber-400',
+        },
+      ],
+    },
+    {
+      id: 'pos',
+      title: '5. نقاط البيع (POS)',
+      items: [
+        {
+          id: 'pos',
+          label: 'شاشة البيع السريعة والشفتات',
+          icon: Store,
           color: 'text-purple-400',
         },
       ],
     },
     {
-      id: 'management',
-      title: 'قسم الإدارة والبيانات الأساسية',
+      id: 'settings',
+      title: '6. الإدارة والإعدادات (Settings)',
       items: [
         {
-          id: 'entities',
-          label: 'العملاء والموردين',
-          icon: Users2,
-          color: 'text-indigo-400',
-        },
-        {
-          id: 'sales-reps',
-          label: 'إدارة المناديب والعمولات',
-          icon: Users,
-          color: 'text-cyan-400',
-        },
-        {
-          id: 'reports',
-          label: 'التقارير التشغيلية',
-          icon: BarChart3,
-          color: 'text-sky-400',
-        },
-        {
           id: 'company',
-          label: 'إعدادات المنشأة والترويسات',
+          label: 'إعدادات الشركة والعملة',
           icon: Building2,
           color: 'text-violet-400',
         },
         {
-          id: 'json-backup' as any,
-          label: 'استيراد نسخة احتياطية (JSON)',
-          icon: FolderUp,
-          color: 'text-amber-400',
+          id: 'branches',
+          label: 'إدارة الفروع ومحطات البيع',
+          icon: Store,
+          color: 'text-cyan-400',
         },
         {
           id: 'users',
-          label: 'المستخدمون والصلاحيات',
+          label: 'المستخدمون والصلاحيات (RBAC)',
           icon: Users,
           color: 'text-pink-400',
         },
         {
+          id: 'backup-restore',
+          label: 'مركز النسخ والاستعادة الموحد',
+          icon: FolderUp,
+          color: 'text-amber-300',
+        },
+        {
+          id: 'reports',
+          label: 'التقارير التشغيلية المجمعة',
+          icon: BarChart3,
+          color: 'text-sky-400',
+        },
+        {
           id: 'system-reset',
-          label: 'تصفير النظام وإقفال الدورة',
+          label: 'تصفير النظام وبدء دورة',
           icon: RotateCcw,
           color: 'text-rose-400',
         },
@@ -241,66 +295,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  
-  // [ARCHITECT] Strict RBAC Filtering
+  // RBAC Filtering
   const isCashier = currentUser?.role === 'SALES';
   const isAccountant = currentUser?.role === 'ACCOUNTANT' || currentUser?.role === 'CHIEF_ACCOUNTANT';
-  const isManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'GENERAL_MANAGER';
-  
+  const isManager =
+    currentUser?.role === 'ADMIN' ||
+    currentUser?.role === 'SUPER_ADMIN' ||
+    currentUser?.role === 'GENERAL_MANAGER' ||
+    !currentUser?.role;
 
-  
-  const filteredGroups = sections.map(group => {
+  const filteredGroups = sections.map((group) => {
     return {
       ...group,
-      items: group.items.filter(item => {
-        if (isManager) return true; // Manager sees everything
-        
+      items: group.items.filter((item) => {
+        if (isManager) return true;
         if (isCashier) {
-          // Cashier ONLY sees POS, Invoices (basic view), and maybe their own dashboard
-          return ['pos', 'dashboard', 'invoices', 'quotations'].includes(item.id);
+          return ['pos', 'dashboard', 'sales-invoices', 'quotations', 'receipt-vouchers'].includes(item.id);
         }
-        
         if (isAccountant) {
-          // Accountant sees financials, ledgers, journals, vouchers, statements, etc.
-          // Probably shouldn't see system settings (users, company setup) unless authorized
-          if (['users', 'system-reset'].includes(item.id)) return false;
-          return true;
+          return !['company', 'users', 'system-reset', 'backup-restore'].includes(item.id);
         }
-        
-        return true; // Default fallback
-      })
+        return true;
+      }),
     };
-  }).filter(g => g.items.length > 0);
-  
+  });
+
   return (
     <aside
-      style={{ backgroundColor: activePalette.sidebarBg, borderColor: activePalette.sidebarBorder }}
-      className={`fixed top-0 right-0 bottom-0 text-white border-l z-50 flex flex-col transition-all duration-300 shadow-2xl no-print ${
+      className={`fixed top-0 right-0 h-screen z-40 flex flex-col transition-all duration-300 no-print border-l font-sans ${
         collapsed ? 'w-16' : 'w-64'
       }`}
+      style={{
+        background: activePalette.sidebarBg,
+        borderColor: activePalette.sidebarBorder,
+      }}
     >
-      {/* Sidebar Header Brand */}
-      <div
-        style={{ borderColor: activePalette.sidebarBorder }}
-        className="h-14 flex items-center justify-between px-3 border-b bg-black/20 shrink-0"
-      >
+      {/* Sidebar Header */}
+      <div className="h-[60px] flex items-center justify-between px-3 border-b border-white/10 shrink-0">
         {!collapsed ? (
-          <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="flex items-center gap-2 overflow-hidden">
             <div
               style={{ backgroundColor: activePalette.primaryColor }}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold border border-white/20 shadow-xs shrink-0"
             >
-              <span className="text-xs tracking-wider">LX</span>
+              <span className="text-xs tracking-wider font-mono">LX</span>
             </div>
-            <div className="min-w-0">
-              <h2 className="text-xs font-bold text-white tracking-tight truncate">
-                {company?.nameAr || 'لوجيكس ERP'}
-              </h2>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span className="text-[9px] text-cyan-300 font-semibold truncate">
-                  سحابي متصل
-                </span>
+            <div className="truncate text-right">
+              <div className="text-xs font-bold text-white leading-tight truncate font-serif">
+                {company?.nameAr || 'نظام لوجيكس السحابي'}
+              </div>
+              <div className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Enterprise ERP v2026</span>
               </div>
             </div>
           </div>
@@ -327,23 +373,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {filteredGroups.map((section) => (
           <div key={section.id} className="space-y-0.5">
             {!collapsed && (
-              <div className="px-2.5 py-0.5 text-[10px] font-bold text-slate-400 tracking-wider">
+              <div className="px-2.5 py-0.5 text-[10px] font-bold text-slate-400 tracking-wider border-b border-white/5 mb-1 pb-0.5">
                 {section.title}
               </div>
             )}
             <div className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = activeTab === item.id;
+                const isActive =
+                  activeTab === item.id ||
+                  (activeTab === 'invoices' && item.id === 'sales-invoices') ||
+                  (activeTab === 'vouchers' && item.id === 'receipt-vouchers') ||
+                  (activeTab === 'entities' && item.id === 'customers') ||
+                  (activeTab === 'statements' && item.id === 'customer-statements');
 
                 return (
                   <button
                     key={item.id}
                     onClick={() => {
-                      if (item.id === ('json-backup' as any)) {
-                        if (onOpenJsonBackup) onOpenJsonBackup();
-                        return;
-                      }
                       setActiveTab(item.id);
                     }}
                     title={collapsed ? item.label : undefined}
@@ -368,21 +415,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           : 'bg-white/5 text-slate-400 group-hover:text-cyan-300'
                       }`}
                     >
-                      <Icon className="w-3.5 h-3.5" />
+                      <Icon className={`w-3.5 h-3.5 ${item.color || 'text-cyan-400'}`} />
                     </div>
 
                     {!collapsed && (
-                      <span className="truncate flex-1 text-right font-bold text-xs">
-                        {item.label}
-                      </span>
+                      <span className="truncate flex-1 text-right">{item.label}</span>
                     )}
 
-                    {!collapsed && item.badge !== undefined && (
-                      <span className={`px-1.5 py-0.2 text-[9px] font-black rounded-full shadow-2xs ${
-                        item.badge === 'مقيد'
-                          ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
-                          : 'bg-rose-600 text-white'
-                      }`}>
+                    {!collapsed && item.badge !== undefined && Number(item.badge) > 0 && (
+                      <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[10px] font-extrabold rounded-full">
                         {item.badge}
                       </span>
                     )}
@@ -394,90 +435,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      {/* Quick JSON Backup / Import Button in Sidebar */}
-      {onOpenJsonBackup && (
-        <div
-          style={{ borderColor: activePalette.sidebarBorder }}
-          className="px-2 pt-2 border-t bg-black/10 shrink-0"
-        >
-          {!collapsed ? (
-            <button
-              type="button"
-              onClick={onOpenJsonBackup}
-              className="w-full text-right bg-amber-500/15 hover:bg-amber-500/25 p-2 rounded-lg border border-amber-500/40 flex items-center justify-between cursor-pointer transition-colors text-amber-200 group shadow-2xs"
-              title="استيراد واستعادة نسخة احتياطية (JSON) لقاعدة البيانات السحابية والمحلية"
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md flex items-center justify-center border shrink-0 bg-amber-500/25 text-amber-300 border-amber-400/50 group-hover:scale-105 transition-transform">
-                  <FolderUp className="w-3.5 h-3.5 text-amber-300" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] font-bold text-white flex items-center gap-1 truncate">
-                    <span>استيراد نسخة (JSON)</span>
-                  </div>
-                  <div className="text-[9px] text-amber-300/80 truncate">
-                    <span>استعادة ملف النسخة الاحتياطية</span>
-                  </div>
-                </div>
-              </div>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onOpenJsonBackup}
-              className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center border cursor-pointer bg-amber-500/20 text-amber-300 border-amber-400/40 hover:bg-amber-500/30 transition-colors shadow-2xs"
-              title="استيراد واستعادة نسخة احتياطية (JSON)"
-            >
-              <FolderUp className="w-4 h-4 text-amber-300" />
-            </button>
-          )}
+      {/* Sidebar Footer */}
+      {!collapsed && (
+        <div className="p-3 border-t border-white/10 bg-black/20 text-[11px] text-slate-400 flex flex-col gap-1 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>نظام موحد (Zero Data Loss)</span>
+            </span>
+            <span className="font-mono text-cyan-400">{company?.functionalCurrency || 'KWD'}</span>
+          </div>
         </div>
       )}
-
-      {/* Supabase Cloud Sync Status Widget & Theme Switcher in Sidebar */}
-      <div
-        style={{ borderColor: activePalette.sidebarBorder }}
-        className="p-2 border-t bg-black/20 shrink-0 space-y-1.5"
-      >
-        {!collapsed ? (
-          <button
-            type="button"
-            onClick={onOpenCompanySetup}
-            className="w-full text-right bg-black/30 hover:bg-black/50 p-2 rounded-lg border border-white/10 flex items-center justify-between cursor-pointer transition-colors"
-            title={checkIsSupabaseConfigured() ? "قاعدة Supabase السحابية متصلة" : "النظام يعمل على التخزين المحلي (اضغط للربط بالسحابة)"}
-          >
-            <div className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-md flex items-center justify-center border shrink-0 ${
-                checkIsSupabaseConfigured() ? 'bg-blue-500/20 text-cyan-300 border-blue-400/30' : 'bg-amber-500/20 text-amber-300 border-amber-400/30'
-              }`}>
-                <Cloud className={`w-3.5 h-3.5 ${checkIsSupabaseConfigured() ? 'text-cyan-400 animate-pulse' : 'text-amber-400'}`} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold text-white flex items-center gap-1 truncate">
-                  <span>قاعدة Supabase</span>
-                </div>
-                <div className={`text-[9px] font-semibold flex items-center gap-1 ${
-                  checkIsSupabaseConfigured() ? 'text-emerald-400' : 'text-amber-400'
-                }`}>
-                  <CheckCircle2 className="w-2.5 h-2.5" />
-                  <span>{checkIsSupabaseConfigured() ? 'متصلة سحابياً' : 'تخزين محلي مؤقت'}</span>
-                </div>
-              </div>
-            </div>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onOpenCompanySetup}
-            className={`w-8 h-8 mx-auto rounded-lg flex items-center justify-center border cursor-pointer ${
-              checkIsSupabaseConfigured() ? 'bg-blue-500/20 text-cyan-300 border-blue-400/30' : 'bg-amber-500/20 text-amber-300 border-amber-400/30'
-            }`}
-            title={checkIsSupabaseConfigured() ? "قاعدة Supabase السحابية متصلة" : "تخزين محلي مؤقت (اضغط للربط)"}
-          >
-            <Cloud className={`w-4 h-4 ${checkIsSupabaseConfigured() ? 'text-cyan-400 animate-pulse' : 'text-amber-400'}`} />
-          </button>
-        )}
-      </div>
     </aside>
   );
 };

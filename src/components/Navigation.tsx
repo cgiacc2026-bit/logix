@@ -20,31 +20,57 @@ import {
   ShieldCheck,
   Cpu,
   RotateCcw,
-  BarChart3
+  BarChart3,
+  Warehouse,
+  FolderUp,
+  Receipt,
+  ShoppingCart,
+  UserCheck,
+  Store,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from 'lucide-react';
 
 export type TabType =
   | 'dashboard'
-  | 'quotations'
-  | 'pos'
-  | 'invoices'
-  | 'vouchers'
-  | 'production'
+  // 1. Accounting Module
+  | 'accounts'
   | 'journals'
   | 'ledger'
-  | 'statements'
   | 'trial-balance'
   | 'financials'
-  | 'accounts'
+  // 2. Sales & Customers Module
+  | 'sales-invoices'
+  | 'quotations'
+  | 'customers'
+  | 'receipt-vouchers'
+  | 'customer-statements'
+  | 'sales-reps'
+  // 3. Purchasing & Suppliers Module
+  | 'purchase-invoices'
+  | 'suppliers'
+  | 'payment-vouchers'
+  | 'supplier-statements'
+  // 4. Inventory Module
   | 'inventory'
   | 'stock-ledger'
+  | 'warehouses'
   | 'units'
-  | 'entities'
-  | 'sales-reps'
-  | 'reports'
+  | 'production'
+  // 5. POS Module
+  | 'pos'
+  // 6. Core System Settings Module
   | 'company'
+  | 'branches'
   | 'users'
-  | 'system-reset';
+  | 'backup-restore'
+  | 'reports'
+  | 'system-reset'
+  // Legacy Aliases
+  | 'invoices'
+  | 'vouchers'
+  | 'entities'
+  | 'statements';
 
 interface NavigationProps {
   activeTab: TabType;
@@ -72,7 +98,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   setActiveTab,
   unpaidCount = 0,
 }) => {
-  // Define task-based icon groups
+  // Define 6 distinct enterprise modular groups
   const groups: NavGroup[] = [
     {
       id: 'overview',
@@ -90,184 +116,286 @@ export const Navigation: React.FC<NavigationProps> = ({
       ],
     },
     {
-      id: 'operations',
-      title: 'العمليات والإنتاج والمبيعات',
-      icon: Factory,
-      color: 'text-amber-300',
-      badgeBg: 'bg-amber-500/20 text-amber-200 border-amber-400/30',
-      items: [
-        {
-          id: 'invoices',
-          label: 'الفواتير والمبيعات',
-          icon: ShoppingBag,
-          badge: unpaidCount > 0 ? unpaidCount : undefined,
-          subLabel: 'فواتير البيع والشراء',
-        },
-        {
-          id: 'inventory',
-          label: 'المخزون والأصناف',
-          icon: Package,
-          subLabel: 'الخامات والبهارات التامة',
-        },
-        {
-          id: 'production',
-          label: 'قسم التصنيع (Manufacturing Center)',
-          icon: Factory,
-          subLabel: 'أوامر التشغيل وخطوط الإنتاج',
-        },
-        {
-          id: 'vouchers',
-          label: 'سندات القبض والصرف',
-          icon: DollarSign,
-          subLabel: 'الخزينة والتحصيل والسداد',
-        },
-        {
-          id: 'entities',
-          label: 'العملاء والموردين',
-          icon: Users2,
-          subLabel: 'الجمعيات والمطاحن والموردين',
-        },
-      ],
-    },
-    {
       id: 'accounting',
-      title: 'المحاسبة والتقارير المالية',
+      title: 'المحاسبة المالية (Accounting)',
       icon: LineChart,
       color: 'text-emerald-300',
       badgeBg: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30',
       items: [
         {
           id: 'accounts',
-          label: 'الدليل المحاسبي',
+          label: 'دليل الحسابات',
           icon: FolderTree,
-          subLabel: 'شجرة الحسابات العامة',
+          subLabel: 'شجرة الحسابات العامة IFRS',
         },
         {
           id: 'journals',
-          label: 'القيود اليومية',
+          label: 'القيود اليومية المتوازنة',
           icon: FileText,
-          subLabel: 'الترحيل المزدوج',
+          subLabel: 'الترحيل المزدوج (Debit = Credit)',
         },
         {
           id: 'ledger',
-          label: 'الأستاذ العام',
+          label: 'دفتر الأستاذ العام',
           icon: BookOpen,
-          subLabel: 'كشوف الحسابات',
+          subLabel: 'حركات الحسابات والأرصدة',
         },
         {
           id: 'trial-balance',
           label: 'ميزان المراجعة',
           icon: Scale,
-          subLabel: 'المجاميع والأرصدة',
+          subLabel: 'المجاميع والأرصدة المدققة',
         },
         {
           id: 'financials',
           label: 'القوائم المالية الختامية',
           icon: LineChart,
-          subLabel: 'الميزانية والأرباح والتدفقات',
+          subLabel: 'الميزانية وقائمة الدخل والأرباح',
+        },
+      ],
+    },
+    {
+      id: 'sales',
+      title: 'المبيعات والعملاء (Sales)',
+      icon: ShoppingBag,
+      color: 'text-sky-300',
+      badgeBg: 'bg-sky-500/20 text-sky-200 border-sky-400/30',
+      items: [
+        {
+          id: 'sales-invoices',
+          label: 'فواتير ومرتجعات المبيعات',
+          icon: ShoppingBag,
+          badge: unpaidCount > 0 ? unpaidCount : undefined,
+          subLabel: 'إصدار الفواتير والمرتجعات والجمعيات',
         },
         {
-          id: 'reports',
-          label: 'تقارير المبيعات والعمليات',
-          icon: BarChart3,
-          subLabel: 'المبيعات، المشتريات، المصاريف، والعملاء',
+          id: 'quotations',
+          label: 'عروض الأسعار',
+          icon: FileText,
+          subLabel: 'عروض البيع والتحويل لفواتير',
+        },
+        {
+          id: 'customers',
+          label: 'سجلات العملاء والجمعيات',
+          icon: Users2,
+          subLabel: 'بيانات وأرصدة العملاء والأسعار',
+        },
+        {
+          id: 'receipt-vouchers',
+          label: 'التحصيلات (سندات القبض)',
+          icon: ArrowDownLeft,
+          subLabel: 'سندات قبض وتحصيل نقد/بنك',
+        },
+        {
+          id: 'customer-statements',
+          label: 'كشوف حسابات العملاء',
+          icon: BookOpen,
+          subLabel: 'كشف حساب تفصيلي ومطابقة أرصدة',
+        },
+        {
+          id: 'sales-reps',
+          label: 'مناديب المبيعات والعمولات',
+          icon: UserCheck,
+          subLabel: 'إسناد الفواتير والعمولات',
+        },
+      ],
+    },
+    {
+      id: 'purchasing',
+      title: 'المشتريات والموردين (Purchasing)',
+      icon: ShoppingCart,
+      color: 'text-amber-300',
+      badgeBg: 'bg-amber-500/20 text-amber-200 border-amber-400/30',
+      items: [
+        {
+          id: 'purchase-invoices',
+          label: 'فواتير ومردودات الشراء',
+          icon: ShoppingCart,
+          subLabel: 'شراء الخامات ومستلزمات التعبئة',
+        },
+        {
+          id: 'suppliers',
+          label: 'سجلات الموردين والمطاحن',
+          icon: Building2,
+          subLabel: 'دليل الموردين وأرصدة أول المدة',
+        },
+        {
+          id: 'payment-vouchers',
+          label: 'سداد الموردين (سندات الصرف)',
+          icon: ArrowUpRight,
+          subLabel: 'صرف وسداد المستحقات',
+        },
+        {
+          id: 'supplier-statements',
+          label: 'كشوف حسابات الموردين',
+          icon: BookOpen,
+          subLabel: 'مطابقة دفعات وحسابات الموردين',
+        },
+      ],
+    },
+    {
+      id: 'inventory',
+      title: 'إدارة المخازن (Inventory)',
+      icon: Package,
+      color: 'text-teal-300',
+      badgeBg: 'bg-teal-500/20 text-teal-200 border-teal-400/30',
+      items: [
+        {
+          id: 'inventory',
+          label: 'سجل الأصناف وكارت الصنف',
+          icon: Package,
+          subLabel: 'الخامات والبهارات والأصناف التامة',
+        },
+        {
+          id: 'stock-ledger',
+          label: 'أذون الحركات والجرد',
+          icon: Layers,
+          subLabel: 'أذون الصرف والإضافة المباشرة',
+        },
+        {
+          id: 'warehouses',
+          label: 'المستودعات ومواقع التخزين',
+          icon: Warehouse,
+          subLabel: 'إدارة المستودعات وتوزيع المخزون',
+        },
+        {
+          id: 'units',
+          label: 'وحدات القياس والشد',
+          icon: Ruler,
+          subLabel: 'التحويل بين الكيلو والحبة والكرتون',
+        },
+        {
+          id: 'production',
+          label: 'قسم التصنيع والتشغيل',
+          icon: Factory,
+          subLabel: 'أوامر الخلط والطحن والتعبئة',
+        },
+      ],
+    },
+    {
+      id: 'pos',
+      title: 'نقاط البيع (POS)',
+      icon: Store,
+      color: 'text-purple-300',
+      badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/30',
+      items: [
+        {
+          id: 'pos',
+          label: 'شاشة البيع السريعة والشفتات',
+          icon: Store,
+          subLabel: 'كاشير سريع، باركود، وإغلاق شفتات',
         },
       ],
     },
     {
       id: 'settings',
-      title: 'التهيئة والإدارة',
+      title: 'الإدارة والإعدادات (Settings)',
       icon: Building2,
-      color: 'text-purple-300',
-      badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/30',
+      color: 'text-rose-300',
+      badgeBg: 'bg-rose-500/20 text-rose-200 border-rose-400/30',
       items: [
         {
-          id: 'units',
-          label: 'وحدات القياس',
-          icon: Ruler,
-          subLabel: 'الكيلو والكرتون والحبة',
+          id: 'company',
+          label: 'إعدادات الشركة والعملة',
+          icon: Building2,
+          subLabel: 'بيانات الترخيص، العملة الوظيفية، والبلد',
         },
         {
-          id: 'company',
-          label: 'إعدادات الشركة',
-          icon: Building2,
-          subLabel: 'بيانات المطحنة والتراخيص',
+          id: 'branches',
+          label: 'إدارة الفروع ومحطات البيع',
+          icon: Store,
+          subLabel: 'ربط الفروع بالمستودعات ونقاط البيع',
         },
         {
           id: 'users',
-          label: 'المستخدمون والصلاحيات',
+          label: 'المستخدمون والصلاحيات (RBAC)',
           icon: Users,
-          subLabel: 'الأدوار والأمان',
+          subLabel: 'الأدوار وحماية العمليات',
+        },
+        {
+          id: 'backup-restore',
+          label: 'مركز النسخ والاستعادة الموحد',
+          icon: FolderUp,
+          subLabel: 'تصدير JSON/Excel والاستعادة الآمنة',
+        },
+        {
+          id: 'reports',
+          label: 'التقارير التشغيلية المجمعة',
+          icon: BarChart3,
+          subLabel: 'تقارير المبيعات والأرباح الشاملة',
         },
         {
           id: 'system-reset',
-          label: 'تصفير النظام وبدء دورة',
+          label: 'تصفير وبدء دورة محاسبية',
           icon: RotateCcw,
-          subLabel: 'الإقفال السنوي والأرشفة (Admin)',
+          subLabel: 'الإقفال المالي والتدوير السنوي',
         },
       ],
     },
   ];
 
   return (
-    <nav className="bg-[#0A1D30] border-b border-[#1E3E62] px-2 sm:px-4 lg:px-6 py-2 overflow-x-auto no-print scrollbar-none shadow-md sticky top-[60px] z-30">
+    <nav className="bg-[#0A1D30] border-b border-[#1E3E62] px-2 sm:px-4 lg:px-6 py-2 overflow-x-auto no-print scrollbar-none shadow-md sticky top-[60px] z-30 font-sans">
       <div className="max-w-7xl mx-auto flex items-center justify-start gap-3 min-w-max">
-        {groups.map((group, gIdx) => {
+        {groups.map((group) => {
           const GroupIcon = group.icon;
           // Check if any tab in this group is active
-          const isGroupActive = group.items.some((item) => item.id === activeTab);
+          const isGroupActive = group.items.some((item) => {
+            if (item.id === activeTab) return true;
+            // Legacy aliases mapping
+            if (activeTab === 'invoices' && item.id === 'sales-invoices') return true;
+            if (activeTab === 'vouchers' && item.id === 'receipt-vouchers') return true;
+            if (activeTab === 'entities' && item.id === 'customers') return true;
+            if (activeTab === 'statements' && item.id === 'customer-statements') return true;
+            return false;
+          });
 
           return (
             <div
               key={group.id}
-              className={`flex items-center gap-1.5 p-1 rounded-2xl transition-all border ${
+              className={`flex items-center gap-1.5 p-1 rounded-xl transition-all ${
                 isGroupActive
-                  ? 'bg-[#0F2942]/90 border-blue-500/40 shadow-xs'
-                  : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700'
+                  ? 'bg-slate-900/80 border border-slate-700/80 shadow-xs'
+                  : 'hover:bg-slate-900/40 border border-transparent'
               }`}
             >
-              {/* Group Category Tag / Header */}
+              {/* Group Title Badge */}
               <div
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-black shrink-0 ${
-                  isGroupActive
-                    ? `${group.badgeBg} shadow-xs font-black`
-                    : 'bg-slate-800/80 text-slate-400 border-slate-700/60'
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold ${
+                  isGroupActive ? group.badgeBg : 'text-slate-400'
                 }`}
               >
-                <GroupIcon className={`w-3.5 h-3.5 ${group.color}`} />
-                <span className="whitespace-nowrap">{group.title}</span>
+                <GroupIcon className={`w-3.5 h-3.5 ${isGroupActive ? group.color : 'text-slate-400'}`} />
+                <span className="hidden xl:inline text-[11px]">{group.title}</span>
               </div>
 
-              {/* Group Buttons / Icons */}
+              {/* Items Buttons */}
               <div className="flex items-center gap-1">
                 {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
+                  const ItemIcon = item.icon;
+                  const isActive =
+                    activeTab === item.id ||
+                    (activeTab === 'invoices' && item.id === 'sales-invoices') ||
+                    (activeTab === 'vouchers' && item.id === 'receipt-vouchers') ||
+                    (activeTab === 'entities' && item.id === 'customers') ||
+                    (activeTab === 'statements' && item.id === 'customer-statements');
 
                   return (
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
-                      title={item.subLabel}
-                      className={`px-2.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                      title={`${item.label} - ${item.subLabel || ''}`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                         isActive
-                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md border border-blue-400/50 scale-[1.02]'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800/90 border border-transparent'
+                          ? 'bg-blue-600 text-white shadow-xs scale-[1.02]'
+                          : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                       }`}
                     >
-                      <div
-                        className={`p-1 rounded-lg ${
-                          isActive
-                            ? 'bg-white/20 text-cyan-300'
-                            : 'bg-slate-800/90 text-slate-400 group-hover:text-white'
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="font-bold">{item.label}</span>
+                      <ItemIcon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                      <span>{item.label}</span>
 
-                      {item.badge !== undefined && (
-                        <span className="px-1.5 py-0.2 text-[10px] font-black bg-rose-600 text-white rounded-full shadow-xs">
+                      {item.badge !== undefined && Number(item.badge) > 0 && (
+                        <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[10px] font-extrabold rounded-full animate-pulse">
                           {item.badge}
                         </span>
                       )}
@@ -275,11 +403,6 @@ export const Navigation: React.FC<NavigationProps> = ({
                   );
                 })}
               </div>
-
-              {/* Visual Divider between Groups */}
-              {gIdx < groups.length - 1 && (
-                <div className="w-[1px] h-6 bg-slate-700/50 mx-1 hidden" />
-              )}
             </div>
           );
         })}

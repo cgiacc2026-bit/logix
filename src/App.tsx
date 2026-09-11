@@ -38,6 +38,9 @@ import { UsersView } from './components/UsersView.tsx';
 import { SystemResetPanel } from './components/SystemResetPanel.tsx';
 import { AccountingCycleBar } from './components/AccountingCycleBar.tsx';
 import { OperationalReportsView } from './components/OperationalReportsView.tsx';
+import { UnifiedBackupRestoreHub } from './components/UnifiedBackupRestoreHub.tsx';
+import { BranchesManagementView } from './components/BranchesManagementView.tsx';
+import { WarehousesManagementView } from './components/WarehousesManagementView.tsx';
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
@@ -645,7 +648,7 @@ export default function App() {
 
           {activeTab === 'financials' && <FinancialStatementsView currency={currency} />}
 
-          {activeTab === 'statements' && (
+          {(activeTab === 'statements' || activeTab === 'customer-statements') && (
             <AccountStatementView
               customers={customers}
               suppliers={suppliers}
@@ -654,6 +657,20 @@ export default function App() {
               journals={journals}
               company={activeCompany}
               currency={currency}
+              initialEntityType="CUSTOMER"
+            />
+          )}
+
+          {activeTab === 'supplier-statements' && (
+            <AccountStatementView
+              customers={customers}
+              suppliers={suppliers}
+              invoices={invoices}
+              vouchers={vouchers}
+              journals={journals}
+              company={activeCompany}
+              currency={currency}
+              initialEntityType="SUPPLIER"
             />
           )}
 
@@ -712,10 +729,26 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'warehouses' && (
+            <WarehousesManagementView
+              company={activeCompany}
+              inventory={inventory}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+              onNavigateTab={(tab) => setActiveTab(tab as any)}
+            />
+          )}
+
           {(activeTab === 'invoices' ||
+            activeTab === 'sales-invoices' ||
+            activeTab === 'purchase-invoices' ||
             activeTab === 'inventory' ||
             activeTab === 'vouchers' ||
+            activeTab === 'receipt-vouchers' ||
+            activeTab === 'payment-vouchers' ||
             activeTab === 'entities' ||
+            activeTab === 'customers' ||
+            activeTab === 'suppliers' ||
             activeTab === 'units') && (
             <InvoicesAndInventoryView
               company={activeCompany}
@@ -731,13 +764,57 @@ export default function App() {
               activeSubTab={
                 activeTab === 'inventory'
                   ? 'inventory'
-                  : activeTab === 'vouchers'
+                  : activeTab === 'vouchers' || activeTab === 'receipt-vouchers' || activeTab === 'payment-vouchers'
                   ? 'vouchers'
-                  : activeTab === 'entities'
+                  : activeTab === 'entities' || activeTab === 'customers' || activeTab === 'suppliers'
                   ? 'entities'
                   : activeTab === 'units'
                   ? 'units'
                   : 'invoices'
+              }
+              initialInvoiceFilter={
+                activeTab === 'purchase-invoices'
+                  ? 'PURCHASE'
+                  : activeTab === 'sales-invoices'
+                  ? 'SALES'
+                  : undefined
+              }
+              initialEntityFilter={
+                activeTab === 'customers'
+                  ? 'CUSTOMER'
+                  : activeTab === 'suppliers'
+                  ? 'SUPPLIER'
+                  : undefined
+              }
+              initialVoucherFilter={
+                activeTab === 'payment-vouchers'
+                  ? 'PAYMENT'
+                  : activeTab === 'receipt-vouchers'
+                  ? 'RECEIPT'
+                  : undefined
+              }
+              hideSubTabBar={
+                activeTab === 'sales-invoices' ||
+                activeTab === 'purchase-invoices' ||
+                activeTab === 'customers' ||
+                activeTab === 'suppliers' ||
+                activeTab === 'receipt-vouchers' ||
+                activeTab === 'payment-vouchers'
+              }
+              customViewTitle={
+                activeTab === 'sales-invoices'
+                  ? 'فواتير ومرتجعات المبيعات والعملاء'
+                  : activeTab === 'purchase-invoices'
+                  ? 'فواتير ومردودات المشتريات والموردين'
+                  : activeTab === 'customers'
+                  ? 'دليل وسجلات العملاء والجمعيات التعاونية'
+                  : activeTab === 'suppliers'
+                  ? 'دليل وسجلات الموردين والشركات الموردة'
+                  : activeTab === 'receipt-vouchers'
+                  ? 'سندات القبض وتحصيلات العملاء'
+                  : activeTab === 'payment-vouchers'
+                  ? 'سندات الصرف وسداد الموردين'
+                  : undefined
               }
               onSubTabChange={(sub) => setActiveTab(sub)}
               accounts={accounts}
@@ -764,6 +841,26 @@ export default function App() {
               onDeleteUnit={handleDeleteUnit}
               productionOrders={productionOrders}
               onRefreshAll={refreshAllData}
+            />
+          )}
+
+          {activeTab === 'branches' && (
+            <BranchesManagementView
+              company={activeCompany}
+              warehouses={warehouses}
+              accounts={accounts}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+            />
+          )}
+
+          {activeTab === 'backup-restore' && (
+            <UnifiedBackupRestoreHub
+              company={activeCompany}
+              currentUser={currentUser}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+              onNavigateTab={(tab) => setActiveTab(tab as any)}
             />
           )}
 
