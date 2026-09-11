@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   InventoryItem,
   Invoice,
@@ -106,17 +106,89 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   const [reconcileSuccess, setReconcileSuccess] = useState<string>('');
   const [isSubmittingReconcile, setIsSubmittingReconcile] = useState(false);
 
-  // 1. Compute KPIs
-  const auditSummary = useMemo(() => {
-    return StockLedgerService.computeStockAudit(inventory);
-  }, [inventory]);
-
-  // 2. Compute Ledger Movements
+  // 1. Compute Ledger Movements (Synthesized from Opening, Sales, Purchases, Returns & Production)
   const movements = useMemo(() => {
     return StockLedgerService.getStockMovements(inventory, invoices, productionOrders);
   }, [inventory, invoices, productionOrders]);
 
-  // 3. Filtered Inventory
+  // 2. Dynamic Live Running Balance Map (Calculated strictly from movements array via cumulative reduce)
+  const itemLiveBalances = useMemo(() => {
+    const map = new Map<string, number>();
+
+    inventory.forEach((item) => {
+      const itemMvs = movements.filter(
+        (m) => m.itemId === item.id || (item.sku && m.itemSku === item.sku)
+      );
+
+      if (itemMvs.length > 0) {
+        const sorted = [...itemMvs].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+        const hasOpening = sorted.some((m) => m.type === 'OPENING');
+        const openingBalance = hasOpening
+          ? 0
+          : Number(item.initialQuantity ?? item.quantityOnHand ?? 0);
+
+        const liveBal = sorted.reduce((acc, row) => {
+          const qtyIn = Number(row.qty_in ?? row.quantityIn ?? 0);
+          const qtyOut = Number(row.qty_out ?? row.quantityOut ?? 0);
+          return acc + qtyIn - qtyOut;
+        }, openingBalance);
+
+        const finalBal =
+          sorted[sorted.length - 1].balanceAfter !== undefined
+            ? sorted[sorted.length - 1].balanceAfter
+            : liveBal;
+
+        map.set(item.id, finalBal);
+      } else {
+        map.set(item.id, Number(item.quantityOnHand || 0));
+      }
+    });
+
+    return map;
+  }, [inventory, movements]);
+
+  // Helper to retrieve dynamic live balance for any inventory item
+  const getItemLiveBalance = useCallback(
+    (item: InventoryItem | null | undefined): number => {
+      if (!item) return 0;
+      if (itemLiveBalances.has(item.id)) {
+        return itemLiveBalances.get(item.id)!;
+      }
+      const itemMvs = movements.filter(
+        (m) => m.itemId === item.id || (item.sku && m.itemSku === item.sku)
+      );
+      if (itemMvs.length === 0) return Number(item.quantityOnHand || 0);
+      const sorted = [...itemMvs].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      const hasOpening = sorted.some((m) => m.type === 'OPENING');
+      const openingBalance = hasOpening
+        ? 0
+        : Number(item.initialQuantity ?? item.quantityOnHand ?? 0);
+      const liveBal = sorted.reduce((acc, row) => {
+        const qtyIn = Number(row.qty_in ?? row.quantityIn ?? 0);
+        const qtyOut = Number(row.qty_out ?? row.quantityOut ?? 0);
+        return acc + qtyIn - qtyOut;
+      }, openingBalance);
+      return sorted[sorted.length - 1]?.balanceAfter !== undefined
+        ? sorted[sorted.length - 1].balanceAfter
+        : liveBal;
+    },
+    [itemLiveBalances, movements]
+  );
+
+  // 3. Compute KPIs using live dynamic balances
+  const auditSummary = useMemo(() => {
+    const inventoryWithLiveBalances = inventory.map((it) => ({
+      ...it,
+      quantityOnHand: itemLiveBalances.get(it.id) ?? it.quantityOnHand,
+    }));
+    return StockLedgerService.computeStockAudit(inventoryWithLiveBalances);
+  }, [inventory, itemLiveBalances]);
+
+  // 4. Filtered Inventory using live dynamic balances
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const matchesSearch =
@@ -128,14 +200,15 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
 
       let matchesStatus = true;
       const minAlert = item.minQuantityAlert || 10;
-      if (statusFilter === 'LOW') matchesStatus = item.quantityOnHand > 0 && item.quantityOnHand <= minAlert;
-      if (statusFilter === 'OUT') matchesStatus = item.quantityOnHand <= 0;
-      if (statusFilter === 'SAFE') matchesStatus = item.quantityOnHand > minAlert && item.quantityOnHand <= minAlert * 5;
-      if (statusFilter === 'EXCESS') matchesStatus = item.quantityOnHand > minAlert * 5;
+      const liveQty = getItemLiveBalance(item);
+      if (statusFilter === 'LOW') matchesStatus = liveQty > 0 && liveQty <= minAlert;
+      if (statusFilter === 'OUT') matchesStatus = liveQty <= 0;
+      if (statusFilter === 'SAFE') matchesStatus = liveQty > minAlert && liveQty <= minAlert * 5;
+      if (statusFilter === 'EXCESS') matchesStatus = liveQty > minAlert * 5;
 
       return matchesSearch && matchesCat && matchesStatus;
     });
-  }, [inventory, searchTerm, selectedCategory, statusFilter]);
+  }, [inventory, searchTerm, selectedCategory, statusFilter, getItemLiveBalance]);
 
   // 4. Filtered Movements
   const filteredMovements = useMemo(() => {
@@ -434,7 +507,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredInventory.map((item) => {
-                  const qty = item.quantityOnHand || 0;
+                  const qty = getItemLiveBalance(item);
                   const cost = item.purchasePrice || 0;
                   const totalValuation = qty * cost;
                   const minAlert = item.minQuantityAlert || 10;
@@ -628,7 +701,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                 >
                   {inventory.map((it) => (
                     <option key={it.id} value={it.id}>
-                      {it.nameAr} ({it.sku})
+                      {it.nameAr} ({it.sku}) - الرصيد: {getItemLiveBalance(it)} {it.unit || 'حبة'}
                     </option>
                   ))}
                 </select>
@@ -652,10 +725,45 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
               const currentItem = inventory.find((i) => i.id === selectedCardItemId) || inventory[0];
               if (!currentItem) return null;
 
-              const itemMvs = movements.filter((m) => m.itemId === currentItem.id);
-              const totalIn = itemMvs.reduce((acc, m) => acc + (m.quantityIn || 0), 0);
-              const totalOut = itemMvs.reduce((acc, m) => acc + (m.quantityOut || 0), 0);
-              const runningBal = currentItem.quantityOnHand;
+              // Filter movements for this specific item (matching by ID or SKU)
+              const itemMvs = movements.filter(
+                (m) => m.itemId === currentItem.id || (currentItem.sku && m.itemSku === currentItem.sku)
+              );
+
+              // Chronological sort ascending to guarantee strict sequential integrity
+              const sortedMvs = [...itemMvs].sort(
+                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+              );
+
+              // Determine opening balance:
+              // If an OPENING movement exists in the array, cumulative accumulation starts at 0.
+              // Otherwise, start from item's opening balance.
+              const hasOpeningMovement = sortedMvs.some((m) => m.type === 'OPENING');
+              const openingBalance = hasOpeningMovement
+                ? 0
+                : Number(currentItem.initialQuantity ?? currentItem.quantityOnHand ?? 0);
+
+              // 1. Cumulative reduce calculation exactly as required by formula:
+              const liveBalance = sortedMvs.length > 0
+                ? sortedMvs.reduce((acc, row) => {
+                    const qtyIn = Number(row.qty_in ?? row.quantityIn ?? 0);
+                    const qtyOut = Number(row.qty_out ?? row.quantityOut ?? 0);
+                    return acc + qtyIn - qtyOut;
+                  }, openingBalance)
+                : Number(currentItem.quantityOnHand || 0);
+
+              // 2. Final running balance from the last chronological movement row:
+              const finalRunningBalance =
+                sortedMvs.length > 0 && sortedMvs[sortedMvs.length - 1].balanceAfter !== undefined
+                  ? sortedMvs[sortedMvs.length - 1].balanceAfter
+                  : liveBalance;
+
+              // Total In & Out
+              const totalIn = sortedMvs.reduce((acc, m) => acc + Number(m.qty_in ?? m.quantityIn ?? 0), 0);
+              const totalOut = sortedMvs.reduce((acc, m) => acc + Number(m.qty_out ?? m.quantityOut ?? 0), 0);
+
+              // The active display balance (368 حبة) strictly derived from movements:
+              const runningBal = finalRunningBalance;
 
               return (
                 <div className="space-y-4">
@@ -697,7 +805,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                     <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-200">
                       <span className="text-[10px] text-indigo-800 block font-bold">إجمالي التقييم المالي:</span>
                       <span className="text-xs font-black text-indigo-900 block mt-0.5">
-                        {formatCurrency(runningBal * currentItem.purchasePrice, currency)}
+                        {formatCurrency(runningBal * (currentItem.purchasePrice || (currentItem as any).costPrice || 0), currency)}
                       </span>
                     </div>
                   </div>
@@ -705,7 +813,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                   {/* Movements Table for this specific item */}
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
-                      <span>سجل حركات الصنف ({itemMvs.length} حركة مسجلة)</span>
+                      <span>سجل حركات الصنف ({sortedMvs.length} حركة مسجلة)</span>
                       <span className="text-[11px] text-slate-500 font-normal">مرتبة ترتيباً زمنياً تصاعدياً</span>
                     </div>
 
@@ -725,20 +833,20 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-mono">
-                          {itemMvs.length === 0 ? (
+                          {sortedMvs.length === 0 ? (
                             <tr>
                               <td colSpan={9} className="p-6 text-center text-slate-400 font-sans font-bold">
                                 لا توجد حركات مسجلة لهذا الصنف حتى الآن.
                               </td>
                             </tr>
                           ) : (
-                            itemMvs.map((m) => (
+                            sortedMvs.map((m) => (
                               <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{m.date}</td>
                                 <td className="py-2.5 px-3 font-sans">
                                   <span
                                     className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                      m.quantityIn > 0
+                                      (m.qty_in ?? m.quantityIn) > 0
                                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                         : 'bg-rose-50 text-rose-700 border border-rose-200'
                                     }`}
@@ -750,10 +858,10 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                                   {m.referenceDocNumber}
                                 </td>
                                 <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
-                                  {m.quantityIn > 0 ? `+${m.quantityIn}` : '-'}
+                                  {(m.qty_in ?? m.quantityIn) > 0 ? `+${m.qty_in ?? m.quantityIn}` : '-'}
                                 </td>
                                 <td className="py-2.5 px-3 text-center font-bold text-rose-600">
-                                  {m.quantityOut > 0 ? `-${m.quantityOut}` : '-'}
+                                  {(m.qty_out ?? m.quantityOut) > 0 ? `-${m.qty_out ?? m.quantityOut}` : '-'}
                                 </td>
                                 <td className="py-2.5 px-3 text-center font-black text-slate-900 bg-slate-50">
                                   {m.balanceAfter} {m.unit}
@@ -824,7 +932,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                   >
                     {inventory.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.nameAr} ({item.sku}) - الرصيد بالمستودع: {item.quantityOnHand} {item.unit || 'حبة'}
+                        {item.nameAr} ({item.sku}) - الرصيد بالمستودع: {getItemLiveBalance(item)} {item.unit || 'حبة'}
                       </option>
                     ))}
                   </select>
@@ -971,7 +1079,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                 <option value="">-- اختر الصنف من القائمة --</option>
                 {inventory.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.nameAr} ({item.sku}) - الرصيد الدفتري: {item.quantityOnHand} {item.unit || 'حبة'}
+                    {item.nameAr} ({item.sku}) - الرصيد الدفتري اللحظي: {getItemLiveBalance(item)} {item.unit || 'حبة'}
                   </option>
                 ))}
               </select>
@@ -980,7 +1088,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
             {reconcileItemId && (() => {
               const selectedItem = inventory.find((i) => i.id === reconcileItemId);
               if (!selectedItem) return null;
-              const bookQty = selectedItem.quantityOnHand || 0;
+              const bookQty = getItemLiveBalance(selectedItem);
               const actual = physicalCount !== '' ? Number(physicalCount) : bookQty;
               const diff = actual - bookQty;
               const unitCost = selectedItem.purchasePrice || 0;
@@ -1063,56 +1171,74 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="bg-slate-50 p-3 rounded-xl border">
-                <span className="text-slate-400 block text-[10px]">الرصيد الحالي:</span>
-                <span className="font-extrabold text-slate-900 text-sm">
-                  {inspectedItem.quantityOnHand} {inspectedItem.unit}
-                </span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-xl border">
-                <span className="text-slate-400 block text-[10px]">سعر التكلفة:</span>
-                <span className="font-extrabold text-slate-900 text-sm">
-                  {formatCurrency(inspectedItem.purchasePrice, currency)}
-                </span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-xl border">
-                <span className="text-slate-400 block text-[10px]">سعر البيع:</span>
-                <span className="font-extrabold text-emerald-700 text-sm">
-                  {formatCurrency(inspectedItem.salePrice, currency)}
-                </span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-xl border">
-                <span className="text-slate-400 block text-[10px]">إجمالي التقييم:</span>
-                <span className="font-extrabold text-indigo-700 text-sm">
-                  {formatCurrency((inspectedItem.quantityOnHand || 0) * (inspectedItem.purchasePrice || 0), currency)}
-                </span>
-              </div>
-            </div>
+            {(() => {
+              const liveQty = getItemLiveBalance(inspectedItem);
+              const itemMvs = movements.filter(
+                (m) => m.itemId === inspectedItem.id || (inspectedItem.sku && m.itemSku === inspectedItem.sku)
+              );
+              const sortedItemMvs = [...itemMvs].sort(
+                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+              );
 
-            {/* Movement Timeline for this item */}
-            <div>
-              <h4 className="text-xs font-bold text-slate-800 mb-2">سجل حركات هذا الصنف:</h4>
-              <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-xl divide-y divide-slate-100 text-xs">
-                {movements
-                  .filter((m) => m.itemId === inspectedItem.id)
-                  .map((m) => (
-                    <div key={m.id} className="p-2.5 flex items-center justify-between hover:bg-slate-50">
-                      <div>
-                        <span className="font-bold text-slate-900">{m.typeTitleAr}</span>
-                        <span className="text-[11px] text-slate-400 mr-2 font-mono">({m.referenceDocNumber})</span>
-                        <div className="text-[10px] text-slate-500">{m.date} - {m.notes}</div>
-                      </div>
-                      <div className="text-left font-mono">
-                        <span className={`font-bold ${m.quantityIn > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {m.quantityIn > 0 ? `+${m.quantityIn}` : `-${m.quantityOut}`} {m.unit}
-                        </span>
-                        <div className="text-[10px] text-slate-400">الرصيد بعد: {m.balanceAfter}</div>
-                      </div>
+              return (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="bg-slate-50 p-3 rounded-xl border">
+                      <span className="text-slate-400 block text-[10px]">الرصيد اللحظي الحالي:</span>
+                      <span className="font-extrabold text-slate-900 text-sm">
+                        {liveQty} {inspectedItem.unit}
+                      </span>
                     </div>
-                  ))}
-              </div>
-            </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border">
+                      <span className="text-slate-400 block text-[10px]">سعر التكلفة:</span>
+                      <span className="font-extrabold text-slate-900 text-sm">
+                        {formatCurrency(inspectedItem.purchasePrice, currency)}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border">
+                      <span className="text-slate-400 block text-[10px]">سعر البيع:</span>
+                      <span className="font-extrabold text-emerald-700 text-sm">
+                        {formatCurrency(inspectedItem.salePrice, currency)}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border">
+                      <span className="text-slate-400 block text-[10px]">إجمالي التقييم اللحظي:</span>
+                      <span className="font-extrabold text-indigo-700 text-sm">
+                        {formatCurrency(liveQty * (inspectedItem.purchasePrice || 0), currency)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Movement Timeline for this item */}
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 mb-2">
+                      سجل حركات هذا الصنف ({sortedItemMvs.length} حركة):
+                    </h4>
+                    <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-xl divide-y divide-slate-100 text-xs">
+                      {sortedItemMvs.length === 0 ? (
+                        <div className="p-4 text-center text-slate-400">لا توجد حركات مسجلة لهذا الصنف</div>
+                      ) : (
+                        sortedItemMvs.map((m) => (
+                          <div key={m.id} className="p-2.5 flex items-center justify-between hover:bg-slate-50">
+                            <div>
+                              <span className="font-bold text-slate-900">{m.typeTitleAr}</span>
+                              <span className="text-[11px] text-slate-400 mr-2 font-mono">({m.referenceDocNumber})</span>
+                              <div className="text-[10px] text-slate-500">{m.date} - {m.notes}</div>
+                            </div>
+                            <div className="text-left font-mono">
+                              <span className={`font-bold ${(m.qty_in ?? m.quantityIn) > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {(m.qty_in ?? m.quantityIn) > 0 ? `+${m.qty_in ?? m.quantityIn}` : `-${m.qty_out ?? m.quantityOut}`} {m.unit}
+                              </span>
+                              <div className="text-[10px] text-slate-400">الرصيد بعد: {m.balanceAfter}</div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
 
             <div className="flex justify-end pt-2">
               <button
@@ -1165,61 +1291,98 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                 </div>
               </div>
 
-              {/* Item Info Box */}
-              <div className="grid grid-cols-3 gap-4 border border-black p-4 rounded-lg bg-slate-50 text-xs">
-                <div>
-                  <span className="text-slate-500 block">اسم الصنف:</span>
-                  <span className="text-base font-black">{selectedItemForPrintCard.nameAr}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">رمز الصنف / SKU:</span>
-                  <span className="text-base font-mono font-bold">{selectedItemForPrintCard.sku}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">الرصيد اللحظي الحالي:</span>
-                  <span className="text-base font-black text-emerald-800">
-                    {selectedItemForPrintCard.quantityOnHand} {selectedItemForPrintCard.unit || 'حبة'}
-                  </span>
-                </div>
-              </div>
+              {/* Item Info Box & Movements Table with Dynamic Live Balance */}
+              {(() => {
+                const cardMvs = movements.filter(
+                  (m) =>
+                    m.itemId === selectedItemForPrintCard.id ||
+                    (selectedItemForPrintCard.sku && m.itemSku === selectedItemForPrintCard.sku)
+                );
+                const sortedCardMvs = [...cardMvs].sort(
+                  (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                );
+                const hasOpening = sortedCardMvs.some((m) => m.type === 'OPENING');
+                const openBal = hasOpening
+                  ? 0
+                  : Number(selectedItemForPrintCard.initialQuantity ?? selectedItemForPrintCard.quantityOnHand ?? 0);
+                const livePrintBal = sortedCardMvs.length > 0
+                  ? sortedCardMvs.reduce((acc, row) => {
+                      const qtyIn = Number(row.qty_in ?? row.quantityIn ?? 0);
+                      const qtyOut = Number(row.qty_out ?? row.quantityOut ?? 0);
+                      return acc + qtyIn - qtyOut;
+                    }, openBal)
+                  : Number(selectedItemForPrintCard.quantityOnHand || 0);
 
-              {/* Movements Table */}
-              <table className="w-full text-right text-xs border border-black border-collapse">
-                <thead>
-                  <tr className="bg-slate-200 border-b border-black text-black font-black">
-                    <th className="p-2 border border-black">التاريخ</th>
-                    <th className="p-2 border border-black">نوع الحركة</th>
-                    <th className="p-2 border border-black">رقم المستند</th>
-                    <th className="p-2 border border-black text-center">وارد (+)</th>
-                    <th className="p-2 border border-black text-center">منصرف (-)</th>
-                    <th className="p-2 border border-black text-center">الرصيد التراكمي</th>
-                    <th className="p-2 border border-black">سعر التكلفة</th>
-                    <th className="p-2 border border-black">البيان</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movements
-                    .filter((m) => m.itemId === selectedItemForPrintCard.id)
-                    .map((m) => (
-                      <tr key={m.id} className="border-b border-slate-300 font-mono">
-                        <td className="p-2 border border-slate-300">{m.date}</td>
-                        <td className="p-2 border border-slate-300 font-sans font-bold">{m.typeTitleAr}</td>
-                        <td className="p-2 border border-slate-300 font-bold">{m.referenceDocNumber}</td>
-                        <td className="p-2 border border-slate-300 text-center font-bold">
-                          {m.quantityIn > 0 ? `+${m.quantityIn}` : '-'}
-                        </td>
-                        <td className="p-2 border border-slate-300 text-center font-bold">
-                          {m.quantityOut > 0 ? `-${m.quantityOut}` : '-'}
-                        </td>
-                        <td className="p-2 border border-slate-300 text-center font-black bg-slate-100">
-                          {m.balanceAfter}
-                        </td>
-                        <td className="p-2 border border-slate-300">{formatCurrency(m.unitCost, currency)}</td>
-                        <td className="p-2 border border-slate-300 font-sans text-[11px]">{m.notes || '-'}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+                const finalPrintBal =
+                  sortedCardMvs.length > 0 && sortedCardMvs[sortedCardMvs.length - 1].balanceAfter !== undefined
+                    ? sortedCardMvs[sortedCardMvs.length - 1].balanceAfter
+                    : livePrintBal;
+
+                return (
+                  <>
+                    <div className="grid grid-cols-3 gap-4 border border-black p-4 rounded-lg bg-slate-50 text-xs">
+                      <div>
+                        <span className="text-slate-500 block">اسم الصنف:</span>
+                        <span className="text-base font-black">{selectedItemForPrintCard.nameAr}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">رمز الصنف / SKU:</span>
+                        <span className="text-base font-mono font-bold">{selectedItemForPrintCard.sku}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">الرصيد اللحظي الحالي:</span>
+                        <span className="text-base font-black text-emerald-800 font-mono">
+                          {finalPrintBal.toLocaleString()} {selectedItemForPrintCard.unit || 'حبة'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Movements Table */}
+                    <table className="w-full text-right text-xs border border-black border-collapse">
+                      <thead>
+                        <tr className="bg-slate-200 border-b border-black text-black font-black">
+                          <th className="p-2 border border-black">التاريخ</th>
+                          <th className="p-2 border border-black">نوع الحركة</th>
+                          <th className="p-2 border border-black">رقم المستند</th>
+                          <th className="p-2 border border-black text-center">وارد (+)</th>
+                          <th className="p-2 border border-black text-center">منصرف (-)</th>
+                          <th className="p-2 border border-black text-center">الرصيد التراكمي</th>
+                          <th className="p-2 border border-black">سعر التكلفة</th>
+                          <th className="p-2 border border-black">البيان</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedCardMvs.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-4 text-center text-slate-400 font-sans font-bold">
+                              لا توجد حركات مسجلة
+                            </td>
+                          </tr>
+                        ) : (
+                          sortedCardMvs.map((m) => (
+                            <tr key={m.id} className="border-b border-slate-300 font-mono">
+                              <td className="p-2 border border-slate-300">{m.date}</td>
+                              <td className="p-2 border border-slate-300 font-sans font-bold">{m.typeTitleAr}</td>
+                              <td className="p-2 border border-slate-300 font-bold">{m.referenceDocNumber}</td>
+                              <td className="p-2 border border-slate-300 text-center font-bold">
+                                {(m.qty_in ?? m.quantityIn) > 0 ? `+${m.qty_in ?? m.quantityIn}` : '-'}
+                              </td>
+                              <td className="p-2 border border-slate-300 text-center font-bold">
+                                {(m.qty_out ?? m.quantityOut) > 0 ? `-${m.qty_out ?? m.quantityOut}` : '-'}
+                              </td>
+                              <td className="p-2 border border-slate-300 text-center font-black bg-slate-100">
+                                {m.balanceAfter}
+                              </td>
+                              <td className="p-2 border border-slate-300">{formatCurrency(m.unitCost, currency)}</td>
+                              <td className="p-2 border border-slate-300 font-sans text-[11px]">{m.notes || '-'}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </>
+                );
+              })()}
 
               {/* Signatures */}
               <div className="grid grid-cols-3 gap-8 pt-8 text-center text-xs font-bold">
@@ -1299,7 +1462,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                 <div>
                   <span className="text-slate-500 block">الكمية المفحوصة:</span>
                   <span className="font-black text-emerald-800">
-                    {selectedQcForPrint.item.quantityOnHand} {selectedQcForPrint.item.unit}
+                    {getItemLiveBalance(selectedQcForPrint.item)} {selectedQcForPrint.item.unit}
                   </span>
                 </div>
               </div>

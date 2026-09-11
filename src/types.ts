@@ -761,6 +761,8 @@ export interface StockMovement {
   referenceDocType: string;
   quantityIn: number;
   quantityOut: number;
+  qty_in?: number;
+  qty_out?: number;
   balanceAfter: number;
   unit: string;
   unitCost: number;

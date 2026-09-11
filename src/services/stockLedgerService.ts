@@ -27,7 +27,11 @@ export class StockLedgerService {
 
     // A. Opening Balances
     inventory.forEach((item) => {
-      const initialQty = item.initialQuantity ?? item.quantityOnHand;
+      const initialQty =
+        item.initialQuantity !== undefined && item.initialQuantity !== null
+          ? Number(item.initialQuantity)
+          : Number(item.quantityOnHand || 0);
+
       if (initialQty > 0) {
         generatedMovements.push({
           id: `mv-open-${item.id}`,
@@ -42,6 +46,8 @@ export class StockLedgerService {
           referenceDocType: 'قيد افتتاحي',
           quantityIn: initialQty,
           quantityOut: 0,
+          qty_in: initialQty,
+          qty_out: 0,
           balanceAfter: initialQty,
           unit: item.unit || 'حبة',
           unitCost: item.purchasePrice,
@@ -52,33 +58,75 @@ export class StockLedgerService {
       }
     });
 
-    // B. Sales Invoices (Outward / صرف مخزني)
+    // B. Invoices (Sales, Purchases, Returns)
     invoices.forEach((inv) => {
-      if (inv.status !== 'CANCELLED' && inv.lines) {
-        inv.lines.forEach((line) => {
-          const matchedItem = inventory.find((i) => i.id === line.itemId || i.sku === line.itemSku);
-          const unitCost = matchedItem?.purchasePrice || (line.unitPrice * 0.7);
-          const qty = line.quantity || 1;
+      if (inv.status !== 'CANCELLED') {
+        const lines = inv.lines || (inv as any).items || [];
+        lines.forEach((line: any) => {
+          const matchedItem = inventory.find(
+            (i) =>
+              i.id === line.itemId ||
+              (line.itemSku && (i.sku === line.itemSku || (i as any).code === line.itemSku)) ||
+              (line.barcode && i.barcode === line.barcode) ||
+              (line.itemNameAr && i.nameAr === line.itemNameAr)
+          );
+          const effectiveItemId = matchedItem?.id || line.itemId;
+          const unitCost = matchedItem?.purchasePrice || (line.unitPrice ? line.unitPrice * 0.7 : 0);
+          const qty = Number(line.quantity) || 1;
+
+          const isPurchase = inv.type === 'PURCHASE';
+          const isSalesReturn = inv.type === 'SALES_RETURN';
+          const isPurchaseReturn = inv.type === 'PURCHASE_RETURN';
+          const isInbound = isPurchase || isSalesReturn;
+
+          const movementType = isPurchase
+            ? 'PURCHASE_RECEIPT'
+            : isSalesReturn
+            ? 'SALES_RETURN'
+            : isPurchaseReturn
+            ? 'PURCHASE_RETURN'
+            : 'SALES_ISSUE';
+
+          const typeTitleAr = isPurchase
+            ? 'فاتورة مشتريات وتوريد مخزني'
+            : isSalesReturn
+            ? 'مرتجع مبيعات (إرجاع للمستودع)'
+            : isPurchaseReturn
+            ? 'مرتجع مشتريات (صرف للمورد)'
+            : 'فاتورة مبيعات معتمدة';
+
+          const docType = isPurchase
+            ? 'فاتورة مشتريات'
+            : isSalesReturn
+            ? 'مرتجع مبيعات'
+            : isPurchaseReturn
+            ? 'مرتجع مشتريات'
+            : 'فاتورة مبيعات';
+
+          const qtyIn = isInbound ? qty : 0;
+          const qtyOut = isInbound ? 0 : qty;
 
           generatedMovements.push({
             id: `mv-inv-${inv.id}-${line.id}`,
             date: inv.date || new Date().toISOString().slice(0, 10),
             time: '11:30',
-            itemId: line.itemId,
-            itemSku: line.itemSku || matchedItem?.sku || line.itemId,
-            itemNameAr: line.itemNameAr || matchedItem?.nameAr || 'صنف مباع',
-            type: 'SALES_ISSUE',
-            typeTitleAr: 'فاتورة مبيعات معتمدة',
+            itemId: effectiveItemId,
+            itemSku: line.itemSku || matchedItem?.sku || effectiveItemId,
+            itemNameAr: line.itemNameAr || matchedItem?.nameAr || 'صنف مخزني',
+            type: movementType as any,
+            typeTitleAr,
             referenceDocNumber: inv.invoiceNumber,
-            referenceDocType: 'فاتورة مبيعات',
-            quantityIn: 0,
-            quantityOut: qty,
+            referenceDocType: docType,
+            quantityIn: qtyIn,
+            quantityOut: qtyOut,
+            qty_in: qtyIn,
+            qty_out: qtyOut,
             balanceAfter: 0, // Will be calculated chronologically
             unit: line.unit || matchedItem?.unit || 'حبة',
             unitCost: unitCost,
             totalCostValue: qty * unitCost,
-            warehouse: 'المستودع الرئيسي',
-            notes: `صرف بضاعة للعميل: ${inv.entityNameAr || 'عميل نقدي'}`,
+            warehouse: (inv as any).warehouseName || 'المستودع الرئيسي',
+            notes: `${typeTitleAr} - الطرف: ${inv.entityNameAr || 'عميل / مورد'}`,
           });
         });
       }
@@ -101,6 +149,8 @@ export class StockLedgerService {
           referenceDocType: 'أمر تشغيل وتصنيع',
           quantityIn: order.targetQuantity,
           quantityOut: 0,
+          qty_in: order.targetQuantity,
+          qty_out: 0,
           balanceAfter: 0,
           unit: order.targetUnit || 'حبة',
           unitCost: order.unitProductionCost,
@@ -125,6 +175,8 @@ export class StockLedgerService {
               referenceDocType: 'استهلاك تشغيل',
               quantityIn: 0,
               quantityOut: rm.quantityRequired,
+              qty_in: 0,
+              qty_out: rm.quantityRequired,
               balanceAfter: 0,
               unit: rm.unit || 'كيلو',
               unitCost: rm.unitCost,
@@ -148,10 +200,16 @@ export class StockLedgerService {
 
     return allMovements.map((mv) => {
       const current = itemBalances[mv.itemId] || 0;
-      const updated = current + (mv.quantityIn - mv.quantityOut);
+      const qIn = Number(mv.quantityIn ?? (mv as any).qty_in ?? 0);
+      const qOut = Number(mv.quantityOut ?? (mv as any).qty_out ?? 0);
+      const updated = current + (qIn - qOut);
       itemBalances[mv.itemId] = updated;
       return {
         ...mv,
+        quantityIn: qIn,
+        quantityOut: qOut,
+        qty_in: qIn,
+        qty_out: qOut,
         balanceAfter: updated,
       };
     });
