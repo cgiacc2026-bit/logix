@@ -914,12 +914,13 @@ class LocalDataStore {
     }
     const tombstones = this.getTombstones('customers');
     if (tombstones.size > 0) {
-      return list.filter((c) => !tombstones.has(c.id));
+      return this.deduplicateCustomers(list.filter((c) => !tombstones.has(c.id)));
     }
-    return list;
+    return this.deduplicateCustomers(list);
   }
   public saveCustomers(customers: Customer[]): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), customers);
+    const deduped = this.deduplicateCustomers(customers);
+    this.setLocal(this.getKey(STORAGE_KEYS.CUSTOMERS), deduped);
     this.markTenantInitialized();
   }
 
@@ -946,12 +947,13 @@ class LocalDataStore {
     }
     const tombstones = this.getTombstones('suppliers');
     if (tombstones.size > 0) {
-      return list.filter((s) => !tombstones.has(s.id));
+      return this.deduplicateSuppliers(list.filter((s) => !tombstones.has(s.id)));
     }
-    return list;
+    return this.deduplicateSuppliers(list);
   }
   public saveSuppliers(suppliers: Supplier[]): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), suppliers);
+    const deduped = this.deduplicateSuppliers(suppliers);
+    this.setLocal(this.getKey(STORAGE_KEYS.SUPPLIERS), deduped);
     this.markTenantInitialized();
   }
 
@@ -972,13 +974,103 @@ class LocalDataStore {
     }
     const tombstones = this.getTombstones('inventory');
     if (tombstones.size > 0) {
-      return list.filter((item) => !tombstones.has(item.id));
+      return this.deduplicateInventory(list.filter((item) => !tombstones.has(item.id)));
     }
-    return list;
+    return this.deduplicateInventory(list);
   }
   public saveInventory(inv: InventoryItem[]): void {
-    this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), inv);
+    const deduped = this.deduplicateInventory(inv);
+    this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), deduped);
     this.markTenantInitialized();
+  }
+
+  public deduplicateInventory(items: InventoryItem[]): InventoryItem[] {
+    if (!Array.isArray(items) || items.length <= 1) return items || [];
+    const seen = new Map<string, InventoryItem>();
+    const result: InventoryItem[] = [];
+
+    for (const item of items) {
+      if (!item) continue;
+      const sku = (item.sku || (item as any).code || '').trim().toUpperCase();
+      const barcode = (item.barcode || '').trim();
+      const name = (item.nameAr || (item as any).name || '').trim().replace(/\s+/g, ' ');
+      const id = (item.id || '').trim();
+
+      const existing = (id ? seen.get(`ID_${id}`) : null) ||
+                       (barcode ? seen.get(`BAR_${barcode}`) : null) ||
+                       (sku ? seen.get(`SKU_${sku}`) : null) ||
+                       (name ? seen.get(`NAME_${name}`) : null);
+
+      if (existing) {
+        if ((item.quantityOnHand ?? 0) !== 0 && (existing.quantityOnHand ?? 0) === 0) {
+          existing.quantityOnHand = item.quantityOnHand;
+        }
+        if (item.salePrice && !existing.salePrice) existing.salePrice = item.salePrice;
+        if (item.costPrice && !existing.costPrice) existing.costPrice = item.costPrice;
+        if (item.barcode && !existing.barcode) existing.barcode = item.barcode;
+        if (item.sku && !existing.sku) existing.sku = item.sku;
+      } else {
+        result.push(item);
+        if (id) seen.set(`ID_${id}`, item);
+        if (barcode) seen.set(`BAR_${barcode}`, item);
+        if (sku) seen.set(`SKU_${sku}`, item);
+        if (name) seen.set(`NAME_${name}`, item);
+      }
+    }
+    return result;
+  }
+
+  public deduplicateCustomers(customers: Customer[]): Customer[] {
+    if (!Array.isArray(customers) || customers.length <= 1) return customers || [];
+    const seen = new Map<string, Customer>();
+    const result: Customer[] = [];
+
+    for (const c of customers) {
+      if (!c) continue;
+      const name = (c.nameAr || (c as any).name || '').trim().replace(/\s+/g, ' ');
+      const phone = (c.phone || '').trim();
+      const id = (c.id || '').trim();
+
+      const existing = (id ? seen.get(`ID_${id}`) : null) ||
+                       (name ? seen.get(`NAME_${name}`) : null) ||
+                       (phone && phone.length > 5 ? seen.get(`PHONE_${phone}`) : null);
+
+      if (existing) {
+        if (c.currentBalance && !existing.currentBalance) existing.currentBalance = c.currentBalance;
+        if (c.phone && !existing.phone) existing.phone = c.phone;
+        if (c.address && !existing.address) existing.address = c.address;
+        if (c.taxNumber && !existing.taxNumber) existing.taxNumber = c.taxNumber;
+      } else {
+        result.push(c);
+        if (id) seen.set(`ID_${id}`, c);
+        if (name) seen.set(`NAME_${name}`, c);
+        if (phone && phone.length > 5) seen.set(`PHONE_${phone}`, c);
+      }
+    }
+    return result;
+  }
+
+  public deduplicateSuppliers(suppliers: Supplier[]): Supplier[] {
+    if (!Array.isArray(suppliers) || suppliers.length <= 1) return suppliers || [];
+    const seen = new Map<string, Supplier>();
+    const result: Supplier[] = [];
+
+    for (const s of suppliers) {
+      if (!s) continue;
+      const name = (s.nameAr || (s as any).name || '').trim().replace(/\s+/g, ' ');
+      const id = (s.id || '').trim();
+
+      const existing = (id ? seen.get(`ID_${id}`) : null) || (name ? seen.get(`NAME_${name}`) : null);
+      if (existing) {
+        if (s.phone && !existing.phone) existing.phone = s.phone;
+        if (s.address && !existing.address) existing.address = s.address;
+      } else {
+        result.push(s);
+        if (id) seen.set(`ID_${id}`, s);
+        if (name) seen.set(`NAME_${name}`, s);
+      }
+    }
+    return result;
   }
 
   public deduplicateJournals(journals: JournalEntry[]): JournalEntry[] {
@@ -4402,17 +4494,35 @@ export class DataService {
           const validRemote = fromSupabase.filter((c) => !tombstones.has(c.id));
 
           if (localCustomers.length > 0 || localDataStore.isTenantInitialized()) {
-            const localMap = new Map(localCustomers.map((c) => [c.id, c]));
+            const localMap = new Map<string, Customer>();
+            for (const c of localCustomers) {
+              if (c.id) localMap.set(`ID_${c.id}`, c);
+              if (c.nameAr) localMap.set(`NAME_${c.nameAr.trim().replace(/\s+/g, ' ')}`, c);
+              if (c.phone && c.phone.trim().length > 5) localMap.set(`PHONE_${c.phone.trim()}`, c);
+            }
             let hasNew = false;
             for (const rc of validRemote) {
-              if (!localMap.has(rc.id)) {
+              const rName = rc.nameAr ? `NAME_${rc.nameAr.trim().replace(/\s+/g, ' ')}` : '';
+              const rPhone = rc.phone && rc.phone.trim().length > 5 ? `PHONE_${rc.phone.trim()}` : '';
+              const existing = (rc.id ? localMap.get(`ID_${rc.id}`) : null) ||
+                               (rName ? localMap.get(rName) : null) ||
+                               (rPhone ? localMap.get(rPhone) : null);
+              if (!existing) {
                 localCustomers.push(rc);
+                if (rc.id) localMap.set(`ID_${rc.id}`, rc);
+                if (rName) localMap.set(rName, rc);
+                if (rPhone) localMap.set(rPhone, rc);
+                hasNew = true;
+              } else {
+                Object.assign(existing, rc);
                 hasNew = true;
               }
             }
             if (hasNew) {
-              localDataStore.saveCustomers(localCustomers);
-              cacheService.setCustomers(compId, localCustomers);
+              const deduped = localDataStore.deduplicateCustomers(localCustomers);
+              localDataStore.saveCustomers(deduped);
+              cacheService.setCustomers(compId, deduped);
+              return deduped;
             }
             return localCustomers;
           }
@@ -4714,17 +4824,35 @@ export class DataService {
           const validRemote = fromSupabase.filter((s) => !tombstones.has(s.id));
 
           if (localSuppliers.length > 0 || localDataStore.isTenantInitialized()) {
-            const localMap = new Map(localSuppliers.map((s) => [s.id, s]));
+            const localMap = new Map<string, Supplier>();
+            for (const s of localSuppliers) {
+              if (s.id) localMap.set(`ID_${s.id}`, s);
+              if (s.nameAr) localMap.set(`NAME_${s.nameAr.trim().replace(/\s+/g, ' ')}`, s);
+              if (s.phone && s.phone.trim().length > 5) localMap.set(`PHONE_${s.phone.trim()}`, s);
+            }
             let hasNew = false;
             for (const rs of validRemote) {
-              if (!localMap.has(rs.id)) {
+              const rName = rs.nameAr ? `NAME_${rs.nameAr.trim().replace(/\s+/g, ' ')}` : '';
+              const rPhone = rs.phone && rs.phone.trim().length > 5 ? `PHONE_${rs.phone.trim()}` : '';
+              const existing = (rs.id ? localMap.get(`ID_${rs.id}`) : null) ||
+                               (rName ? localMap.get(rName) : null) ||
+                               (rPhone ? localMap.get(rPhone) : null);
+              if (!existing) {
                 localSuppliers.push(rs);
+                if (rs.id) localMap.set(`ID_${rs.id}`, rs);
+                if (rName) localMap.set(rName, rs);
+                if (rPhone) localMap.set(rPhone, rs);
+                hasNew = true;
+              } else {
+                Object.assign(existing, rs);
                 hasNew = true;
               }
             }
             if (hasNew) {
-              localDataStore.saveSuppliers(localSuppliers);
-              cacheService.setSuppliers(compId, localSuppliers);
+              const deduped = localDataStore.deduplicateSuppliers(localSuppliers);
+              localDataStore.saveSuppliers(deduped);
+              cacheService.setSuppliers(compId, deduped);
+              return deduped;
             }
             return localSuppliers;
           }
@@ -5022,17 +5150,39 @@ export class DataService {
           const validRemote = fromSupabase.filter((i) => !tombstones.has(i.id));
 
           if (localInventory.length > 0 || localDataStore.isTenantInitialized()) {
-            const localMap = new Map(localInventory.map((i) => [i.id, i]));
+            const localMap = new Map<string, InventoryItem>();
+            for (const i of localInventory) {
+              if (i.id) localMap.set(`ID_${i.id}`, i);
+              if (i.sku) localMap.set(`SKU_${i.sku.trim().toUpperCase()}`, i);
+              if (i.barcode) localMap.set(`BAR_${i.barcode.trim()}`, i);
+              if (i.nameAr) localMap.set(`NAME_${i.nameAr.trim().replace(/\s+/g, ' ')}`, i);
+            }
             let hasNew = false;
             for (const rItem of validRemote) {
-              if (!localMap.has(rItem.id)) {
+              const rSku = (rItem.sku || (rItem as any).code || '').trim().toUpperCase();
+              const rBar = (rItem.barcode || '').trim();
+              const rName = (rItem.nameAr || (rItem as any).name || '').trim().replace(/\s+/g, ' ');
+              const existing = (rItem.id ? localMap.get(`ID_${rItem.id}`) : null) ||
+                               (rBar ? localMap.get(`BAR_${rBar}`) : null) ||
+                               (rSku ? localMap.get(`SKU_${rSku}`) : null) ||
+                               (rName ? localMap.get(`NAME_${rName}`) : null);
+              if (!existing) {
                 localInventory.push(rItem);
+                if (rItem.id) localMap.set(`ID_${rItem.id}`, rItem);
+                if (rBar) localMap.set(`BAR_${rBar}`, rItem);
+                if (rSku) localMap.set(`SKU_${rSku}`, rItem);
+                if (rName) localMap.set(`NAME_${rName}`, rItem);
+                hasNew = true;
+              } else {
+                Object.assign(existing, rItem);
                 hasNew = true;
               }
             }
             if (hasNew) {
-              localDataStore.saveInventory(localInventory);
-              cacheService.setItems(compId, localInventory);
+              const deduped = localDataStore.deduplicateInventory(localInventory);
+              localDataStore.saveInventory(deduped);
+              cacheService.setItems(compId, deduped);
+              return deduped;
             }
             return localInventory;
           }
@@ -6220,41 +6370,102 @@ export class DataService {
         // Merge genuinely new remote records, never overwriting existing local or deleted tombstoned records
         if (Array.isArray(customers)) {
           const validRemote = customers.filter((c) => !custTombstones.has(c.id));
-          const localMap = new Map(localCust.map((c) => [c.id, c]));
+          const localMap = new Map<string, Customer>();
+          for (const c of localCust) {
+            if (c.id) localMap.set(`ID_${c.id}`, c);
+            if (c.nameAr) localMap.set(`NAME_${c.nameAr.trim().replace(/\s+/g, ' ')}`, c);
+            if (c.phone && c.phone.trim().length > 5) localMap.set(`PHONE_${c.phone.trim()}`, c);
+          }
           let changed = false;
           for (const rc of validRemote) {
-            if (!localMap.has(rc.id)) {
+            const rName = rc.nameAr ? `NAME_${rc.nameAr.trim().replace(/\s+/g, ' ')}` : '';
+            const rPhone = rc.phone && rc.phone.trim().length > 5 ? `PHONE_${rc.phone.trim()}` : '';
+            const existing = (rc.id ? localMap.get(`ID_${rc.id}`) : null) ||
+                             (rName ? localMap.get(rName) : null) ||
+                             (rPhone ? localMap.get(rPhone) : null);
+            if (!existing) {
               localCust.push(rc);
+              if (rc.id) localMap.set(`ID_${rc.id}`, rc);
+              if (rName) localMap.set(rName, rc);
+              if (rPhone) localMap.set(rPhone, rc);
+              changed = true;
+            } else {
+              Object.assign(existing, rc);
               changed = true;
             }
           }
-          if (changed) localDataStore.saveCustomers(localCust);
+          if (changed) {
+            const deduped = localDataStore.deduplicateCustomers(localCust);
+            localDataStore.saveCustomers(deduped);
+          }
         }
 
         if (Array.isArray(suppliers)) {
           const validRemote = suppliers.filter((s) => !suppTombstones.has(s.id));
-          const localMap = new Map(localSupp.map((s) => [s.id, s]));
+          const localMap = new Map<string, Supplier>();
+          for (const s of localSupp) {
+            if (s.id) localMap.set(`ID_${s.id}`, s);
+            if (s.nameAr) localMap.set(`NAME_${s.nameAr.trim().replace(/\s+/g, ' ')}`, s);
+            if (s.phone && s.phone.trim().length > 5) localMap.set(`PHONE_${s.phone.trim()}`, s);
+          }
           let changed = false;
           for (const rs of validRemote) {
-            if (!localMap.has(rs.id)) {
+            const rName = rs.nameAr ? `NAME_${rs.nameAr.trim().replace(/\s+/g, ' ')}` : '';
+            const rPhone = rs.phone && rs.phone.trim().length > 5 ? `PHONE_${rs.phone.trim()}` : '';
+            const existing = (rs.id ? localMap.get(`ID_${rs.id}`) : null) ||
+                             (rName ? localMap.get(rName) : null) ||
+                             (rPhone ? localMap.get(rPhone) : null);
+            if (!existing) {
               localSupp.push(rs);
+              if (rs.id) localMap.set(`ID_${rs.id}`, rs);
+              if (rName) localMap.set(rName, rs);
+              if (rPhone) localMap.set(rPhone, rs);
+              changed = true;
+            } else {
+              Object.assign(existing, rs);
               changed = true;
             }
           }
-          if (changed) localDataStore.saveSuppliers(localSupp);
+          if (changed) {
+            const deduped = localDataStore.deduplicateSuppliers(localSupp);
+            localDataStore.saveSuppliers(deduped);
+          }
         }
 
         if (Array.isArray(inventory)) {
           const validRemote = inventory.filter((i) => !invTombstones.has(i.id));
-          const localMap = new Map(localInv.map((i) => [i.id, i]));
+          const localMap = new Map<string, InventoryItem>();
+          for (const i of localInv) {
+            if (i.id) localMap.set(`ID_${i.id}`, i);
+            if (i.sku) localMap.set(`SKU_${i.sku.trim().toUpperCase()}`, i);
+            if (i.barcode) localMap.set(`BAR_${i.barcode.trim()}`, i);
+            if (i.nameAr) localMap.set(`NAME_${i.nameAr.trim().replace(/\s+/g, ' ')}`, i);
+          }
           let changed = false;
           for (const ri of validRemote) {
-            if (!localMap.has(ri.id)) {
+            const rSku = (ri.sku || (ri as any).code || '').trim().toUpperCase();
+            const rBar = (ri.barcode || '').trim();
+            const rName = (ri.nameAr || (ri as any).name || '').trim().replace(/\s+/g, ' ');
+            const existing = (ri.id ? localMap.get(`ID_${ri.id}`) : null) ||
+                             (rBar ? localMap.get(`BAR_${rBar}`) : null) ||
+                             (rSku ? localMap.get(`SKU_${rSku}`) : null) ||
+                             (rName ? localMap.get(`NAME_${rName}`) : null);
+            if (!existing) {
               localInv.push(ri);
+              if (ri.id) localMap.set(`ID_${ri.id}`, ri);
+              if (rBar) localMap.set(`BAR_${rBar}`, ri);
+              if (rSku) localMap.set(`SKU_${rSku}`, ri);
+              if (rName) localMap.set(`NAME_${rName}`, ri);
+              changed = true;
+            } else {
+              Object.assign(existing, ri);
               changed = true;
             }
           }
-          if (changed) localDataStore.saveInventory(localInv);
+          if (changed) {
+            const deduped = localDataStore.deduplicateInventory(localInv);
+            localDataStore.saveInventory(deduped);
+          }
         }
 
         if (Array.isArray(journals)) {

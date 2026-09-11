@@ -1454,14 +1454,21 @@ async function startServer() {
         overallDiscount = Number(discountValue);
       }
 
+      const existingInv = (req.body.id ? db.getInvoices().find((i: any) => i.id === req.body.id) : null) ||
+                          (req.body.invoiceNumber ? db.getInvoices().find((i: any) => i.invoiceNumber === req.body.invoiceNumber) : null);
+      if (existingInv) {
+        Object.assign(existingInv, req.body);
+        return res.status(200).json(existingInv);
+      }
+
       const discountTotal = Math.min(subtotal, overallDiscount + lineDiscountsSum);
       const vatTotal = 0;
       const grandTotal = Math.max(0, subtotal - discountTotal);
       const invCount = db.getInvoices().length + 1;
-      const invoiceNumber = `INV-${new Date().getFullYear()}-${String(invCount).padStart(4, '0')}`;
+      const invoiceNumber = req.body.invoiceNumber || `INV-${new Date().getFullYear()}-${String(invCount).padStart(4, '0')}`;
 
       const invoice: Invoice = {
-        id: 'inv-' + Math.random().toString(36).substr(2, 9),
+        id: req.body.id || ('inv-' + Math.random().toString(36).substr(2, 9)),
         invoiceNumber,
         type: type || 'SALES',
         entityId,
