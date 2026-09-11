@@ -801,6 +801,7 @@ export interface Warehouse {
   managerName?: string;
   phone?: string;
   notes?: string;
+  company_id?: string;
   isDefault?: boolean;
   isActive?: boolean;
   createdAt?: string;
@@ -991,6 +992,7 @@ export interface Branch {
   taxNumber?: string;
   warehouseId?: string;
   defaultAccountId?: string;
+  posCashAccountId?: string;
   isDefault: boolean;
   isActive: boolean;
   is_deleted?: boolean;
