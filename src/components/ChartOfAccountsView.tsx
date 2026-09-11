@@ -84,15 +84,32 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   // Quick Movement Inspector Modal
   const [inspectedAccount, setInspectedAccount] = useState<Account | null>(null);
 
-  // Compute live movements and rolled up balances across the entire chart
+  // Compute live movements and rolled up balances across the entire chart with strict deduplication
   const enrichedAccounts = useMemo(() => {
+    // 1. Deduplicate incoming accounts by code to guarantee single entry per code
+    const dedupedMap = new Map<string, Account>();
+    for (const a of accounts || []) {
+      if (!a) continue;
+      const codeKey = String(a.code || a.id || '').trim();
+      if (!codeKey) continue;
+      if (!dedupedMap.has(codeKey)) {
+        dedupedMap.set(codeKey, { ...a });
+      } else {
+        const existing = dedupedMap.get(codeKey)!;
+        const bestBal = Math.abs(a.balance || 0) > Math.abs(existing.balance || 0) ? (a.balance || 0) : (existing.balance || 0);
+        const preferredId = existing.id.startsWith('acc-') ? existing.id : (a.id.startsWith('acc-') ? a.id : existing.id);
+        dedupedMap.set(codeKey, { ...existing, id: preferredId, balance: bestBal });
+      }
+    }
+    const cleanAccountsList = Array.from(dedupedMap.values());
+
     const balanceMap = new Map<string, number>();
     const debitMap = new Map<string, number>();
     const creditMap = new Map<string, number>();
     const countMap = new Map<string, number>();
 
     const accountByLookup = new Map<string, Account>();
-    accounts.forEach((a) => {
+    cleanAccountsList.forEach((a) => {
       accountByLookup.set(a.id, a);
       if (a.code) accountByLookup.set(a.code, a);
     });
@@ -122,7 +139,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
       }
     }
 
-    const accountsCopy: Account[] = JSON.parse(JSON.stringify(accounts));
+    const accountsCopy: Account[] = JSON.parse(JSON.stringify(cleanAccountsList));
     accountsCopy.sort((a, b) => b.level - a.level);
 
     // Roll up into parents

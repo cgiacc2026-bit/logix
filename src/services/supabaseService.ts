@@ -426,8 +426,40 @@ export class SupabaseDataService {
 
       if (!data || data.length === 0) return [];
 
+      let dbBranches: any[] = [];
+      try {
+        const { data: brData } = await supabase
+          .from('customer_branches')
+          .select('*')
+          .eq('company_id', companyId);
+        if (brData) dbBranches = brData;
+      } catch (brErr: any) {
+        console.warn('Supabase customer_branches fetch notice:', brErr?.message);
+      }
+
       return data.map((row: any) => {
         const raw = row.raw_data || {};
+        const custBranchesFromDb = dbBranches
+          .filter((b: any) => b.customer_id === row.id)
+          .map((b: any) => ({
+            id: b.id,
+            code: b.code || 'BR-01',
+            nameAr: b.name_ar,
+            nameEn: b.name_en || '',
+            customerId: row.code || row.id,
+            governorate: b.governorate || '',
+            city: b.city || '',
+            detailedAddress: b.detailed_address || '',
+            address: b.detailed_address || '',
+            contactPerson: b.contact_person || '',
+            contactPhone: b.contact_phone || '',
+            phone: b.contact_phone || '',
+            isDefault: Boolean(b.is_default),
+            isActive: Boolean(b.is_active ?? true),
+          }));
+
+        const finalBranches = custBranchesFromDb.length > 0 ? custBranchesFromDb : (raw.branches || []);
+
         return {
           id: raw.id || row.id,
           code: row.code || raw.code || row.id,
@@ -442,6 +474,8 @@ export class SupabaseDataService {
           openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
           openingBalanceDate: raw.openingBalanceDate || '2026-07-01',
           isActive: raw.isActive ?? row.is_active ?? true,
+          branches: finalBranches,
+          priceListName: raw.priceListName || '',
           ...raw,
         };
       });
@@ -488,6 +522,27 @@ export class SupabaseDataService {
         console.warn('Supabase saveCustomer error:', error.message);
         return false;
       }
+
+      // Sync customer branches to customer_branches table if present
+      if (cust.branches && Array.isArray(cust.branches) && cust.branches.length > 0) {
+        const branchRows = cust.branches.map((b) => ({
+          id: toValidUUID(b.id || `br-${cust.id}-${b.code}`),
+          company_id: companyId,
+          customer_id: custUuid,
+          code: b.code || 'BR-01',
+          name_ar: b.nameAr || 'فرع',
+          name_en: b.nameEn || '',
+          governorate: b.governorate || '',
+          city: b.city || '',
+          detailed_address: b.detailedAddress || '',
+          contact_person: b.contactPerson || '',
+          contact_phone: b.contactPhone || '',
+          is_default: !!b.isDefault,
+          is_active: b.isActive !== false,
+        }));
+        await supabase.from('customer_branches').upsert(branchRows).catch((e) => console.warn('Supabase branch sync notice:', e));
+      }
+
       return true;
     } catch (err: any) {
       console.warn('Supabase saveCustomer exception:', err?.message);
@@ -530,6 +585,38 @@ export class SupabaseDataService {
           console.warn('Supabase saveCustomers batch error:', error.message);
         }
       }
+
+      // Sync customer branches to customer_branches table
+      const allBranchRows: any[] = [];
+      for (const cust of customers) {
+        if (cust.branches && Array.isArray(cust.branches) && cust.branches.length > 0) {
+          const custUuid = toValidUUID(cust.id);
+          for (const b of cust.branches) {
+            allBranchRows.push({
+              id: toValidUUID(b.id || `br-${cust.id}-${b.code}`),
+              company_id: companyId,
+              customer_id: custUuid,
+              code: b.code || 'BR-01',
+              name_ar: b.nameAr || 'فرع',
+              name_en: b.nameEn || '',
+              governorate: b.governorate || '',
+              city: b.city || '',
+              detailed_address: b.detailedAddress || '',
+              contact_person: b.contactPerson || '',
+              contact_phone: b.contactPhone || '',
+              is_default: !!b.isDefault,
+              is_active: b.isActive !== false,
+            });
+          }
+        }
+      }
+      if (allBranchRows.length > 0) {
+        for (let i = 0; i < allBranchRows.length; i += 50) {
+          const batch = allBranchRows.slice(i, i + 50);
+          await supabase.from('customer_branches').upsert(batch).catch((e) => console.warn('Supabase batch branch notice:', e));
+        }
+      }
+
       return true;
     } catch (err: any) {
       console.warn('Supabase saveCustomers exception:', err?.message);
@@ -958,6 +1045,10 @@ export class SupabaseDataService {
         payment_method: inv.paymentTerms || 'CASH',
         invoice_type: inv.type || 'SALES',
         warehouse_id: effectiveWarehouseId,
+        customer_branch_id: inv.customerBranchId || (inv as any).customer_branch_id || null,
+        customer_branch_name: inv.customerBranchName || (inv as any).customer_branch_name || null,
+        price_list_id: inv.priceListApplied || (inv as any).price_list_id || null,
+        price_list_applied: inv.priceListApplied || (inv as any).price_list_applied || null,
         items: inv.lines || [],
         customer_snapshot: customerSnapshot,
         raw_data: {

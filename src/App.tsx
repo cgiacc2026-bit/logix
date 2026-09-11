@@ -58,8 +58,102 @@ import { Lock } from 'lucide-react';
 
 const DEFAULT_COMPANY: CompanyProfile = DEFAULT_COMPANY_PROFILE;
 
+const ROUTE_TO_TAB: Record<string, TabType> = {
+  '/pos': 'pos',
+  '/invoices': 'sales-invoices',
+  '/sales-invoices': 'sales-invoices',
+  '/purchase-invoices': 'purchase-invoices',
+  '/quotations': 'quotations',
+  '/ledger': 'ledger',
+  '/journal-entries': 'journals',
+  '/journals': 'journals',
+  '/trial-balance': 'trial-balance',
+  '/financials': 'financials',
+  '/coa': 'accounts',
+  '/accounts': 'accounts',
+  '/inventory': 'inventory',
+  '/stock-movement': 'stock-ledger',
+  '/stock-ledger': 'stock-ledger',
+  '/warehouses': 'warehouses',
+  '/vouchers': 'receipt-vouchers',
+  '/receipt-vouchers': 'receipt-vouchers',
+  '/payment-vouchers': 'payment-vouchers',
+  '/customers': 'customers',
+  '/suppliers': 'suppliers',
+  '/customer-statements': 'customer-statements',
+  '/supplier-statements': 'supplier-statements',
+  '/sales-reps': 'sales-reps',
+  '/production': 'production',
+  '/settings/pos': 'branches',
+  '/branches': 'branches',
+  '/company': 'company',
+  '/users': 'users',
+  '/backup-restore': 'backup-restore',
+  '/reports': 'reports',
+  '/system-reset': 'system-reset',
+  '/dashboard': 'dashboard',
+};
+
+const TAB_TO_ROUTE: Partial<Record<TabType, string>> = {
+  'pos': '/pos',
+  'sales-invoices': '/invoices',
+  'invoices': '/invoices',
+  'purchase-invoices': '/purchase-invoices',
+  'quotations': '/quotations',
+  'ledger': '/ledger',
+  'journals': '/journal-entries',
+  'trial-balance': '/trial-balance',
+  'financials': '/financials',
+  'accounts': '/coa',
+  'inventory': '/inventory',
+  'stock-ledger': '/stock-movement',
+  'warehouses': '/warehouses',
+  'vouchers': '/vouchers',
+  'receipt-vouchers': '/vouchers',
+  'payment-vouchers': '/payment-vouchers',
+  'customers': '/customers',
+  'suppliers': '/suppliers',
+  'customer-statements': '/customer-statements',
+  'supplier-statements': '/supplier-statements',
+  'sales-reps': '/sales-reps',
+  'production': '/production',
+  'branches': '/settings/pos',
+  'company': '/company',
+  'users': '/users',
+  'backup-restore': '/backup-restore',
+  'reports': '/reports',
+  'system-reset': '/system-reset',
+  'dashboard': '/dashboard',
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const rawHash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
+    if (rawHash && ROUTE_TO_TAB[rawHash]) {
+      return ROUTE_TO_TAB[rawHash];
+    }
+    return 'dashboard';
+  });
+
+  const navigateToTab = (newTab: TabType) => {
+    setActiveTab(newTab);
+    const targetRoute = TAB_TO_ROUTE[newTab] || `/${newTab}`;
+    if (typeof window !== 'undefined' && window.location.hash !== `#${targetRoute}`) {
+      window.location.hash = targetRoute;
+    }
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const rawHash = window.location.hash.replace(/^#/, '');
+      if (rawHash && ROUTE_TO_TAB[rawHash]) {
+        setActiveTab(ROUTE_TO_TAB[rawHash]);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   const [currency, setCurrency] = useState<string>('KWD');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
@@ -513,12 +607,12 @@ export default function App() {
       <Sidebar
         currentUser={currentUser}
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={navigateToTab}
         unpaidCount={unpaidInvoices.length}
         company={activeCompany}
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
-        onOpenCompanySetup={() => setActiveTab('company')}
+        onOpenCompanySetup={() => navigateToTab('company')}
         onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
         onSaveCompany={handleSaveCompany}
       />
@@ -536,7 +630,7 @@ export default function App() {
           company={activeCompany}
           currency={currency}
           setCurrency={handleCurrencyChange}
-          onOpenCompanySetup={() => setActiveTab('company')}
+          onOpenCompanySetup={() => navigateToTab('company')}
           onOpenOnboardingGuide={() => setIsOnboardingModalOpen(true)}
           onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
           onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
@@ -553,7 +647,7 @@ export default function App() {
             <OnboardingBannerWidget
               company={activeCompany}
               onOpenFullGuide={() => setIsOnboardingModalOpen(true)}
-              onNavigateTab={(tab) => setActiveTab(tab)}
+              onNavigateTab={(tab) => navigateToTab(tab)}
               accountsCount={accounts.length}
               customersCount={customers.length}
               suppliersCount={suppliers.length}
@@ -567,7 +661,7 @@ export default function App() {
             <AccountingCycleBar
               company={activeCompany}
               activeTab={activeTab}
-              onNavigateTab={(tab) => setActiveTab(tab as any)}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
             />
           )}
 
@@ -582,9 +676,9 @@ export default function App() {
               accounts={accounts}
               inventory={inventory}
               company={activeCompany}
-              onNavigateTab={(tab) => setActiveTab(tab)}
-              onNewJournal={() => setActiveTab('journals')}
-              onNewInvoice={() => setActiveTab('invoices')}
+              onNavigateTab={(tab) => navigateToTab(tab)}
+              onNewJournal={() => navigateToTab('journals')}
+              onNewInvoice={() => navigateToTab('invoices')}
             />
           )}
 
@@ -598,7 +692,7 @@ export default function App() {
               onDeleteAccount={handleDeleteAccount}
               onSelectAccountLedger={(accountId) => {
                 setSelectedLedgerAccountId(accountId);
-                setActiveTab('ledger');
+                navigateToTab('ledger');
               }}
             />
           )}
@@ -684,7 +778,7 @@ export default function App() {
               company={activeCompany}
               currency={currency}
               onRefreshAll={refreshAllData}
-              onNavigateTab={(tab) => setActiveTab(tab as any)}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
             />
           )}
 
@@ -736,7 +830,7 @@ export default function App() {
               inventory={inventory}
               currency={currency}
               onRefreshAll={refreshAllData}
-              onNavigateTab={(tab) => setActiveTab(tab as any)}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
             />
           )}
 
@@ -861,7 +955,7 @@ export default function App() {
               currentUser={currentUser}
               currency={currency}
               onRefreshAll={refreshAllData}
-              onNavigateTab={(tab) => setActiveTab(tab as any)}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
             />
           )}
 

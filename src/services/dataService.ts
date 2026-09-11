@@ -6538,14 +6538,22 @@ export class DataService {
 
     if (isSupabaseConfigured) {
       try {
-        const [customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
+        const [customers, suppliers, inventory, journals, invoices, vouchers, salesRepsFromSb, warehousesFromSb] = await Promise.all([
           SupabaseDataService.getCustomers(),
           SupabaseDataService.getSuppliers(),
           SupabaseDataService.getItems(),
           SupabaseDataService.getJournals(),
           SupabaseDataService.getInvoices(),
           SupabaseDataService.getVouchers(),
+          SupabaseDataService.getSalesReps(),
+          SupabaseDataService.getWarehouses(),
         ]);
+        if (salesRepsFromSb && salesRepsFromSb.length > 0) {
+          localDataStore.saveSalesReps(salesRepsFromSb);
+        }
+        if (warehousesFromSb && warehousesFromSb.length > 0) {
+          localDataStore.saveWarehouses(warehousesFromSb);
+        }
         const custTombstones = localDataStore.getTombstones('customers');
         const suppTombstones = localDataStore.getTombstones('suppliers');
         const invTombstones = localDataStore.getTombstones('inventory');
@@ -6972,6 +6980,9 @@ export class DataService {
       list.unshift(rep);
     }
     localDataStore.saveSalesReps(list);
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.saveSalesReps(list).catch(() => {});
+    }
     return rep;
   }
 
@@ -6979,6 +6990,9 @@ export class DataService {
     const list = localDataStore.getSalesReps();
     const filtered = list.filter((r) => r.id !== id);
     localDataStore.saveSalesReps(filtered);
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.deleteSalesRep(id).catch(() => {});
+    }
     return true;
   }
 
@@ -6998,6 +7012,9 @@ export class DataService {
       list.push(warehouse);
     }
     localDataStore.saveWarehouses(list);
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.saveWarehouses(list).catch(() => {});
+    }
     return warehouse;
   }
 
@@ -7005,6 +7022,13 @@ export class DataService {
     const list = localDataStore.getWarehouses();
     const filtered = list.filter((w) => w.id !== id);
     localDataStore.saveWarehouses(filtered);
+    if (isSupabaseConfigured) {
+      const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
+      const companyId = resolveToSupabaseCompanyUUID(activeCompanyId);
+      if (companyId) {
+        await supabase.from('warehouses').delete().eq('id', id).eq('company_id', companyId).catch(() => {});
+      }
+    }
     return true;
   }
 
