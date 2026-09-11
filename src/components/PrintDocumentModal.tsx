@@ -47,6 +47,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
   // Zoom & Font Size Control State
   const [zoomLevel, setZoomLevel] = useState<number>(100); // 70% to 200%
   const [fontScale, setFontScale] = useState<'NORMAL' | 'LARGE' | 'XLARGE'>('NORMAL');
+  const [printFormat, setPrintFormat] = useState<'A4' | 'THERMAL'>('A4');
 
   const formattedCurrency = (val: number) => {
     return formatCurrency(val, activeCompany.functionalCurrency || 'KWD');
@@ -150,14 +151,17 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page {
-            size: A4 portrait;
-            margin: 12mm 10mm 12mm 10mm;
+            size: ${printFormat === 'THERMAL' ? '80mm auto' : 'A4 portrait'};
+            margin: ${printFormat === 'THERMAL' ? '2mm 2mm 2mm 2mm' : '10mm 8mm 10mm 8mm'};
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: #000000 !important;
           }
           body {
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
             background: white !important;
-            color: black !important;
+            color: #000000 !important;
           }
           .no-print {
             display: none !important;
@@ -171,10 +175,16 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
           }
           table {
             page-break-inside: auto;
+            border-color: #000000 !important;
           }
           tr {
             page-break-inside: avoid;
             page-break-after: auto;
+            border-color: #000000 !important;
+          }
+          th, td {
+            border-color: #000000 !important;
+            color: #000000 !important;
           }
           thead {
             display: table-header-group;
@@ -280,6 +290,34 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
               </button>
             </div>
 
+            {/* Invoice Print Format Selector (A4 vs Thermal) */}
+            {documentType === 'INVOICE' && (
+              <div className="flex items-center bg-neutral-900 border border-neutral-700 rounded-lg p-0.5 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPrintFormat('A4')}
+                  className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    printFormat === 'A4' ? 'bg-[#D4AF37] text-black font-black' : 'text-neutral-300 hover:text-white'
+                  }`}
+                  title="طباعة على ورق قياسي عريض A4"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  قالب A4 قياسي
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintFormat('THERMAL')}
+                  className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    printFormat === 'THERMAL' ? 'bg-[#D4AF37] text-black font-black' : 'text-neutral-300 hover:text-white'
+                  }`}
+                  title="طباعة على طابعة حرارية للكاشير 80mm / 58mm"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  قالب حراري (Thermal)
+                </button>
+              </div>
+            )}
+
             {/* QR Toggle Button */}
             {documentType === 'INVOICE' && (
               <button
@@ -324,7 +362,11 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
         {/* ========================================================================= */}
         <div className="flex-1 overflow-auto bg-neutral-100 p-3 sm:p-6 print:p-0 print:bg-white print:overflow-visible flex justify-center">
           <div
-            className={`bg-white text-black p-6 sm:p-10 shadow-lg border border-neutral-300 print:border-none print:shadow-none print:p-0 w-full max-w-4xl transition-transform duration-150 origin-top print-scalable-container ${getFontScaleClass()}`}
+            className={`bg-white text-black shadow-lg border border-neutral-300 print:border-none print:shadow-none print:p-0 w-full transition-transform duration-150 origin-top print-scalable-container ${
+              printFormat === 'THERMAL' && documentType === 'INVOICE'
+                ? 'max-w-[360px] p-3 sm:p-4'
+                : 'max-w-4xl p-6 sm:p-10'
+            } ${getFontScaleClass()}`}
             style={{
               transform: zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined,
               transformOrigin: 'top center',
@@ -332,76 +374,78 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
             }}
             id="printable-document"
           >
-            {/* Header Section: Company Profile & Invoice Identification */}
-            <div className="flex items-start justify-between border-b-2 border-black pb-5 gap-4">
-              {/* Right: Company Information */}
-              <div className="space-y-1 text-right max-w-md">
-                <h1 className="text-2xl sm:text-3xl font-black text-black tracking-tight">
-                  {activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}
-                </h1>
-                <p className="text-xs text-neutral-700 font-bold uppercase tracking-wider font-mono">
-                  {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED ENTERPRISE'}
-                </p>
-                <div className="text-xs text-neutral-800 space-y-0.5 pt-1.5 font-medium leading-relaxed">
-                  <p>
-                    السجل التجاري: <span className="font-bold font-mono text-black">{activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}</span>
-                    {activeCompany.taxNumber && (
-                      <span className="mr-3">الرقم الضريبي: <span className="font-bold font-mono text-black">{activeCompany.taxNumber}</span></span>
-                    )}
+            {/* Standard Header Section: Used for A4 or Non-Thermal Documents */}
+            {!(printFormat === 'THERMAL' && documentType === 'INVOICE') && (
+              <div className="flex items-start justify-between border-b-2 border-black pb-5 gap-4">
+                {/* Right: Company Information */}
+                <div className="space-y-1 text-right max-w-md">
+                  <h1 className="text-2xl sm:text-3xl font-black text-black tracking-tight">
+                    {activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}
+                  </h1>
+                  <p className="text-xs text-black font-black uppercase tracking-wider font-mono">
+                    {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED ENTERPRISE'}
                   </p>
-                  <p>
-                    {[activeCompany.streetName, activeCompany.district, activeCompany.city, activeCompany.country].filter(Boolean).join('، ') || 'المقر الرئيسي'}
-                  </p>
-                  <p>
-                    هاتف: <span className="font-mono font-bold">{activeCompany.phone || activeCompany.mobile || '-'}</span>
-                    {activeCompany.email && (
-                      <>
-                        <span className="mx-2 text-neutral-400">|</span>
-                        بريد: <span className="font-mono font-bold">{activeCompany.email}</span>
-                      </>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {/* Left: QR Code & Document Meta Identifier Badge */}
-              <div className="flex items-center gap-3 text-left shrink-0">
-                {/* Real Generated QR Code (Togglable) */}
-                {showQr && (
-                  <div className="flex flex-col items-center justify-center p-1.5 bg-white border-2 border-black rounded-lg shadow-2xs">
-                    {qrCodeDataUrl ? (
-                      <img
-                        src={qrCodeDataUrl}
-                        alt="Invoice QR"
-                        className="w-20 h-20 sm:w-24 sm:h-24 object-contain"
-                      />
-                    ) : (
-                      <div className="w-20 h-20 flex flex-col items-center justify-center bg-neutral-50 text-neutral-400">
-                        <QrCode className="w-10 h-10" />
-                        <span className="text-[8px] font-bold">QR CODE</span>
-                      </div>
-                    )}
-                    <span className="text-[8px] font-bold text-neutral-700 mt-1 font-mono">E-INVOICE QR</span>
-                  </div>
-                )}
-
-                {/* Invoice Meta Box */}
-                <div className="border-2 border-black px-4 py-3 rounded-xl text-center bg-neutral-50 min-w-[190px] shadow-2xs">
-                  <div className="text-xs sm:text-sm font-black text-black">
-                    {getDocTitle()}
-                  </div>
-                  <div className="text-sm sm:text-base font-mono font-black pt-1 text-black">
-                    {documentType === 'INVOICE' && (data as Invoice).invoiceNumber}
-                    {documentType === 'VOUCHER' && (data as PaymentVoucher).voucherNumber}
-                    {documentType === 'JOURNAL' && (data as JournalEntry).entryNumber}
-                    {documentType === 'STATEMENT' && (data.customer?.code ? `كود: ${data.customer.code}` : 'STMT-2026')}
-                  </div>
-                  <div className="text-xs text-neutral-800 font-bold mt-1.5 pt-1.5 border-t border-neutral-300">
-                    التاريخ: <span className="font-mono font-black text-black">{data.date || new Date().toISOString().split('T')[0]}</span>
+                  <div className="text-xs text-black space-y-0.5 pt-1.5 font-bold leading-relaxed">
+                    <p>
+                      السجل التجاري: <span className="font-black font-mono text-black">{activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}</span>
+                      {activeCompany.taxNumber && (
+                        <span className="mr-3">الرقم الضريبي: <span className="font-black font-mono text-black">{activeCompany.taxNumber}</span></span>
+                      )}
+                    </p>
+                    <p>
+                      {[activeCompany.streetName, activeCompany.district, activeCompany.city, activeCompany.country].filter(Boolean).join('، ') || 'المقر الرئيسي'}
+                    </p>
+                    <p>
+                      هاتف: <span className="font-mono font-black text-black">{activeCompany.phone || activeCompany.mobile || '-'}</span>
+                      {activeCompany.email && (
+                        <>
+                          <span className="mx-2 text-black font-black">|</span>
+                          بريد: <span className="font-mono font-black text-black">{activeCompany.email}</span>
+                        </>
+                      )}
+                    </p>
                   </div>
                 </div>
+
+                {/* Left: QR Code & Document Meta Identifier Badge */}
+                <div className="flex items-center gap-3 text-left shrink-0">
+                  {/* Real Generated QR Code (Togglable) */}
+                  {showQr && (
+                    <div className="flex flex-col items-center justify-center p-1.5 bg-white border-2 border-black rounded-lg shadow-2xs">
+                      {qrCodeDataUrl ? (
+                        <img
+                          src={qrCodeDataUrl}
+                          alt="Invoice QR"
+                          className="w-20 h-20 sm:w-24 sm:h-24 object-contain"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 flex flex-col items-center justify-center bg-white text-black border border-black">
+                          <QrCode className="w-10 h-10 text-black" />
+                          <span className="text-[8px] font-black text-black">QR CODE</span>
+                        </div>
+                      )}
+                      <span className="text-[8px] font-black text-black mt-1 font-mono">E-INVOICE QR</span>
+                    </div>
+                  )}
+
+                  {/* Invoice Meta Box */}
+                  <div className="border-2 border-black px-4 py-3 rounded-xl text-center bg-white min-w-[190px] shadow-2xs">
+                    <div className="text-xs sm:text-sm font-black text-black">
+                      {getDocTitle()}
+                    </div>
+                    <div className="text-sm sm:text-base font-mono font-black pt-1 text-black">
+                      {documentType === 'INVOICE' && (data as Invoice).invoiceNumber}
+                      {documentType === 'VOUCHER' && (data as PaymentVoucher).voucherNumber}
+                      {documentType === 'JOURNAL' && (data as JournalEntry).entryNumber}
+                      {documentType === 'STATEMENT' && (data.customer?.code ? `كود: ${data.customer.code}` : 'STMT-2026')}
+                    </div>
+                    <div className="text-xs text-black font-black mt-1.5 pt-1.5 border-t-2 border-black">
+                      التاريخ: <span className="font-mono font-black text-black">{data.date || new Date().toISOString().split('T')[0]}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* ========================================================================= */}
             {/* 1. INVOICE VIEW */}
@@ -462,36 +506,223 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
               const paid = Number(inv.paidAmount) || (isCash ? finalGrandTotal : 0);
               const due = inv.dueAmount !== undefined ? inv.dueAmount : Math.max(0, finalGrandTotal - paid);
 
-              return (
+              return printFormat === 'THERMAL' ? (
+                /* ========================================================================= */
+                /* THERMAL POS RECEIPT FORMAT (80mm / 58mm) */
+                /* ========================================================================= */
+                <div className="w-full text-black font-sans dir-rtl text-right space-y-2">
+                  {/* Thermal Header */}
+                  <div className="text-center pb-2 border-b-2 border-black space-y-1">
+                    {activeCompany.logoUrl && (
+                      <div className="flex justify-center mb-1">
+                        <img
+                          src={activeCompany.logoUrl}
+                          alt="Logo"
+                          className="h-10 w-auto object-contain max-w-[120px]"
+                        />
+                      </div>
+                    )}
+                    <h2 className="text-base font-black text-black tracking-tight">
+                      {activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}
+                    </h2>
+                    {activeCompany.nameEn && (
+                      <p className="text-[10px] font-black text-black uppercase font-mono">
+                        {activeCompany.nameEn}
+                      </p>
+                    )}
+                    <div className="text-[10px] font-black text-black space-y-0.5 pt-0.5">
+                      {(activeCompany.crNumber || activeCompany.commercialRegNumber) && (
+                        <p className="font-mono">س.ت: {activeCompany.crNumber || activeCompany.commercialRegNumber}</p>
+                      )}
+                      {activeCompany.taxNumber && (
+                        <p className="font-mono">الرقم الضريبي: {activeCompany.taxNumber}</p>
+                      )}
+                      {activeCompany.phone && (
+                        <p className="font-mono">هاتف: {activeCompany.phone}</p>
+                      )}
+                    </div>
+                    <div className="pt-1">
+                      <span className="inline-block px-2.5 py-0.5 border-2 border-black text-black font-black text-[10px]">
+                        {getDocTitle()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Thermal Metadata */}
+                  <div className="py-1.5 border-b-2 border-black space-y-1 text-[11px] font-black text-black">
+                    <div className="flex justify-between font-mono">
+                      <span>رقم الفاتورة:</span>
+                      <span className="font-black">{inv.invoiceNumber}</span>
+                    </div>
+                    <div className="flex justify-between font-mono">
+                      <span>التاريخ:</span>
+                      <span className="font-black">{inv.date}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>العميل:</span>
+                      <span className="font-black truncate max-w-[200px]">{inv.entityNameAr || 'عميل نقدي'}</span>
+                    </div>
+                    {inv.customerBranchName && (
+                      <div className="flex justify-between">
+                        <span>فرع التسليم:</span>
+                        <span className="font-black">{inv.customerBranchName}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span>طريقة السداد:</span>
+                      <span className="font-black">{isCash ? 'نقدي (كاش)' : 'آجل (ذمم)'}</span>
+                    </div>
+                  </div>
+
+                  {/* Thermal Items Table (Exact 9 Columns in Pure Black Bold #000000) */}
+                  <div className="py-1">
+                    <table className="w-full text-right border-collapse border-2 border-black text-[9px] leading-tight font-black text-black">
+                      <thead>
+                        <tr className="bg-neutral-100 print:bg-white text-black font-black border-b-2 border-black">
+                          <th className="py-1 px-1 text-center border border-black w-5">م</th>
+                          <th className="py-1 px-1 text-center border border-black font-mono w-14">رقم الصنف (SKU)</th>
+                          <th className="py-1 px-1 text-right border border-black">بيان الصنف والمواصفات</th>
+                          <th className="py-1 px-1 text-center border border-black font-mono w-7">الكمية</th>
+                          <th className="py-1 px-1 text-center border border-black w-8">الوحدة</th>
+                          <th className="py-1 px-1 text-center border border-black font-mono w-7">الشد</th>
+                          <th className="py-1 px-1 text-left border border-black font-mono w-12">سعر الوحدة</th>
+                          <th className="py-1 px-1 text-left border border-black font-mono w-10">الخصم</th>
+                          <th className="py-1 px-1 text-left border border-black font-mono w-12">الإجمالي</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-black">
+                        {processedLines.map((line) => {
+                          const unitsPerPack = Number(line.unitsPerPack) || 1;
+                          const hasDiscount = line.lineDiscAmt > 0;
+                          return (
+                            <tr key={line.id || line.idx} className="border-b border-black">
+                              <td className="py-1 px-1 text-center font-mono font-black border border-black">{line.idx}</td>
+                              <td className="py-1 px-1 text-center font-mono font-black border border-black">{line.itemSku || line.barcode || '-'}</td>
+                              <td className="py-1 px-1 font-black border border-black">
+                                <div className="font-black text-black leading-tight">{line.itemNameAr}</div>
+                                {line.notes && <div className="text-[8px] font-bold text-black">{line.notes}</div>}
+                              </td>
+                              <td className="py-1 px-1 text-center font-mono font-black border border-black">{line.quantity}</td>
+                              <td className="py-1 px-1 text-center font-black border border-black">{line.unit || 'حبة'}</td>
+                              <td className="py-1 px-1 text-center font-mono font-black border border-black">{unitsPerPack > 1 ? `شد ${unitsPerPack}` : '1'}</td>
+                              <td className="py-1 px-1 text-left font-mono font-black border border-black">{formattedCurrency(line.unitPrice)}</td>
+                              <td className="py-1 px-1 text-left font-mono font-black border border-black">
+                                {hasDiscount ? `-${formattedCurrency(line.lineDiscAmt)}` : '0.00'}
+                              </td>
+                              <td className="py-1 px-1 text-left font-mono font-black border border-black">{formattedCurrency(line.lineNet)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="border-t-2 border-black font-black text-[9px] bg-neutral-50 print:bg-white">
+                        <tr>
+                          <td colSpan={3} className="py-1 px-1 border border-black">
+                            عدد الأصناف: <span className="font-mono">{processedLines.length}</span> | الكمية: <span className="font-mono">{processedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)}</span>
+                          </td>
+                          <td colSpan={4} className="py-1 px-1 border border-black text-left">
+                            المجموع قبل الخصم:
+                          </td>
+                          <td colSpan={2} className="py-1 px-1 border border-black text-left font-mono">
+                            {formattedCurrency(grossItemsTotal)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* Thermal Financial Totals */}
+                  <div className="py-1.5 border-t-2 border-black space-y-1 text-xs font-black text-black">
+                    <div className="flex justify-between">
+                      <span>إجمالي قيمة الأصناف:</span>
+                      <span className="font-mono">{formattedCurrency(grossItemsTotal)}</span>
+                    </div>
+                    {totalAllDiscounts > 0 && (
+                      <div className="flex justify-between border-t border-black pt-1">
+                        <span>إجمالي الخصومات:</span>
+                        <span className="font-mono">-{formattedCurrency(totalAllDiscounts)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-baseline border-t-2 border-black pt-1 text-sm font-black">
+                      <span>صافي القيمة المستحقة:</span>
+                      <span className="text-base font-mono font-black">{formattedCurrency(finalGrandTotal)}</span>
+                    </div>
+                    {isCash ? (
+                      <div className="flex justify-between text-[11px] pt-0.5">
+                        <span>حالة السداد:</span>
+                        <span>مسدد بالكامل نقداً (كاش)</span>
+                      </div>
+                    ) : (
+                      paid > 0 && (
+                        <div className="flex justify-between text-[11px] pt-0.5">
+                          <span>المدفوع:</span>
+                          <span className="font-mono">{formattedCurrency(paid)}</span>
+                        </div>
+                      )
+                    )}
+                    {!isCash && due > 0 && (
+                      <div className="flex justify-between text-[11px] pt-0.5">
+                        <span>المبلغ المتبقي (آجل):</span>
+                        <span className="font-mono">{formattedCurrency(due)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Thermal Tafqeet */}
+                  <div className="p-2 border-2 border-black text-[10px] text-center font-black text-black bg-white">
+                    المبلغ تفقيطاً: {tafqeetCurrency(finalGrandTotal, activeCompany.functionalCurrency || 'KWD')}
+                  </div>
+
+                  {/* Thermal QR Code & Digital Stamp */}
+                  <div className="py-2 text-center space-y-1.5 border-t-2 border-black">
+                    {showQr && qrCodeDataUrl && (
+                      <div className="flex justify-center">
+                        <img
+                          src={qrCodeDataUrl}
+                          alt="QR Code"
+                          className="w-24 h-24 object-contain border-2 border-black p-0.5 bg-white"
+                        />
+                      </div>
+                    )}
+                    <p className="text-[10px] font-black font-mono">فاتورة ضريبية مبسطة معتمدة</p>
+                    <div className="text-[10px] font-black">
+                      {activeCompany.nameAr || activeCompany.headerTitle}
+                    </div>
+                    <p className="text-[9px] font-bold">شكراً لتعاملكم معنا</p>
+                  </div>
+                </div>
+              ) : (
+                /* ========================================================================= */
+                /* STANDARD A4 INVOICE FORMAT (High Contrast Pure Black #000000 Bold)        */
+                /* ========================================================================= */
                 <div className="space-y-6 pt-4">
                   {/* Customer Details & Invoice Meta Box */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-[#FAF9F6] border-2 border-neutral-300 rounded-xl text-xs sm:text-sm text-right">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-white border-2 border-black rounded-xl text-xs sm:text-sm text-right">
                     <div className="space-y-1">
-                      <span className="text-neutral-600 block text-xs font-bold">
+                      <span className="text-black block text-xs font-black">
                         {isSales ? 'السادة / العميل (المشتري):' : 'السادة / المورد:'}
                       </span>
                       <span className="font-black text-base text-black block">{inv.entityNameAr || '-'}</span>
                       {inv.customerBranchName && (
-                        <span className="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block mt-1 print:border-black print:text-black">
+                        <span className="text-xs font-black text-black bg-white px-2 py-0.5 rounded border-2 border-black inline-block mt-1">
                           فرع التسليم: {inv.customerBranchName}
                         </span>
                       )}
                       {inv.priceListApplied && (
-                        <span className="text-[10px] text-neutral-500 print:text-black block mt-0.5">
+                        <span className="text-[11px] text-black font-bold block mt-0.5">
                           قائمة الأسعار المعتمدة: {inv.priceListApplied}
                         </span>
                       )}
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-neutral-600 block text-xs font-bold">نوع وشروط الفاتورة:</span>
-                      <span className="font-extrabold text-xs sm:text-sm block text-black">
+                      <span className="text-black block text-xs font-black">نوع وشروط الفاتورة:</span>
+                      <span className="font-black text-xs sm:text-sm block text-black">
                         {isCash ? (
-                          <span className="text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-300 font-bold inline-block">
+                          <span className="text-black bg-white px-2.5 py-1 rounded border-2 border-black font-black inline-block">
                             نقدي (كاش - مدفوعة)
                           </span>
                         ) : (
-                          <span className="text-neutral-900 bg-neutral-100 px-2.5 py-1 rounded border border-neutral-300 font-bold inline-block">
+                          <span className="text-black bg-white px-2.5 py-1 rounded border-2 border-black font-black inline-block">
                             آجل (على الحساب / ذمم)
                           </span>
                         )}
@@ -499,83 +730,98 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-neutral-600 block text-xs font-bold">تاريخ الاستحقاق:</span>
-                      <span className="font-bold text-black block font-mono text-sm">
+                      <span className="text-black block text-xs font-black">تاريخ الاستحقاق:</span>
+                      <span className="font-black text-black block font-mono text-sm">
                         {inv.dueDate || inv.date || '-'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Items Table - Clean, precise, high readability */}
+                  {/* Items Table - Clean, precise, high readability, 9 exact columns in pure black bold */}
                   <div className="overflow-x-auto print:overflow-visible">
-                    <table className="w-full text-xs sm:text-sm text-right border-collapse border border-neutral-400 print:table-fixed print:w-full print:border print:border-black">
+                    <table className="w-full text-xs sm:text-sm text-right border-collapse border-2 border-black print:table-fixed print:w-full print:border-2 print:border-black">
                       <thead>
-                        <tr className="bg-[#1A1A1A] print:bg-neutral-900 text-white font-bold text-xs sm:text-sm print:text-[10px]">
-                          <th className="py-2.5 px-2.5 text-center w-10 print:w-[4%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1">م</th>
-                          <th className="py-2.5 px-3 text-center w-28 print:w-[13%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">رقم الصنف (SKU)</th>
-                          <th className="py-2.5 px-3.5 text-right print:w-[31%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1.5">بيان الصنف والمواصفات</th>
-                          <th className="py-2.5 px-3 text-center w-16 print:w-[8%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الكمية</th>
-                          <th className="py-2.5 px-3 text-center w-16 print:w-[7%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1">الوحدة</th>
-                          <th className="py-2.5 px-3 text-center w-16 print:w-[7%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الشد</th>
-                          <th className="py-2.5 px-3.5 text-left w-24 print:w-[10%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">سعر الوحدة</th>
-                          <th className="py-2.5 px-3 text-left w-20 print:w-[8%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الخصم</th>
-                          <th className="py-2.5 px-3.5 text-left w-28 print:w-[12%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الإجمالي</th>
+                        <tr className="bg-neutral-100 print:bg-white text-black font-black text-xs sm:text-sm print:text-[10px] border-b-2 border-black">
+                          <th className="py-2.5 px-2 text-center w-10 print:w-[5%] border border-black font-black text-black print:text-black">
+                            م
+                          </th>
+                          <th className="py-2.5 px-3 text-center w-28 print:w-[13%] border border-black font-black text-black print:text-black font-mono">
+                            رقم الصنف (SKU)
+                          </th>
+                          <th className="py-2.5 px-3.5 text-right print:w-[30%] border border-black font-black text-black print:text-black">
+                            بيان الصنف والمواصفات
+                          </th>
+                          <th className="py-2.5 px-3 text-center w-16 print:w-[8%] border border-black font-black text-black print:text-black font-mono">
+                            الكمية
+                          </th>
+                          <th className="py-2.5 px-3 text-center w-16 print:w-[7%] border border-black font-black text-black print:text-black">
+                            الوحدة
+                          </th>
+                          <th className="py-2.5 px-3 text-center w-16 print:w-[7%] border border-black font-black text-black print:text-black font-mono">
+                            الشد
+                          </th>
+                          <th className="py-2.5 px-3.5 text-left w-24 print:w-[10%] border border-black font-black text-black print:text-black font-mono">
+                            سعر الوحدة
+                          </th>
+                          <th className="py-2.5 px-3 text-left w-20 print:w-[8%] border border-black font-black text-black print:text-black font-mono">
+                            الخصم
+                          </th>
+                          <th className="py-2.5 px-3.5 text-left w-28 print:w-[12%] border border-black font-black text-black print:text-black font-mono">
+                            الإجمالي
+                          </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-neutral-300 print:divide-neutral-400">
+                      <tbody className="divide-y divide-black">
                         {processedLines.map((line) => {
                           const unitsPerPack = Number(line.unitsPerPack) || 1;
                           const hasDiscount = line.lineDiscAmt > 0;
 
                           return (
-                            <tr key={line.id || line.idx} className="hover:bg-neutral-50 print:hover:bg-transparent">
-                              <td className="py-2.5 px-2.5 text-center font-bold text-neutral-700 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                            <tr key={line.id || line.idx} className="border-b border-black">
+                              <td className="py-2 px-2 text-center font-black font-mono text-black border border-black print:text-black">
                                 {line.idx}
                               </td>
-                              <td className="py-2.5 px-3 text-center font-mono font-bold text-black print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
+                              <td className="py-2 px-2.5 text-center font-mono font-black text-black border border-black print:text-black">
                                 {line.itemSku || line.barcode || '-'}
                               </td>
-                              <td className="py-2.5 px-3.5 font-bold text-black print:py-1.5 print:px-1.5 print:border print:border-black print:text-[10px]">
-                                <div className="text-sm print:text-[10px] print:leading-tight">{line.itemNameAr}</div>
-                                {line.notes && <div className="text-xs text-neutral-500 print:text-[8.5px] font-normal mt-0.5">{line.notes}</div>}
+                              <td className="py-2 px-3 font-black text-black border border-black print:text-black">
+                                <div className="font-black text-black leading-snug">{line.itemNameAr}</div>
+                                {line.notes && <div className="text-xs font-bold text-black mt-0.5">{line.notes}</div>}
                               </td>
-                              <td className="py-2.5 px-3 text-center font-mono font-black text-black text-sm print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
+                              <td className="py-2 px-2.5 text-center font-mono font-black text-black border border-black print:text-black">
                                 {line.quantity}
                               </td>
-                              <td className="py-2.5 px-3 text-center font-bold text-neutral-800 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                              <td className="py-2 px-2.5 text-center font-black text-black border border-black print:text-black">
                                 {line.unit || 'حبة'}
                               </td>
-                              <td className="py-2.5 px-3 text-center font-mono font-bold text-neutral-800 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                              <td className="py-2 px-2.5 text-center font-mono font-black text-black border border-black print:text-black">
                                 {unitsPerPack > 1 ? `شد ${unitsPerPack}` : '1'}
                               </td>
-                              <td className="py-2.5 px-3.5 text-left font-mono font-bold text-[#1A1A1A] print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                              <td className="py-2 px-2.5 text-left font-mono font-black text-black border border-black print:text-black">
                                 {formattedCurrency(line.unitPrice)}
                               </td>
-                              <td className="py-2.5 px-3 text-left font-mono text-neutral-700 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
-                                {hasDiscount ? (
-                                  <span className="font-bold text-amber-900 print:text-black">
-                                    -{formattedCurrency(line.lineDiscAmt)}
-                                  </span>
-                                ) : (
-                                  <span className="text-neutral-400 print:text-neutral-600">-</span>
-                                )}
+                              <td className="py-2 px-2.5 text-left font-mono font-black text-black border border-black print:text-black">
+                                {hasDiscount ? `-${formattedCurrency(line.lineDiscAmt)}` : '0.00'}
                               </td>
-                              <td className="py-2.5 px-3.5 text-left font-mono font-black text-black text-sm print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
+                              <td className="py-2 px-3 text-left font-mono font-black text-black border border-black print:text-black">
                                 {formattedCurrency(line.lineNet)}
                               </td>
                             </tr>
                           );
                         })}
                       </tbody>
-                      <tfoot className="bg-[#FAF9F6] border-t-2 border-black text-xs sm:text-sm font-bold print:bg-neutral-100 print:text-[10px]">
-                        <tr>
-                          <td colSpan={3} className="py-2.5 px-3.5 text-right print:py-1.5 print:px-1.5 print:border print:border-black">
-                            عدد الأصناف: <span className="font-black font-mono">{processedLines.length}</span> | إجمالي الكمية: <span className="font-black font-mono">{processedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)}</span>
+                      <tfoot className="border-t-2 border-black font-black bg-neutral-50 print:bg-white text-xs sm:text-sm text-black">
+                        <tr className="border-t-2 border-black">
+                          <td colSpan={3} className="py-2.5 px-3 text-right font-black text-black border border-black">
+                            عدد الأصناف: <span className="font-mono font-black">{processedLines.length}</span> | إجمالي الكمية:{' '}
+                            <span className="font-mono font-black">
+                              {processedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)}
+                            </span>
                           </td>
-                          <td colSpan={4} className="py-2.5 px-3 text-left text-neutral-700 print:py-1.5 print:px-1 print:border print:border-black print:text-black">
+                          <td colSpan={4} className="py-2.5 px-3 text-left font-black text-black border border-black">
                             المجموع قبل الخصومات:
                           </td>
-                          <td colSpan={2} className="py-2.5 px-3.5 text-left font-mono text-black font-black text-sm sm:text-base print:py-1.5 print:px-1 print:border print:border-black print:text-[11px]">
+                          <td colSpan={2} className="py-2.5 px-3 text-left font-mono font-black text-black border border-black text-sm sm:text-base">
                             {formattedCurrency(grossItemsTotal)}
                           </td>
                         </tr>
@@ -587,101 +833,112 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch pt-2 print:pt-1.5 print:gap-2.5 print-avoid-break">
                     {/* Right: Arabic Tafqeet Box & Delivery Notes */}
                     <div className="space-y-3 flex flex-col justify-between print:space-y-1.5">
-                      <div className="p-4 bg-[#FAF9F6] rounded-xl border-2 border-neutral-300 space-y-1.5 print:p-2 print:bg-white print:border print:border-black print:rounded-lg">
-                        <span className="text-xs font-bold text-neutral-800 flex items-center gap-1.5 print:text-[10px] print:text-black">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-700 print:w-3.5 print:h-3.5 print:text-black" />
+                      <div className="p-4 bg-white rounded-xl border-2 border-black space-y-1.5 print:p-2">
+                        <span className="text-xs font-black text-black flex items-center gap-1.5 print:text-[10px]">
+                          <CheckCircle2 className="w-4 h-4 text-black print:w-3.5 print:h-3.5" />
                           المبلغ تفقيطاً بالكلمات:
                         </span>
-                        <p className="text-xs sm:text-sm font-serif font-black text-black leading-relaxed bg-white p-3 rounded-lg border border-neutral-300 shadow-2xs print:p-1.5 print:text-[10px] print:border-neutral-400 print:shadow-none">
+                        <p className="text-xs sm:text-sm font-black text-black leading-relaxed bg-white p-3 rounded-lg border-2 border-black print:p-1.5 print:text-[10px]">
                           {tafqeetCurrency(finalGrandTotal, activeCompany.functionalCurrency || 'KWD')}
                         </p>
                       </div>
 
                       {inv.notes && (
-                        <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-300 text-xs print:p-1.5 print:bg-white print:border-neutral-400 print:rounded-lg print:text-[9.5px]">
-                          <span className="font-bold text-neutral-700 block mb-0.5 print:text-black">ملاحظات الفاتورة:</span>
-                          <p className="text-neutral-700 leading-relaxed print:text-neutral-900">{inv.notes}</p>
+                        <div className="p-3 bg-white rounded-xl border-2 border-black text-xs print:p-1.5 print:rounded-lg print:text-[9.5px]">
+                          <span className="font-black text-black block mb-0.5">ملاحظات الفاتورة:</span>
+                          <p className="text-black font-bold leading-relaxed">{inv.notes}</p>
                         </div>
                       )}
                     </div>
 
                     {/* Left: Financial Calculations Card */}
-                    <div className="bg-[#FAF9F6] border-2 border-neutral-400 p-4 rounded-xl space-y-2 text-xs sm:text-sm print:p-2 print:space-y-1 print:bg-white print:border print:border-black print:rounded-lg print:text-[10px]">
-                      <div className="flex justify-between items-center text-neutral-700 print:text-black">
+                    <div className="bg-white border-2 border-black p-4 rounded-xl space-y-2 text-xs sm:text-sm print:p-2 print:space-y-1 print:border-2 print:border-black">
+                      <div className="flex justify-between items-center text-black font-bold">
                         <span>إجمالي قيمة الأصناف:</span>
-                        <span className="font-bold font-mono text-black text-sm print:text-[11px]">{formattedCurrency(grossItemsTotal)}</span>
+                        <span className="font-black font-mono text-black text-sm print:text-[11px]">
+                          {formattedCurrency(grossItemsTotal)}
+                        </span>
                       </div>
 
                       {totalAllDiscounts > 0 && (
-                        <div className="flex justify-between items-center text-amber-900 font-bold border-t border-neutral-300 pt-1.5 print:pt-1 print:text-black print:border-neutral-400">
+                        <div className="flex justify-between items-center text-black font-black border-t-2 border-black pt-1.5 print:pt-1">
                           <span>إجمالي الخصومات الممنوحة:</span>
-                          <span className="font-mono text-sm print:text-[11px]">-{formattedCurrency(totalAllDiscounts)}</span>
+                          <span className="font-mono text-sm print:text-[11px]">
+                            -{formattedCurrency(totalAllDiscounts)}
+                          </span>
                         </div>
                       )}
 
-                      <div className="flex justify-between items-center text-sm sm:text-base font-black text-black pt-2 border-t-2 border-black bg-white p-2.5 rounded-lg border print:p-1.5 print:pt-1 print:text-xs print:border-black">
+                      <div className="flex justify-between items-center text-sm sm:text-base font-black text-black pt-2 border-t-2 border-black bg-neutral-50 print:bg-white p-2.5 rounded-lg border-2 border-black">
                         <span>صافي القيمة المستحقة:</span>
-                        <span className="font-mono text-emerald-900 text-lg font-black print:text-black print:text-sm">{formattedCurrency(finalGrandTotal)}</span>
+                        <span className="font-mono text-black text-lg font-black">
+                          {formattedCurrency(finalGrandTotal)}
+                        </span>
                       </div>
 
                       {isCash ? (
-                        <div className="flex justify-between items-center text-emerald-800 font-bold pt-1 text-xs sm:text-sm print:pt-0.5 print:text-[10px] print:text-black">
+                        <div className="flex justify-between items-center text-black font-black pt-1 text-xs sm:text-sm">
                           <span>حالة السداد:</span>
-                          <span className="font-bold">مسدد بالكامل نقداً (كاش)</span>
+                          <span className="font-black">مسدد بالكامل نقداً (كاش)</span>
                         </div>
                       ) : (
                         paid > 0 && (
-                          <div className="flex justify-between items-center text-neutral-700 pt-1 text-xs sm:text-sm print:pt-0.5 print:text-[10px] print:text-black">
+                          <div className="flex justify-between items-center text-black font-bold pt-1 text-xs sm:text-sm">
                             <span>المدفوع:</span>
-                            <span className="font-mono font-bold text-emerald-700 print:text-black">{formattedCurrency(paid)}</span>
+                            <span className="font-mono font-black text-black">{formattedCurrency(paid)}</span>
                           </div>
                         )
                       )}
 
                       {!isCash && due > 0 && (
-                        <div className="flex justify-between items-center text-neutral-900 font-bold text-xs sm:text-sm print:pt-0.5 print:text-[10px] print:text-black">
+                        <div className="flex justify-between items-center text-black font-black text-xs sm:text-sm pt-1">
                           <span>المبلغ المتبقي المستحق (آجل):</span>
-                          <span className="font-mono font-black text-rose-800 text-sm print:text-black print:text-xs">{formattedCurrency(due)}</span>
+                          <span className="font-mono font-black text-black text-sm">
+                            {formattedCurrency(due)}
+                          </span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Classic Professional Footer: Receiver Name, Receiver Signature, and Al-Waleed United Mill */}
+                  {/* Classic Professional Footer: Receiver Name, Receiver Signature, and Company Stamp */}
                   <div className="pt-6 border-t-2 border-black grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs sm:text-sm print:pt-2 print:gap-2.5 print:grid-cols-3 print:text-[10px] print-avoid-break">
                     {/* 1. اسم المستلم */}
-                    <div className="border border-neutral-300 rounded-xl p-4 bg-[#FAF9F6] space-y-2 print:p-2 print:space-y-1 print:bg-white print:border-black print:rounded-lg">
-                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm print:pb-1 print:text-[10px] print:border-neutral-300">
+                    <div className="border-2 border-black rounded-xl p-4 bg-white space-y-2 print:p-2 print:space-y-1">
+                      <div className="font-black text-black border-b-2 border-black pb-1.5 text-xs sm:text-sm">
                         اسم المستلم:
                       </div>
-                      <div className="text-xs sm:text-sm pt-1 text-neutral-900 font-bold min-h-[35px] flex items-center print:text-[10px] print:min-h-0 print:pt-0.5">
+                      <div className="text-xs sm:text-sm pt-1 text-black font-black min-h-[35px] flex items-center">
                         {inv.receiverName || inv.entityNameAr || '...................................................'}
                       </div>
                     </div>
 
                     {/* 2. توقيع المستلم */}
-                    <div className="border border-neutral-300 rounded-xl p-4 bg-[#FAF9F6] space-y-2 print:p-2 print:space-y-1 print:bg-white print:border-black print:rounded-lg">
-                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm print:pb-1 print:text-[10px] print:border-neutral-300">
+                    <div className="border-2 border-black rounded-xl p-4 bg-white space-y-2 print:p-2 print:space-y-1">
+                      <div className="font-black text-black border-b-2 border-black pb-1.5 text-xs sm:text-sm">
                         توقيع المستلم:
                       </div>
-                      <div className="text-xs pt-1 text-neutral-900 space-y-1.5 print:space-y-0.5 print:text-[9.5px]">
+                      <div className="text-xs pt-1 text-black font-bold space-y-1.5">
                         <p>التوقيع: .......................................</p>
                         <p>التاريخ: ...... / ...... / 2026</p>
                       </div>
                     </div>
 
-                    {/* 3. ختم وتوقيع المنشأة النشطة حصرياً */}
-                    <div className="border border-neutral-300 rounded-xl p-4 bg-[#FAF9F6] space-y-2 text-center print:p-2 print:space-y-1 print:bg-white print:border-black print:rounded-lg">
-                      <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs sm:text-sm print:pb-1 print:text-[10px] print:border-neutral-300 truncate" title={activeCompany.nameAr || activeCompany.headerTitle}>
+                    {/* 3. ختم وتوقيع المنشأة النشطة */}
+                    <div className="border-2 border-black rounded-xl p-4 bg-white space-y-2 text-center print:p-2 print:space-y-1">
+                      <div
+                        className="font-black text-black border-b-2 border-black pb-1.5 text-xs sm:text-sm truncate"
+                        title={activeCompany.nameAr || activeCompany.headerTitle}
+                      >
                         {activeCompany.nameAr || activeCompany.headerTitle || 'ختم واعتماد المنشأة'}
                       </div>
-                      <div className="text-xs pt-1 text-neutral-800 space-y-1.5 print:space-y-0.5 print:text-[9.5px]">
+                      <div className="text-xs pt-1 text-black font-bold space-y-1.5">
                         <p>الختم والتوقيع: .................................</p>
-                        <p className="text-[10px] text-neutral-500 font-mono print:text-[8px] print:text-neutral-700 uppercase truncate">
+                        <p className="text-[10px] text-black font-mono font-black uppercase truncate">
                           {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED SIGNATURE & STAMP'}
                         </p>
                         {(activeCompany.generalManager || activeCompany.financialManager) && (
-                          <p className="text-[9.5px] text-neutral-700 font-semibold print:text-[8px] truncate">
+                          <p className="text-[9.5px] text-black font-bold truncate">
                             {activeCompany.generalManager || activeCompany.financialManager}
                           </p>
                         )}

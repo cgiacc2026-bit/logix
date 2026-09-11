@@ -152,6 +152,47 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
 
   return (
     <div className="bg-white text-black font-sans dir-rtl text-right w-full">
+      {/* Injected Print Stylesheet for Pure Black High-DPI Printing */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm 8mm 10mm 8mm;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: #000000 !important;
+          }
+          body {
+            background: white !important;
+            color: #000000 !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          table {
+            page-break-inside: auto;
+            border-color: #000000 !important;
+          }
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+            border-color: #000000 !important;
+          }
+          th, td {
+            border-color: #000000 !important;
+            color: #000000 !important;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tfoot {
+            display: table-footer-group;
+          }
+        }
+      ` }} />
+
       {/* Control Bar (hidden on print) */}
       {showControls && (
         <div className="bg-[#1A1A1A] text-white px-5 py-3 flex flex-wrap items-center justify-between gap-3 no-print border-b border-black rounded-t-xl mb-4">
@@ -286,14 +327,14 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
               <img
                 src={activeCompany.logoUrl}
                 alt="Logo"
-                className="w-20 h-20 object-contain rounded-lg border border-neutral-300 p-1 bg-white shrink-0"
+                className="w-20 h-20 object-contain rounded-lg border-2 border-black p-1 bg-white shrink-0"
               />
             )}
             <div className="space-y-1">
               <h1 className="text-2xl font-black text-black tracking-tight">
                 {activeCompany.nameAr || activeCompany.headerTitle || 'المنشأة المعتمدة'}
               </h1>
-              <p className="text-xs text-neutral-600 font-bold uppercase tracking-wider">
+              <p className="text-xs text-black font-black uppercase tracking-wider font-mono">
                 {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED ENTERPRISE'}
               </p>
               
@@ -305,21 +346,21 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
                 );
                 if (matchedHeader) {
                   return (
-                    <div className="mt-1.5 p-1.5 rounded bg-neutral-50 border border-neutral-300 text-[10px] text-neutral-900 flex items-center gap-2">
+                    <div className="mt-1.5 p-1.5 rounded-lg bg-white border-2 border-black text-[10px] text-black flex items-center gap-2">
                       {matchedHeader.coBrandLogoUrl && (
                         <img
                           src={matchedHeader.coBrandLogoUrl}
                           alt="Customer Co-Brand Logo"
-                          className="w-12 h-12 object-contain rounded border border-neutral-300 bg-white p-0.5 shrink-0"
+                          className="w-12 h-12 object-contain rounded border border-black bg-white p-0.5 shrink-0"
                         />
                       )}
                       <div>
                         {matchedHeader.customHeaderTitle && (
-                          <div className="font-bold text-neutral-900">
+                          <div className="font-black text-black">
                             🏷️ {matchedHeader.customHeaderTitle}
                           </div>
                         )}
-                        <span className="text-[9px] text-neutral-500 font-semibold block">
+                        <span className="text-[9px] text-black font-bold block">
                           اعتماد التوريد والشراكة: {matchedHeader.customerNameAr}
                         </span>
                       </div>
@@ -329,22 +370,22 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
                 return null;
               })()}
 
-              <div className="text-xs text-neutral-800 space-y-0.5 pt-1 font-medium leading-tight">
+              <div className="text-xs text-black space-y-0.5 pt-1 font-bold leading-tight">
                 <p>
-                  السجل التجاري: <span className="font-bold font-mono text-black">{activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}</span>
+                  السجل التجاري: <span className="font-black font-mono text-black">{activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}</span>
                   {activeCompany.taxNumber && (
-                    <span className="mr-3">الرقم الضريبي: <span className="font-bold font-mono text-black">{activeCompany.taxNumber}</span></span>
+                    <span className="mr-3">الرقم الضريبي: <span className="font-black font-mono text-black">{activeCompany.taxNumber}</span></span>
                   )}
                 </p>
                 <p>
                   {[activeCompany.streetName, activeCompany.district, activeCompany.city, activeCompany.country].filter(Boolean).join('، ') || 'المقر الرئيسي'}
                 </p>
                 <p>
-                  هاتف: <span className="font-mono font-bold">{activeCompany.phone || activeCompany.mobile || '-'}</span>
+                  هاتف: <span className="font-mono font-black text-black">{activeCompany.phone || activeCompany.mobile || '-'}</span>
                   {activeCompany.email && (
                     <>
-                      <span className="mx-2 text-neutral-400">|</span>
-                      بريد: <span className="font-mono font-bold">{activeCompany.email}</span>
+                      <span className="mx-2 text-black font-black">|</span>
+                      بريد: <span className="font-mono font-black text-black">{activeCompany.email}</span>
                     </>
                   )}
                 </p>
@@ -354,22 +395,22 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
 
           <div className="flex items-center gap-3 text-left">
             {showQr && (
-              <div className="flex flex-col items-center justify-center p-1 bg-white border border-black rounded-md">
+              <div className="flex flex-col items-center justify-center p-1 bg-white border-2 border-black rounded-md">
                 {qrCodeDataUrl ? (
                   <img src={qrCodeDataUrl} alt="Invoice QR" className="w-20 h-20 object-contain" />
                 ) : (
-                  <div className="w-20 h-20 flex flex-col items-center justify-center bg-neutral-50 text-neutral-400">
-                    <QrCode className="w-10 h-10" />
+                  <div className="w-20 h-20 flex flex-col items-center justify-center bg-white text-black border border-black">
+                    <QrCode className="w-10 h-10 text-black" />
                   </div>
                 )}
-                <span className="text-[7px] font-bold text-neutral-700 mt-0.5 font-mono">E-INVOICE QR</span>
+                <span className="text-[8px] font-black text-black mt-0.5 font-mono">E-INVOICE QR</span>
               </div>
             )}
 
-            <div className="border-2 border-black px-4 py-2.5 rounded-lg text-center bg-neutral-50 min-w-[170px]">
+            <div className="border-2 border-black px-4 py-2.5 rounded-lg text-center bg-white min-w-[170px]">
               <div className="text-xs font-black text-black">{getInvoiceTitle()}</div>
               <div className="text-sm font-mono font-black pt-1 text-black">{invoice.invoiceNumber}</div>
-              <div className="text-[10px] text-neutral-700 font-bold mt-1 pt-1 border-t border-neutral-300">
+              <div className="text-[10px] text-black font-black mt-1 pt-1 border-t-2 border-black">
                 التاريخ: <span className="font-mono font-black text-black">{invoice.date}</span>
               </div>
             </div>
@@ -377,23 +418,23 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
         </div>
 
         {/* Customer & Invoice Meta Details */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-[#FAF9F6] border border-neutral-400 rounded-lg text-xs sm:text-sm text-right">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-white border-2 border-black rounded-lg text-xs sm:text-sm text-right">
           <div className="space-y-1">
-            <span className="text-neutral-500 block text-xs font-bold">
+            <span className="text-black block text-xs font-black">
               {isSales ? 'السادة / العميل (المشتري):' : 'السادة / المورد:'}
             </span>
             <span className="font-black text-sm sm:text-base text-black block">{invoice.entityNameAr || '-'}</span>
           </div>
 
           <div className="space-y-1">
-            <span className="text-neutral-500 block text-xs font-bold">نوع وشروط الفاتورة:</span>
-            <span className="font-extrabold text-xs sm:text-sm block text-black">
+            <span className="text-black block text-xs font-black">نوع وشروط الفاتورة:</span>
+            <span className="font-black text-xs sm:text-sm block text-black">
               {isCash ? (
-                <span className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 font-bold">
+                <span className="text-black bg-white px-2 py-0.5 rounded border-2 border-black font-black">
                   نقدي (كاش - مدفوعة)
                 </span>
               ) : (
-                <span className="text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded border border-neutral-300 font-bold">
+                <span className="text-black bg-white px-2 py-0.5 rounded border-2 border-black font-black">
                   آجل (على الحساب / ذمم)
                 </span>
               )}
@@ -401,86 +442,80 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
           </div>
 
           <div className="space-y-1">
-            <span className="text-neutral-500 block text-xs font-bold">تاريخ الاستحقاق:</span>
-            <span className="font-bold text-black block font-mono">
+            <span className="text-black block text-xs font-black">تاريخ الاستحقاق:</span>
+            <span className="font-black text-black block font-mono">
               {invoice.dueDate || invoice.date || '-'}
             </span>
           </div>
         </div>
 
-        {/* Table of Items - Clean and responsive */}
+        {/* Table of Items - Clean and responsive - 9 exact columns in pure bold black */}
         <div className="overflow-x-auto print:overflow-visible">
-          <table className="w-full text-xs sm:text-sm text-right border-collapse border border-neutral-300 print:table-fixed print:w-full print:border print:border-black">
+          <table className="w-full text-xs sm:text-sm text-right border-collapse border-2 border-black print:table-fixed print:w-full print:border-2 print:border-black">
             <thead>
-              <tr className="bg-[#1A1A1A] print:bg-neutral-900 text-white text-xs font-bold print:text-[10px]">
-                <th className="py-2.5 px-2 text-center w-8 print:w-[4%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1">م</th>
-                <th className="py-2.5 px-2.5 text-center w-24 print:w-[13%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">رقم الصنف (SKU)</th>
-                <th className="py-2.5 px-3 text-right print:w-[31%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1.5">بيان الصنف والمواصفات</th>
-                <th className="py-2.5 px-2 text-center w-16 print:w-[8%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الكمية</th>
-                <th className="py-2.5 px-2 text-center w-14 print:w-[7%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1">الوحدة</th>
-                <th className="py-2.5 px-2 text-center w-14 print:w-[7%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الشد</th>
-                <th className="py-2.5 px-2.5 text-left w-24 print:w-[10%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">سعر الوحدة</th>
-                <th className="py-2.5 px-2.5 text-left w-20 print:w-[8%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الخصم</th>
-                <th className="py-2.5 px-3 text-left w-24 print:w-[12%] border-b border-neutral-300 print:border print:border-black print:py-1.5 print:px-1 font-mono">الإجمالي</th>
+              <tr className="bg-neutral-100 print:bg-white text-black font-black text-xs sm:text-sm print:text-[10px] border-b-2 border-black">
+                <th className="py-2.5 px-2 text-center w-8 print:w-[5%] border border-black font-black text-black">م</th>
+                <th className="py-2.5 px-2.5 text-center w-24 print:w-[13%] border border-black font-black text-black font-mono">رقم الصنف (SKU)</th>
+                <th className="py-2.5 px-3 text-right print:w-[30%] border border-black font-black text-black">بيان الصنف والمواصفات</th>
+                <th className="py-2.5 px-2 text-center w-16 print:w-[8%] border border-black font-black text-black font-mono">الكمية</th>
+                <th className="py-2.5 px-2 text-center w-14 print:w-[7%] border border-black font-black text-black">الوحدة</th>
+                <th className="py-2.5 px-2 text-center w-14 print:w-[7%] border border-black font-black text-black font-mono">الشد</th>
+                <th className="py-2.5 px-2.5 text-left w-24 print:w-[10%] border border-black font-black text-black font-mono">سعر الوحدة</th>
+                <th className="py-2.5 px-2.5 text-left w-20 print:w-[8%] border border-black font-black text-black font-mono">الخصم</th>
+                <th className="py-2.5 px-3 text-left w-24 print:w-[12%] border border-black font-black text-black font-mono">الإجمالي</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-200 print:divide-neutral-300">
+            <tbody className="divide-y divide-black">
               {processedLines.map((line) => {
                 const unitsPerPack = Number(line.unitsPerPack) || 1;
                 const hasDiscount = line.lineDiscAmt > 0;
 
                 return (
-                  <tr key={line.id || line.idx} className="hover:bg-neutral-50 print:hover:bg-transparent">
-                    <td className="py-2.5 px-2 text-center font-bold text-neutral-600 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                  <tr key={line.id || line.idx} className="border-b border-black">
+                    <td className="py-2 px-2 text-center font-black font-mono text-black border border-black print:text-black">
                       {line.idx}
                     </td>
-                    <td className="py-2.5 px-2.5 text-center font-mono font-bold text-black print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
+                    <td className="py-2 px-2.5 text-center font-mono font-black text-black border border-black print:text-black">
                       {line.itemSku || line.barcode || '-'}
                     </td>
-                    <td className="py-2.5 px-3 font-bold text-black print:py-1.5 print:px-1.5 print:border print:border-black print:text-[10px]">
-                      <div className="print:leading-tight">{line.itemNameAr}</div>
-                      {line.notes && <div className="text-[11px] text-neutral-500 print:text-[8.5px] font-normal mt-0.5">{line.notes}</div>}
+                    <td className="py-2 px-3 font-black text-black border border-black print:text-black">
+                      <div className="font-black text-black leading-snug">{line.itemNameAr}</div>
+                      {line.notes && <div className="text-xs font-bold text-black mt-0.5">{line.notes}</div>}
                     </td>
-                    <td className="py-2.5 px-2 text-center font-mono font-black text-black print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
+                    <td className="py-2 px-2 text-center font-mono font-black text-black border border-black print:text-black">
                       {line.quantity}
                     </td>
-                    <td className="py-2.5 px-2 text-center font-bold text-neutral-800 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                    <td className="py-2 px-2 text-center font-black text-black border border-black print:text-black">
                       {line.unit || 'حبة'}
                     </td>
-                    <td className="py-2.5 px-2 text-center font-mono font-bold text-neutral-800 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                    <td className="py-2 px-2 text-center font-mono font-black text-black border border-black print:text-black">
                       {unitsPerPack > 1 ? `شد ${unitsPerPack}` : '1'}
                     </td>
-                    <td className="py-2.5 px-2.5 text-left font-mono font-bold text-[#1A1A1A] print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
+                    <td className="py-2 px-2.5 text-left font-mono font-black text-black border border-black print:text-black">
                       {formattedCurrency(line.unitPrice)}
                     </td>
-                    <td className="py-2.5 px-2.5 text-left font-mono text-neutral-700 print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">
-                      {hasDiscount ? (
-                        <span className="font-bold text-amber-900 print:text-black">
-                          -{formattedCurrency(line.lineDiscAmt)}
-                        </span>
-                      ) : (
-                        <span className="text-neutral-400 print:text-neutral-600">-</span>
-                      )}
+                    <td className="py-2 px-2.5 text-left font-mono font-black text-black border border-black print:text-black">
+                      {hasDiscount ? `-${formattedCurrency(line.lineDiscAmt)}` : '0.00'}
                     </td>
-                    <td className="py-2.5 px-3 text-left font-mono font-black text-black print:py-1.5 print:px-1 print:border print:border-black print:text-[10px]">
+                    <td className="py-2 px-3 text-left font-mono font-black text-black border border-black print:text-black">
                       {formattedCurrency(line.lineNet)}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
-            <tfoot className="bg-[#FAF9F6] border-t-2 border-black text-xs sm:text-sm font-bold print:bg-neutral-100 print:text-[10px]">
-              <tr>
-                <td colSpan={3} className="py-2.5 px-3 text-right print:py-1.5 print:px-1.5 print:border print:border-black">
-                  عدد الأصناف: <span className="font-black font-mono">{processedLines.length}</span> | إجمالي الكمية:{' '}
-                  <span className="font-black font-mono">
+            <tfoot className="border-t-2 border-black font-black bg-neutral-50 print:bg-white text-xs sm:text-sm text-black">
+              <tr className="border-t-2 border-black">
+                <td colSpan={3} className="py-2.5 px-3 text-right font-black text-black border border-black">
+                  عدد الأصناف: <span className="font-mono font-black">{processedLines.length}</span> | إجمالي الكمية:{' '}
+                  <span className="font-mono font-black">
                     {processedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)}
                   </span>
                 </td>
-                <td colSpan={4} className="py-2.5 px-3 text-left text-neutral-700 print:py-1.5 print:px-1 print:border print:border-black print:text-black">
+                <td colSpan={4} className="py-2.5 px-3 text-left font-black text-black border border-black">
                   المجموع قبل الخصومات:
                 </td>
-                <td colSpan={2} className="py-2.5 px-3 text-left font-mono text-black font-black print:py-1.5 print:px-1 print:border print:border-black print:text-[11px]">
+                <td colSpan={2} className="py-2.5 px-3 text-left font-mono font-black text-black border border-black text-sm sm:text-base">
                   {formattedCurrency(grossItemsTotal)}
                 </td>
               </tr>
@@ -491,60 +526,60 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
         {/* Totals & Arabic Tafqeet */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
           <div className="space-y-3 flex flex-col justify-between">
-            <div className="p-3.5 bg-[#FAF9F6] rounded-lg border border-neutral-300 space-y-1.5">
-              <span className="text-xs font-bold text-neutral-700 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+            <div className="p-3.5 bg-white rounded-lg border-2 border-black space-y-1.5">
+              <span className="text-xs font-black text-black flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-black" />
                 المبلغ تفقيطاً بالكلمات والعملة الرسمية (Tafqeet):
               </span>
-              <p className="text-xs sm:text-sm font-serif font-black text-black leading-relaxed bg-white p-2.5 rounded border border-neutral-200 shadow-2xs">
+              <p className="text-xs sm:text-sm font-serif font-black text-black leading-relaxed bg-white p-2.5 rounded border-2 border-black">
                 {tafqeetCurrency(finalGrandTotal, activeCompany.functionalCurrency || 'KWD')}
               </p>
             </div>
 
             {invoice.notes && (
-              <div className="p-2.5 bg-neutral-50 rounded-lg border border-neutral-200 text-xs">
-                <span className="font-bold text-neutral-700 block mb-0.5">ملاحظات والتسليم:</span>
-                <p className="text-neutral-600 leading-relaxed">{invoice.notes}</p>
+              <div className="p-2.5 bg-white rounded-lg border-2 border-black text-xs">
+                <span className="font-black text-black block mb-0.5">ملاحظات والتسليم:</span>
+                <p className="text-black font-bold leading-relaxed">{invoice.notes}</p>
               </div>
             )}
           </div>
 
-          <div className="bg-[#FAF9F6] border border-neutral-400 p-3.5 rounded-lg space-y-2 text-xs sm:text-sm">
-            <div className="flex justify-between items-center text-neutral-700">
+          <div className="bg-white border-2 border-black p-3.5 rounded-lg space-y-2 text-xs sm:text-sm">
+            <div className="flex justify-between items-center text-black font-bold">
               <span>إجمالي قيمة الأصناف:</span>
-              <span className="font-bold font-mono text-black">{formattedCurrency(grossItemsTotal)}</span>
+              <span className="font-black font-mono text-black">{formattedCurrency(grossItemsTotal)}</span>
             </div>
 
             {totalAllDiscounts > 0 && (
-              <div className="flex justify-between items-center text-amber-900 font-bold border-t border-neutral-200 pt-1.5">
+              <div className="flex justify-between items-center text-black font-black border-t-2 border-black pt-1.5">
                 <span>إجمالي الخصومات:</span>
-                <span className="font-mono">-{formattedCurrency(totalAllDiscounts)}</span>
+                <span className="font-mono text-black">-{formattedCurrency(totalAllDiscounts)}</span>
               </div>
             )}
 
-            <div className="flex justify-between items-center text-sm sm:text-base font-black text-black pt-2 border-t-2 border-black bg-white p-2 rounded border">
+            <div className="flex justify-between items-center text-sm sm:text-base font-black text-black pt-2 border-t-2 border-black bg-neutral-50 print:bg-white p-2 rounded border-2 border-black">
               <span>صافي القيمة المستحقة:</span>
-              <span className="font-mono text-emerald-900 text-base sm:text-lg font-black">{formattedCurrency(finalGrandTotal)}</span>
+              <span className="font-mono text-black text-base sm:text-lg font-black">{formattedCurrency(finalGrandTotal)}</span>
             </div>
 
             {isCash ? (
-              <div className="flex justify-between items-center text-emerald-800 font-bold pt-1">
+              <div className="flex justify-between items-center text-black font-black pt-1">
                 <span>حالة السداد:</span>
-                <span className="font-bold">مسدد بالكامل نقداً (كاش)</span>
+                <span className="font-black">مسدد بالكامل نقداً (كاش)</span>
               </div>
             ) : (
               paid > 0 && (
-                <div className="flex justify-between items-center text-neutral-700 pt-1">
+                <div className="flex justify-between items-center text-black font-bold pt-1">
                   <span>المدفوع:</span>
-                  <span className="font-mono font-bold text-emerald-700">{formattedCurrency(paid)}</span>
+                  <span className="font-mono font-black text-black">{formattedCurrency(paid)}</span>
                 </div>
               )
             )}
 
             {!isCash && due > 0 && (
-              <div className="flex justify-between items-center text-neutral-900 font-bold">
+              <div className="flex justify-between items-center text-black font-black pt-1">
                 <span>المبلغ المستحق (آجل):</span>
-                <span className="font-mono font-black text-rose-800">{formattedCurrency(due)}</span>
+                <span className="font-mono font-black text-black">{formattedCurrency(due)}</span>
               </div>
             )}
           </div>
@@ -553,38 +588,38 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
         {/* Dynamic Professional Footer: Receiver Name, Receiver Signature, and Active Company Stamp */}
         <div className="pt-6 border-t-2 border-black grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs sm:text-sm">
           {/* 1. اسم المستلم */}
-          <div className="border border-neutral-300 rounded-lg p-3.5 bg-[#FAF9F6] space-y-2">
-            <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs">
+          <div className="border-2 border-black rounded-lg p-3.5 bg-white space-y-2">
+            <div className="font-black text-black border-b-2 border-black pb-1.5 text-xs">
               اسم المستلم:
             </div>
-            <div className="text-xs sm:text-sm pt-1 text-neutral-900 font-bold min-h-[35px] flex items-center">
+            <div className="text-xs sm:text-sm pt-1 text-black font-black min-h-[35px] flex items-center">
               {invoice.receiverName || invoice.entityNameAr || '...................................................'}
             </div>
           </div>
 
           {/* 2. توقيع المستلم */}
-          <div className="border border-neutral-300 rounded-lg p-3.5 bg-[#FAF9F6] space-y-2">
-            <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs">
+          <div className="border-2 border-black rounded-lg p-3.5 bg-white space-y-2">
+            <div className="font-black text-black border-b-2 border-black pb-1.5 text-xs">
               توقيع المستلم:
             </div>
-            <div className="text-xs pt-1 text-neutral-900 space-y-1.5">
+            <div className="text-xs pt-1 text-black font-bold space-y-1.5">
               <p>التوقيع: .......................................</p>
               <p>التاريخ: ...... / ...... / 2026</p>
             </div>
           </div>
 
           {/* 3. ختم وتوقيع المنشأة النشطة حصرياً */}
-          <div className="border border-neutral-300 rounded-lg p-3.5 bg-[#FAF9F6] space-y-2 text-center">
-            <div className="font-black text-black border-b border-neutral-300 pb-1.5 text-xs truncate" title={activeCompany.nameAr || activeCompany.headerTitle}>
+          <div className="border-2 border-black rounded-lg p-3.5 bg-white space-y-2 text-center">
+            <div className="font-black text-black border-b-2 border-black pb-1.5 text-xs truncate" title={activeCompany.nameAr || activeCompany.headerTitle}>
               {activeCompany.nameAr || activeCompany.headerTitle || 'ختم واعتماد المنشأة'}
             </div>
-            <div className="text-xs pt-1 text-neutral-800 space-y-1.5">
+            <div className="text-xs pt-1 text-black font-bold space-y-1.5">
               <p>الختم والتوقيع: .................................</p>
-              <p className="text-[10px] text-neutral-500 font-mono uppercase truncate">
+              <p className="text-[10px] text-black font-mono font-black uppercase truncate">
                 {activeCompany.nameEn || activeCompany.tradeName || 'AUTHORIZED SIGNATURE & STAMP'}
               </p>
               {(activeCompany.generalManager || activeCompany.financialManager) && (
-                <p className="text-[9.5px] text-neutral-700 font-semibold truncate">
+                <p className="text-[9.5px] text-black font-bold truncate">
                   {activeCompany.generalManager || activeCompany.financialManager}
                 </p>
               )}
@@ -594,7 +629,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({
 
         {/* Dynamic Footer Note */}
         {(activeCompany.footerNotes || activeCompany.headerNotes) && (
-          <div className="text-center text-[10px] text-neutral-500 pt-3 border-t border-neutral-300 font-sans">
+          <div className="text-center text-xs text-black pt-3 border-t-2 border-black font-bold">
             {activeCompany.footerNotes || activeCompany.headerNotes}
           </div>
         )}
