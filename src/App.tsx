@@ -41,6 +41,7 @@ import { OperationalReportsView } from './components/OperationalReportsView.tsx'
 import { UnifiedBackupRestoreHub } from './components/UnifiedBackupRestoreHub.tsx';
 import { BranchesManagementView } from './components/BranchesManagementView.tsx';
 import { WarehousesManagementView } from './components/WarehousesManagementView.tsx';
+import { EnterpriseAccordionHub } from './components/EnterpriseAccordionHub.tsx';
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
@@ -636,7 +637,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFCFB] text-[#1A1A1A] flex flex-row font-['Cairo',sans-serif] rtl">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-row font-['Cairo',sans-serif] rtl">
       {/* Auto Backup Background Controller */}
       <AutoBackupController companyId={activeCompany.id} companyName={activeCompany.nameAr} />
 
@@ -702,254 +703,27 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'dashboard' && (
-            <Dashboard
-              kpis={kpis}
+          {/* Enterprise 5-Section Collapsible Dynamic Accordion Architecture with Embedded Sub-Reports */}
+          {!['company', 'users', 'backup-restore', 'system-reset'].includes(activeTab) && (
+            <EnterpriseAccordionHub
+              company={activeCompany}
               currency={currency}
-              recentJournals={journals}
-              unpaidInvoices={unpaidInvoices}
-              allInvoices={invoices}
-              vouchers={vouchers}
-              accounts={accounts}
+              customers={customers}
+              suppliers={suppliers}
               inventory={inventory}
-              company={activeCompany}
-              onNavigateTab={(tab) => navigateToTab(tab)}
-              onNewJournal={() => navigateToTab('journals')}
-              onNewInvoice={() => navigateToTab('invoices')}
-            />
-          )}
-
-          {activeTab === 'accounts' && (
-            <ChartOfAccountsView
-              accounts={accounts}
-              journals={journals}
-              currency={currency}
-              onAddAccount={handleAddAccount}
-              onUpdateAccount={handleUpdateAccount}
-              onDeleteAccount={handleDeleteAccount}
-              onSelectAccountLedger={(accountId) => {
-                setSelectedLedgerAccountId(accountId);
-                navigateToTab('ledger');
-              }}
-            />
-          )}
-
-          {activeTab === 'reports' && (
-            <OperationalReportsView
               invoices={invoices}
               vouchers={vouchers}
-              customers={customers}
-              suppliers={suppliers}
               accounts={accounts}
               journals={journals}
-              inventory={inventory}
-              company={activeCompany}
-              currency={currency}
-              onViewInvoice={(inv) => setSelectedPrintInvoice(inv)}
-              onViewAccountStatement={(entityId, entityType) =>
-                setSelectedStatementEntity({ id: entityId, type: entityType })
-              }
-            />
-          )}
-
-          {activeTab === 'journals' && (
-            <JournalEntriesView
-              journals={journals}
-              accounts={accounts}
-              customers={customers}
-              suppliers={suppliers}
-              currency={currency}
-              companyName={company?.nameAr}
-              onCreateJournal={handleCreateJournal}
-              onUpdateJournal={handleUpdateJournal}
-              onDeleteJournal={handleDeleteJournal}
-              onReverseJournal={handleReverseJournal}
-            />
-          )}
-
-          {activeTab === 'ledger' && (
-            <GeneralLedgerView
-              accounts={accounts}
-              journals={journals}
-              currency={currency}
-              selectedAccountId={selectedLedgerAccountId}
-            />
-          )}
-
-          {activeTab === 'trial-balance' && <TrialBalanceView currency={currency} />}
-
-          {activeTab === 'financials' && <FinancialStatementsView currency={currency} />}
-
-          {(activeTab === 'statements' || activeTab === 'customer-statements') && (
-            <AccountStatementView
-              customers={customers}
-              suppliers={suppliers}
-              invoices={invoices}
-              vouchers={vouchers}
-              journals={journals}
-              company={activeCompany}
-              currency={currency}
-              initialEntityType="CUSTOMER"
-            />
-          )}
-
-          {activeTab === 'supplier-statements' && (
-            <AccountStatementView
-              customers={customers}
-              suppliers={suppliers}
-              invoices={invoices}
-              vouchers={vouchers}
-              journals={journals}
-              company={activeCompany}
-              currency={currency}
-              initialEntityType="SUPPLIER"
-            />
-          )}
-
-          {activeTab === 'quotations' && (
-            <QuotationsView
+              productionOrders={productionOrders}
               quotations={quotations}
-              customers={customers}
-              salesReps={salesReps}
-              inventory={inventory}
-              company={activeCompany}
-              currency={currency}
-              onRefreshAll={refreshAllData}
-              onNavigateTab={(tab) => navigateToTab(tab as any)}
-            />
-          )}
-
-          {activeTab === 'pos' && (
-            <PosTerminalView
-              inventory={inventory}
-              customers={customers}
-              salesReps={salesReps}
-              warehouses={warehouses}
-              company={activeCompany}
-              currency={currency}
-              onRefreshAll={refreshAllData}
-            />
-          )}
-
-          {activeTab === 'sales-reps' && (
-            <SalesRepsView
-              salesReps={salesReps}
-              invoices={invoices}
-              vouchers={vouchers}
-              company={activeCompany}
-              currency={currency}
-              onRefreshAll={refreshAllData}
-            />
-          )}
-
-          {activeTab === 'production' && (
-            <ProductionOrdersView
-              productionOrders={productionOrders}
-              inventory={inventory}
-              company={activeCompany}
-              currency={currency}
-              onCreateProductionOrder={handleCreateProductionOrder}
-            />
-          )}
-
-          {activeTab === 'stock-ledger' && (
-            <StockLedgerAndAuditView
-              inventory={inventory}
-              invoices={invoices}
-              productionOrders={productionOrders}
-              currency={currency}
-            />
-          )}
-
-          {activeTab === 'warehouses' && (
-            <WarehousesManagementView
-              company={activeCompany}
-              inventory={inventory}
-              currency={currency}
-              onRefreshAll={refreshAllData}
-              onNavigateTab={(tab) => navigateToTab(tab as any)}
-            />
-          )}
-
-          {(activeTab === 'invoices' ||
-            activeTab === 'sales-invoices' ||
-            activeTab === 'purchase-invoices' ||
-            activeTab === 'inventory' ||
-            activeTab === 'vouchers' ||
-            activeTab === 'receipt-vouchers' ||
-            activeTab === 'payment-vouchers' ||
-            activeTab === 'entities' ||
-            activeTab === 'customers' ||
-            activeTab === 'suppliers' ||
-            activeTab === 'units') && (
-            <InvoicesAndInventoryView
-              company={activeCompany}
-              customers={customers}
-              suppliers={suppliers}
-              inventory={inventory}
-              invoices={invoices}
-              vouchers={vouchers}
               salesReps={salesReps}
               warehouses={warehouses}
               units={units}
-              currency={currency}
-              activeSubTab={
-                activeTab === 'inventory'
-                  ? 'inventory'
-                  : activeTab === 'vouchers' || activeTab === 'receipt-vouchers' || activeTab === 'payment-vouchers'
-                  ? 'vouchers'
-                  : activeTab === 'entities' || activeTab === 'customers' || activeTab === 'suppliers'
-                  ? 'entities'
-                  : activeTab === 'units'
-                  ? 'units'
-                  : 'invoices'
-              }
-              initialInvoiceFilter={
-                activeTab === 'purchase-invoices'
-                  ? 'PURCHASE'
-                  : activeTab === 'sales-invoices'
-                  ? 'SALES'
-                  : undefined
-              }
-              initialEntityFilter={
-                activeTab === 'customers'
-                  ? 'CUSTOMER'
-                  : activeTab === 'suppliers'
-                  ? 'SUPPLIER'
-                  : undefined
-              }
-              initialVoucherFilter={
-                activeTab === 'payment-vouchers'
-                  ? 'PAYMENT'
-                  : activeTab === 'receipt-vouchers'
-                  ? 'RECEIPT'
-                  : undefined
-              }
-              hideSubTabBar={
-                activeTab === 'sales-invoices' ||
-                activeTab === 'purchase-invoices' ||
-                activeTab === 'customers' ||
-                activeTab === 'suppliers' ||
-                activeTab === 'receipt-vouchers' ||
-                activeTab === 'payment-vouchers'
-              }
-              customViewTitle={
-                activeTab === 'sales-invoices'
-                  ? 'فواتير ومرتجعات المبيعات والعملاء'
-                  : activeTab === 'purchase-invoices'
-                  ? 'فواتير ومردودات المشتريات والموردين'
-                  : activeTab === 'customers'
-                  ? 'دليل وسجلات العملاء والجمعيات التعاونية'
-                  : activeTab === 'suppliers'
-                  ? 'دليل وسجلات الموردين والشركات الموردة'
-                  : activeTab === 'receipt-vouchers'
-                  ? 'سندات القبض وتحصيلات العملاء'
-                  : activeTab === 'payment-vouchers'
-                  ? 'سندات الصرف وسداد الموردين'
-                  : undefined
-              }
-              onSubTabChange={(sub) => setActiveTab(sub)}
-              accounts={accounts}
+              kpis={kpis}
+              activeTab={activeTab}
+              onNavigateTab={(tab) => navigateToTab(tab)}
+              onRefreshAll={refreshAllData}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -968,21 +742,18 @@ export default function App() {
               onCreateInventoryItem={handleCreateInventoryItem}
               onUpdateInventoryItem={handleUpdateInventoryItem}
               onDeleteInventoryItem={handleDeleteInventoryItem}
-              onCreateUnit={handleCreateUnit}
-              onUpdateUnit={handleUpdateUnit}
-              onDeleteUnit={handleDeleteUnit}
-              productionOrders={productionOrders}
-              onRefreshAll={refreshAllData}
-            />
-          )}
-
-          {activeTab === 'branches' && (
-            <BranchesManagementView
-              company={activeCompany}
-              warehouses={warehouses}
-              accounts={accounts}
-              currency={currency}
-              onRefreshAll={refreshAllData}
+              handleAddAccount={handleAddAccount}
+              handleUpdateAccount={handleUpdateAccount}
+              handleDeleteAccount={handleDeleteAccount}
+              handleCreateJournal={handleCreateJournal}
+              handleUpdateJournal={handleUpdateJournal}
+              handleDeleteJournal={handleDeleteJournal}
+              handleReverseJournal={handleReverseJournal}
+              handleCreateProductionOrder={handleCreateProductionOrder}
+              onViewPrintInvoice={(inv) => setSelectedPrintInvoice(inv)}
+              onViewAccountStatement={(entityId, entityType) =>
+                setSelectedStatementEntity({ id: entityId, type: entityType })
+              }
             />
           )}
 
@@ -1024,7 +795,7 @@ export default function App() {
         </main>
 
         {/* Footer */}
-        <footer className="bg-[#F7F5F0] border-t border-[#E5E1DA] text-center text-xs text-[#8C8273] py-4 no-print font-serif">
+        <footer className="bg-white border-t border-slate-200 text-center text-xs text-slate-600 py-3.5 no-print font-sans">
           {activeCompany.nameAr} • نظام لوجيكس السحابي لإدارة وتخطيط الموارد LOGIX Enterprise Cloud ERP (IFRS Compliant)
         </footer>
       </div>

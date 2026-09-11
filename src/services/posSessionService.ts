@@ -328,6 +328,16 @@ class PosSessionService {
     return this.parkedCarts;
   }
 
+  public getSessionsHistory(): PosSession[] {
+    this.reloadForCurrentTenant();
+    return this.sessionsHistory;
+  }
+
+  public getCashTransactions(): CashRegisterTransaction[] {
+    this.reloadForCurrentTenant();
+    return this.cashTransactions;
+  }
+
   public removeParkedCart(id: string): boolean {
     this.reloadForCurrentTenant();
     const idx = this.parkedCarts.findIndex((c) => c.id === id);
