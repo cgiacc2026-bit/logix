@@ -618,7 +618,11 @@ export class AccountingEngine {
       let totalCogs = 0;
 
       const company = db.getCompany();
-      const allowNegativeStock = !!(company && company.allowNegativeInventory);
+      const allowNegativeStock = !!(
+        (invoice as any).allowNegativeStock ||
+        (invoice as any).allowNegative ||
+        (company && company.allowNegativeInventory !== false)
+      );
 
       // Validate stock availability if negative stock is NOT allowed
       if (!isReturn && !allowNegativeStock) {
@@ -843,8 +847,14 @@ export class AccountingEngine {
         const invItem = inventoryItems.find((i) => i.id === line.itemId);
         if (invItem) {
           if (isReturn) {
+            const company = db.getCompany();
+            const allowNeg = !!(
+              (invoice as any).allowNegativeStock ||
+              (invoice as any).allowNegative ||
+              (company && company.allowNegativeInventory !== false)
+            );
             db.updateInventoryItem(invItem.id, {
-              quantityOnHand: Math.max(0, invItem.quantityOnHand - line.quantity),
+              quantityOnHand: allowNeg ? invItem.quantityOnHand - line.quantity : Math.max(0, invItem.quantityOnHand - line.quantity),
             });
           } else {
             db.updateInventoryItem(invItem.id, {

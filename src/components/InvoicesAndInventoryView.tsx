@@ -691,10 +691,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       discountType: invDiscountType,
       discountValue: invDiscountValue,
       autoPost: autoPost,
-      allowNegativeStock: allowNegative,
+      allowNegativeStock: allowNegative || (company ? company.allowNegativeInventory !== false : true),
       negativeStockApprovedBy: 'admin',
       negativeStockApprovedByName: 'إدارة النظام المعتمدة',
-      negativeStockReason: reason,
+      negativeStockReason: reason || (company?.allowNegativeInventory !== false ? 'معتمد بموجب سياسة البيع بالسالب للمنشأة' : ''),
       invoiceNumber: editingInvoice?.invoiceNumber,
     };
 
@@ -751,6 +751,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
 
     // Check for negative stock on Sales invoices
+    const isCompanyNegativeAllowed = company ? company.allowNegativeInventory !== false : true;
     if (invType === 'SALES') {
       const deficits: DeficitItem[] = [];
       for (const line of validLines) {
@@ -773,21 +774,33 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       }
 
       if (deficits.length > 0) {
-        setDeficitItemsList(deficits);
-        setPendingAutoPost(autoPost);
-        setIsNegativeStockModalOpen(true);
-        return;
+        if (isCompanyNegativeAllowed) {
+          // Negative inventory is enabled in company settings - proceed directly with save without blocking!
+          try {
+            await executeSaveInvoice(autoPost, true, 'تم الاعتماد تلقائياً بموجب سياسة السماح بالبيع بالسالب للمنشأة');
+            return;
+          } catch (err: any) {
+            return alert(err.message);
+          }
+        } else {
+          // Negative sales strictly disabled in company settings: require supervisor authorization
+          setDeficitItemsList(deficits);
+          setPendingAutoPost(autoPost);
+          setIsNegativeStockModalOpen(true);
+          return;
+        }
       }
     }
 
     try {
-      await executeSaveInvoice(autoPost, false, '');
+      await executeSaveInvoice(autoPost, isCompanyNegativeAllowed, '');
     } catch (err: any) {
       alert(err.message);
     }
   };
 
   const handleConfirmNegativeStock = async (reason: string) => {
+    setIsNegativeStockModalOpen(false);
     try {
       await executeSaveInvoice(pendingAutoPost, true, reason);
     } catch (err: any) {

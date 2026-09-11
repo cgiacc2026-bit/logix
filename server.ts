@@ -1499,6 +1499,7 @@ async function startServer() {
         customerBranchName: req.body.customerBranchName || undefined,
         priceListApplied: req.body.priceListApplied || undefined,
         notes,
+        allowNegativeStock: req.body.allowNegativeStock !== undefined ? Boolean(req.body.allowNegativeStock) : true,
         createdAt: new Date().toISOString(),
       };
 

@@ -515,6 +515,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
         notes: `نقطة بيع POS - فرع: ${activeBranch.nameAr} (${
           paymentMethod === 'CASH' ? 'كاش نقدي' : paymentMethod === 'CARD' ? 'بطاقة كي نت K-Net' : 'آجل ذمم'
         })${supervisorApprovalNote ? ` [${supervisorApprovalNote}]` : ''}`,
+        allowNegativeStock: activeCompany ? activeCompany.allowNegativeInventory !== false : true,
       };
 
       const createdInvoice = await DataService.createInvoice(invData);

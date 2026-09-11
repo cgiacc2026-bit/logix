@@ -2540,9 +2540,15 @@ export class DataService {
 
     const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
     const company = localDataStore.getCompany();
-    const allowNegativeStock = Boolean(data.allowNegativeStock || company?.allowNegativeInventory);
+    // Allow negative stock if company permits it (default: true) or explicitly specified in payload
+    const companyAllowsNegative = company ? company.allowNegativeInventory !== false : true;
+    const allowNegativeStock = Boolean(
+      data.allowNegativeStock === true ||
+      data.allowNegative === true ||
+      companyAllowsNegative
+    );
 
-    // Negative Inventory Check
+    // Negative Inventory Check (only blocks if negative stock is strictly forbidden)
     if ((isSales || isPurchaseReturn) && !allowNegativeStock) {
       for (const it of lines) {
         const invItem = inventory.find((i) => i.id === it.itemId);
@@ -3135,13 +3141,19 @@ export class DataService {
       // Apply new inventory movements and warehouse stock
       const inventory = localDataStore.getInventory();
       const newWhId = updatedInvoice.warehouseId || original.warehouseId || 'wh-main-01';
+      const updateCompany = localDataStore.getCompany();
+      const allowNegStockInUpdate = Boolean(
+        data.allowNegativeStock === true ||
+        data.allowNegative === true ||
+        (updateCompany ? updateCompany.allowNegativeInventory !== false : true)
+      );
       updatedLines.forEach((it: any) => {
         const invItem = inventory.find((i) => i.id === it.itemId);
         const q = Number(it.quantity) || 0;
         let applyWhDelta = 0;
         if (invItem) {
           if (isSales) {
-            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            invItem.quantityOnHand = allowNegStockInUpdate ? invItem.quantityOnHand - q : Math.max(0, invItem.quantityOnHand - q);
             applyWhDelta = -q;
           } else if (isSalesReturn) {
             invItem.quantityOnHand += q;
@@ -3150,7 +3162,7 @@ export class DataService {
             invItem.quantityOnHand += q;
             applyWhDelta = q;
           } else if (isPurchaseReturn) {
-            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            invItem.quantityOnHand = allowNegStockInUpdate ? invItem.quantityOnHand - q : Math.max(0, invItem.quantityOnHand - q);
             applyWhDelta = -q;
           }
           syncToFirestore('erp_inventory', invItem.id, invItem);

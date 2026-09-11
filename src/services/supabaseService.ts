@@ -113,6 +113,15 @@ export class SupabaseDataService {
         defaultAccounts: data.default_accounts || p.defaultAccounts || undefined,
         themeColor: p.themeColor || (data.theme_color as any) || undefined,
         themeMode: p.themeMode || (data.theme_mode as any) || undefined,
+        allowNegativeInventory: p.allowNegativeInventory !== undefined ? p.allowNegativeInventory : (data.allow_negative_inventory !== undefined ? data.allow_negative_inventory : true),
+        allowNegativeBalance: p.allowNegativeBalance !== undefined ? p.allowNegativeBalance : (data.allow_negative_balance !== undefined ? data.allow_negative_balance : true),
+        posDefaultWarehouseId: p.posDefaultWarehouseId || 'wh-main-01',
+        posDefaultWarehouseName: p.posDefaultWarehouseName || 'مستودع المعرض ونقطة البيع (الري)',
+        posTerminalName: p.posTerminalName || 'نقطة بيع الصالة الرئيسية',
+        posDefaultAccountId: p.posDefaultAccountId,
+        posDefaultAccountName: p.posDefaultAccountName,
+        headerTitle: p.headerTitle,
+        customerBrandHeaders: p.customerBrandHeaders,
       };
 
       return profile;
@@ -137,7 +146,11 @@ export class SupabaseDataService {
         theme_color: comp.themeColor || 'blue',
         theme_mode: comp.themeMode || 'light',
         default_accounts: comp.defaultAccounts || {},
+        allow_negative_inventory: comp.allowNegativeInventory !== false,
+        allow_negative_balance: comp.allowNegativeBalance !== false,
+        pos_default_warehouse_id: comp.posDefaultWarehouseId || 'wh-main-01',
         profile_data: comp,
+        raw_data: comp,
         updated_at: new Date().toISOString(),
       };
 
@@ -208,10 +221,9 @@ export class SupabaseDataService {
           purchasePrice: Number(row.cost_price ?? raw.purchasePrice ?? raw.costPrice ?? 0),
           costPrice: Number(row.cost_price ?? raw.costPrice ?? raw.purchasePrice ?? 0),
           salePrice: Number(row.selling_price ?? row.sale_price ?? raw.salePrice ?? 0),
-          quantityOnHand: Number(row.current_balance ?? row.qty_on_hand ?? raw.quantityOnHand ?? 0),
-          minQuantityAlert: Number(row.min_limit ?? raw.minQuantityAlert ?? 10),
           isActive: raw.isActive ?? row.is_active ?? true,
           ...raw,
+          quantityOnHand: Number(row.current_balance ?? row.qty_on_hand ?? raw.quantityOnHand ?? 0),
         };
       });
     } catch (err: any) {
