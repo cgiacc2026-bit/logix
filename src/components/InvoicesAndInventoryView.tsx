@@ -707,24 +707,29 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       invoiceNumber: editingInvoice?.invoiceNumber,
     };
 
-    if (editingInvoice) {
-      if (onUpdateInvoice) {
-        await onUpdateInvoice(editingInvoice.id, invoicePayload);
+    try {
+      if (editingInvoice) {
+        if (onUpdateInvoice) {
+          await onUpdateInvoice(editingInvoice.id, invoicePayload);
+        } else {
+          await DataService.updateInvoice(editingInvoice.id, invoicePayload);
+          if (onRefreshAll) await onRefreshAll();
+        }
       } else {
-        await DataService.updateInvoice(editingInvoice.id, invoicePayload);
-        if (onRefreshAll) await onRefreshAll();
+        await onCreateInvoice(invoicePayload);
       }
-    } else {
-      await onCreateInvoice(invoicePayload);
+      setRepairFeedback('✅ تم حفظ الفاتورة وترحيل القيد المحاسبي بنجاح إلى قاعدة البيانات Supabase!');
+      setTimeout(() => setRepairFeedback(null), 7000);
+      setIsInvoiceModalOpen(false);
+      setEditingInvoice(null);
+      setIsNegativeStockModalOpen(false);
+      setInvCustomerBranchId('');
+      setInvCustomerBranchName('');
+      setInvPaidAmount(0);
+    } catch (saveErr: any) {
+      console.error('[Invoice Save CRITICAL FAILURE]:', saveErr);
+      alert(`⚠️ تنبيه حرج: فشل حفظ الفاتورة في قاعدة البيانات!\n\nتفاصيل الخطأ: ${saveErr?.message || 'تعذر الاتصال بقاعدة البيانات'}\n\nلم يتم إغلاق الشاشة للحفاظ على البيانات المدخلة.`);
     }
-    setRepairFeedback('تم إصدار وحفظ الفاتورة وترحيل القيد المحاسبي بنجاح إلى قاعدة البيانات!');
-    setTimeout(() => setRepairFeedback(null), 7000);
-    setIsInvoiceModalOpen(false);
-    setEditingInvoice(null);
-    setIsNegativeStockModalOpen(false);
-    setInvCustomerBranchId('');
-    setInvCustomerBranchName('');
-    setInvPaidAmount(0);
   };
 
   const handleImmediateRepairInvoices = async () => {

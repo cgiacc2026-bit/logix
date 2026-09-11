@@ -45,7 +45,7 @@ import {
 } from '../server/defaultData.js';
 import { safeJsonParse, safeApiFetch } from '../utils/safeJson.js';
 import { SupabaseDataService } from './supabaseService.js';
-import { isSupabaseConfigured, resolveToSupabaseCompanyUUID, toValidUUID } from './supabaseClient.js';
+import { isSupabaseConfigured, resolveToSupabaseCompanyUUID, toValidUUID, generateUUID } from './supabaseClient.js';
 import {
   DEMO_COMPANY,
   DEMO_USER,
@@ -2513,9 +2513,7 @@ export class DataService {
       if (supp) entityNameAr = supp.nameAr;
     }
 
-    const newId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-      ? crypto.randomUUID()
-      : 'inv-' + Math.random().toString(36).substr(2, 9);
+    const newId = generateUUID();
 
     const newInvoice: Invoice = {
       id: newId,
@@ -2730,35 +2728,30 @@ export class DataService {
     localDataStore.removeTombstone('invoices', newInvoice.id);
     localDataStore.removeTombstone('journals', jEntry.id);
     
-    invoices.unshift(newInvoice);
-    localDataStore.saveInvoices(invoices);
+    // Immediate Synchronous Supabase Persistence for zero-lag consistency
+    if (isSupabaseConfigured) {
+      // Must NOT swallow errors! Enforce strict database persistence before updating state.
+      await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
+
+      // Save to local store ONLY after Supabase successfully confirmed persistence
+      invoices.unshift(newInvoice);
+      localDataStore.saveInvoices(invoices);
+
+      if (jEntry) {
+        await SupabaseDataService.saveJournal(jEntry, activeCompanyId).catch((jeErr) => {
+          console.warn('[DataService] Direct saveJournal notice:', jeErr);
+        });
+      }
+    } else {
+      invoices.unshift(newInvoice);
+      localDataStore.saveInvoices(invoices);
+    }
 
     // Smart Caching update
     if ((isSales || isSalesReturn) && newInvoice.entityId) {
       this.recalculateCustomerBalance(newInvoice.entityId);
     } else if ((isPurchase || isPurchaseReturn) && newInvoice.entityId) {
       this.recalculateSupplierBalance(newInvoice.entityId);
-    }
-
-    // Immediate Synchronous Supabase Persistence for zero-lag consistency
-    if (isSupabaseConfigured) {
-      try {
-        const saved = await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
-        if (!saved) {
-          console.warn('[DataService] First direct saveInvoice returned false, retrying...');
-          await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
-        }
-        // Keep local store strictly synced with resolved invoice number
-        localDataStore.saveInvoices(invoices);
-
-        if (jEntry) {
-          await SupabaseDataService.saveJournal(jEntry, activeCompanyId).catch((jeErr) => {
-            console.warn('[DataService] Direct saveJournal notice:', jeErr);
-          });
-        }
-      } catch (syncErr) {
-        console.error('[DataService] Direct saveInvoice notice:', syncErr);
-      }
     }
     backgroundSync.enqueueInvoiceCreate(newInvoice, data, activeCompanyId);
     syncToFirestore('erp_invoices', newInvoice.id, newInvoice);

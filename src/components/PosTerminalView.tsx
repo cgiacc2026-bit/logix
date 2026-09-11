@@ -540,37 +540,51 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
 
       const createdInvoice = await DataService.createInvoice(invData);
 
+      // Strict validation: Ensure invoice was actually saved and confirmed
+      if (!createdInvoice || !createdInvoice.id) {
+        throw new Error('لم يتم تأكيد حفظ الفاتورة في قاعدة البيانات. تم إيقاف العملية لمنع فقدان البيانات.');
+      }
+
       // Record in live active POS shift session
       posSessionService.recordSale(paymentMethod, grandTotal);
       refreshSession();
 
       // Create Receipt Voucher if paid cash or card
       if (paymentMethod !== 'CREDIT') {
-        await DataService.createVoucher({
-          type: 'RECEIPT',
-          entityType: 'CUSTOMER',
-          entityId: cust ? cust.id : '',
-          entityNameAr: cust ? cust.nameAr : 'عميل كاش نقدي',
-          salesRepId: effectiveRepId,
-          salesRepName: rep ? rep.nameAr : 'المندوب العام',
-          amount: grandTotal,
-          paymentMethod: paymentMethod === 'CASH' ? 'CASH' : 'BANK',
-          invoiceId: createdInvoice.id,
-          reference: `POS-${createdInvoice.invoiceNumber}`,
-          notes: `تحصيل مباشر من نقطة البيع POS - الفاتورة ${createdInvoice.invoiceNumber}`,
-          companyId: activeCompany.id,
-          company_id: activeCompany.id,
-          branch_id: activeBranch.id,
-        });
+        try {
+          await DataService.createVoucher({
+            type: 'RECEIPT',
+            entityType: 'CUSTOMER',
+            entityId: cust ? cust.id : '',
+            entityNameAr: cust ? cust.nameAr : 'عميل كاش نقدي',
+            salesRepId: effectiveRepId,
+            salesRepName: rep ? rep.nameAr : 'المندوب العام',
+            amount: grandTotal,
+            paymentMethod: paymentMethod === 'CASH' ? 'CASH' : 'BANK',
+            invoiceId: createdInvoice.id,
+            reference: `POS-${createdInvoice.invoiceNumber}`,
+            notes: `تحصيل مباشر من نقطة البيع POS - الفاتورة ${createdInvoice.invoiceNumber}`,
+            companyId: activeCompany.id,
+            company_id: activeCompany.id,
+            branch_id: activeBranch.id,
+          });
+        } catch (vErr) {
+          console.warn('[POS] Receipt voucher notice:', vErr);
+        }
       }
 
+      // STRICT PERSISTENCE GUARANTEE:
+      // Only now is it safe to clear cart and show receipt!
       setCompletedInvoice(createdInvoice);
       setRecentInvoices((prev) => [createdInvoice, ...prev.slice(0, 14)]);
       setIsReceiptModalOpen(true);
       clearCart();
       await onRefreshAll();
     } catch (err: any) {
-      alert('حدث خطأ أثناء إتمام عملية البيع: ' + (err.message || 'خطأ غير معروف'));
+      console.error('[POS Checkout FATAL PERSISTENCE ERROR]:', err);
+      // DO NOT clear cart!
+      // DO NOT close modals or advance invoices!
+      alert(`⚠️ تنبيه حرج: فشل حفظ الفاتورة في قاعدة البيانات!\n\nتفاصيل الخطأ: ${err?.message || 'خطأ في الاتصال بقاعدة البيانات'}\n\nتم الإبقاء على أصناف السلة بالكامل لمنع فقدان العملية. يرجى إعادة المحاولة.`);
     } finally {
       setIsProcessing(false);
     }
