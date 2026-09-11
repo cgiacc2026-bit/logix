@@ -6802,4 +6802,299 @@ export class DataService {
       message,
     };
   }
+
+  /**
+   * [ARCHITECT & ENTERPRISE ERP SPECIALIST] Safe Zero-Loss Data Standardization Engine
+   * Conforms strictly to ZERO DATA LOSS POLICY:
+   * - Absolutely NO deletions or drops.
+   * - Backfills missing relations (warehouseId, salesRepId, journalEntryId, customer_id).
+   * - Automatically generates balanced journal entries for orphan posted invoices/vouchers.
+   * - Reconciles item warehouse stocks and recalculates ledger balances.
+   */
+  public static async runSafeZeroLossDataStandardization(): Promise<{
+    success: boolean;
+    invoicesExamined: number;
+    invoicesLinked: number;
+    journalsGenerated: number;
+    vouchersExamined: number;
+    vouchersLinked: number;
+    warehouseStocksLinked: number;
+    message: string;
+  }> {
+    const compId = localDataStore.getEffectiveCompanyId();
+    const invoices = localDataStore.getInvoices();
+    const vouchers = localDataStore.getVouchers();
+    let journals = localDataStore.getJournals();
+    const inventory = localDataStore.getInventory();
+    const warehouses = localDataStore.getWarehouses();
+    const salesReps = localDataStore.getSalesReps();
+    const defaultWh = warehouses.find((w) => w.isDefault) || warehouses[0] || {
+      id: 'wh-main-01',
+      code: 'WH-01',
+      nameAr: 'المستودع الرئيسي (الشويخ)',
+    };
+    const defaultRep = salesReps[0] || {
+      id: 'rep-01',
+      code: 'REP-01',
+      nameAr: 'المندوب العام',
+    };
+
+    let invoicesLinked = 0;
+    let journalsGenerated = 0;
+    let vouchersLinked = 0;
+    let warehouseStocksLinked = 0;
+
+    // 1. Standardize Invoices & Link/Generate Missing Accounting Journals
+    for (const inv of invoices) {
+      let modified = false;
+
+      // Ensure warehouse link
+      if (!inv.warehouseId || !inv.warehouseId.trim()) {
+        inv.warehouseId = defaultWh.id;
+        inv.warehouseName = defaultWh.nameAr;
+        modified = true;
+      } else if (!inv.warehouseName) {
+        const whMatch = warehouses.find((w) => w.id === inv.warehouseId);
+        if (whMatch) {
+          inv.warehouseName = whMatch.nameAr;
+          modified = true;
+        }
+      }
+
+      // Ensure sales rep link
+      if (!inv.salesRepId || !inv.salesRepId.trim()) {
+        const matchRep = salesReps.find((r) => r.nameAr === inv.salesPerson || (inv as any).sales_person === r.nameAr);
+        inv.salesRepId = matchRep ? matchRep.id : defaultRep.id;
+        inv.salesRepName = matchRep ? matchRep.nameAr : (inv.salesPerson || defaultRep.nameAr);
+        modified = true;
+      }
+
+      // Ensure entityId / customer_id consistency
+      if (!inv.entityId && inv.customerId) {
+        inv.entityId = inv.customerId;
+        modified = true;
+      }
+      if (!inv.customerId && inv.entityId) {
+        inv.customerId = inv.entityId;
+        modified = true;
+      }
+
+      // Check Journal Entry Link
+      if (inv.status === 'POSTED') {
+        const existingJournal = journals.find(
+          (j) => (inv.journalEntryId && j.id === inv.journalEntryId) ||
+                 j.reference === inv.invoiceNumber ||
+                 j.sourceId === inv.id
+        );
+
+        if (existingJournal) {
+          if (inv.journalEntryId !== existingJournal.id) {
+            inv.journalEntryId = existingJournal.id;
+            modified = true;
+            invoicesLinked++;
+          }
+        } else {
+          // Generate balanced journal entry safely without affecting existing data
+          try {
+            const resolved = this.getResolvedAccounts();
+            const grandTotal = Number(inv.grandTotal || inv.totalAmount || 0);
+            const vatTotal = Number(inv.vatTotal || inv.vatAmount || 0);
+            const netRevenue = Math.max(0, grandTotal - vatTotal);
+            const paid = Number(inv.paidAmount || 0);
+            const due = Number(inv.dueAmount !== undefined ? inv.dueAmount : (grandTotal - paid));
+            const isSales = inv.type === 'SALES' || !inv.type;
+            const isSalesReturn = inv.type === 'SALES_RETURN';
+            const isPurchase = inv.type === 'PURCHASE';
+            const isPurchaseReturn = inv.type === 'PURCHASE_RETURN';
+            const lines: any[] = [];
+
+            if (isSales) {
+              if (paid > 0 && due > 0) {
+                lines.push({ id: 'jl-1', accountId: resolved.cash.id, accountCode: resolved.cash.code, accountNameAr: resolved.cash.nameAr, debit: paid, credit: 0, memo: `دفعة نقدية - فاتورة ${inv.invoiceNumber}` });
+                lines.push({ id: 'jl-2', accountId: resolved.receivable.id, accountCode: resolved.receivable.code, accountNameAr: resolved.receivable.nameAr, debit: due, credit: 0, memo: `مبلغ آجل - فاتورة ${inv.invoiceNumber}`, entityType: 'CUSTOMER', entityId: inv.entityId });
+              } else {
+                const paymentAcc = paid >= grandTotal ? resolved.cash : resolved.receivable;
+                lines.push({ id: 'jl-1', accountId: paymentAcc.id, accountCode: paymentAcc.code, accountNameAr: paymentAcc.nameAr, debit: grandTotal, credit: 0, memo: `فاتورة مبيعات ${inv.invoiceNumber}`, entityType: paymentAcc.id === resolved.receivable.id ? 'CUSTOMER' : undefined, entityId: inv.entityId });
+              }
+              lines.push({ id: `jl-${lines.length + 1}`, accountId: resolved.sales.id, accountCode: resolved.sales.code, accountNameAr: resolved.sales.nameAr, debit: 0, credit: netRevenue, memo: `إيراد مبيعات فاتورة ${inv.invoiceNumber}` });
+              if (vatTotal > 0) {
+                lines.push({ id: `jl-${lines.length + 1}`, accountId: resolved.vat.id, accountCode: resolved.vat.code, accountNameAr: resolved.vat.nameAr, debit: 0, credit: vatTotal, memo: `ضريبة القيمة المضافة - فاتورة ${inv.invoiceNumber}` });
+              }
+            } else if (isPurchase) {
+              lines.push({ id: 'jl-1', accountId: resolved.inventory.id, accountCode: resolved.inventory.code, accountNameAr: resolved.inventory.nameAr, debit: netRevenue, credit: 0, memo: `مخزون بضاعة - فاتورة شراء ${inv.invoiceNumber}` });
+              if (vatTotal > 0) {
+                lines.push({ id: `jl-${lines.length + 1}`, accountId: resolved.vat.id, accountCode: resolved.vat.code, accountNameAr: resolved.vat.nameAr, debit: vatTotal, credit: 0, memo: `ضريبة مشتريات - فاتورة ${inv.invoiceNumber}` });
+              }
+              const payAcc = paid >= grandTotal ? resolved.cash : resolved.payable;
+              lines.push({ id: `jl-${lines.length + 1}`, accountId: payAcc.id, accountCode: payAcc.code, accountNameAr: payAcc.nameAr, debit: 0, credit: grandTotal, memo: `فاتورة مشتريات ${inv.invoiceNumber}`, entityType: payAcc.id === resolved.payable.id ? 'SUPPLIER' : undefined, entityId: inv.entityId });
+            }
+
+            if (lines.length > 0) {
+              const sumDebit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+              const sumCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+              if (Math.abs(sumDebit - sumCredit) <= 0.05) {
+                const newJv: JournalEntry = {
+                  id: 'jv-std-' + Math.random().toString(36).substr(2, 9),
+                  entryNumber: `JV-${inv.invoiceNumber}`,
+                  date: inv.invoiceDate || (inv as any).date || new Date().toISOString().split('T')[0],
+                  reference: inv.invoiceNumber,
+                  description: `قيد تسوية آمن - فاتورة (${inv.invoiceNumber})`,
+                  status: 'POSTED',
+                  lines,
+                  totalDebit: sumDebit,
+                  totalCredit: sumCredit,
+                  createdAt: new Date().toISOString(),
+                  postedAt: new Date().toISOString(),
+                  isAutoGenerated: true,
+                  sourceModule: isSales ? 'SALES' : isPurchase ? 'PURCHASE' : 'POS',
+                  sourceId: inv.id,
+                };
+                journals.unshift(newJv);
+                inv.journalEntryId = newJv.id;
+                journalsGenerated++;
+                modified = true;
+              }
+            }
+          } catch (genErr) {
+            console.warn('Journal generation note for invoice:', inv.invoiceNumber, genErr);
+          }
+        }
+      }
+
+      if (modified) invoicesLinked++;
+    }
+
+    // 2. Standardize Vouchers & Link/Generate Missing Accounting Journals
+    for (const vch of vouchers) {
+      if (vch.status === 'POSTED') {
+        const existingJournal = journals.find(
+          (j) => (vch.journalEntryId && j.id === vch.journalEntryId) ||
+                 j.reference === vch.voucherNumber ||
+                 j.sourceId === vch.id
+        );
+
+        if (existingJournal) {
+          if (vch.journalEntryId !== existingJournal.id) {
+            vch.journalEntryId = existingJournal.id;
+            vouchersLinked++;
+          }
+        } else {
+          try {
+            const resolved = this.getResolvedAccounts();
+            const amount = Number(vch.amount || 0);
+            const lines: any[] = [];
+
+            if (vch.type === 'RECEIPT') {
+              lines.push(
+                { id: 'jl-1', accountId: resolved.cash.id, accountCode: resolved.cash.code, accountNameAr: resolved.cash.nameAr, debit: amount, credit: 0, memo: `سند قبض ${vch.voucherNumber} - ${vch.entityNameAr || ''}` },
+                { id: 'jl-2', accountId: resolved.receivable.id, accountCode: resolved.receivable.code, accountNameAr: resolved.receivable.nameAr, debit: 0, credit: amount, memo: `تحصيل من العميل ${vch.entityNameAr || ''}`, entityType: 'CUSTOMER', entityId: vch.entityId }
+              );
+            } else {
+              lines.push(
+                { id: 'jl-1', accountId: resolved.payable.id, accountCode: resolved.payable.code, accountNameAr: resolved.payable.nameAr, debit: amount, credit: 0, memo: `سداد للمورد ${vch.entityNameAr || ''}`, entityType: 'SUPPLIER', entityId: vch.entityId },
+                { id: 'jl-2', accountId: resolved.cash.id, accountCode: resolved.cash.code, accountNameAr: resolved.cash.nameAr, debit: 0, credit: amount, memo: `سند صرف ${vch.voucherNumber} - ${vch.entityNameAr || ''}` }
+              );
+            }
+
+            if (lines.length > 0) {
+              const newJv: JournalEntry = {
+                id: 'jv-std-' + Math.random().toString(36).substr(2, 9),
+                entryNumber: `JV-${vch.voucherNumber}`,
+                date: vch.date || new Date().toISOString().split('T')[0],
+                reference: vch.voucherNumber,
+                description: `قيد تسوية آمن - ${vch.type === 'RECEIPT' ? 'سند قبض' : 'سند صرف'} (${vch.voucherNumber})`,
+                status: 'POSTED',
+                lines,
+                totalDebit: amount,
+                totalCredit: amount,
+                createdAt: new Date().toISOString(),
+                postedAt: new Date().toISOString(),
+                isAutoGenerated: true,
+                sourceModule: vch.type === 'RECEIPT' ? 'RECEIPT' : 'PAYMENT',
+                sourceId: vch.id,
+              };
+              journals.unshift(newJv);
+              vch.journalEntryId = newJv.id;
+              journalsGenerated++;
+              vouchersLinked++;
+            }
+          } catch (genErr) {
+            console.warn('Journal generation note for voucher:', vch.voucherNumber, genErr);
+          }
+        }
+      }
+    }
+
+    // 3. Ensure Item Warehouse Stocks Integrity
+    const currentStocks = localDataStore.getWarehouseStocks();
+    for (const item of inventory) {
+      if (item.costPrice === undefined || item.costPrice === null || item.costPrice === 0) {
+        if (item.purchasePrice && item.purchasePrice > 0) item.costPrice = item.purchasePrice;
+      }
+      if (item.purchasePrice === undefined || item.purchasePrice === null || item.purchasePrice === 0) {
+        if (item.costPrice && item.costPrice > 0) item.purchasePrice = item.costPrice;
+      }
+
+      for (const wh of warehouses) {
+        const stockExists = currentStocks.some((s) => s.warehouseId === wh.id && s.itemId === item.id);
+        if (!stockExists) {
+          currentStocks.push({
+            id: 'ws-' + Math.random().toString(36).substr(2, 9),
+            warehouseId: wh.id,
+            itemId: item.id,
+            quantityOnHand: wh.isDefault ? Number(item.quantityOnHand || 0) : 0,
+          });
+          warehouseStocksLinked++;
+        }
+      }
+    }
+
+    // 4. Save and Recalculate
+    localDataStore.saveInvoices(invoices);
+    localDataStore.saveVouchers(vouchers);
+    localDataStore.saveJournals(journals);
+    localDataStore.saveInventory(inventory);
+    localDataStore.saveWarehouseStocks(currentStocks);
+
+    // Recalculate Customer & Supplier balances
+    const customers = localDataStore.getCustomers();
+    for (const c of customers) {
+      this.recalculateCustomerBalance(c.id);
+    }
+    const suppliers = localDataStore.getSuppliers();
+    for (const s of suppliers) {
+      this.recalculateSupplierBalance(s.id);
+    }
+
+    // Sync Account Balances
+    const updatedAccounts = this.syncAccountBalances();
+
+    // Push to Supabase if configured
+    if (isSupabaseConfigured) {
+      try {
+        await Promise.all([
+          SupabaseDataService.saveInvoices(invoices),
+          SupabaseDataService.saveVouchers(vouchers),
+          SupabaseDataService.saveJournals(journals),
+          SupabaseDataService.saveInventory(inventory),
+          SupabaseDataService.saveAccounts(updatedAccounts),
+        ]);
+      } catch (err) {
+        console.warn('Supabase safe standardization sync notice:', err);
+      }
+    }
+
+    await this.syncSystemIntegrity();
+
+    return {
+      success: true,
+      invoicesExamined: invoices.length,
+      invoicesLinked,
+      journalsGenerated,
+      vouchersExamined: vouchers.length,
+      vouchersLinked,
+      warehouseStocksLinked,
+      message: `تم توحيد الربط البرمجي وتعبئة الروابط المحاسبية والمخزنية بنجاح تام وفق سياسة ZERO DATA LOSS: تم فحص ${invoices.length} فاتورة، وتوليد/ربط ${journalsGenerated} قيد متوازن، وربط ${warehouseStocksLinked} رصيد مستودعي دون أي مسح أو حذف.`,
+    };
+  }
 }

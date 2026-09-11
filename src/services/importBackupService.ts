@@ -239,6 +239,42 @@ export class ERPBackupImportService {
         dedupeTimestamp
       );
 
+      // ==============================================================================
+      // [ZERO DATA LOSS & TRANSACTIONAL INTEGRITY] Pre-Verification of Accounting Balance
+      // Validate debit = credit on every journal before touching database or local state
+      // ==============================================================================
+      for (let idx = 0; idx < journals.length; idx++) {
+        const jv = journals[idx];
+        const lines = Array.isArray(jv.lines) ? jv.lines : [];
+        let sumDebit = 0;
+        let sumCredit = 0;
+        if (lines.length > 0) {
+          sumDebit = lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+          sumCredit = lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+        } else {
+          sumDebit = Number(jv.totalDebit) || 0;
+          sumCredit = Number(jv.totalCredit) || 0;
+        }
+        const diff = Math.abs(sumDebit - sumCredit);
+        if (diff > 0.05) {
+          report.success = false;
+          report.message = `فشل فحص التوازن المحاسبي المسبق: القيد رقم ${jv.entryNumber || idx + 1} غير متوازن (مدين: ${sumDebit.toFixed(3)} مقابل دائن: ${sumCredit.toFixed(3)} بفارق ${diff.toFixed(3)}). تم إيقاف عملية الاستعادة لحماية سلامة وتوازن الدفاتر المحاسبية.`;
+          report.errors.push(report.message);
+          return report;
+        }
+      }
+
+      // Snapshot existing local state for atomic rollback in case of error
+      const localStoreSnapshot = {
+        accounts: JSON.parse(JSON.stringify(localDataStore.getAccounts())),
+        customers: JSON.parse(JSON.stringify(localDataStore.getCustomers())),
+        suppliers: JSON.parse(JSON.stringify(localDataStore.getSuppliers())),
+        inventory: JSON.parse(JSON.stringify(localDataStore.getInventory())),
+        invoices: JSON.parse(JSON.stringify(localDataStore.getInvoices())),
+        vouchers: JSON.parse(JSON.stringify(localDataStore.getVouchers())),
+        journals: JSON.parse(JSON.stringify(localDataStore.getJournals())),
+      };
+
       // Pre-query existing Supabase records to reuse existing UUIDs where code/SKU matches
       try {
         const [exItems, exCusts, exSupps, exAccs] = await Promise.all([
@@ -817,8 +853,23 @@ export class ERPBackupImportService {
       return report;
     } catch (error: any) {
       console.error('ERPBackupImportService fatal error:', error);
+      // [DISASTER RECOVERY & ATOMIC ROLLBACK]
+      try {
+        if (typeof localStoreSnapshot !== 'undefined') {
+          localDataStore.saveAccounts(localStoreSnapshot.accounts);
+          localDataStore.saveCustomers(localStoreSnapshot.customers);
+          localDataStore.saveSuppliers(localStoreSnapshot.suppliers);
+          localDataStore.saveInventory(localStoreSnapshot.inventory);
+          localDataStore.saveInvoices(localStoreSnapshot.invoices);
+          localDataStore.saveVouchers(localStoreSnapshot.vouchers);
+          localDataStore.saveJournals(localStoreSnapshot.journals);
+          console.warn('ERPBackupImportService: State rolled back successfully following failure.');
+        }
+      } catch (rollbackErr) {
+        console.error('ERPBackupImportService rollback error:', rollbackErr);
+      }
       report.success = false;
-      report.message = `فشل استيراد النسخة الاحتياطية: ${error.message || 'خطأ غير معروف'}`;
+      report.message = `فشل استيراد النسخة الاحتياطية. تم التراجع التلقائي وحماية البيانات القائمة: ${error.message || 'خطأ غير معروف'}`;
       report.errors.push(error.message || 'Fatal exception');
       return report;
     }

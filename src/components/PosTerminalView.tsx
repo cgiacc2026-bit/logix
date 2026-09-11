@@ -57,6 +57,7 @@ import {
   Check,
   FileSpreadsheet,
   RefreshCw,
+  UserCheck,
   Warehouse as WarehouseIcon,
 } from 'lucide-react';
 
@@ -125,7 +126,9 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(() => {
     return customers.length > 0 ? customers[0].id : '';
   });
-  const [selectedSalesRepId, setSelectedSalesRepId] = useState<string>('');
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState<string>(() => {
+    return salesReps && salesReps.length > 0 ? salesReps[0].id : '';
+  });
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'CREDIT'>('CASH');
   const [cashTendered, setCashTendered] = useState<number>(0);
 
@@ -433,6 +436,16 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
       return;
     }
 
+    // [ZERO DATA LOSS & ERP AUDIT ENFORCEMENT] Force warehouse and sales rep selection
+    if (!selectedWarehouseId || !selectedWarehouseId.trim()) {
+      alert('إلزامي وفق سياسة الرقابة المخزنية: الرجاء اختيار المستودع المصدر لصرف البضاعة');
+      return;
+    }
+    if (!selectedSalesRepId || !selectedSalesRepId.trim()) {
+      alert('إلزامي وفق سياسة التدقيق المالي: الرجاء اختيار مندوب المبيعات المسؤول عن عملية البيع');
+      return;
+    }
+
     // Check Credit Limits if Credit sale
     if (paymentMethod === 'CREDIT' && creditEvaluation.requiresSupervisorOverride) {
       requestSupervisorOverride(
@@ -580,6 +593,24 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
               {availableWarehouses.map((w) => (
                 <option key={w.id} value={w.id} className="bg-slate-900 text-white">
                   {w.nameAr}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="h-4 w-px bg-slate-700"></div>
+          <div className="flex items-center gap-2 text-xs" title="مندوب المبيعات المسؤول عن عملية البيع">
+            <UserCheck className="w-4 h-4 text-emerald-400" />
+            <select
+              value={selectedSalesRepId}
+              onChange={(e) => setSelectedSalesRepId(e.target.value)}
+              className="bg-transparent text-emerald-300 outline-none cursor-pointer font-semibold max-w-[140px] truncate"
+            >
+              <option value="" disabled className="bg-slate-900 text-slate-400">
+                -- اختر المندوب * --
+              </option>
+              {salesReps.map((r) => (
+                <option key={r.id} value={r.id} className="bg-slate-900 text-white">
+                  {r.nameAr}
                 </option>
               ))}
             </select>

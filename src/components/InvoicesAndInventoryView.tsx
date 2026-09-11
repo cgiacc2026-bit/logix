@@ -690,6 +690,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const handleSaveInvoice = async (e: React.FormEvent, autoPost: boolean = true) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!invEntityId) return alert('الرجاء اختيار العميل أو المورد');
+
+    // [ZERO DATA LOSS & ERP AUDIT] Force Warehouse selection on all invoices
+    if (!invWarehouseId || !invWarehouseId.trim()) {
+      return alert('إلزامي وفق سياسة الرقابة المخزنية: الرجاء اختيار المستودع/المخزن');
+    }
+
+    // [ZERO DATA LOSS & ERP AUDIT] Force Sales Rep selection on sales and returns
+    if ((invType === 'SALES' || invType === 'SALES_RETURN') && (!invSalesRepId || !invSalesRepId.trim())) {
+      return alert('إلزامي وفق سياسة التدقيق والمتابعة: الرجاء اختيار مندوب المبيعات المسؤول عن الفاتورة');
+    }
     
     // Check if at least one valid item is selected
     const validLines = invLines.filter((l) => l.itemId || l.unitPrice > 0);
