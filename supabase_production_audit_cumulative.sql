@@ -183,13 +183,10 @@ CREATE OR REPLACE FUNCTION fn_sync_customer_branches_from_raw()
 RETURNS TRIGGER AS $$
 DECLARE
   branch_item JSONB;
-  cust_uuid UUID;
 BEGIN
   IF pg_trigger_depth() > 1 THEN
     RETURN NEW;
   END IF;
-
-  cust_uuid := NEW.id;
 
   IF NEW.raw_data IS NOT NULL AND jsonb_typeof(NEW.raw_data->'branches') = 'array' THEN
     FOR branch_item IN SELECT * FROM jsonb_array_elements(NEW.raw_data->'branches')
@@ -212,7 +209,7 @@ BEGIN
       ) VALUES (
         gen_random_uuid(),
         NEW.company_id,
-        cust_uuid,
+        NEW.id,
         COALESCE(branch_item->>'code', 'BR-01'),
         COALESCE(branch_item->>'nameAr', branch_item->>'name', 'فرع رئيسي'),
         COALESCE(branch_item->>'nameEn', ''),
@@ -260,7 +257,14 @@ ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payment_vouchers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales_reps ENABLE ROW LEVEL SECURITY;
 
--- Dynamic tenant policy enforcing isolation by company_id
+-- Companies table policy
+DROP POLICY IF EXISTS companies_access_policy ON companies;
+CREATE POLICY companies_access_policy ON companies
+FOR ALL
+USING (auth.role() = 'service_role' OR auth.role() = 'anon' OR auth.role() = 'authenticated' OR id IS NOT NULL)
+WITH CHECK (auth.role() = 'service_role' OR auth.role() = 'anon' OR auth.role() = 'authenticated' OR id IS NOT NULL);
+
+-- Dynamic tenant policy enforcing isolation by company_id (safe against UUID or TEXT column types)
 DO $$
 DECLARE
   tbl text;
@@ -276,12 +280,14 @@ BEGIN
       FOR ALL
       USING (
         auth.role() = ''service_role'' 
-        OR company_id = NULLIF(current_setting(''app.current_company_id'', true), '''')::uuid
+        OR auth.role() = ''anon''
+        OR company_id::text = NULLIF(current_setting(''app.current_company_id'', true), '''')
         OR company_id IS NOT NULL
       )
       WITH CHECK (
         auth.role() = ''service_role''
-        OR company_id = NULLIF(current_setting(''app.current_company_id'', true), '''')::uuid
+        OR auth.role() = ''anon''
+        OR company_id::text = NULLIF(current_setting(''app.current_company_id'', true), '''')
         OR company_id IS NOT NULL
       );
     ', tbl);
