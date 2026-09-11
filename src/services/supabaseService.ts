@@ -1391,6 +1391,56 @@ export class SupabaseDataService {
     }
   }
 
+  public static async getJournal(id: string, targetCompanyId?: string): Promise<JournalEntry | null> {
+    if (!isSupabaseConfigured || !id) return null;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return null;
+    try {
+      const entryUuid = toValidUUID(id);
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(`id.eq.${entryUuid},entry_number.eq.${id}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) return null;
+
+      const raw = data.raw_data || {};
+      const lines = data.lines || raw.lines || [];
+      const totalDebit =
+        Number(data.total_debit) ||
+        Number(raw.totalDebit) ||
+        lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+      const totalCredit =
+        Number(data.total_credit) ||
+        Number(raw.totalCredit) ||
+        lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+      return {
+        id: raw.id || data.id || id,
+        companyId: data.company_id || companyId,
+        entryNumber: data.entry_number || raw.entryNumber,
+        date:
+          data.date ||
+          data.entry_date ||
+          (data.created_at ? data.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+        reference: data.reference || data.reference_id || raw.reference || '',
+        description: data.description || raw.description || '',
+        status: data.status || raw.status || 'POSTED',
+        lines,
+        totalDebit: Math.round(totalDebit * 1000) / 1000,
+        totalCredit: Math.round(totalCredit * 1000) / 1000,
+        createdAt: data.created_at || raw.createdAt || new Date().toISOString(),
+        ...raw,
+      };
+    } catch (err: any) {
+      console.warn('Supabase getJournal exception:', err?.message);
+      return null;
+    }
+  }
+
   public static async saveJournal(j: JournalEntry, targetCompanyId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || j.companyId || (j as any).company_id || getCurrentCompanyId();

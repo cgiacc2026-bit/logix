@@ -306,7 +306,10 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
     setIsSubmitting(true);
     try {
       if (editingJournalId && onUpdateJournal) {
+        const originalEntry = journals.find((j) => j.id === editingJournalId);
         await onUpdateJournal(editingJournalId, {
+          id: editingJournalId,
+          entryNumber: originalEntry?.entryNumber,
           date,
           reference: reference.trim(),
           description: description.trim(),
