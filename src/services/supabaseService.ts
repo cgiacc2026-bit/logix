@@ -871,12 +871,28 @@ export class SupabaseDataService {
         return invTableData.map((inv: any) => {
           const raw = inv.raw_data || {};
           const snapshot = inv.customer_snapshot || {};
-          const lines = itemsByInvoice[inv.id] || raw.lines || [];
+          const rawLines = Array.isArray(raw.lines) && raw.lines.length > 0 ? raw.lines : null;
+          const invLines = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : null;
+          const lines = (itemsByInvoice[inv.id] && itemsByInvoice[inv.id].length > 0 ? itemsByInvoice[inv.id] : null) || rawLines || invLines || [];
           const warehouseId = inv.warehouse_id || raw.warehouseId || raw.warehouse_id || 'wh-main-01';
           const warehouseName = raw.warehouseName || raw.warehouse_name || 'المستودع الرئيسي (الشويخ)';
           const salesRepId = raw.salesRepId || raw.rep_id || raw.sales_rep_id || 'rep-01';
           const salesPerson = raw.salesPerson || raw.salesRepName || 'المندوب العام';
           const salesRepName = raw.salesRepName || raw.salesPerson || 'المندوب العام';
+
+          // Clean ERP Status: Must be POSTED, DRAFT, or CANCELLED
+          let cleanStatus: 'POSTED' | 'DRAFT' | 'CANCELLED' = 'POSTED';
+          if (inv.status === 'CANCELLED' || raw.status === 'CANCELLED') cleanStatus = 'CANCELLED';
+          else if (inv.status === 'DRAFT' || raw.status === 'DRAFT') cleanStatus = 'DRAFT';
+          else cleanStatus = 'POSTED';
+
+          // Clean ERP Payment Status: Must be PAID, PARTIAL, or UNPAID
+          let cleanPaymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' = 'UNPAID';
+          if (inv.payment_status === 'PAID' || raw.paymentStatus === 'PAID') cleanPaymentStatus = 'PAID';
+          else if (inv.payment_status === 'PARTIAL' || raw.paymentStatus === 'PARTIAL') cleanPaymentStatus = 'PARTIAL';
+          else if (Number(inv.due_amount ?? 0) <= 0 && Number(inv.total_amount ?? 0) > 0) cleanPaymentStatus = 'PAID';
+          else if (Number(inv.paid_amount ?? 0) > 0) cleanPaymentStatus = 'PARTIAL';
+          else cleanPaymentStatus = 'UNPAID';
 
           return {
             ...raw,
@@ -889,7 +905,8 @@ export class SupabaseDataService {
             entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
             date: inv.invoice_date || inv.date || raw.date,
             dueDate: raw.dueDate || inv.invoice_date || inv.date,
-            status: inv.payment_status || inv.status || raw.status || 'POSTED',
+            status: cleanStatus,
+            paymentStatus: cleanPaymentStatus,
             warehouseId,
             warehouse_id: warehouseId,
             warehouseName,

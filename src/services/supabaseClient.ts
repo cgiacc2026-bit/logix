@@ -144,9 +144,10 @@ export const DEMO_CANONICAL_UUID = '00000000-0000-0000-0000-000000000099';
 export const OFFICIAL_CANONICAL_UUID = '10000000-0000-0000-0000-000000000001';
 
 export function toValidUUID(id: string): string {
+  if (!id) return ALWALEED_CANONICAL_UUID;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (uuidRegex.test(id)) return id;
-  if (id === 'company-alwaleed-client-003' || id.toLowerCase().includes('alwaleed')) {
+  if (id === 'default' || id === 'company-alwaleed-client-003' || id.toLowerCase().includes('alwaleed')) {
     return ALWALEED_CANONICAL_UUID;
   }
   if (id === 'company-demo-clients-002' || id.toLowerCase().includes('demo')) {
@@ -164,10 +165,12 @@ export function toValidUUID(id: string): string {
   return `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`;
 }
 
-export function resolveToSupabaseCompanyUUID(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
+export function resolveToSupabaseCompanyUUID(companyId: string | null | undefined): string {
+  if (!companyId) return ALWALEED_CANONICAL_UUID;
   const clean = companyId.trim();
   if (
+    !clean ||
+    clean === 'default' ||
     clean === ALWALEED_CANONICAL_UUID ||
     clean === 'company-alwaleed-client-003' ||
     clean.toLowerCase().includes('alwaleed') ||
@@ -188,7 +191,11 @@ export function resolveToSupabaseCompanyUUID(companyId: string | null | undefine
   ) {
     return OFFICIAL_CANONICAL_UUID;
   }
-  return toValidUUID(clean);
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(clean)) {
+    return clean;
+  }
+  return ALWALEED_CANONICAL_UUID;
 }
 
 export const STORAGE_KEYS = {
@@ -201,11 +208,11 @@ export const STORAGE_KEYS = {
  * Get current active company ID from authenticated local session
  * Always resolves to a canonical valid Supabase UUID to prevent UUID syntax errors
  */
-export function getCurrentCompanyId(): string | null {
-  if (typeof window === 'undefined') return null;
-  const saved = localStorage.getItem(STORAGE_KEYS.COMPANY_ID);
-  if (!saved || !saved.trim()) return null;
-  return resolveToSupabaseCompanyUUID(saved) || saved.trim();
+export function getCurrentCompanyId(): string {
+  if (typeof window === 'undefined') return ALWALEED_CANONICAL_UUID;
+  const saved = localStorage.getItem(STORAGE_KEYS.COMPANY_ID) || localStorage.getItem('activeCompanyId');
+  if (!saved || !saved.trim() || saved.trim() === 'default') return ALWALEED_CANONICAL_UUID;
+  return resolveToSupabaseCompanyUUID(saved) || ALWALEED_CANONICAL_UUID;
 }
 
 /**

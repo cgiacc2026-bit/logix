@@ -360,12 +360,18 @@ class LocalDataStore {
 
   public clearMemoryCache(): void { this.memoryFallback = {}; }
 
-  public getEffectiveCompanyId(): string | null {
+  public getEffectiveCompanyId(): string {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem('supabase_company_id');
-      if (saved && saved.trim()) return saved.trim();
+      if (saved && saved.trim() && saved.trim() !== 'default') {
+        return resolveToSupabaseCompanyUUID(saved.trim());
+      }
+      const active = window.localStorage.getItem('activeCompanyId');
+      if (active && active.trim() && active.trim() !== 'default') {
+        return resolveToSupabaseCompanyUUID(active.trim());
+      }
     }
-    return null;
+    return '20000000-0000-0000-0000-000000000001';
   }
 
   public isAlWaleedActive(): boolean {
@@ -1831,15 +1837,6 @@ export class DataService {
 
   // Journals
   public static async getJournals(): Promise<JournalEntry[]> {
-    if (isSupabaseConfigured) {
-      const fromSupabase = await SupabaseDataService.getJournals();
-      if (Array.isArray(fromSupabase)) {
-        const tombstones = localDataStore.getTombstones('journals');
-        const validSupabase = fromSupabase.filter((j) => !tombstones.has(j.id));
-        localDataStore.saveJournals(validSupabase);
-        return validSupabase;
-      }
-    }
     await this.syncServerTombstones();
     const tombstones = localDataStore.getTombstones('journals');
     let localJournals = localDataStore.getJournals().filter((j) => !tombstones.has(j.id));
@@ -2339,15 +2336,6 @@ export class DataService {
 
   // Invoices
   public static async getInvoices(): Promise<Invoice[]> {
-    if (isSupabaseConfigured) {
-      const fromSupabase = await SupabaseDataService.getInvoices();
-      if (Array.isArray(fromSupabase)) {
-        const tombstones = localDataStore.getTombstones('invoices');
-        const validSupabase = fromSupabase.filter((inv) => !tombstones.has(inv.id));
-        localDataStore.saveInvoices(validSupabase);
-        return validSupabase;
-      }
-    }
     const tombstones = localDataStore.getTombstones('invoices');
     let localInvoices = localDataStore.getInvoices().filter((inv) => !tombstones.has(inv.id));
     const isLocked = localDataStore.isRestoreLocked();
@@ -2725,8 +2713,11 @@ export class DataService {
     if (isSupabaseConfigured) {
       try {
         await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
+        if (jEntry) {
+          await SupabaseDataService.saveJournal(jEntry, activeCompanyId);
+        }
       } catch (syncErr) {
-        console.warn('[DataService] Direct saveInvoice notice:', syncErr);
+        console.warn('[DataService] Direct saveInvoice / saveJournal notice:', syncErr);
       }
     }
     backgroundSync.enqueueInvoiceCreate(newInvoice, data, activeCompanyId);
@@ -2740,10 +2731,22 @@ export class DataService {
     if (!inv) return null;
     inv.status = 'POSTED';
     localDataStore.saveInvoices(invoices);
+    const activeCompanyId = localDataStore.getEffectiveCompanyId();
     if (isSupabaseConfigured) {
-      SupabaseDataService.saveInvoice(inv).catch((err) =>
+      SupabaseDataService.saveInvoice(inv, activeCompanyId).catch((err) =>
         console.warn('Supabase postInvoice notice:', err)
       );
+      if (inv.journalEntryId) {
+        const journals = localDataStore.getJournals();
+        const jEntry = journals.find((j) => j.id === inv.journalEntryId);
+        if (jEntry) {
+          jEntry.status = 'POSTED';
+          localDataStore.saveJournals(journals);
+          SupabaseDataService.saveJournal(jEntry, activeCompanyId).catch((err) =>
+            console.warn('Supabase postInvoice journal notice:', err)
+          );
+        }
+      }
     }
     syncToFirestore('erp_invoices', id, inv);
     await safeApiFetch(`/api/invoices/${id}/post`, { method: 'POST' });

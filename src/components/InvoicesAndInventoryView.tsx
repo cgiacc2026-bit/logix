@@ -524,9 +524,19 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvDate(new Date().toISOString().split('T')[0]);
     setInvDueDate(new Date().toISOString().split('T')[0]);
     setInvPaymentTerms('CREDIT');
-    setInvSalesPerson('');
     setInvReceiverName('');
-    setInvEntityId('');
+
+    const defaultRep = allSalesReps && allSalesReps.length > 0 ? allSalesReps[0] : null;
+    const defaultRepId = defaultRep?.id || 'rep-01';
+    const defaultRepName = defaultRep?.nameAr || 'المندوب العام';
+    setInvSalesRepId(defaultRepId);
+    setInvSalesPerson(defaultRepName);
+
+    const defaultCustomer = scopedCustomers && scopedCustomers.length > 0 ? scopedCustomers[0] : null;
+    const defaultSupplier = suppliers && suppliers.length > 0 ? suppliers[0] : null;
+    const defaultEntity = (type === 'PURCHASE' || type === 'PURCHASE_RETURN') ? defaultSupplier : defaultCustomer;
+    setInvEntityId(defaultEntity ? defaultEntity.id : '');
+
     setInvCustomerBranchId('');
     setInvCustomerBranchName('');
     setInvNotes('');
@@ -534,7 +544,6 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvDiscountValue(0);
     setInvPaidAmount(0);
     setInvWarehouseId(company?.posDefaultWarehouseId || (allWarehouses.length > 0 ? allWarehouses[0].id : 'wh-main-01'));
-    setInvSalesRepId('');
     setInvLines([
       {
         itemId: '',
@@ -708,6 +717,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     } else {
       await onCreateInvoice(invoicePayload);
     }
+    setRepairFeedback('تم إصدار وحفظ الفاتورة وترحيل القيد المحاسبي بنجاح إلى قاعدة البيانات!');
+    setTimeout(() => setRepairFeedback(null), 7000);
     setIsInvoiceModalOpen(false);
     setEditingInvoice(null);
     setIsNegativeStockModalOpen(false);
@@ -732,16 +743,33 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
   const handleSaveInvoice = async (e: React.FormEvent, autoPost: boolean = true) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!invEntityId) return alert('الرجاء اختيار العميل أو المورد');
 
-    // [ZERO DATA LOSS & ERP AUDIT] Force Warehouse selection on all invoices
-    if (!invWarehouseId || !invWarehouseId.trim()) {
-      return alert('إلزامي وفق سياسة الرقابة المخزنية: الرجاء اختيار المستودع/المخزن');
+    let entityId = invEntityId;
+    if (!entityId) {
+      const defaultCustomer = scopedCustomers && scopedCustomers.length > 0 ? scopedCustomers[0] : null;
+      const defaultSupplier = suppliers && suppliers.length > 0 ? suppliers[0] : null;
+      const defaultEntity = (invType === 'PURCHASE' || invType === 'PURCHASE_RETURN') ? defaultSupplier : defaultCustomer;
+      if (defaultEntity) {
+        entityId = defaultEntity.id;
+        setInvEntityId(entityId);
+      }
+    }
+    if (!entityId) return alert('الرجاء اختيار العميل أو المورد');
+
+    // Auto-resolve Warehouse if missing
+    let warehouseId = invWarehouseId;
+    if (!warehouseId || !warehouseId.trim()) {
+      warehouseId = company?.posDefaultWarehouseId || (allWarehouses.length > 0 ? allWarehouses[0].id : 'wh-main-01');
+      setInvWarehouseId(warehouseId);
     }
 
-    // [ZERO DATA LOSS & ERP AUDIT] Force Sales Rep selection on sales and returns
-    if ((invType === 'SALES' || invType === 'SALES_RETURN') && (!invSalesRepId || !invSalesRepId.trim())) {
-      return alert('إلزامي وفق سياسة التدقيق والمتابعة: الرجاء اختيار مندوب المبيعات المسؤول عن الفاتورة');
+    // Auto-resolve Sales Rep if missing
+    let repId = invSalesRepId;
+    if ((invType === 'SALES' || invType === 'SALES_RETURN') && (!repId || !repId.trim())) {
+      const defaultRep = allSalesReps && allSalesReps.length > 0 ? allSalesReps[0] : null;
+      repId = defaultRep?.id || 'rep-01';
+      setInvSalesRepId(repId);
+      setInvSalesPerson(defaultRep?.nameAr || 'المندوب العام');
     }
     
     // Check if at least one valid item is selected
