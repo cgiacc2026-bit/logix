@@ -1536,15 +1536,37 @@ async function startServer() {
       const inv = db.getInvoices().find((i) => i.id === id);
       if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
       
-      // If posted or paid, automatically run cancellation reversal before deleting
+      // IFRS AUDITING PROTECTION: Physical deletion of POSTED / PAID invoices is strictly prohibited
       if (inv.status === 'POSTED' || inv.status === 'PAID') {
-        AccountingEngine.cancelInvoice(id, 'حذف الفاتورة بالكامل وعكس القيود والمخزون');
+        const revertResult = AccountingEngine.revertInvoicePosting(
+          id,
+          'حظر الحذف الفيزيائي لفاتورة معتمدة - تطبيق الإلغاء المحاسبي وعكس القيود IFRS'
+        );
+        return res.json({
+          success: true,
+          isVoided: true,
+          message: 'تم إلغاء الفاتورة محاسبياً وعكس القيود والمخزون وفق المعايير المالية IFRS نظراً لحظر حذف الفواتير المعتمدة فيزيائياً',
+          invoice: revertResult.invoice,
+          reversalJournal: revertResult.reversalJournal,
+        });
       }
       
+      // Physical delete allowed ONLY for DRAFT invoices
       db.deleteInvoice(id);
-      res.json({ success: true });
+      res.json({ success: true, isDeleted: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/invoices/:id/revert', (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body || {};
+      const result = AccountingEngine.revertInvoicePosting(id, reason || 'إلغاء وعكس الفاتورة محاسبياً بدقة IFRS');
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
     }
   });
 
@@ -1552,8 +1574,8 @@ async function startServer() {
     try {
       const { id } = req.params;
       const { reason } = req.body || {};
-      const cancelled = AccountingEngine.cancelInvoice(id, reason || 'إلغاء الفاتورة بطلب المستخدم');
-      res.json(cancelled);
+      const result = AccountingEngine.revertInvoicePosting(id, reason || 'إلغاء الفاتورة بطلب المستخدم');
+      res.json(result.invoice);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -1916,7 +1938,10 @@ async function startServer() {
   // Enterprise SQL Migration Script API
   app.get('/api/database/migration-script', (req, res) => {
     try {
-      const sqlPath = path.join(process.cwd(), 'supabase_enterprise_upgrade_v2.sql');
+      let sqlPath = path.join(process.cwd(), 'supabase_master_enterprise_migration.sql');
+      if (!fs.existsSync(sqlPath)) {
+        sqlPath = path.join(process.cwd(), 'supabase_enterprise_upgrade_v2.sql');
+      }
       if (fs.existsSync(sqlPath)) {
         const sql = fs.readFileSync(sqlPath, 'utf8');
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1931,9 +1956,14 @@ async function startServer() {
 
   app.get('/api/database/migration-script/download', (req, res) => {
     try {
-      const sqlPath = path.join(process.cwd(), 'supabase_enterprise_upgrade_v2.sql');
+      let sqlPath = path.join(process.cwd(), 'supabase_master_enterprise_migration.sql');
+      let filename = 'supabase_master_enterprise_migration.sql';
+      if (!fs.existsSync(sqlPath)) {
+        sqlPath = path.join(process.cwd(), 'supabase_enterprise_upgrade_v2.sql');
+        filename = 'supabase_enterprise_upgrade_v2.sql';
+      }
       if (fs.existsSync(sqlPath)) {
-        res.download(sqlPath, 'supabase_enterprise_upgrade_v2.sql');
+        res.download(sqlPath, filename);
       } else {
         res.status(404).json({ error: 'ملف التحديث غير موجود' });
       }

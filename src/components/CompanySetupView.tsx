@@ -53,6 +53,7 @@ import { formatCurrency } from '../utils/formatters.ts';
 import { ThemeService, ERP_THEMES, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
 import { ERPBackupImportService } from '../services/importBackupService.js';
 import { supabase, isSupabaseConfigured, resolveToSupabaseCompanyUUID, getCurrentCompanyId } from '../services/supabaseClient.js';
+import { SupabaseDataService } from '../services/supabaseService.js';
 
 interface CompanySetupViewProps {
   company: CompanyProfile | null;
@@ -264,33 +265,16 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   };
 
   /**
-   * Fetch saved default accounts mapping from company_settings table
+   * Fetch saved default accounts mapping from company_accounting_settings / company_settings
    */
   const fetchSavedDefaultAccounts = async () => {
     const activeCompanyId = resolveToSupabaseCompanyUUID(company?.id || getCurrentCompanyId());
     if (!isSupabaseConfigured) return;
 
     try {
-      const { data: settingsData, error } = await supabase
-        .from('company_settings')
-        .select('*')
-        .eq('company_id', activeCompanyId)
-        .maybeSingle();
-
-      if (!error && settingsData) {
-        const mappingFromSettings: Partial<DefaultAccountsMapping> = {
-          cashAccountId: settingsData.default_cash_account_id || undefined,
-          bankAccountId: settingsData.default_bank_account_id || undefined,
-          receivableAccountId: settingsData.default_receivable_account_id || undefined,
-          payableAccountId: settingsData.default_payable_account_id || undefined,
-          salesAccountId: settingsData.default_sales_account_id || undefined,
-          cogsAccountId: settingsData.default_cogs_account_id || undefined,
-          inventoryAccountId: settingsData.default_inventory_account_id || undefined,
-          retainedEarningsAccountId: settingsData.default_retained_earnings_account_id || undefined,
-          vatAccountId: settingsData.default_vat_account_id || undefined,
-        };
-
-        const validEntries = Object.entries(mappingFromSettings).filter(([_, v]) => Boolean(v));
+      const mapping = await SupabaseDataService.getCompanyAccountingSettings(activeCompanyId);
+      if (mapping) {
+        const validEntries = Object.entries(mapping).filter(([_, v]) => Boolean(v));
         if (validEntries.length > 0) {
           setFormData((prev) => ({
             ...prev,
@@ -449,18 +433,9 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     };
 
     try {
-      // 1. Upsert into company_settings
+      // 1. Upsert into company_accounting_settings and company_settings via SupabaseDataService
       if (isSupabaseConfigured) {
-        try {
-          const { error: settingsError } = await supabase
-            .from('company_settings')
-            .upsert([settingsPayload], { onConflict: 'company_id' });
-          if (settingsError) {
-            console.warn('company_settings upsert note:', settingsError.message);
-          }
-        } catch (settingsErr) {
-          console.warn('company_settings table note:', settingsErr);
-        }
+        await SupabaseDataService.saveCompanyAccountingSettings(currentMapping, activeCompanyId);
 
         // 2. Also update companies record
         try {
@@ -551,26 +526,9 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
         defaultAccounts: currentMapping,
       } as CompanyProfile;
 
-      // Upsert into company_settings
+      // Upsert into company_accounting_settings and company_settings
       if (isSupabaseConfigured) {
-        try {
-          const settingsPayload = {
-            company_id: activeCompanyId,
-            default_cash_account_id: currentMapping.cashAccountId || null,
-            default_bank_account_id: currentMapping.bankAccountId || null,
-            default_receivable_account_id: currentMapping.receivableAccountId || null,
-            default_payable_account_id: currentMapping.payableAccountId || null,
-            default_sales_account_id: currentMapping.salesAccountId || null,
-            default_cogs_account_id: currentMapping.cogsAccountId || null,
-            default_inventory_account_id: currentMapping.inventoryAccountId || null,
-            default_retained_earnings_account_id: currentMapping.retainedEarningsAccountId || null,
-            default_vat_account_id: currentMapping.vatAccountId || null,
-            updated_at: new Date().toISOString(),
-          };
-          await supabase.from('company_settings').upsert([settingsPayload], { onConflict: 'company_id' });
-        } catch (e) {
-          console.warn('company_settings upsert error:', e);
-        }
+        await SupabaseDataService.saveCompanyAccountingSettings(currentMapping, activeCompanyId);
 
         try {
           await supabase.from('companies').update({

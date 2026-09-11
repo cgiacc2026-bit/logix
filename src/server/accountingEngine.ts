@@ -1053,6 +1053,81 @@ export class AccountingEngine {
   }
 
   /**
+   * Complete IFRS-compliant Invoice Voiding & Reversal Engine (revertInvoicePosting)
+   */
+  public static revertInvoicePosting(
+    invoiceId: string,
+    reason: string = 'إلغاء وعكس الفاتورة محاسبياً بدقة IFRS'
+  ): { invoice: Invoice; reversalJournal: JournalEntry | null } {
+    return db.executeTransaction(() => {
+      const invoice = db.getInvoices().find((inv) => inv.id === invoiceId);
+      if (!invoice) throw new Error('الفاتورة غير موجودة');
+
+      let reversalJournal: JournalEntry | null = null;
+
+      // If posted or paid, reverse journal entry & stock movements & entity balance
+      if (invoice.status === 'POSTED' || invoice.status === 'PAID') {
+        const relatedJournal = db.getJournals().find(
+          (j) => j.sourceId === invoice.id || j.id === invoice.journalEntryId
+        );
+        if (relatedJournal && relatedJournal.status === 'POSTED') {
+          try {
+            reversalJournal = this.reverseJournalEntry(
+              relatedJournal.id,
+              `عكس قيد الفاتورة ${invoice.invoiceNumber}: ${reason}`
+            );
+          } catch (e) {
+            console.error('revertInvoicePosting journal reversal note:', e);
+          }
+        }
+
+        // Reverse stock movements
+        const inventoryItems = db.getInventory();
+        invoice.lines.forEach((line) => {
+          const invItem = inventoryItems.find((i) => i.id === line.itemId);
+          if (invItem) {
+            if (invoice.type === 'SALES') {
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: invItem.quantityOnHand + line.quantity,
+              });
+            } else if (invoice.type === 'PURCHASE') {
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: Math.max(0, invItem.quantityOnHand - line.quantity),
+              });
+            } else if (invoice.type === 'SALES_RETURN') {
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: Math.max(0, invItem.quantityOnHand - line.quantity),
+              });
+            } else if (invoice.type === 'PURCHASE_RETURN') {
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: invItem.quantityOnHand + line.quantity,
+              });
+            }
+          }
+        });
+
+        // Recalculate customer/supplier balance atomically
+        if (invoice.type === 'SALES' || invoice.type === 'SALES_RETURN') {
+          this.recalculateCustomerBalance(invoice.entityId);
+        } else if (invoice.type === 'PURCHASE' || invoice.type === 'PURCHASE_RETURN') {
+          this.recalculateSupplierBalance(invoice.entityId);
+        }
+      }
+
+      // Update status to CANCELLED
+      db.updateInvoice(invoice.id, {
+        status: 'CANCELLED',
+        notes:
+          (invoice.notes ? invoice.notes + '\n' : '') +
+          `[ملغاة وعكس القيود IFRS بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason}]`,
+      });
+
+      const updatedInvoice = db.getInvoices().find((i) => i.id === invoiceId)!;
+      return { invoice: updatedInvoice, reversalJournal };
+    });
+  }
+
+  /**
    * Update existing invoice with full accounting recalculation and delta adjustments
    */
   public static updateInvoice(invoiceId: string, updatedData: Partial<Invoice>): Invoice {

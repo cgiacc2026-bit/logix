@@ -127,29 +127,56 @@ export class SupabaseDataService {
         customerBrandHeaders: p.customerBrandHeaders,
       };
 
-      // Also check company_settings if defaultAccounts is missing or needs merging
+      // Also check company_accounting_settings (Primary) and company_settings (Fallback)
       try {
-        const { data: settingsData } = await supabase
-          .from('company_settings')
+        let mappingFromDb: DefaultAccountsMapping | null = null;
+
+        // 1. Primary query: company_accounting_settings
+        const { data: casData } = await supabase
+          .from('company_accounting_settings')
           .select('*')
           .eq('company_id', companyId)
           .maybeSingle();
 
-        if (settingsData) {
-          const mappingFromSettings: DefaultAccountsMapping = {
-            cashAccountId: settingsData.default_cash_account_id || profile.defaultAccounts?.cashAccountId,
-            bankAccountId: settingsData.default_bank_account_id || profile.defaultAccounts?.bankAccountId,
-            receivableAccountId: settingsData.default_receivable_account_id || profile.defaultAccounts?.receivableAccountId,
-            payableAccountId: settingsData.default_payable_account_id || profile.defaultAccounts?.payableAccountId,
-            salesAccountId: settingsData.default_sales_account_id || profile.defaultAccounts?.salesAccountId,
-            cogsAccountId: settingsData.default_cogs_account_id || profile.defaultAccounts?.cogsAccountId,
-            inventoryAccountId: settingsData.default_inventory_account_id || profile.defaultAccounts?.inventoryAccountId,
-            retainedEarningsAccountId: settingsData.default_retained_earnings_account_id || profile.defaultAccounts?.retainedEarningsAccountId,
-            vatAccountId: settingsData.default_vat_account_id || profile.defaultAccounts?.vatAccountId,
+        if (casData) {
+          mappingFromDb = {
+            cashAccountId: casData.default_cash_account_id || casData.cash_account_id,
+            bankAccountId: casData.default_bank_account_id || casData.bank_account_id,
+            receivableAccountId: casData.default_receivable_account_id || casData.receivable_account_id,
+            payableAccountId: casData.default_payable_account_id || casData.payable_account_id,
+            salesAccountId: casData.default_sales_account_id || casData.sales_account_id,
+            cogsAccountId: casData.default_cogs_account_id || casData.cogs_account_id,
+            inventoryAccountId: casData.default_inventory_account_id || casData.inventory_account_id,
+            retainedEarningsAccountId: casData.default_retained_earnings_account_id || casData.retained_earnings_account_id,
+            vatAccountId: casData.default_vat_account_id || casData.vat_account_id,
           };
+        } else {
+          // 2. Fallback query: company_settings
+          const { data: settingsData } = await supabase
+            .from('company_settings')
+            .select('*')
+            .eq('company_id', companyId)
+            .maybeSingle();
+
+          if (settingsData) {
+            mappingFromDb = {
+              cashAccountId: settingsData.default_cash_account_id || profile.defaultAccounts?.cashAccountId,
+              bankAccountId: settingsData.default_bank_account_id || profile.defaultAccounts?.bankAccountId,
+              receivableAccountId: settingsData.default_receivable_account_id || profile.defaultAccounts?.receivableAccountId,
+              payableAccountId: settingsData.default_payable_account_id || profile.defaultAccounts?.payableAccountId,
+              salesAccountId: settingsData.default_sales_account_id || profile.defaultAccounts?.salesAccountId,
+              cogsAccountId: settingsData.default_cogs_account_id || profile.defaultAccounts?.cogsAccountId,
+              inventoryAccountId: settingsData.default_inventory_account_id || profile.defaultAccounts?.inventoryAccountId,
+              retainedEarningsAccountId: settingsData.default_retained_earnings_account_id || profile.defaultAccounts?.retainedEarningsAccountId,
+              vatAccountId: settingsData.default_vat_account_id || profile.defaultAccounts?.vatAccountId,
+            };
+          }
+        }
+
+        if (mappingFromDb) {
           profile.defaultAccounts = {
             ...(profile.defaultAccounts || {}),
-            ...Object.fromEntries(Object.entries(mappingFromSettings).filter(([_, v]) => Boolean(v))),
+            ...Object.fromEntries(Object.entries(mappingFromDb).filter(([_, v]) => Boolean(v))),
           };
         }
       } catch (settingsFetchErr) {
@@ -210,7 +237,7 @@ export class SupabaseDataService {
         }
       }
 
-      // Also upsert into company_settings table for explicit relational mapping
+      // Upsert into company_accounting_settings & company_settings
       try {
         const dAcc = comp.defaultAccounts || {};
         const settingsRow: any = {
@@ -227,6 +254,12 @@ export class SupabaseDataService {
           updated_at: new Date().toISOString(),
         };
 
+        // 1. Primary: company_accounting_settings
+        await supabase
+          .from('company_accounting_settings')
+          .upsert([settingsRow], { onConflict: 'company_id' });
+
+        // 2. Dual-write: company_settings
         await supabase
           .from('company_settings')
           .upsert([settingsRow], { onConflict: 'company_id' });
@@ -239,6 +272,171 @@ export class SupabaseDataService {
       console.warn('Supabase saveCompany exception:', err?.message);
       return false;
     }
+  }
+
+  /**
+   * 1.1 COMPANY ACCOUNTING SETTINGS (ربط الحسابات الافتراضية)
+   * Single Source of Truth: company_accounting_settings table
+   */
+  public static async getCompanyAccountingSettings(targetCompanyId?: string): Promise<DefaultAccountsMapping | null> {
+    if (!isSupabaseConfigured) return null;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return null;
+
+    try {
+      // 1. Primary query: company_accounting_settings
+      const { data: casData, error: casErr } = await supabase
+        .from('company_accounting_settings')
+        .select('*')
+        .eq('company_id', companyId)
+        .maybeSingle();
+
+      if (!casErr && casData) {
+        return {
+          cashAccountId: casData.default_cash_account_id || casData.cash_account_id || undefined,
+          bankAccountId: casData.default_bank_account_id || casData.bank_account_id || undefined,
+          receivableAccountId: casData.default_receivable_account_id || casData.receivable_account_id || undefined,
+          payableAccountId: casData.default_payable_account_id || casData.payable_account_id || undefined,
+          salesAccountId: casData.default_sales_account_id || casData.sales_account_id || undefined,
+          cogsAccountId: casData.default_cogs_account_id || casData.cogs_account_id || undefined,
+          inventoryAccountId: casData.default_inventory_account_id || casData.inventory_account_id || undefined,
+          retainedEarningsAccountId: casData.default_retained_earnings_account_id || casData.retained_earnings_account_id || undefined,
+          vatAccountId: casData.default_vat_account_id || casData.vat_account_id || undefined,
+        };
+      }
+
+      // 2. Fallback query: company_settings
+      const { data: csData } = await supabase
+        .from('company_settings')
+        .select('*')
+        .eq('company_id', companyId)
+        .maybeSingle();
+
+      if (csData) {
+        return {
+          cashAccountId: csData.default_cash_account_id || csData.cash_account_id || undefined,
+          bankAccountId: csData.default_bank_account_id || csData.bank_account_id || undefined,
+          receivableAccountId: csData.default_receivable_account_id || csData.receivable_account_id || undefined,
+          payableAccountId: csData.default_payable_account_id || csData.payable_account_id || undefined,
+          salesAccountId: csData.default_sales_account_id || csData.sales_account_id || undefined,
+          cogsAccountId: csData.default_cogs_account_id || csData.cogs_account_id || undefined,
+          inventoryAccountId: csData.default_inventory_account_id || csData.inventory_account_id || undefined,
+          retainedEarningsAccountId: csData.default_retained_earnings_account_id || csData.retained_earnings_account_id || undefined,
+          vatAccountId: csData.default_vat_account_id || csData.vat_account_id || undefined,
+        };
+      }
+
+      return null;
+    } catch (err: any) {
+      console.warn('Supabase getCompanyAccountingSettings exception:', err?.message);
+      return null;
+    }
+  }
+
+  public static async saveCompanyAccountingSettings(
+    mapping: DefaultAccountsMapping,
+    targetCompanyId?: string
+  ): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+
+    try {
+      // 1. Primary write: company_accounting_settings
+      const casPayload: any = {
+        company_id: companyId,
+        default_cash_account_id: mapping.cashAccountId || null,
+        default_bank_account_id: mapping.bankAccountId || null,
+        default_receivable_account_id: mapping.receivableAccountId || null,
+        default_payable_account_id: mapping.payableAccountId || null,
+        default_sales_account_id: mapping.salesAccountId || null,
+        default_cogs_account_id: mapping.cogsAccountId || null,
+        default_inventory_account_id: mapping.inventoryAccountId || null,
+        default_retained_earnings_account_id: mapping.retainedEarningsAccountId || null,
+        default_vat_account_id: mapping.vatAccountId || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      await supabase
+        .from('company_accounting_settings')
+        .upsert([casPayload], { onConflict: 'company_id' });
+
+      // 2. Dual-sync to company_settings
+      try {
+        await supabase
+          .from('company_settings')
+          .upsert([{ ...casPayload }], { onConflict: 'company_id' });
+      } catch (csErr) {
+        // non-blocking
+      }
+
+      // 3. Dual-sync to companies table
+      try {
+        await supabase
+          .from('companies')
+          .update({
+            default_accounts: mapping,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', companyId);
+      } catch (cErr) {
+        // non-blocking
+      }
+
+      return true;
+    } catch (err: any) {
+      console.warn('Supabase saveCompanyAccountingSettings exception:', err?.message);
+      return false;
+    }
+  }
+
+  public static async autoSeedCompanyAccountingSettings(
+    targetCompanyId?: string
+  ): Promise<{ success: boolean; mapping: DefaultAccountsMapping }> {
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return { success: false, mapping: {} };
+
+    // Fetch accounts from chart_of_accounts
+    const accounts = (await this.getAccounts(companyId)) || [];
+
+    const findAcc = (codes: string[], keywords: string[], category?: string) => {
+      for (const c of codes) {
+        const found = accounts.find((a) => a.code === c);
+        if (found) return found.id;
+      }
+      for (const c of codes) {
+        const found = accounts.find((a) => a.code && a.code.startsWith(c));
+        if (found) return found.id;
+      }
+      for (const k of keywords) {
+        const found = accounts.find(
+          (a) =>
+            ((a.nameAr && a.nameAr.includes(k)) ||
+              (a.nameEn && a.nameEn.toLowerCase().includes(k.toLowerCase()))) &&
+            (!category || a.category === category)
+        );
+        if (found) return found.id;
+      }
+      return undefined;
+    };
+
+    const mapping: DefaultAccountsMapping = {
+      cashAccountId: findAcc(['1111', '1113', '1110', '111'], ['صندوق', 'نقدية', 'كاش', 'cash'], 'ASSET'),
+      bankAccountId: findAcc(['1112', '1114', '112'], ['بنك', 'مصرف', 'bank'], 'ASSET'),
+      receivableAccountId: findAcc(['1120', '1121', '112'], ['عملاء', 'مدين', 'زبائن', 'receivable', 'customer'], 'ASSET'),
+      payableAccountId: findAcc(['2110', '2111', '211'], ['مورد', 'دائن', 'موردين', 'payable', 'supplier'], 'LIABILITY'),
+      salesAccountId: findAcc(['4100', '4110', '41'], ['مبيعات', 'إيراد', 'sales', 'revenue'], 'REVENUE'),
+      cogsAccountId: findAcc(['5100', '5110', '51'], ['تكلفة', 'بضاعة مباعة', 'cogs', 'cost'], 'EXPENSE'),
+      inventoryAccountId: findAcc(['1130', '1131', '113'], ['مخزون', 'بضاعة', 'inventory', 'stock'], 'ASSET'),
+      retainedEarningsAccountId: findAcc(['3200', '3210', '32'], ['أرباح مبقاة', 'أرباح مرحلة', 'retained', 'earnings'], 'EQUITY'),
+      vatAccountId: findAcc(['2120', '2121', '212'], ['ضريبة', 'مضافة', 'vat', 'tax'], 'LIABILITY'),
+    };
+
+    await this.saveCompanyAccountingSettings(mapping, companyId);
+    return { success: true, mapping };
   }
 
   /**
@@ -875,199 +1073,119 @@ export class SupabaseDataService {
     if (!companyId) return [];
 
     try {
-      // 1. First attempt: Query modern 'invoices' table
+      // 1. Single Source of Truth: Query 'invoices' table
       const { data: invTableData, error: invErr } = await supabase
         .from('invoices')
         .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
 
-      if (!invErr && invTableData && invTableData.length > 0) {
-        // Query related invoice_items
-        const { data: itemRows } = await supabase
-          .from('invoice_items')
-          .select('*')
-          .eq('company_id', companyId);
-
-        const itemsByInvoice: Record<string, InvoiceLine[]> = {};
-        if (itemRows) {
-          itemRows.forEach((it: any) => {
-            const raw = it.raw_data || {};
-            const snapshot = it.item_snapshot || {};
-            const qty = Number(it.quantity ?? raw.quantity ?? 1);
-            const unitPrice = Number(it.unit_price ?? raw.unitPrice ?? 0);
-            const total = Number(it.total_price ?? raw.total ?? (qty * unitPrice));
-            const line: InvoiceLine = {
-              id: raw.id || it.id,
-              itemId: it.item_id || raw.itemId || snapshot.itemId || '',
-              itemSku: raw.itemSku || snapshot.sku || '',
-              barcode: raw.barcode || snapshot.barcode || '',
-              itemNameAr: it.item_name || raw.itemNameAr || snapshot.nameAr || 'صنف',
-              itemNameEn: raw.itemNameEn || '',
-              unit: raw.unit || snapshot.unit || 'حبة',
-              unitsPerPack: raw.unitsPerPack || snapshot.unitsPerPack || 1,
-              quantity: qty,
-              unitPrice: unitPrice,
-              subtotal: Number(raw.subtotal ?? (qty * unitPrice)),
-              vatRate: Number(it.tax_rate ?? raw.vatRate ?? 0),
-              vatAmount: Number(it.tax_amount ?? raw.vatAmount ?? 0),
-              discountAmount: Number(raw.discountAmount ?? 0),
-              discountPercent: Number(raw.discountPercent ?? 0),
-              total: total,
-              ...raw,
-            };
-
-            const key = it.invoice_id;
-            if (key) {
-              if (!itemsByInvoice[key]) itemsByInvoice[key] = [];
-              itemsByInvoice[key].push(line);
-            }
-          });
-        }
-
-        return invTableData.map((inv: any) => {
-          const raw = inv.raw_data || {};
-          const snapshot = inv.customer_snapshot || {};
-          const rawLines = Array.isArray(raw.lines) && raw.lines.length > 0 ? raw.lines : null;
-          const invLines = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : null;
-          const lines = (itemsByInvoice[inv.id] && itemsByInvoice[inv.id].length > 0 ? itemsByInvoice[inv.id] : null) || rawLines || invLines || [];
-          const warehouseId = inv.warehouse_id || raw.warehouseId || raw.warehouse_id || 'wh-main-01';
-          const warehouseName = raw.warehouseName || raw.warehouse_name || 'المستودع الرئيسي (الشويخ)';
-          const salesRepId = raw.salesRepId || raw.rep_id || raw.sales_rep_id || 'rep-01';
-          const salesPerson = raw.salesPerson || raw.salesRepName || 'المندوب العام';
-          const salesRepName = raw.salesRepName || raw.salesPerson || 'المندوب العام';
-
-          // Clean ERP Status: Must be POSTED, DRAFT, or CANCELLED
-          let cleanStatus: 'POSTED' | 'DRAFT' | 'CANCELLED' = 'POSTED';
-          if (inv.status === 'CANCELLED' || raw.status === 'CANCELLED') cleanStatus = 'CANCELLED';
-          else if (inv.status === 'DRAFT' || raw.status === 'DRAFT') cleanStatus = 'DRAFT';
-          else cleanStatus = 'POSTED';
-
-          // Clean ERP Payment Status: Must be PAID, PARTIAL, or UNPAID
-          let cleanPaymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' = 'UNPAID';
-          if (inv.payment_status === 'PAID' || raw.paymentStatus === 'PAID') cleanPaymentStatus = 'PAID';
-          else if (inv.payment_status === 'PARTIAL' || raw.paymentStatus === 'PARTIAL') cleanPaymentStatus = 'PARTIAL';
-          else if (Number(inv.due_amount ?? 0) <= 0 && Number(inv.total_amount ?? 0) > 0) cleanPaymentStatus = 'PAID';
-          else if (Number(inv.paid_amount ?? 0) > 0) cleanPaymentStatus = 'PARTIAL';
-          else cleanPaymentStatus = 'UNPAID';
-
-          return {
-            ...raw,
-            id: raw.id || inv.id,
-            invoiceNumber: inv.invoice_number || raw.invoiceNumber || inv.id,
-            type: raw.type || inv.invoice_type || 'SALES',
-            paymentTerms: raw.paymentTerms || (inv.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
-            entityId: inv.customer_id || raw.entityId || snapshot.id || '',
-            entityNameAr: inv.customer_name || raw.entityNameAr || snapshot.nameAr || '',
-            entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
-            date: inv.invoice_date || inv.date || raw.date,
-            dueDate: raw.dueDate || inv.invoice_date || inv.date,
-            status: cleanStatus,
-            paymentStatus: cleanPaymentStatus,
-            warehouseId,
-            warehouse_id: warehouseId,
-            warehouseName,
-            salesRepId,
-            rep_id: salesRepId,
-            sales_rep_id: salesRepId,
-            salesPerson,
-            salesRepName,
-            lines,
-            subtotal: Number(inv.subtotal ?? raw.subtotal ?? 0),
-            vatTotal: Number(inv.tax_amount ?? inv.vat_amount ?? raw.vatTotal ?? 0),
-            discountTotal: Number(raw.discountTotal ?? 0),
-            grandTotal: Number(inv.total_amount ?? raw.grandTotal ?? 0),
-            paidAmount: Number(inv.paid_amount ?? raw.paidAmount ?? 0),
-            dueAmount: Number(inv.due_amount ?? raw.dueAmount ?? 0),
-            createdAt: raw.createdAt || inv.created_at || new Date().toISOString(),
-          };
-        });
-      }
-
-      // 2. Fallback attempt: Query legacy 'sales_master' & 'sales_details'
-      let { data: masters, error: masterErr } = await supabase
-        .from('sales_master')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: false });
-
-      if (masterErr) {
-        console.warn('Supabase getInvoices masterErr:', masterErr.message);
+      if (invErr) {
+        console.warn('Supabase getInvoices error:', invErr.message);
         return [];
       }
 
-      if (!masters || masters.length === 0) return [];
+      if (!invTableData || invTableData.length === 0) {
+        return [];
+      }
 
-      const { data: details, error: detailsErr } = await supabase
-        .from('sales_details')
+      // Query related invoice_items
+      const { data: itemRows } = await supabase
+        .from('invoice_items')
         .select('*')
         .eq('company_id', companyId);
 
-      if (detailsErr) {
-        console.warn('Supabase getInvoices detailsErr:', detailsErr.message);
-      }
-
-      const detailsByInvoice: Record<string, InvoiceLine[]> = {};
-      if (details) {
-        details.forEach((d: any) => {
-          const raw = d.raw_data || {};
-          const qty = Number(d.quantity ?? d.qty ?? raw.quantity ?? 1);
-          const unitPrice = Number(d.unit_price ?? raw.unitPrice ?? 0);
-          const total = Number(d.total_price ?? d.total ?? d.line_total ?? raw.total ?? (qty * unitPrice));
+      const itemsByInvoice: Record<string, InvoiceLine[]> = {};
+      if (itemRows) {
+        itemRows.forEach((it: any) => {
+          const raw = it.raw_data || {};
+          const snapshot = it.item_snapshot || {};
+          const qty = Number(it.quantity ?? raw.quantity ?? 1);
+          const unitPrice = Number(it.unit_price ?? raw.unitPrice ?? 0);
+          const total = Number(it.total_price ?? raw.total ?? (qty * unitPrice));
           const line: InvoiceLine = {
-            id: raw.id || d.id,
-            itemId: raw.itemId || d.item_id || '',
-            itemSku: raw.itemSku || d.item_id || '',
-            barcode: raw.barcode || '',
-            itemNameAr: d.item_name || raw.itemNameAr || raw.nameAr || '',
-            itemNameEn: raw.itemNameEn || raw.nameEn || '',
-            unit: raw.unit || 'حبة',
-            unitsPerPack: raw.unitsPerPack || 1,
+            id: raw.id || it.id,
+            itemId: it.item_id || raw.itemId || snapshot.itemId || '',
+            itemSku: raw.itemSku || snapshot.sku || '',
+            barcode: raw.barcode || snapshot.barcode || '',
+            itemNameAr: it.item_name || raw.itemNameAr || snapshot.nameAr || 'صنف',
+            itemNameEn: raw.itemNameEn || '',
+            unit: raw.unit || snapshot.unit || 'حبة',
+            unitsPerPack: raw.unitsPerPack || snapshot.unitsPerPack || 1,
             quantity: qty,
             unitPrice: unitPrice,
-            subtotal: Number(raw.subtotal ?? (unitPrice * qty)),
-            vatRate: Number(d.vat_rate ?? raw.vatRate ?? 15),
-            vatAmount: Number(d.vat_amount ?? raw.vatAmount ?? 0),
+            subtotal: Number(raw.subtotal ?? (qty * unitPrice)),
+            vatRate: Number(it.tax_rate ?? raw.vatRate ?? 0),
+            vatAmount: Number(it.tax_amount ?? raw.vatAmount ?? 0),
             discountAmount: Number(raw.discountAmount ?? 0),
             discountPercent: Number(raw.discountPercent ?? 0),
             total: total,
             ...raw,
           };
 
-          const invoiceKey = d.invoice_id || d.sales_master_id;
-          if (invoiceKey) {
-            if (!detailsByInvoice[invoiceKey]) {
-              detailsByInvoice[invoiceKey] = [];
-            }
-            detailsByInvoice[invoiceKey].push(line);
+          const key = it.invoice_id;
+          if (key) {
+            if (!itemsByInvoice[key]) itemsByInvoice[key] = [];
+            itemsByInvoice[key].push(line);
           }
         });
       }
 
-      return masters.map((m: any) => {
-        const raw = m.raw_data || {};
-        const snapshot = m.customer_snapshot || {};
-        const lines = detailsByInvoice[m.id] || raw.lines || [];
+      return invTableData.map((inv: any) => {
+        const raw = inv.raw_data || {};
+        const snapshot = inv.customer_snapshot || {};
+        const rawLines = Array.isArray(raw.lines) && raw.lines.length > 0 ? raw.lines : null;
+        const invLines = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : null;
+        const lines = (itemsByInvoice[inv.id] && itemsByInvoice[inv.id].length > 0 ? itemsByInvoice[inv.id] : null) || rawLines || invLines || [];
+        const warehouseId = inv.warehouse_id || raw.warehouseId || raw.warehouse_id || 'wh-main-01';
+        const warehouseName = raw.warehouseName || raw.warehouse_name || 'المستودع الرئيسي (الشويخ)';
+        const salesRepId = raw.salesRepId || raw.rep_id || raw.sales_rep_id || 'rep-01';
+        const salesPerson = raw.salesPerson || raw.salesRepName || 'المندوب العام';
+        const salesRepName = raw.salesRepName || raw.salesPerson || 'المندوب العام';
+
+        // Clean ERP Status: Must be POSTED, DRAFT, or CANCELLED
+        let cleanStatus: 'POSTED' | 'DRAFT' | 'CANCELLED' = 'POSTED';
+        if (inv.status === 'CANCELLED' || raw.status === 'CANCELLED') cleanStatus = 'CANCELLED';
+        else if (inv.status === 'DRAFT' || raw.status === 'DRAFT') cleanStatus = 'DRAFT';
+        else cleanStatus = 'POSTED';
+
+        // Clean ERP Payment Status: Must be PAID, PARTIAL, or UNPAID
+        let cleanPaymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' = 'UNPAID';
+        if (inv.payment_status === 'PAID' || raw.paymentStatus === 'PAID') cleanPaymentStatus = 'PAID';
+        else if (inv.payment_status === 'PARTIAL' || raw.paymentStatus === 'PARTIAL') cleanPaymentStatus = 'PARTIAL';
+        else if (Number(inv.due_amount ?? 0) <= 0 && Number(inv.total_amount ?? 0) > 0) cleanPaymentStatus = 'PAID';
+        else if (Number(inv.paid_amount ?? 0) > 0) cleanPaymentStatus = 'PARTIAL';
+        else cleanPaymentStatus = 'UNPAID';
+
         return {
-          id: raw.id || m.id,
-          invoiceNumber: m.invoice_number || raw.invoiceNumber || m.id,
-          type: raw.type || 'SALES',
-          paymentTerms: raw.paymentTerms || (m.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
-          entityId: raw.entityId || m.customer_id || snapshot.id || '',
-          entityNameAr: m.customer_name || snapshot.nameAr || raw.entityNameAr || '',
-          entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
-          date: m.date || raw.date,
-          dueDate: raw.dueDate || m.date,
-          status: m.payment_status || m.status || raw.status || 'POSTED',
-          lines,
-          subtotal: Number(m.subtotal ?? raw.subtotal ?? 0),
-          vatTotal: Number(m.tax_amount ?? m.vat_amount ?? raw.vatTotal ?? 0),
-          discountTotal: Number(raw.discountTotal ?? 0),
-          grandTotal: Number(m.total_amount ?? raw.grandTotal ?? 0),
-          paidAmount: Number(m.paid_amount ?? raw.paidAmount ?? 0),
-          dueAmount: Number(m.due_amount ?? raw.dueAmount ?? 0),
-          createdAt: raw.createdAt || m.created_at || new Date().toISOString(),
           ...raw,
+          id: raw.id || inv.id,
+          invoiceNumber: inv.invoice_number || raw.invoiceNumber || inv.id,
+          type: raw.type || inv.invoice_type || 'SALES',
+          paymentTerms: raw.paymentTerms || (inv.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
+          entityId: inv.customer_id || raw.entityId || snapshot.id || '',
+          entityNameAr: inv.customer_name || raw.entityNameAr || snapshot.nameAr || '',
+          entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
+          date: inv.invoice_date || inv.date || raw.date,
+          dueDate: raw.dueDate || inv.invoice_date || inv.date,
+          status: cleanStatus,
+          paymentStatus: cleanPaymentStatus,
+          warehouseId,
+          warehouse_id: warehouseId,
+          warehouseName,
+          salesRepId,
+          rep_id: salesRepId,
+          sales_rep_id: salesRepId,
+          salesPerson,
+          salesRepName,
+          lines,
+          subtotal: Number(inv.subtotal ?? raw.subtotal ?? 0),
+          vatTotal: Number(inv.tax_amount ?? inv.vat_amount ?? raw.vatTotal ?? 0),
+          discountTotal: Number(raw.discountTotal ?? 0),
+          grandTotal: Number(inv.total_amount ?? raw.grandTotal ?? 0),
+          paidAmount: Number(inv.paid_amount ?? raw.paidAmount ?? 0),
+          dueAmount: Number(inv.due_amount ?? raw.dueAmount ?? 0),
+          createdAt: raw.createdAt || inv.created_at || new Date().toISOString(),
         };
       });
     } catch (err: any) {
@@ -1332,65 +1450,6 @@ export class SupabaseDataService {
       }
     }
 
-    // Persist to backward-compatible tables (sales_master / sales_details) non-blockingly
-    try {
-      // NOTE: sales_master only accepts exact valid columns in schema:
-      // id, company_id, invoice_number, date, customer_id, customer_name, subtotal, vat_amount, total_amount, paid_amount, due_amount, payment_status, status, payment_method, customer_snapshot, raw_data, created_at
-      const masterPayload: any = {
-        id: insertedRow.id,
-        company_id: companyId,
-        invoice_number: insertedRow.invoice_number,
-        date: inv.date || new Date().toISOString().split('T')[0],
-        customer_id: invoicePayload.customer_id,
-        customer_name: invoicePayload.customer_name,
-        subtotal: subtotal,
-        vat_amount: taxAmount,
-        total_amount: totalAmount,
-        paid_amount: paidAmount,
-        due_amount: dueAmount,
-        payment_status: paymentStatus,
-        status: inv.status || 'POSTED',
-        payment_method: inv.paymentTerms || 'CASH',
-        customer_snapshot: customerSnapshot,
-        raw_data: invoicePayload.raw_data,
-        created_at: inv.createdAt || new Date().toISOString(),
-      };
-
-      await supabase.from('sales_master').upsert([masterPayload], { onConflict: 'company_id, invoice_number' });
-
-      if (invoiceItemRows.length > 0) {
-        await supabase
-          .from('sales_details')
-          .delete()
-          .eq('company_id', companyId)
-          .or(`sales_master_id.eq.${insertedRow.id},invoice_id.eq.${insertedRow.id}`);
-
-        const detailRows = invoiceItemRows.map((it) => ({
-          id: generateUUID(),
-          company_id: companyId,
-          sales_master_id: insertedRow.id,
-          invoice_id: insertedRow.id,
-          item_id: null,
-          item_name: it.item_name,
-          quantity: it.quantity,
-          qty: it.quantity,
-          unit_price: it.unit_price,
-          total_price: it.total_price,
-          vat_rate: it.tax_rate,
-          vat_amount: it.tax_amount,
-          line_total: it.total_price,
-          total: it.total_price,
-          item_snapshot: it.item_snapshot,
-          raw_data: it.raw_data,
-        }));
-
-        await supabase.from('sales_details').insert(detailRows);
-      }
-    } catch (compatEx) {
-      // Non-fatal legacy compatibility notice
-      console.warn('[Supabase saveInvoice] legacy sales_master notice:', compatEx);
-    }
-
     return true;
   }
 
@@ -1404,6 +1463,317 @@ export class SupabaseDataService {
     return allOk;
   }
 
+  /**
+   * 3.2 IFRS VOID & INVERSION ENGINE (revertInvoicePosting)
+   * Standalone accounting cancellation and journal inversion service.
+   */
+  public static async revertInvoicePosting(
+    id: string,
+    reason: string = 'إلغاء وعكس الفاتورة محاسبياً بدقة IFRS',
+    targetCompanyId?: string
+  ): Promise<{ success: boolean; error?: string; invoice?: Invoice; reversalJournal?: JournalEntry }> {
+    if (!isSupabaseConfigured) return { success: false, error: 'قاعدة البيانات غير مهيأة' };
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return { success: false, error: 'الشركة النشطة غير محددة' };
+
+    try {
+      const invUuid = toValidUUID(id);
+
+      // 1. Fetch target invoice from invoices table
+      const { data: invRow, error: fetchErr } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(`id.eq.${invUuid},invoice_number.eq.${id}`)
+        .maybeSingle();
+
+      if (fetchErr || !invRow) {
+        return { success: false, error: 'تعذر العثور على الفاتورة في قاعدة البيانات' };
+      }
+
+      const raw = invRow.raw_data || {};
+      const invoiceNumber = invRow.invoice_number || raw.invoiceNumber || id;
+      const invoiceType = invRow.invoice_type || raw.type || 'SALES';
+      const actualInvId = invRow.id || invUuid;
+
+      // 2. Fetch invoice items
+      const { data: itemRows } = await supabase
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', actualInvId);
+
+      const lines = (itemRows && itemRows.length > 0)
+        ? itemRows.map((it: any) => ({
+            itemId: it.item_id || it.raw_data?.itemId || '',
+            quantity: Number(it.quantity ?? 1),
+            unitPrice: Number(it.unit_price ?? 0),
+            total: Number(it.total_price ?? 0),
+          }))
+        : (raw.lines || []);
+
+      // 3. Update Invoice Status to 'CANCELLED' in invoices table
+      const cancellationDate = new Date().toISOString().split('T')[0];
+      const updatedNotes = (invRow.notes || raw.notes ? (invRow.notes || raw.notes) + '\n' : '') +
+        `[ملغاة وعكس القيود IFRS بتاريخ ${cancellationDate}: ${reason}]`;
+
+      const updatedRaw = {
+        ...raw,
+        status: 'CANCELLED',
+        notes: updatedNotes,
+        cancelledAt: new Date().toISOString(),
+        cancellationReason: reason,
+      };
+
+      await supabase
+        .from('invoices')
+        .update({
+          status: 'CANCELLED',
+          notes: updatedNotes,
+          raw_data: updatedRaw,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', actualInvId)
+        .eq('company_id', companyId);
+
+      // 4. Reverse Accounting Journal Entries (IFRS compliant)
+      let origJournal: any = null;
+      try {
+        const { data: jRows } = await supabase
+          .from('journal_entries')
+          .select('*')
+          .eq('company_id', companyId)
+          .or(`source_id.eq.${actualInvId},reference.eq.${invoiceNumber}`);
+
+        if (jRows && jRows.length > 0) {
+          origJournal = jRows[0];
+        }
+      } catch (jErr) {
+        console.warn('Journal lookup notice:', jErr);
+      }
+
+      let reversalJournalEntry: JournalEntry | undefined = undefined;
+
+      if (origJournal) {
+        const origLines = Array.isArray(origJournal.lines) ? origJournal.lines : (origJournal.raw_data?.lines || []);
+        const reversedLines = origLines.map((l: any, idx: number) => ({
+          id: `rev-line-${idx + 1}`,
+          accountId: l.accountId || l.account_id || '',
+          accountCode: l.accountCode || l.account_code || '',
+          accountNameAr: l.accountNameAr || l.account_name_ar || l.account_name || 'حساب',
+          debit: Number(l.credit || 0),
+          credit: Number(l.debit || 0),
+          memo: `عكس قيد فاتورة ملغاة (${invoiceNumber}): ${l.memo || ''}`,
+        }));
+
+        const revJournalUuid = generateUUID();
+        const revEntryNumber = `REV-${origJournal.entry_number || origJournal.raw_data?.entryNumber || invoiceNumber}`;
+
+        reversalJournalEntry = {
+          id: revJournalUuid,
+          companyId,
+          entryNumber: revEntryNumber,
+          date: cancellationDate,
+          reference: invoiceNumber,
+          description: `عكس وإلغاء قيد الفاتورة ${invoiceNumber} - السبب: ${reason}`,
+          status: 'POSTED',
+          lines: reversedLines,
+          totalDebit: Number(origJournal.total_credit || origJournal.totalCredit || 0),
+          totalCredit: Number(origJournal.total_debit || origJournal.totalDebit || 0),
+          createdAt: new Date().toISOString(),
+          postedAt: new Date().toISOString(),
+          isAutoGenerated: true,
+          sourceModule: 'INVOICE_REVERSAL',
+          sourceId: actualInvId,
+        };
+
+        try {
+          await supabase.from('journal_entries').upsert([{
+            id: revJournalUuid,
+            company_id: companyId,
+            entry_number: revEntryNumber,
+            date: cancellationDate,
+            reference: invoiceNumber,
+            description: reversalJournalEntry.description,
+            status: 'POSTED',
+            total_debit: reversalJournalEntry.totalDebit,
+            total_credit: reversalJournalEntry.totalCredit,
+            lines: reversedLines,
+            raw_data: reversalJournalEntry,
+            created_at: new Date().toISOString(),
+          }]);
+        } catch (saveJErr: any) {
+          console.warn('Supabase save reversal journal error:', saveJErr?.message);
+        }
+      } else {
+        // Construct IFRS reversal entry using company_accounting_settings
+        const mapping = await this.getCompanyAccountingSettings(companyId);
+        const subtotal = Number(invRow.subtotal || raw.subtotal || 0);
+        const taxAmount = Number(invRow.tax_amount || invRow.vat_amount || raw.vatTotal || 0);
+        const totalAmount = Number(invRow.total_amount || raw.grandTotal || (subtotal + taxAmount));
+
+        if (totalAmount > 0) {
+          const revJournalUuid = generateUUID();
+          const revEntryNumber = `REV-${invoiceNumber}`;
+          const lines: any[] = [];
+
+          if (subtotal > 0) {
+            lines.push({
+              id: 'rev-line-1',
+              accountId: mapping?.salesAccountId || 'acc-sales',
+              accountCode: '4100',
+              accountNameAr: 'المبيعات - إيراد (عكس قيد)',
+              debit: subtotal,
+              credit: 0,
+              memo: `عكس إيراد مبيعات فاتورة ملغاة ${invoiceNumber}`,
+            });
+          }
+          if (taxAmount > 0) {
+            lines.push({
+              id: 'rev-line-2',
+              accountId: mapping?.vatAccountId || 'acc-vat',
+              accountCode: '2120',
+              accountNameAr: 'ضريبة القيمة المضافة المحصلة (عكس قيد)',
+              debit: taxAmount,
+              credit: 0,
+              memo: `عكس ضريبة فاتورة ملغاة ${invoiceNumber}`,
+            });
+          }
+          const isCredit = (invRow.payment_method || raw.paymentTerms) === 'CREDIT';
+          lines.push({
+            id: 'rev-line-3',
+            accountId: isCredit ? (mapping?.receivableAccountId || 'acc-receivable') : (mapping?.cashAccountId || 'acc-cash'),
+            accountCode: isCredit ? '1120' : '1111',
+            accountNameAr: isCredit ? 'العملاء - ذمم مدينة (عكس قيد)' : 'الصندوق / البنك (عكس قيد)',
+            debit: 0,
+            credit: totalAmount,
+            memo: `عكس استحقاق فاتورة ملغاة ${invoiceNumber}`,
+          });
+
+          reversalJournalEntry = {
+            id: revJournalUuid,
+            companyId,
+            entryNumber: revEntryNumber,
+            date: cancellationDate,
+            reference: invoiceNumber,
+            description: `عكس قيد الفاتورة ${invoiceNumber} وفق معايير IFRS - ${reason}`,
+            status: 'POSTED',
+            lines,
+            totalDebit: totalAmount,
+            totalCredit: totalAmount,
+            createdAt: new Date().toISOString(),
+            postedAt: new Date().toISOString(),
+            isAutoGenerated: true,
+            sourceModule: 'INVOICE_REVERSAL',
+            sourceId: actualInvId,
+          };
+
+          try {
+            await supabase.from('journal_entries').upsert([{
+              id: revJournalUuid,
+              company_id: companyId,
+              entry_number: revEntryNumber,
+              date: cancellationDate,
+              reference: invoiceNumber,
+              description: reversalJournalEntry.description,
+              status: 'POSTED',
+              total_debit: totalAmount,
+              total_credit: totalAmount,
+              lines,
+              raw_data: reversalJournalEntry,
+              created_at: new Date().toISOString(),
+            }]);
+          } catch (createJErr: any) {
+            console.warn('Create reversal journal notice:', createJErr?.message);
+          }
+        }
+      }
+
+      // 5. Restore Inventory Stock in items table
+      for (const line of lines) {
+        if (!line.itemId || !line.quantity) continue;
+        const qty = Number(line.quantity);
+        try {
+          const { data: itm } = await supabase
+            .from('items')
+            .select('id, current_balance, raw_data')
+            .eq('company_id', companyId)
+            .or(`id.eq.${toValidUUID(line.itemId)},sku.eq.${line.itemId}`)
+            .maybeSingle();
+
+          if (itm) {
+            const curBal = Number(itm.current_balance ?? 0);
+            const newBal = invoiceType === 'SALES' ? (curBal + qty) : Math.max(0, curBal - qty);
+            const itmRaw = itm.raw_data || {};
+            itmRaw.quantityOnHand = newBal;
+            itmRaw.current_balance = newBal;
+
+            await supabase
+              .from('items')
+              .update({
+                current_balance: newBal,
+                raw_data: itmRaw,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', itm.id)
+              .eq('company_id', companyId);
+          }
+        } catch (stockErr: any) {
+          console.warn('Stock restoration notice for item:', line.itemId, stockErr?.message);
+        }
+      }
+
+      // 6. Recalculate Customer balance in customers table
+      const customerId = invRow.customer_id || raw.entityId;
+      if (customerId) {
+        try {
+          const custUuid = toValidUUID(customerId);
+          const { data: custRow } = await supabase
+            .from('customers')
+            .select('id, balance, raw_data')
+            .eq('company_id', companyId)
+            .or(`id.eq.${custUuid},code.eq.${customerId}`)
+            .maybeSingle();
+
+          if (custRow) {
+            const dueAmt = Number(invRow.due_amount ?? raw.dueAmount ?? invRow.total_amount ?? 0);
+            const currentCustBal = Number(custRow.balance ?? 0);
+            const newCustBal = currentCustBal - dueAmt;
+            const custRaw = custRow.raw_data || {};
+            custRaw.balance = newCustBal;
+
+            await supabase
+              .from('customers')
+              .update({
+                balance: newCustBal,
+                raw_data: custRaw,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', custRow.id)
+              .eq('company_id', companyId);
+          }
+        } catch (custErr: any) {
+          console.warn('Customer balance recalculation notice:', custErr?.message);
+        }
+      }
+
+      return {
+        success: true,
+        invoice: {
+          ...raw,
+          id: actualInvId,
+          invoiceNumber,
+          status: 'CANCELLED',
+          notes: updatedNotes,
+        },
+        reversalJournal: reversalJournalEntry,
+      };
+    } catch (err: any) {
+      console.warn('Supabase revertInvoicePosting exception:', err?.message);
+      return { success: false, error: err?.message || 'فشلت عملية الإلغاء وعكس القيود' };
+    }
+  }
+
   public static async deleteInvoice(id: string, targetCompanyId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
@@ -1412,31 +1782,37 @@ export class SupabaseDataService {
     try {
       const invUuid = toValidUUID(id);
 
-      // 1. Delete from modern invoice_items & invoices (CASCADE takes care of items, but explicit delete for safety)
-      try {
-        await supabase
-          .from('invoice_items')
-          .delete()
-          .eq('invoice_id', invUuid);
+      // 1. Fetch invoice to inspect status
+      const { data: invRow } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(`id.eq.${invUuid},invoice_number.eq.${id}`)
+        .maybeSingle();
 
-        await supabase
-          .from('invoices')
-          .delete()
-          .eq('company_id', companyId)
-          .or(`id.eq.${invUuid},invoice_number.eq.${id}`);
-      } catch (err: any) {
-        console.warn('Supabase delete invoices table notice:', err?.message);
+      if (invRow) {
+        const status = invRow.status || (invRow.raw_data && invRow.raw_data.status);
+        if (status === 'POSTED' || status === 'PAID') {
+          // STRICT IFRS AUDITING PROTECTION:
+          // Physical deletion of posted invoices is strictly prohibited.
+          // Route to accounting voiding & reversal engine.
+          const revResult = await this.revertInvoicePosting(
+            invRow.id || id,
+            'حظر الحذف الفيزيائي لفاتورة معتمدة - تم تطبيق الإلغاء المحاسبي وعكس القيود IFRS',
+            companyId
+          );
+          return revResult.success;
+        }
       }
 
-      // 2. Delete from legacy sales_details & sales_master
+      // 2. Physical delete with CASCADE for DRAFT invoices
       await supabase
-        .from('sales_details')
+        .from('invoice_items')
         .delete()
-        .eq('company_id', companyId)
-        .or(`sales_master_id.eq.${invUuid},invoice_id.eq.${invUuid}`);
+        .eq('invoice_id', invUuid);
 
       const { error } = await supabase
-        .from('sales_master')
+        .from('invoices')
         .delete()
         .eq('company_id', companyId)
         .or(`id.eq.${invUuid},invoice_number.eq.${id}`);
@@ -1450,6 +1826,7 @@ export class SupabaseDataService {
 
   /**
    * 4.1 PAYMENT_VOUCHERS (سندات القبض والصرف)
+   * Single Source of Truth: payment_vouchers table
    */
   public static async getVouchers(targetCompanyId?: string): Promise<PaymentVoucher[]> {
     if (!isSupabaseConfigured) return [];
@@ -1465,40 +1842,10 @@ export class SupabaseDataService {
 
       if (error) {
         console.warn('Supabase getVouchers error:', error.message);
-      }
-
-      if (!data || data.length === 0) {
-        // Fallback to vouchers table if payment_vouchers is empty
-        try {
-          const { data: vData } = await supabase
-            .from('vouchers')
-            .select('*')
-            .eq('company_id', companyId)
-            .order('created_at', { ascending: false });
-          if (vData && vData.length > 0) {
-            return vData.map((row: any) => ({
-              id: row.id,
-              companyId: row.company_id || companyId,
-              voucherNumber: row.voucher_number || row.id,
-              type: (row.voucher_type || row.type || 'RECEIPT') as 'RECEIPT' | 'PAYMENT',
-              date: row.date || (row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-              amount: Number(row.amount || 0),
-              paymentMethod: 'CASH' as const,
-              entityType: 'CUSTOMER' as const,
-              entityId: '',
-              entityNameAr: row.entity_name || '',
-              bankAccountId: row.account_id || '',
-              reference: '',
-              notes: row.description || '',
-              status: 'POSTED' as const,
-              createdAt: row.created_at || new Date().toISOString(),
-            }));
-          }
-        } catch (fErr) {
-          // ignore
-        }
         return [];
       }
+
+      if (!data || data.length === 0) return [];
 
       return data.map((row: any) => {
         const raw = row.raw_data || {};
@@ -1559,40 +1906,9 @@ export class SupabaseDataService {
         created_at: v.createdAt || new Date().toISOString(),
       };
 
-      // --- FAST-PATH: ATOMIC DATABASE RPC (PostgreSQL Stored Procedure) ---
-      try {
-        const { data: rpcRes, error: rpcErr } = await supabase.rpc('save_voucher_atomic', {
-          p_company_id: companyId,
-          p_voucher: payload,
-        });
-
-        if (!rpcErr && rpcRes && (rpcRes as any).success) {
-          return true;
-        }
-      } catch (rpcEx: any) {
-        // Graceful fallback
-      }
-
       const { error } = await supabase
         .from('payment_vouchers')
         .upsert([payload]);
-
-      // Dual-write to vouchers table for multi-tenant schema compatibility
-      try {
-        await supabase.from('vouchers').upsert([
-          {
-            id: String(voucherUuid),
-            company_id: String(companyId),
-            voucher_type: v.type || 'RECEIPT',
-            amount: Number(v.amount || 0),
-            account_id: v.bankAccountId || (v as any).accountId || null,
-            description: v.notes || (v as any).description || '',
-            created_at: v.createdAt || new Date().toISOString(),
-          },
-        ]);
-      } catch (vErr: any) {
-        // Safe fallback if vouchers table is not yet created
-      }
 
       if (error) {
         console.warn('Supabase saveVoucher error:', error.message);
@@ -1642,22 +1958,6 @@ export class SupabaseDataService {
         }
       }
 
-      // Dual-write batch to vouchers table
-      try {
-        const simpleVouchers = rows.map((r) => ({
-          id: String(r.id),
-          company_id: String(r.company_id),
-          voucher_type: r.type,
-          amount: r.amount,
-          account_id: r.account_id,
-          description: r.description,
-          created_at: r.created_at,
-        }));
-        await supabase.from('vouchers').upsert(simpleVouchers);
-      } catch (vErr: any) {
-        // Safe fallback
-      }
-
       return true;
     } catch (err: any) {
       console.warn('Supabase saveVouchers exception:', err?.message);
@@ -1677,16 +1977,6 @@ export class SupabaseDataService {
         .delete()
         .eq('company_id', companyId)
         .or(`id.eq.${voucherUuid},voucher_number.eq.${id}`);
-
-      try {
-        await supabase
-          .from('vouchers')
-          .delete()
-          .eq('company_id', companyId)
-          .eq('id', voucherUuid);
-      } catch (vErr: any) {
-        // Safe fallback
-      }
 
       return !error;
     } catch (err: any) {
@@ -2356,10 +2646,7 @@ export class SupabaseDataService {
     try {
       await supabase.from('invoice_items').delete().eq('company_id', companyId);
       await supabase.from('invoices').delete().eq('company_id', companyId);
-      await supabase.from('sales_details').delete().eq('company_id', companyId);
-      await supabase.from('sales_master').delete().eq('company_id', companyId);
       await supabase.from('payment_vouchers').delete().eq('company_id', companyId);
-      await supabase.from('vouchers').delete().eq('company_id', companyId);
       await supabase.from('journal_entries').delete().eq('company_id', companyId);
       await supabase.from('items').delete().eq('company_id', companyId);
       await supabase.from('customers').delete().eq('company_id', companyId);
