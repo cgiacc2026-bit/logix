@@ -41,6 +41,7 @@ import {
   InvoiceLine,
   JournalEntry,
   CompanyProfile,
+  DefaultAccountsMapping,
   PaymentVoucher,
   ProductionOrder,
   ManufacturingStandardSettings,
@@ -126,6 +127,35 @@ export class SupabaseDataService {
         customerBrandHeaders: p.customerBrandHeaders,
       };
 
+      // Also check company_settings if defaultAccounts is missing or needs merging
+      try {
+        const { data: settingsData } = await supabase
+          .from('company_settings')
+          .select('*')
+          .eq('company_id', companyId)
+          .maybeSingle();
+
+        if (settingsData) {
+          const mappingFromSettings: DefaultAccountsMapping = {
+            cashAccountId: settingsData.default_cash_account_id || profile.defaultAccounts?.cashAccountId,
+            bankAccountId: settingsData.default_bank_account_id || profile.defaultAccounts?.bankAccountId,
+            receivableAccountId: settingsData.default_receivable_account_id || profile.defaultAccounts?.receivableAccountId,
+            payableAccountId: settingsData.default_payable_account_id || profile.defaultAccounts?.payableAccountId,
+            salesAccountId: settingsData.default_sales_account_id || profile.defaultAccounts?.salesAccountId,
+            cogsAccountId: settingsData.default_cogs_account_id || profile.defaultAccounts?.cogsAccountId,
+            inventoryAccountId: settingsData.default_inventory_account_id || profile.defaultAccounts?.inventoryAccountId,
+            retainedEarningsAccountId: settingsData.default_retained_earnings_account_id || profile.defaultAccounts?.retainedEarningsAccountId,
+            vatAccountId: settingsData.default_vat_account_id || profile.defaultAccounts?.vatAccountId,
+          };
+          profile.defaultAccounts = {
+            ...(profile.defaultAccounts || {}),
+            ...Object.fromEntries(Object.entries(mappingFromSettings).filter(([_, v]) => Boolean(v))),
+          };
+        }
+      } catch (settingsFetchErr) {
+        // non-blocking
+      }
+
       return profile;
     } catch (err: any) {
       console.warn('Supabase getCompany exception:', err?.message);
@@ -179,6 +209,31 @@ export class SupabaseDataService {
           return false;
         }
       }
+
+      // Also upsert into company_settings table for explicit relational mapping
+      try {
+        const dAcc = comp.defaultAccounts || {};
+        const settingsRow: any = {
+          company_id: companyId,
+          default_cash_account_id: dAcc.cashAccountId || (comp as any).default_cash_account_id || null,
+          default_bank_account_id: dAcc.bankAccountId || (comp as any).default_bank_account_id || null,
+          default_receivable_account_id: dAcc.receivableAccountId || (comp as any).default_receivable_account_id || null,
+          default_payable_account_id: dAcc.payableAccountId || (comp as any).default_payable_account_id || null,
+          default_sales_account_id: dAcc.salesAccountId || (comp as any).default_sales_account_id || null,
+          default_cogs_account_id: dAcc.cogsAccountId || (comp as any).default_cogs_account_id || null,
+          default_inventory_account_id: dAcc.inventoryAccountId || (comp as any).default_inventory_account_id || null,
+          default_retained_earnings_account_id: dAcc.retainedEarningsAccountId || (comp as any).default_retained_earnings_account_id || null,
+          default_vat_account_id: dAcc.vatAccountId || (comp as any).default_vat_account_id || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        await supabase
+          .from('company_settings')
+          .upsert([settingsRow], { onConflict: 'company_id' });
+      } catch (settingsSaveErr) {
+        // non-blocking
+      }
+
       return true;
     } catch (err: any) {
       console.warn('Supabase saveCompany exception:', err?.message);

@@ -52,6 +52,7 @@ import { SystemResetService } from '../services/systemResetService.ts';
 import { formatCurrency } from '../utils/formatters.ts';
 import { ThemeService, ERP_THEMES, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
 import { ERPBackupImportService } from '../services/importBackupService.js';
+import { supabase, isSupabaseConfigured, resolveToSupabaseCompanyUUID, getCurrentCompanyId } from '../services/supabaseClient.js';
 
 interface CompanySetupViewProps {
   company: CompanyProfile | null;
@@ -120,6 +121,8 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   const [companyAccounts, setCompanyAccounts] = useState<Account[]>(() => {
     return accounts && accounts.length > 0 ? accounts : localDataStore.getAccounts();
   });
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+  const [isSavingMapping, setIsSavingMapping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSavingLogo, setIsSavingLogo] = useState(false);
@@ -164,17 +167,161 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     }
   };
 
-  // Update internal form data when prop changes
+  /**
+   * 1. Fetch Chart of Accounts for the active company strictly using activeCompanyId
+   */
+  const fetchAccountsForActiveCompany = async () => {
+    setIsLoadingAccounts(true);
+    const activeCompanyId = resolveToSupabaseCompanyUUID(company?.id || getCurrentCompanyId());
+
+    try {
+      let loadedAccounts: Account[] = [];
+
+      if (isSupabaseConfigured) {
+        // Query Supabase chart_of_accounts by company_id
+        let { data, error } = await supabase
+          .from('chart_of_accounts')
+          .select('id, code, name, account_type')
+          .eq('company_id', activeCompanyId)
+          .order('code', { ascending: true });
+
+        // Fallback if schema uses different column names (e.g. name_ar, category)
+        if (error || !data || data.length === 0) {
+          const fallbackRes = await supabase
+            .from('chart_of_accounts')
+            .select('*')
+            .eq('company_id', activeCompanyId)
+            .order('code', { ascending: true });
+
+          if (!fallbackRes.error && fallbackRes.data && fallbackRes.data.length > 0) {
+            data = fallbackRes.data;
+            error = null;
+          }
+        }
+
+        if (data && data.length > 0) {
+          loadedAccounts = data.map((row: any) => {
+            const rawName = row.name || row.name_ar || row.nameAr || row.name_en || `حساب ${row.code}`;
+            const rawType = (row.account_type || row.category || row.type || '').toUpperCase();
+            const codeStr = String(row.code || '').trim();
+            let cat: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE' = 'ASSET';
+
+            if (rawType.includes('LIAB') || rawType.includes('خصوم') || rawType.includes('التزام') || codeStr.startsWith('2')) {
+              cat = 'LIABILITY';
+            } else if (rawType.includes('EQUITY') || rawType.includes('حقوق') || codeStr.startsWith('3')) {
+              cat = 'EQUITY';
+            } else if (rawType.includes('REV') || rawType.includes('INCOME') || rawType.includes('إيراد') || codeStr.startsWith('4')) {
+              cat = 'REVENUE';
+            } else if (rawType.includes('EXP') || rawType.includes('COST') || rawType.includes('مصروف') || rawType.includes('تكل') || codeStr.startsWith('5')) {
+              cat = 'EXPENSE';
+            } else {
+              cat = 'ASSET';
+            }
+
+            return {
+              id: String(row.id),
+              code: codeStr,
+              nameAr: rawName,
+              nameEn: row.name_en || row.nameEn || '',
+              category: cat,
+              accountType: row.account_type || row.category || cat,
+              normalBalance: row.normal_balance || (cat === 'ASSET' || cat === 'EXPENSE' ? 'DEBIT' : 'CREDIT'),
+              level: Number(row.level) || 1,
+              type: row.type || 'DETAIL',
+              parentId: row.parent_id || null,
+              isSystem: !!row.is_system,
+              isActive: row.is_active ?? true,
+              balance: Number(row.balance || row.current_balance) || 0,
+              description: row.description || '',
+            } as Account;
+          });
+        }
+      }
+
+      // Fallback to props or local store if remote accounts returned empty
+      if (loadedAccounts.length === 0) {
+        if (accounts && accounts.length > 0) {
+          loadedAccounts = accounts;
+        } else {
+          const localAccs = localDataStore.getAccounts();
+          if (localAccs && localAccs.length > 0) {
+            loadedAccounts = localAccs;
+          }
+        }
+      }
+
+      if (loadedAccounts.length > 0) {
+        setCompanyAccounts(loadedAccounts);
+      }
+    } catch (err) {
+      console.warn('Error fetching chart of accounts in CompanySetupView:', err);
+      if (accounts && accounts.length > 0) {
+        setCompanyAccounts(accounts);
+      }
+    } finally {
+      setIsLoadingAccounts(false);
+    }
+  };
+
+  /**
+   * Fetch saved default accounts mapping from company_settings table
+   */
+  const fetchSavedDefaultAccounts = async () => {
+    const activeCompanyId = resolveToSupabaseCompanyUUID(company?.id || getCurrentCompanyId());
+    if (!isSupabaseConfigured) return;
+
+    try {
+      const { data: settingsData, error } = await supabase
+        .from('company_settings')
+        .select('*')
+        .eq('company_id', activeCompanyId)
+        .maybeSingle();
+
+      if (!error && settingsData) {
+        const mappingFromSettings: Partial<DefaultAccountsMapping> = {
+          cashAccountId: settingsData.default_cash_account_id || undefined,
+          bankAccountId: settingsData.default_bank_account_id || undefined,
+          receivableAccountId: settingsData.default_receivable_account_id || undefined,
+          payableAccountId: settingsData.default_payable_account_id || undefined,
+          salesAccountId: settingsData.default_sales_account_id || undefined,
+          cogsAccountId: settingsData.default_cogs_account_id || undefined,
+          inventoryAccountId: settingsData.default_inventory_account_id || undefined,
+          retainedEarningsAccountId: settingsData.default_retained_earnings_account_id || undefined,
+          vatAccountId: settingsData.default_vat_account_id || undefined,
+        };
+
+        const validEntries = Object.entries(mappingFromSettings).filter(([_, v]) => Boolean(v));
+        if (validEntries.length > 0) {
+          setFormData((prev) => ({
+            ...prev,
+            defaultAccounts: {
+              ...(prev.defaultAccounts || {}),
+              ...Object.fromEntries(validEntries),
+            },
+          }));
+        }
+      }
+    } catch (err) {
+      // Non-blocking if table not yet provisioned
+    }
+  };
+
+  // Synchronize on mount and company change
   React.useEffect(() => {
     if (company) {
       setFormData(company);
     }
-    if (accounts && accounts.length > 0) {
-      setCompanyAccounts(accounts);
-    } else {
-      setCompanyAccounts(localDataStore.getAccounts());
+    fetchAccountsForActiveCompany();
+    fetchSavedDefaultAccounts();
+  }, [company?.id]);
+
+  // Refresh accounts when user switches to mapping tab
+  React.useEffect(() => {
+    if (activeTab === 'mapping') {
+      fetchAccountsForActiveCompany();
+      fetchSavedDefaultAccounts();
     }
-  }, [company, accounts]);
+  }, [activeTab]);
 
   const handleChange = (field: keyof CompanyProfile, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -187,29 +334,176 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   const handleMappingChange = (field: keyof DefaultAccountsMapping, accountId: string) => {
     const updatedMapping: DefaultAccountsMapping = {
       ...currentMapping,
-      [field]: accountId,
+      [field]: accountId || undefined,
     };
     setFormData((prev) => ({
       ...prev,
       defaultAccounts: updatedMapping,
     }));
     setSaveSuccess(false);
-    setMappingSuccess('تم تحديث ربط الحساب. يرجى الضغط على "حفظ التعديلات العامة" لتطبيق الربط على كافة العمليات.');
+    setMappingSuccess('تم تعديل الربط. اضغط على "حفظ إعدادات الربط الآن" لاعتماد التغييرات في قاعدة البيانات.');
     setTimeout(() => setMappingSuccess(''), 4000);
   };
 
+  /**
+   * 3. Smart Auto-Map searching standard codes:
+   * 1111 للصندوق/البنك، 1120 للعملاء، 2110 للموردين، 4100 للمبيعات، 1130 للمخزون
+   */
   const handleAutoMapAccounts = () => {
     if (companyAccounts.length === 0) {
-      setErrorMessage('لا توجد حسابات مسجلة في الدليل المحاسبي للشركة النشطة للقيام بالربط التلقائي.');
+      setErrorMessage('لا توجد حسابات مسجلة في شجرة الحسابات للشركة النشطة للقيام بالربط التلقائي.');
       return;
     }
-    const autoMapped = getDefaultMappingForAccounts(companyAccounts);
+
+    const findAccount = (standardCodes: string[], keywords: string[]) => {
+      // 1. Exact match by code
+      for (const code of standardCodes) {
+        const found = companyAccounts.find((a) => String(a.code).trim() === code);
+        if (found) return found.id;
+      }
+      // 2. Starts with code
+      for (const code of standardCodes) {
+        const found = companyAccounts.find((a) => String(a.code).trim().startsWith(code));
+        if (found) return found.id;
+      }
+      // 3. Search keywords in name
+      const foundKw = companyAccounts.find((a) => {
+        const ar = (a.nameAr || '').toLowerCase();
+        const en = (a.nameEn || '').toLowerCase();
+        return keywords.some((k) => ar.includes(k.toLowerCase()) || en.includes(k.toLowerCase()));
+      });
+      return foundKw ? foundKw.id : undefined;
+    };
+
+    // Standard codes resolution
+    const acc1111 = companyAccounts.find((a) => String(a.code).trim() === '1111');
+    let cashId: string | undefined;
+    let bankId: string | undefined;
+
+    if (acc1111) {
+      const isBank = (acc1111.nameAr || '').includes('بنك') || (acc1111.nameEn || '').toLowerCase().includes('bank');
+      if (isBank) {
+        bankId = acc1111.id;
+        cashId = findAccount(['1113', '1112', '1110', '111'], ['صندوق', 'خزينة', 'cash', 'نقد']);
+      } else {
+        cashId = acc1111.id;
+        bankId = findAccount(['1112', '1114', '1110', '111'], ['بنك', 'مصرف', 'bank']);
+      }
+    } else {
+      cashId = findAccount(['1111', '1113', '1112', '1110'], ['صندوق', 'خزينة', 'cash', 'نقد']);
+      bankId = findAccount(['1112', '1111', '1114', '1110'], ['بنك', 'مصرف', 'bank']);
+    }
+
+    const receivableId = findAccount(['1120', '1121', '112'], ['عملاء', 'مدينون', 'ذمم مدينة', 'receivable']);
+    const payableId = findAccount(['2110', '2111', '211'], ['موردين', 'دائنون', 'ذمم دائنة', 'payable']);
+    const salesId = findAccount(['4100', '4110', '41'], ['مبيعات', 'إيراد', 'sales', 'revenue']);
+    const inventoryId = findAccount(['1130', '1131', '113'], ['مخزون', 'بضائع', 'inventory', 'stock']);
+    const cogsId = findAccount(['5100', '5110', '51'], ['تكلفة', 'cogs', 'cost']);
+    const retainedEarningsId = findAccount(['3200', '3210', '32'], ['أرباح', 'retained']);
+    const vatId = findAccount(['2120', '2121', '212'], ['ضريبة', 'vat', 'tax']);
+
+    const autoMapped: DefaultAccountsMapping = {
+      ...currentMapping,
+      ...(cashId && { cashAccountId: cashId }),
+      ...(bankId && { bankAccountId: bankId }),
+      ...(receivableId && { receivableAccountId: receivableId }),
+      ...(payableId && { payableAccountId: payableId }),
+      ...(salesId && { salesAccountId: salesId }),
+      ...(inventoryId && { inventoryAccountId: inventoryId }),
+      ...(cogsId && { cogsAccountId: cogsId }),
+      ...(retainedEarningsId && { retainedEarningsAccountId: retainedEarningsId }),
+      ...(vatId && { vatAccountId: vatId }),
+    };
+
     setFormData((prev) => ({
       ...prev,
       defaultAccounts: autoMapped,
     }));
-    setMappingSuccess('تم مطابقة وربط حسابات الدليل المحاسبي تلقائياً بنجاح! اضغط على حفظ التعديلات لتثبيتها.');
-    setTimeout(() => setMappingSuccess(''), 5000);
+
+    setMappingSuccess('تم التعرف التلقائي الذكي على الحسابات القياسية (1111 للصندوق والبنك، 1120 للعملاء، 2110 للموردين، 4100 للمبيعات، 1130 للمخزون) بنجاح! اضغط على "حفظ إعدادات الربط الآن" لاعتمادها.');
+    setTimeout(() => setMappingSuccess(''), 6000);
+  };
+
+  /**
+   * 2. Safe Save Default Accounts Logic: Upsert to company_settings & update companies record
+   */
+  const handleSaveDefaultAccounts = async () => {
+    setIsSavingMapping(true);
+    setMappingSuccess('');
+    setErrorMessage('');
+
+    const activeCompanyId = resolveToSupabaseCompanyUUID(company?.id || getCurrentCompanyId());
+
+    const settingsPayload = {
+      company_id: activeCompanyId,
+      default_cash_account_id: currentMapping.cashAccountId || null,
+      default_bank_account_id: currentMapping.bankAccountId || null,
+      default_receivable_account_id: currentMapping.receivableAccountId || null,
+      default_payable_account_id: currentMapping.payableAccountId || null,
+      default_sales_account_id: currentMapping.salesAccountId || null,
+      default_cogs_account_id: currentMapping.cogsAccountId || null,
+      default_inventory_account_id: currentMapping.inventoryAccountId || null,
+      default_retained_earnings_account_id: currentMapping.retainedEarningsAccountId || null,
+      default_vat_account_id: currentMapping.vatAccountId || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      // 1. Upsert into company_settings
+      if (isSupabaseConfigured) {
+        try {
+          const { error: settingsError } = await supabase
+            .from('company_settings')
+            .upsert([settingsPayload], { onConflict: 'company_id' });
+          if (settingsError) {
+            console.warn('company_settings upsert note:', settingsError.message);
+          }
+        } catch (settingsErr) {
+          console.warn('company_settings table note:', settingsErr);
+        }
+
+        // 2. Also update companies record
+        try {
+          await supabase
+            .from('companies')
+            .update({
+              default_accounts: currentMapping,
+              default_cash_account_id: currentMapping.cashAccountId || null,
+              default_bank_account_id: currentMapping.bankAccountId || null,
+              default_receivable_account_id: currentMapping.receivableAccountId || null,
+              default_payable_account_id: currentMapping.payableAccountId || null,
+              default_sales_account_id: currentMapping.salesAccountId || null,
+              default_cogs_account_id: currentMapping.cogsAccountId || null,
+              default_inventory_account_id: currentMapping.inventoryAccountId || null,
+              profile_data: { ...(company || {}), ...formData, defaultAccounts: currentMapping },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', activeCompanyId);
+        } catch (compErr) {
+          console.warn('companies update note:', compErr);
+        }
+      }
+
+      // 3. Update company profile in state and storage
+      const updatedProfile: CompanyProfile = {
+        ...(company || {}),
+        ...formData,
+        defaultAccounts: currentMapping,
+      } as CompanyProfile;
+
+      await onSaveCompany(updatedProfile);
+      localDataStore.saveCompany(updatedProfile);
+
+      setMappingSuccess('تم حفظ واعتماد ربط الحسابات الافتراضية بنجاح سحابياً ومحلياً!');
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+      setTimeout(() => setMappingSuccess(''), 5000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'حدث خطأ أثناء حفظ إعدادات ربط الحسابات الافتراضية');
+    } finally {
+      setIsSavingMapping(false);
+    }
   };
 
   const handleGenerateCleanChart = async () => {
@@ -249,7 +543,56 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     setIsSaving(true);
     setErrorMessage('');
     try {
-      await onSaveCompany(formData as CompanyProfile);
+      const activeCompanyId = resolveToSupabaseCompanyUUID(company?.id || getCurrentCompanyId());
+
+      const updatedProfile: CompanyProfile = {
+        ...(company || {}),
+        ...formData,
+        defaultAccounts: currentMapping,
+      } as CompanyProfile;
+
+      // Upsert into company_settings
+      if (isSupabaseConfigured) {
+        try {
+          const settingsPayload = {
+            company_id: activeCompanyId,
+            default_cash_account_id: currentMapping.cashAccountId || null,
+            default_bank_account_id: currentMapping.bankAccountId || null,
+            default_receivable_account_id: currentMapping.receivableAccountId || null,
+            default_payable_account_id: currentMapping.payableAccountId || null,
+            default_sales_account_id: currentMapping.salesAccountId || null,
+            default_cogs_account_id: currentMapping.cogsAccountId || null,
+            default_inventory_account_id: currentMapping.inventoryAccountId || null,
+            default_retained_earnings_account_id: currentMapping.retainedEarningsAccountId || null,
+            default_vat_account_id: currentMapping.vatAccountId || null,
+            updated_at: new Date().toISOString(),
+          };
+          await supabase.from('company_settings').upsert([settingsPayload], { onConflict: 'company_id' });
+        } catch (e) {
+          console.warn('company_settings upsert error:', e);
+        }
+
+        try {
+          await supabase.from('companies').update({
+            default_accounts: currentMapping,
+            default_cash_account_id: currentMapping.cashAccountId || null,
+            default_bank_account_id: currentMapping.bankAccountId || null,
+            default_receivable_account_id: currentMapping.receivableAccountId || null,
+            default_payable_account_id: currentMapping.payableAccountId || null,
+            default_sales_account_id: currentMapping.salesAccountId || null,
+            default_cogs_account_id: currentMapping.cogsAccountId || null,
+            default_inventory_account_id: currentMapping.inventoryAccountId || null,
+            profile_data: updatedProfile,
+            updated_at: new Date().toISOString(),
+          }).eq('id', activeCompanyId);
+        } catch (e) {
+          console.warn('companies update error:', e);
+        }
+      }
+
+      await onSaveCompany(updatedProfile);
+      localDataStore.saveCompany(updatedProfile);
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
@@ -257,6 +600,77 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     } finally {
       setIsSaving(false);
     }
+  };
+
+  /**
+   * Account Filtering Helpers by Account Type:
+   * الأصول للصندوق والبنك والعملاء والمخزون
+   * الخصوم للموردين وأمانات الضريبة
+   * الإيرادات للمبيعات
+   * المصروفات والتكلفة لتكلفة المبيعات
+   * حقوق الملكية للأرباح المبقاة
+   */
+  const isAssetAccount = (acc: Account) => {
+    const type = ((acc as any).accountType || acc.category || '').toUpperCase();
+    const code = String(acc.code || '').trim();
+    return type.includes('ASSET') || type.includes('أصول') || code.startsWith('1');
+  };
+
+  const isLiabilityAccount = (acc: Account) => {
+    const type = ((acc as any).accountType || acc.category || '').toUpperCase();
+    const code = String(acc.code || '').trim();
+    return type.includes('LIAB') || type.includes('خصوم') || type.includes('التزام') || code.startsWith('2');
+  };
+
+  const isEquityAccount = (acc: Account) => {
+    const type = ((acc as any).accountType || acc.category || '').toUpperCase();
+    const code = String(acc.code || '').trim();
+    return type.includes('EQUITY') || type.includes('حقوق') || code.startsWith('3');
+  };
+
+  const isRevenueAccount = (acc: Account) => {
+    const type = ((acc as any).accountType || acc.category || '').toUpperCase();
+    const code = String(acc.code || '').trim();
+    return type.includes('REV') || type.includes('INCOME') || type.includes('إيراد') || type.includes('ايراد') || code.startsWith('4');
+  };
+
+  const isExpenseAccount = (acc: Account) => {
+    const type = ((acc as any).accountType || acc.category || '').toUpperCase();
+    const code = String(acc.code || '').trim();
+    return type.includes('EXP') || type.includes('COST') || type.includes('مصروف') || type.includes('تكل') || code.startsWith('5');
+  };
+
+  const isInventoryAccount = (acc: Account) => {
+    const type = ((acc as any).accountType || acc.category || '').toUpperCase();
+    const code = String(acc.code || '').trim();
+    return type.includes('ASSET') || type.includes('أصول') || code.startsWith('1');
+  };
+
+  const getAccountOptions = (filterFn: (acc: Account) => boolean, _typeName: string) => {
+    const searchLower = (accountSearch || '').toLowerCase().trim();
+
+    // 1. Strict filter by account type and search query
+    const matches = companyAccounts.filter((acc) => {
+      const name = (acc.nameAr || '').toLowerCase();
+      const code = (acc.code || '').toLowerCase();
+      const en = (acc.nameEn || '').toLowerCase();
+      const matchesSearch = !searchLower || name.includes(searchLower) || code.includes(searchLower) || en.includes(searchLower);
+      return matchesSearch && filterFn(acc);
+    });
+
+    // 2. Safe fallback: if strict filter returns 0 (e.g. unclassified accounts),
+    // return all matching accounts so the dropdown is NEVER empty!
+    if (matches.length === 0) {
+      return companyAccounts.filter((acc) => {
+        if (!searchLower) return true;
+        const name = (acc.nameAr || '').toLowerCase();
+        const code = (acc.code || '').toLowerCase();
+        const en = (acc.nameEn || '').toLowerCase();
+        return name.includes(searchLower) || code.includes(searchLower) || en.includes(searchLower);
+      });
+    }
+
+    return matches;
   };
 
   const handleSaveLogoOnly = async (logoToSave?: string) => {
@@ -1137,8 +1551,8 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                 <button
                   type="button"
                   onClick={handleAutoMapAccounts}
-                  className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="البحث التلقائي عن الحسابات القياسية في الدليل وربطها"
+                  className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="البحث التلقائي عن الحسابات القياسية (1111, 1120, 2110, 4100, 1130) وربطها"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-blue-600" />
                   <span>الربط الذكي التلقائي</span>
@@ -1146,13 +1560,35 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
 
                 <button
                   type="button"
+                  onClick={fetchAccountsForActiveCompany}
+                  disabled={isLoadingAccounts}
+                  className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
+                  title="إعادة جلب شجرة الحسابات للشركة النشطة من قاعدة البيانات"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 text-slate-600 ${isLoadingAccounts ? 'animate-spin' : ''}`} />
+                  <span>{isLoadingAccounts ? 'جاري الجلب...' : 'تحديث الحسابات'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveDefaultAccounts}
+                  disabled={isSavingMapping}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                  title="حفظ الربط مباشرة في جدول إعدادات الشركة company_settings"
+                >
+                  <Save className={`w-3.5 h-3.5 ${isSavingMapping ? 'animate-pulse' : ''}`} />
+                  <span>{isSavingMapping ? 'جاري الحفظ...' : 'حفظ إعدادات الربط الآن'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleGenerateCleanChart}
                   disabled={isGeneratingClean}
-                  className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
                   title="إنشاء دليل محاسبي نظيف بأرصدة أصفار 0.00 دون أي أرقام عشوائية"
                 >
-                  <RotateCcw className={`w-3.5 h-3.5 text-emerald-600 ${isGeneratingClean ? 'animate-spin' : ''}`} />
-                  <span>{isGeneratingClean ? 'جاري التوليد...' : 'توليد شجرة حسابات نظيفة (أصفار)'}</span>
+                  <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${isGeneratingClean ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingClean ? 'جاري التوليد...' : 'توليد شجرة نظيفة (أصفار)'}</span>
                 </button>
               </div>
             </div>
@@ -1164,7 +1600,9 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   {companyAccounts.length}
                 </div>
                 <div>
-                  <span className="font-bold text-slate-800 block">شجرة حسابات المنشأة النشطة</span>
+                  <span className="font-bold text-slate-800 block">
+                    شجرة حسابات المنشأة النشطة {isLoadingAccounts && <span className="text-blue-600 font-normal mr-1">(جاري المزامنة...)</span>}
+                  </span>
                   <span className="text-slate-500 text-[11px]">
                     الشركة: <strong className="text-slate-700">{formData.nameAr || company?.nameAr || 'الشركة الحالية'}</strong> (المعرف: <code className="font-mono text-[10px] bg-slate-200 px-1 py-0.5 rounded">{company?.id || 'default'}</code>)
                   </span>
@@ -1202,7 +1640,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
                       <span>حساب الصندوق الرئيسي (الخزينة النقدية) *</span>
-                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">أصول متداولة</span>
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">أصول متداولة (1111)</span>
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
                       الطرف المدين التلقائي لسندات القبض وفواتير المبيعات النقدية، والطرف الدائن لسندات الصرف النقدية.
@@ -1212,9 +1650,8 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('cashAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب الصندوق --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب الصندوق (الأصول المتداولة) --</option>
+                      {getAccountOptions(isAssetAccount, 'أصول متداولة')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
                             [{acc.code}] - {acc.nameAr} ({acc.category === 'ASSET' ? 'أصول' : acc.category})
@@ -1247,7 +1684,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
                       <span>حساب البنك الرئيسي (الحساب الجاري) *</span>
-                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">أصول متداولة</span>
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">أصول متداولة (1111/1112)</span>
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
                       الطرف المدين لسندات القبض البنكية والتحويلات، والطرف الدائن لمدفوعات الشيكات والتحويلات للموردين.
@@ -1257,9 +1694,8 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('bankAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار الحساب البنكي --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار الحساب البنكي (الأصول المتداولة) --</option>
+                      {getAccountOptions(isAssetAccount, 'أصول متداولة')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
                             [{acc.code}] - {acc.nameAr} ({acc.category === 'ASSET' ? 'أصول' : acc.category})
@@ -1305,7 +1741,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
                       <span>حساب العملاء والذمم المدينة (Accounts Receivable) *</span>
-                      <span className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">أصول متداولة (مدين)</span>
+                      <span className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">أصول متداولة (مدين 1120)</span>
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
                       الطرف المدين لفواتير المبيعات الآجلة للعملاء، والطرف الدائن عند تحصيل مبالغ سندات القبض.
@@ -1315,12 +1751,11 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('receivableAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب العملاء --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب العملاء (الأصول) --</option>
+                      {getAccountOptions(isAssetAccount, 'أصول متداولة')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
-                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'ASSET' ? 'أصول' : acc.category})
                           </option>
                         ))}
                     </select>
@@ -1349,7 +1784,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
                       <span>حساب الموردين والذمم الدائنة (Accounts Payable) *</span>
-                      <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">خصوم والتزامات (دائن)</span>
+                      <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">خصوم والتزامات (دائن 2110)</span>
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
                       الطرف الدائن لفواتير المشتريات الآجلة للموردين، والطرف المدين عند إصدار سندات صرف وسداد المستحقات.
@@ -1359,12 +1794,11 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('payableAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب الموردين --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب الموردين (الخصوم) --</option>
+                      {getAccountOptions(isLiabilityAccount, 'خصوم والتزامات')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
-                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'LIABILITY' ? 'خصوم' : acc.category})
                           </option>
                         ))}
                     </select>
@@ -1406,7 +1840,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
                       <span>حساب مخزون البضائع والمنتجات *</span>
-                      <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">أصول (1130)</span>
+                      <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">أصول مخزون (1130)</span>
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
                       يمثل قيمة بضاعة المستودع. يُخفّض بقيد التكلفة عند كل بيع ويُزاد بالإنتاج التام والمشتريات.
@@ -1416,12 +1850,11 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('inventoryAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب المخزون --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب المخزون (الأصول) --</option>
+                      {getAccountOptions(isInventoryAccount, 'أصول مخزون')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
-                            [{acc.code}] - {acc.nameAr}
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'ASSET' ? 'أصول' : acc.category})
                           </option>
                         ))}
                     </select>
@@ -1456,12 +1889,11 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('salesAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب المبيعات --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب المبيعات (الإيرادات) --</option>
+                      {getAccountOptions(isRevenueAccount, 'إيرادات مبيعات')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
-                            [{acc.code}] - {acc.nameAr}
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'REVENUE' ? 'إيرادات' : acc.category})
                           </option>
                         ))}
                     </select>
@@ -1486,7 +1918,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
                       <span>حساب تكلفة البضاعة المباعة (COGS) *</span>
-                      <span className="text-[10px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">تكلفة/مصروفات (5100)</span>
+                      <span className="text-[10px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">مصروفات/تكلفة (5100)</span>
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
                       الطرف المدين التلقائي لقيد تكلفة المبيعات في نظام الجرد المستمر لاحتساب مجمل الربح بدقة.
@@ -1496,12 +1928,11 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('cogsAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب تكلفة المبيعات --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب تكلفة المبيعات (المصروفات) --</option>
+                      {getAccountOptions(isExpenseAccount, 'مصروفات وتكلفة')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
-                            [{acc.code}] - {acc.nameAr}
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'EXPENSE' ? 'مصروفات' : acc.category})
                           </option>
                         ))}
                     </select>
@@ -1549,12 +1980,11 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('retainedEarningsAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب الأرباح المبقاة --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب الأرباح المبقاة (حقوق ملكية) --</option>
+                      {getAccountOptions(isEquityAccount, 'حقوق ملكية')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
-                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'EQUITY' ? 'حقوق ملكية' : acc.category})
                           </option>
                         ))}
                     </select>
@@ -1589,12 +2019,11 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                       onChange={(e) => handleMappingChange('vatAccountId', e.target.value)}
                       className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 shadow-2xs"
                     >
-                      <option value="">-- يرجى اختيار حساب ضريبة القيمة المضافة --</option>
-                      {companyAccounts
-                        .filter((a) => !accountSearch || a.nameAr.includes(accountSearch) || a.code.includes(accountSearch))
+                      <option value="">-- يرجى اختيار حساب ضريبة القيمة المضافة (الخصوم) --</option>
+                      {getAccountOptions(isLiabilityAccount, 'خصوم والتزامات')
                         .map((acc) => (
                           <option key={acc.id} value={acc.id}>
-                            [{acc.code}] - {acc.nameAr} ({acc.category})
+                            [{acc.code}] - {acc.nameAr} ({acc.category === 'LIABILITY' ? 'خصوم' : acc.category})
                           </option>
                         ))}
                     </select>
@@ -1625,20 +2054,31 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   <Save className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm">اعتماد وحفظ إعدادات الربط المحاسبي</h4>
+                  <h4 className="font-bold text-sm">اعتماد وحفظ إعدادات الربط المحاسبي الافتراضي</h4>
                   <p className="text-xs text-slate-300">
-                    عند الحفظ، سيتم توجيه جميع العمليات المالية والمستندات الجديدة بناءً على هذه الحسابات المختارة مباشرة.
+                    عند الحفظ، سيتم حفظ الربط في جدول إعدادات الشركة <code className="text-cyan-300 font-mono">company_settings</code> وتوجيه العمليات المالية آلياً.
                   </p>
                 </div>
               </div>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md transition-all whitespace-nowrap"
-              >
-                <Save className="w-4 h-4 text-cyan-200" />
-                <span>{isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات العامة الآن'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveDefaultAccounts}
+                  disabled={isSavingMapping}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md transition-all whitespace-nowrap disabled:opacity-50"
+                >
+                  <Save className={`w-4 h-4 text-emerald-200 ${isSavingMapping ? 'animate-pulse' : ''}`} />
+                  <span>{isSavingMapping ? 'جاري الحفظ...' : 'حفظ إعدادات الربط فقط'}</span>
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md transition-all whitespace-nowrap"
+                >
+                  <Save className="w-4 h-4 text-cyan-200" />
+                  <span>{isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات العامة'}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
