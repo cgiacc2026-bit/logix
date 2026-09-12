@@ -214,6 +214,129 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
+-- التأكد من وجود القيد الفريد لشجرة الحسابات (company_id, code) للتعامل الآمن مع التعارض
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_coa_company_code'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE indexname = 'uq_coa_company_code'
+    ) THEN
+        ALTER TABLE public.chart_of_accounts ADD CONSTRAINT uq_coa_company_code UNIQUE (company_id, code);
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- ضمان وجود كافة الأعمدة المطلوبة في الجداول القائمة مسبقاً لمنع أي خطأ 42703 (Missing Columns)
+DO $$
+BEGIN
+    -- جدول الحسابات
+    ALTER TABLE public.chart_of_accounts ADD COLUMN IF NOT EXISTS balance NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.chart_of_accounts ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+    ALTER TABLE public.chart_of_accounts ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT false;
+    ALTER TABLE public.chart_of_accounts ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+    -- جدول العملاء
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS name TEXT;
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS name_ar TEXT;
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS tax_number TEXT DEFAULT '';
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS balance NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS account_id UUID;
+
+    -- جدول الموردين
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name TEXT;
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name_ar TEXT;
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS balance NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+    ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS account_id UUID;
+
+    -- جدول الأصناف والمخزون
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS sku TEXT;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS barcode TEXT;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name TEXT;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS item_name TEXT;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_ar TEXT;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'بهارات';
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'حبة';
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS cost_price NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS selling_price NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS sale_price NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS current_balance NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS qty_on_hand NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS min_limit NUMERIC(18, 4) DEFAULT 10;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    ALTER TABLE public.items ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+
+    -- جدول الفواتير
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_number TEXT;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_date DATE DEFAULT CURRENT_DATE;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_id UUID;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_name TEXT;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS subtotal NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS total_amount NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS due_amount NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'POSTED';
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'POSTED';
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'CREDIT';
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_snapshot JSONB DEFAULT '{}'::jsonb;
+    ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+
+    -- جدول بنود الفواتير
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_id UUID;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_name TEXT;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS quantity NUMERIC(18, 4) DEFAULT 1;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS unit_price NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS total_price NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5, 2) DEFAULT 0;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS item_snapshot JSONB DEFAULT '{}'::jsonb;
+    ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+
+    -- جدول سندات القبض والصرف
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS voucher_number TEXT;
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS type TEXT;
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS amount NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'CASH';
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT 'NONE';
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_id UUID;
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS entity_name TEXT;
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS account_id UUID;
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'POSTED';
+    ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+
+    -- جدول قيود اليومية
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS entry_number TEXT;
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'POSTED';
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS reference TEXT;
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS total_debit NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS total_credit NUMERIC(18, 4) DEFAULT 0;
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS lines JSONB DEFAULT '[]'::jsonb;
+    ALTER TABLE public.journal_entries ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- ==============================================================================
 -- 2. إدخال أو تحديث بيانات الشركة (Company Record)
 -- ==============================================================================
@@ -246,35 +369,251 @@ ON CONFLICT (id) DO UPDATE SET
     updated_at = now();
 
 -- ==============================================================================
--- 2.1 تنظيف استباقي للبيانات السابقة لنفس المنشأة (Prevent uq_coa_company_code Duplicate Key)
+-- 2.1 تنظيف استباقي شامل ومعزول تماماً لنفس المنشأة (Prevent All Duplicate Key & FK Errors)
 -- ==============================================================================
--- نقوم بحذف السجلات القديمة لهذه المنشأة تحديداً حتى لا يحدث أي تعارض مع القيود الفريدة
--- مثل (uq_coa_company_code) أو أرقام الفواتير وسندات الصرف والقبض السابقة
+-- يتم تفكيك جميع العلاقات وحذف السجلات السابقة في كتل معزولة ومحمية لمنع توقف السكربت إطلاقاً
 DO $$
 DECLARE
     v_comp_id TEXT := '20000000-0000-0000-0000-000000000001';
+    v_comp_uuid UUID := '20000000-0000-0000-0000-000000000001'::uuid;
 BEGIN
-    DELETE FROM public.invoice_items WHERE company_id::text = v_comp_id;
-    DELETE FROM public.invoices WHERE company_id::text = v_comp_id;
-    DELETE FROM public.payment_vouchers WHERE company_id::text = v_comp_id;
-    DELETE FROM public.journal_entries WHERE company_id::text = v_comp_id;
-    DELETE FROM public.items WHERE company_id::text = v_comp_id;
-    DELETE FROM public.customers WHERE company_id::text = v_comp_id;
-    DELETE FROM public.suppliers WHERE company_id::text = v_comp_id;
-    
+    -- 1. فك ارتباط الحسابات في جميع الجداول لتجنب أي تعارض مفاتيح أجنبية (Foreign Keys)
     BEGIN
-        DELETE FROM public.company_accounting_settings WHERE company_id::text = v_comp_id;
+        UPDATE public.chart_of_accounts SET parent_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
 
-    UPDATE public.chart_of_accounts SET parent_id = NULL WHERE company_id::text = v_comp_id;
-    DELETE FROM public.chart_of_accounts WHERE company_id::text = v_comp_id;
-EXCEPTION WHEN OTHERS THEN NULL;
+    BEGIN
+        UPDATE public.company_accounting_settings 
+        SET cash_account_id = NULL, bank_account_id = NULL, receivable_account_id = NULL, 
+            payable_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL, 
+            cogs_account_id = NULL, vat_account_id = NULL, retained_earnings_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.company_settings 
+        SET default_bank_account_id = NULL, default_receivable_account_id = NULL, 
+            default_payable_account_id = NULL, default_sales_account_id = NULL, 
+            default_inventory_account_id = NULL, default_cogs_account_id = NULL, 
+            default_vat_account_id = NULL, default_retained_earnings_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.manufacturing_settings 
+        SET wip_account_id = NULL, labor_expense_account_id = NULL, overhead_expense_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.customers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.suppliers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.items 
+        SET cogs_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.payment_vouchers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.vouchers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 2. حذف الجداول التفصيلية والتابعة (Child Tables)
+    BEGIN
+        DELETE FROM public.invoice_items 
+        WHERE invoice_id IN (SELECT id FROM public.invoices WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.invoice_items 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_details 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.journal_entry_lines 
+        WHERE journal_entry_id IN (SELECT id FROM public.journal_entries WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.journal_entry_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_order_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.purchase_order_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.stock_transfer_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.customer_branches 
+        WHERE customer_id IN (SELECT id FROM public.customers WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.customer_branches 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.item_warehouse_stocks 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 3. حذف الحركات التشغيلية الرئيسية (Operational Parents)
+    BEGIN
+        DELETE FROM public.invoices 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_master 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.payment_vouchers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.vouchers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.journal_entries 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.production_orders 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.stock_transfers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_orders 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.purchase_orders 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 4. حذف سجلات البيانات الرئيسية (Master Records)
+    BEGIN
+        DELETE FROM public.customers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.suppliers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.items 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.company_accounting_settings 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.company_settings 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 5. تفريغ وحذف شجرة الحسابات القديمة لنفس الشركة (Clear Old Chart of Accounts)
+    BEGIN
+        UPDATE public.chart_of_accounts SET parent_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+        DELETE FROM public.chart_of_accounts 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
 END $$;
 
 -- ==============================================================================
 -- 3. دليل وشجرة الحسابات (Chart of Accounts: 23 حساباً)
 -- ==============================================================================
+DO $$
+BEGIN
+    UPDATE public.chart_of_accounts SET parent_id = NULL WHERE company_id = '20000000-0000-0000-0000-000000000001'::uuid;
+    DELETE FROM public.chart_of_accounts WHERE company_id = '20000000-0000-0000-0000-000000000001'::uuid;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 INSERT INTO public.chart_of_accounts (
     id, company_id, code, name_ar, name_en, category, normal_balance, level, type, parent_id, balance, description, is_active, is_system, updated_at
 ) VALUES
@@ -301,13 +640,19 @@ INSERT INTO public.chart_of_accounts (
 ('79190e51-03ec-4a54-a5b5-73cd90b42610'::uuid, '20000000-0000-0000-0000-000000000001'::uuid, '5100', 'تكلفة البضاعة المباعة (COGS)', 'Cost of Goods Sold', 'EXPENSE', 'DEBIT', 2, 'DETAIL', '4ddcdc00-b778-4f57-8743-8ac4930b9426'::uuid, 0, '', TRUE, TRUE, now()),
 ('c8bf689f-b361-4e38-a26a-357d8186cd6c'::uuid, '20000000-0000-0000-0000-000000000001'::uuid, '5200', 'المصروفات العمومية والإدارية والتسويقية', 'General & Admin Expenses', 'EXPENSE', 'DEBIT', 2, 'DETAIL', '4ddcdc00-b778-4f57-8743-8ac4930b9426'::uuid, -80, '', TRUE, TRUE, now()),
 ('9e0a2a7d-383e-4c69-b598-b0f9018b7981'::uuid, '20000000-0000-0000-0000-000000000001'::uuid, '5210', 'مصروف الرواتب والأجور', 'Salaries Expense', 'EXPENSE', 'DEBIT', 3, 'DETAIL', 'c8bf689f-b361-4e38-a26a-357d8186cd6c'::uuid, 0, '', TRUE, TRUE, now())
-ON CONFLICT (id) DO UPDATE SET
+ON CONFLICT (company_id, code) DO UPDATE SET
+    id = EXCLUDED.id,
     name_ar = EXCLUDED.name_ar,
     name_en = EXCLUDED.name_en,
     category = EXCLUDED.category,
     normal_balance = EXCLUDED.normal_balance,
-    balance = EXCLUDED.balance,
+    level = EXCLUDED.level,
+    type = EXCLUDED.type,
     parent_id = EXCLUDED.parent_id,
+    balance = EXCLUDED.balance,
+    description = EXCLUDED.description,
+    is_active = EXCLUDED.is_active,
+    is_system = EXCLUDED.is_system,
     updated_at = now();
 
 -- ==============================================================================

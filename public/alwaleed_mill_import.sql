@@ -214,6 +214,19 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
+-- التأكد من وجود القيد الفريد لشجرة الحسابات (company_id, code) للتعامل الآمن مع التعارض
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_coa_company_code'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE indexname = 'uq_coa_company_code'
+    ) THEN
+        ALTER TABLE public.chart_of_accounts ADD CONSTRAINT uq_coa_company_code UNIQUE (company_id, code);
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- ==============================================================================
 -- 2. إدخال أو تحديث بيانات الشركة (Company Record)
 -- ==============================================================================
@@ -246,35 +259,251 @@ ON CONFLICT (id) DO UPDATE SET
     updated_at = now();
 
 -- ==============================================================================
--- 2.1 تنظيف استباقي للبيانات السابقة لنفس المنشأة (Prevent uq_coa_company_code Duplicate Key)
+-- 2.1 تنظيف استباقي شامل ومعزول تماماً لنفس المنشأة (Prevent All Duplicate Key & FK Errors)
 -- ==============================================================================
--- نقوم بحذف السجلات القديمة لهذه المنشأة تحديداً حتى لا يحدث أي تعارض مع القيود الفريدة
--- مثل (uq_coa_company_code) أو أرقام الفواتير وسندات الصرف والقبض السابقة
+-- يتم تفكيك جميع العلاقات وحذف السجلات السابقة في كتل معزولة ومحمية لمنع توقف السكربت إطلاقاً
 DO $$
 DECLARE
     v_comp_id TEXT := '20000000-0000-0000-0000-000000000001';
+    v_comp_uuid UUID := '20000000-0000-0000-0000-000000000001'::uuid;
 BEGIN
-    DELETE FROM public.invoice_items WHERE company_id::text = v_comp_id;
-    DELETE FROM public.invoices WHERE company_id::text = v_comp_id;
-    DELETE FROM public.payment_vouchers WHERE company_id::text = v_comp_id;
-    DELETE FROM public.journal_entries WHERE company_id::text = v_comp_id;
-    DELETE FROM public.items WHERE company_id::text = v_comp_id;
-    DELETE FROM public.customers WHERE company_id::text = v_comp_id;
-    DELETE FROM public.suppliers WHERE company_id::text = v_comp_id;
-    
+    -- 1. فك ارتباط الحسابات في جميع الجداول لتجنب أي تعارض مفاتيح أجنبية (Foreign Keys)
     BEGIN
-        DELETE FROM public.company_accounting_settings WHERE company_id::text = v_comp_id;
+        UPDATE public.chart_of_accounts SET parent_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
 
-    UPDATE public.chart_of_accounts SET parent_id = NULL WHERE company_id::text = v_comp_id;
-    DELETE FROM public.chart_of_accounts WHERE company_id::text = v_comp_id;
-EXCEPTION WHEN OTHERS THEN NULL;
+    BEGIN
+        UPDATE public.company_accounting_settings 
+        SET cash_account_id = NULL, bank_account_id = NULL, receivable_account_id = NULL, 
+            payable_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL, 
+            cogs_account_id = NULL, vat_account_id = NULL, retained_earnings_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.company_settings 
+        SET default_bank_account_id = NULL, default_receivable_account_id = NULL, 
+            default_payable_account_id = NULL, default_sales_account_id = NULL, 
+            default_inventory_account_id = NULL, default_cogs_account_id = NULL, 
+            default_vat_account_id = NULL, default_retained_earnings_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.manufacturing_settings 
+        SET wip_account_id = NULL, labor_expense_account_id = NULL, overhead_expense_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.customers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.suppliers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.items 
+        SET cogs_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.payment_vouchers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE public.vouchers SET account_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 2. حذف الجداول التفصيلية والتابعة (Child Tables)
+    BEGIN
+        DELETE FROM public.invoice_items 
+        WHERE invoice_id IN (SELECT id FROM public.invoices WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.invoice_items 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_details 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.journal_entry_lines 
+        WHERE journal_entry_id IN (SELECT id FROM public.journal_entries WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.journal_entry_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_order_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.purchase_order_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.stock_transfer_lines 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.customer_branches 
+        WHERE customer_id IN (SELECT id FROM public.customers WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.customer_branches 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.item_warehouse_stocks 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 3. حذف الحركات التشغيلية الرئيسية (Operational Parents)
+    BEGIN
+        DELETE FROM public.invoices 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_master 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.payment_vouchers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.vouchers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.journal_entries 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.production_orders 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.stock_transfers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.sales_orders 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.purchase_orders 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 4. حذف سجلات البيانات الرئيسية (Master Records)
+    BEGIN
+        DELETE FROM public.customers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.suppliers 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.items 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.company_accounting_settings 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.company_settings 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 5. تفريغ وحذف شجرة الحسابات القديمة لنفس الشركة (Clear Old Chart of Accounts)
+    BEGIN
+        UPDATE public.chart_of_accounts SET parent_id = NULL 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+        DELETE FROM public.chart_of_accounts 
+        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
 END $$;
 
 -- ==============================================================================
 -- 3. دليل وشجرة الحسابات (Chart of Accounts: 23 حساباً)
 -- ==============================================================================
+DO $$
+BEGIN
+    UPDATE public.chart_of_accounts SET parent_id = NULL WHERE company_id = '20000000-0000-0000-0000-000000000001'::uuid;
+    DELETE FROM public.chart_of_accounts WHERE company_id = '20000000-0000-0000-0000-000000000001'::uuid;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 INSERT INTO public.chart_of_accounts (
     id, company_id, code, name_ar, name_en, category, normal_balance, level, type, parent_id, balance, description, is_active, is_system, updated_at
 ) VALUES
@@ -301,13 +530,19 @@ INSERT INTO public.chart_of_accounts (
 ('79190e51-03ec-4a54-a5b5-73cd90b42610'::uuid, '20000000-0000-0000-0000-000000000001'::uuid, '5100', 'تكلفة البضاعة المباعة (COGS)', 'Cost of Goods Sold', 'EXPENSE', 'DEBIT', 2, 'DETAIL', '4ddcdc00-b778-4f57-8743-8ac4930b9426'::uuid, 0, '', TRUE, TRUE, now()),
 ('c8bf689f-b361-4e38-a26a-357d8186cd6c'::uuid, '20000000-0000-0000-0000-000000000001'::uuid, '5200', 'المصروفات العمومية والإدارية والتسويقية', 'General & Admin Expenses', 'EXPENSE', 'DEBIT', 2, 'DETAIL', '4ddcdc00-b778-4f57-8743-8ac4930b9426'::uuid, -80, '', TRUE, TRUE, now()),
 ('9e0a2a7d-383e-4c69-b598-b0f9018b7981'::uuid, '20000000-0000-0000-0000-000000000001'::uuid, '5210', 'مصروف الرواتب والأجور', 'Salaries Expense', 'EXPENSE', 'DEBIT', 3, 'DETAIL', 'c8bf689f-b361-4e38-a26a-357d8186cd6c'::uuid, 0, '', TRUE, TRUE, now())
-ON CONFLICT (id) DO UPDATE SET
+ON CONFLICT (company_id, code) DO UPDATE SET
+    id = EXCLUDED.id,
     name_ar = EXCLUDED.name_ar,
     name_en = EXCLUDED.name_en,
     category = EXCLUDED.category,
     normal_balance = EXCLUDED.normal_balance,
-    balance = EXCLUDED.balance,
+    level = EXCLUDED.level,
+    type = EXCLUDED.type,
     parent_id = EXCLUDED.parent_id,
+    balance = EXCLUDED.balance,
+    description = EXCLUDED.description,
+    is_active = EXCLUDED.is_active,
+    is_system = EXCLUDED.is_system,
     updated_at = now();
 
 -- ==============================================================================
