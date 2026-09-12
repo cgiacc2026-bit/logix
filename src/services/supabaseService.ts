@@ -102,11 +102,13 @@ export class SupabaseDataService {
         website: p.website || (isAlWaleedCompany ? 'https://alwaleedmill.com' : ''),
         fiscalYearStart: p.fiscalYearStart || '2026-01-01',
         fiscalYearEnd: p.fiscalYearEnd || '2026-12-31',
-        functionalCurrency: data.functional_currency || p.functionalCurrency || 'KWD',
+        functionalCurrency: (data.functional_currency || data.currency || p.functionalCurrency || p.currency || 'KWD').trim().toUpperCase(),
+        currency: (data.functional_currency || data.currency || p.functionalCurrency || p.currency || 'KWD').trim().toUpperCase(),
+        currencySymbol: data.currency_symbol || p.currencySymbol || ((data.functional_currency || p.functionalCurrency || 'KWD').trim().toUpperCase() === 'KWD' ? 'د.ك' : (data.functional_currency || p.functionalCurrency || 'KWD').trim().toUpperCase() === 'SAR' ? 'ر.س' : 'د.ك'),
         accountingBasis: p.accountingBasis || 'ACCRUAL',
         inventoryCosting: p.inventoryCosting || 'WEIGHTED_AVERAGE',
         depreciationMethod: p.depreciationMethod || 'STRAIGHT_LINE',
-        decimalPlaces: p.decimalPlaces ?? 3,
+        decimalPlaces: data.decimal_places ?? p.decimalPlaces ?? ((data.functional_currency || p.functionalCurrency || 'KWD').trim().toUpperCase() === 'KWD' || (data.functional_currency || p.functionalCurrency || 'KWD').trim().toUpperCase() === 'BHD' || (data.functional_currency || p.functionalCurrency || 'KWD').trim().toUpperCase() === 'OMR' || (data.functional_currency || p.functionalCurrency || 'KWD').trim().toUpperCase() === 'JOD' ? 3 : 2),
         generalManager: p.generalManager || (isAlWaleedCompany ? 'د. خالد السليمان' : ''),
         financialManager: p.financialManager || (isAlWaleedCompany ? 'أ. محمد الشمري' : ''),
         chiefAccountant: p.chiefAccountant || (isAlWaleedCompany ? 'أ. أحمد المصطفى' : ''),
@@ -197,9 +199,14 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
+      const funcCurr = (comp.functionalCurrency || comp.currency || 'KWD').trim().toUpperCase();
+      const currSym = comp.currencySymbol || (funcCurr === 'KWD' ? 'د.ك' : funcCurr === 'SAR' ? 'ر.س' : 'د.ك');
+      const decPlaces = comp.decimalPlaces !== undefined ? comp.decimalPlaces : (funcCurr === 'KWD' || funcCurr === 'BHD' || funcCurr === 'OMR' || funcCurr === 'JOD' ? 3 : 2);
+
       const payload: any = {
         id: companyId,
         company_name: comp.nameAr,
+        name_ar: comp.nameAr,
         owner_email: comp.email || 'admin@logixerp.com',
         status: 'active',
         logo_url: comp.logoUrl || '',
@@ -209,7 +216,17 @@ export class SupabaseDataService {
         allow_negative_inventory: comp.allowNegativeInventory !== false,
         allow_negative_balance: comp.allowNegativeBalance !== false,
         pos_default_warehouse_id: comp.posDefaultWarehouseId || 'wh-main-01',
-        profile_data: comp,
+        functional_currency: funcCurr,
+        currency: funcCurr,
+        currency_symbol: currSym,
+        decimal_places: decPlaces,
+        profile_data: {
+          ...comp,
+          functionalCurrency: funcCurr,
+          currency: funcCurr,
+          currencySymbol: currSym,
+          decimalPlaces: decPlaces,
+        },
         raw_data: comp,
         updated_at: new Date().toISOString(),
       };
@@ -225,7 +242,14 @@ export class SupabaseDataService {
           company_name: comp.nameAr,
           owner_email: comp.email || 'admin@logixerp.com',
           status: 'active',
-          profile_data: comp,
+          functional_currency: funcCurr,
+          profile_data: {
+            ...comp,
+            functionalCurrency: funcCurr,
+            currency: funcCurr,
+            currencySymbol: currSym,
+            decimalPlaces: decPlaces,
+          },
           updated_at: new Date().toISOString(),
         };
         const { error: fallbackError } = await supabase

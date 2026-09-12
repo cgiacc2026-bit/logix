@@ -50,6 +50,7 @@ import { AutoBackupController } from './components/AutoBackupController.tsx';
 import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { CompanyOnboardingWizard } from './components/CompanyOnboardingWizard.tsx';
+import { CompanyProvider, useCompany } from './contexts/CompanyContext.tsx';
 import { DataService } from './services/dataService.ts';
 import { DataSyncService } from './services/dataSyncService.ts';
 import { ThemeService, ThemeColor, ThemeMode } from './services/themeService.ts';
@@ -161,7 +162,7 @@ function getTabFromCurrentUrl(): TabType {
   return 'dashboard';
 }
 
-export default function App() {
+export function AppContent() {
   const [activeTab, setActiveTab] = useState<TabType>(() => getTabFromCurrentUrl());
 
   // Radical Subpath Elimination: Always force URL bar to the clean root domain ('/')
@@ -192,11 +193,13 @@ export default function App() {
     }
   }, [activeTab]);
 
-  const [currency, setCurrency] = useState<string>('KWD');
+  // Single Source of Truth for Company Profile and Currency
+  const { currentCompany, currency, setCurrency, updateCompany, reloadCompany } = useCompany();
+  const activeCompany = currentCompany;
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
   // ERP State Data
-  const [company, setCompany] = useState<CompanyProfile | null>(null);
   const [kpis, setKpis] = useState<FinancialKPIs | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [journals, setJournals] = useState<JournalEntry[]>([]);
@@ -240,15 +243,15 @@ export default function App() {
   const [isJsonBackupModalOpen, setIsJsonBackupModalOpen] = useState(false);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
 
-  const handleLogin = (user: SystemUser, selectedCompany?: CompanyProfile) => {
+  const handleLogin = async (user: SystemUser, selectedCompany?: CompanyProfile) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
     setActiveTab('dashboard');
     localStorage.setItem('logix_auth_session', JSON.stringify(user));
     if (selectedCompany) {
-      setCompany(selectedCompany);
+      await updateCompany(selectedCompany);
       if (selectedCompany.functionalCurrency) {
-        setCurrency(selectedCompany.functionalCurrency);
+        await setCurrency(selectedCompany.functionalCurrency);
       }
     }
     refreshAllData();
@@ -271,7 +274,7 @@ export default function App() {
   // Check onboarding on initial authenticated load
   useEffect(() => {
     if (isAuthenticated) {
-      const activeId = company?.id || localStorage.getItem('supabase_company_id') || 'default_tenant';
+      const activeId = activeCompany?.id || localStorage.getItem('supabase_company_id') || 'default_tenant';
       const onboarding = loadOnboardingState(activeId);
       if (!onboarding.isDismissed && onboarding.completedSteps.length < 6) {
         const timer = setTimeout(() => {
@@ -280,7 +283,7 @@ export default function App() {
         return () => clearTimeout(timer);
       }
     }
-  }, [isAuthenticated, company?.id]);
+  }, [isAuthenticated, activeCompany?.id]);
 
   const handleLogout = () => {
     setIsAuthenticated(false);
@@ -307,6 +310,7 @@ export default function App() {
       setIsLoadingData(true);
     }
     try {
+      await reloadCompany();
       const compData = await DataService.getCompany();
       const jData = await DataService.getJournals();
       const accsData = await DataService.getAccounts();
@@ -327,10 +331,6 @@ export default function App() {
           DataService.getWarehouses(),
         ]);
 
-      setCompany(compData);
-      if (compData?.functionalCurrency) {
-        setCurrency(compData.functionalCurrency);
-      }
       setKpis(kpisData);
       setAccounts(accsData || []);
       setJournals(jData || []);
@@ -412,23 +412,16 @@ export default function App() {
   // Company profile updater
   const handleSaveCompany = async (updated: CompanyProfile) => {
     try {
-      const saved = await DataService.saveCompany(updated);
-      setCompany(saved);
-      if (saved.functionalCurrency) {
-        setCurrency(saved.functionalCurrency);
-      }
-      await refreshAllData();
+      await updateCompany(updated);
+      await refreshAllData(true);
     } catch (err) {
       console.error('Error saving company:', err);
     }
   };
 
   // Currency handler that syncs with Company Profile
-  const handleCurrencyChange = (newCurr: string) => {
-    setCurrency(newCurr);
-    if (company && company.functionalCurrency !== newCurr) {
-      handleSaveCompany({ ...company, functionalCurrency: newCurr });
-    }
+  const handleCurrencyChange = async (newCurr: string) => {
+    await setCurrency(newCurr);
   };
 
   // Action Mutators with DataService (Zero Crash Guarantee)
@@ -624,7 +617,6 @@ export default function App() {
   };
 
   const unpaidInvoices = invoices.filter((i) => i.dueAmount > 0 && i.status !== 'CANCELLED');
-  const activeCompany = company || DEFAULT_COMPANY;
 
   // Render Login Interface if not authenticated
   if (!isAuthenticated || !currentUser) {
@@ -632,7 +624,7 @@ export default function App() {
       <LoginView
         onLogin={handleLogin}
         availableUsers={users}
-        currentCompany={null}
+        currentCompany={activeCompany}
       />
     );
   }
@@ -658,10 +650,10 @@ export default function App() {
     return (
       <CompanyOnboardingWizard
         company={activeCompany}
-        onComplete={(updatedCompany) => {
-          setCompany(updatedCompany);
+        onComplete={async (updatedCompany) => {
+          await updateCompany(updatedCompany);
           if (updatedCompany.functionalCurrency) {
-            setCurrency(updatedCompany.functionalCurrency);
+            await setCurrency(updatedCompany.functionalCurrency);
           }
           refreshAllData(true);
         }}
@@ -894,5 +886,13 @@ export default function App() {
         invoicesCount={invoices.length}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <CompanyProvider>
+      <AppContent />
+    </CompanyProvider>
   );
 }

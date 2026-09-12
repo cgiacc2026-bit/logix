@@ -27,6 +27,7 @@ import { ExcelBackupService } from '../services/excelBackupService.ts';
 import { ThemeService, ERP_THEMES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
 import { resolveActiveCompany } from '../utils/companyResolver.ts';
 import { DataService } from '../services/dataService.ts';
+import { useCompany } from '../contexts/CompanyContext.tsx';
 
 interface HeaderProps {
   company: CompanyProfile | null;
@@ -57,7 +58,24 @@ export const Header: React.FC<HeaderProps> = ({
   onSaveCompany,
   onRefreshAll,
 }) => {
-  const activeCompany = resolveActiveCompany(company);
+  let companyContext: any = null;
+  try {
+    companyContext = useCompany();
+  } catch {
+    // fallback if rendered outside provider
+  }
+  const activeCompany = companyContext?.currentCompany || resolveActiveCompany(company);
+  const effectiveCurrency = companyContext?.currency || activeCompany.functionalCurrency || activeCompany.currency || currency || 'KWD';
+
+  const handleCurrencyChange = (newCurr: string) => {
+    if (companyContext?.setCurrency) {
+      companyContext.setCurrency(newCurr);
+    }
+    if (setCurrency) {
+      setCurrency(newCurr);
+    }
+  };
+
   const [isExporting, setIsExporting] = useState(false);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
   const [isRepairing, setIsRepairing] = useState(false);
@@ -325,20 +343,20 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-1 bg-black/30 border border-white/20 rounded-lg px-2 py-0.5 text-xs shrink-0">
             <span className="hidden md:inline text-slate-300 font-semibold text-[11px]">العملة:</span>
             <select
-              value={currency || 'SAR'}
-              onChange={(e) => setCurrency(e.target.value)}
+              value={effectiveCurrency}
+              onChange={(e) => handleCurrencyChange(e.target.value)}
               className="bg-transparent border-none rounded px-1 py-0.5 font-bold text-white text-xs focus:outline-none cursor-pointer"
             >
-              <option value="SAR" className="text-black bg-white">SAR (ر.س)</option>
               <option value="KWD" className="text-black bg-white">KWD (د.ك)</option>
-              <option value="USD" className="text-black bg-white">USD ($)</option>
-              <option value="EUR" className="text-black bg-white">EUR (€)</option>
+              <option value="SAR" className="text-black bg-white">SAR (ر.س)</option>
               <option value="AED" className="text-black bg-white">AED (د.إ)</option>
-              <option value="EGP" className="text-black bg-white">EGP (ج.م)</option>
-              <option value="QAR" className="text-black bg-white">QAR (ر.ق)</option>
               <option value="BHD" className="text-black bg-white">BHD (د.ب)</option>
               <option value="OMR" className="text-black bg-white">OMR (ر.ع)</option>
+              <option value="QAR" className="text-black bg-white">QAR (ر.ق)</option>
               <option value="JOD" className="text-black bg-white">JOD (د.أ)</option>
+              <option value="EGP" className="text-black bg-white">EGP (ج.م)</option>
+              <option value="USD" className="text-black bg-white">USD ($)</option>
+              <option value="EUR" className="text-black bg-white">EUR (€)</option>
             </select>
           </div>
 

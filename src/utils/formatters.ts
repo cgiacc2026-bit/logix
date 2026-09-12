@@ -1,23 +1,92 @@
 /**
  * Financial & Currency Formatting Utilities
+ * Single Source of Truth for Financial Formatting across LOGIX ERP
  */
 
-/**
- * Financial & Currency Formatting Utilities
- */
+interface ActiveCompanyFinancialConfig {
+  currency: string;
+  symbol: string;
+  decimals: number;
+}
 
-function getActiveCompanySettings(): { functionalCurrency?: string; currency?: string; decimalPlaces?: number } | null {
+// In-memory reactive config initialized from local storage or defaults
+let activeCompanyConfig: ActiveCompanyFinancialConfig = (() => {
   try {
-    const raw = localStorage.getItem('supabase_company_info');
-    if (raw) {
-      return JSON.parse(raw);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem('supabase_company_info');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const p = parsed.profile_data || parsed;
+        const curr = (parsed.functional_currency || parsed.currency || p.functionalCurrency || p.currency || 'KWD').trim().toUpperCase();
+        const sym = parsed.currency_symbol || p.currencySymbol || (curr === 'KWD' ? 'د.ك' : curr === 'SAR' ? 'ر.س' : curr === 'AED' ? 'د.إ' : curr);
+        const dec = parsed.decimal_places ?? p.decimalPlaces ?? (curr === 'KWD' || curr === 'BHD' || curr === 'OMR' || curr === 'JOD' ? 3 : 2);
+        return { currency: curr, symbol: sym, decimals: dec };
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return { currency: 'KWD', symbol: 'د.ك', decimals: 3 };
+})();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('company_settings_changed', (e: any) => {
+    try {
+      const comp = e.detail;
+      if (comp) {
+        const curr = (comp.functionalCurrency || comp.currency || 'KWD').trim().toUpperCase();
+        const sym = comp.currencySymbol || (curr === 'KWD' ? 'د.ك' : curr === 'SAR' ? 'ر.س' : curr === 'AED' ? 'د.إ' : curr);
+        const dec = comp.decimalPlaces !== undefined ? comp.decimalPlaces : (curr === 'KWD' || curr === 'BHD' || curr === 'OMR' || curr === 'JOD' ? 3 : 2);
+        setActiveCompanyConfig({ currency: curr, symbol: sym, decimals: dec });
+      }
+    } catch {}
+  });
+}
+
+export function setActiveCompanyConfig(config: { currency?: string; symbol?: string; decimals?: number }) {
+  if (config.currency) {
+    activeCompanyConfig.currency = config.currency.trim().toUpperCase();
+  }
+  if (config.symbol) {
+    activeCompanyConfig.symbol = config.symbol;
+  }
+  if (config.decimals !== undefined) {
+    activeCompanyConfig.decimals = config.decimals;
+  }
+}
+
+export function getActiveCompanySettings(): { functionalCurrency?: string; currency?: string; decimalPlaces?: number; currencySymbol?: string } | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem('supabase_company_info');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const p = parsed.profile_data || parsed;
+        return {
+          functionalCurrency: parsed.functional_currency || p.functionalCurrency || activeCompanyConfig.currency,
+          currency: parsed.currency || p.currency || activeCompanyConfig.currency,
+          decimalPlaces: parsed.decimal_places ?? p.decimalPlaces ?? activeCompanyConfig.decimals,
+          currencySymbol: parsed.currency_symbol || p.currencySymbol || activeCompanyConfig.symbol,
+        };
+      }
     }
   } catch {
     // ignore
   }
-  return null;
+  return {
+    functionalCurrency: activeCompanyConfig.currency,
+    currency: activeCompanyConfig.currency,
+    decimalPlaces: activeCompanyConfig.decimals,
+    currencySymbol: activeCompanyConfig.symbol,
+  };
 }
 
+/**
+ * Unified Financial Formatter:
+ * formatCurrency(amount: number, currency?: string, customDecimals?: number)
+ * Automatically utilizes the active company's functional currency and decimals
+ * unless an explicit foreign currency is requested.
+ */
 export function formatCurrency(
   amount: number,
   currency?: string,
@@ -26,12 +95,16 @@ export function formatCurrency(
   const val = Number(amount) || 0;
   const company = getActiveCompanySettings();
 
-  const effectiveCurrency = (currency || company?.functionalCurrency || company?.currency || 'KWD').trim().toUpperCase();
+  // If no currency passed, or if caller passed empty string or the active company currency
+  const passedCurr = (currency || '').trim().toUpperCase();
+  const companyCurr = (company?.functionalCurrency || company?.currency || activeCompanyConfig.currency || 'KWD').trim().toUpperCase();
   
+  const effectiveCurrency = (!passedCurr || passedCurr === companyCurr) ? companyCurr : passedCurr;
+
   let decimals = 3;
   if (customDecimals !== undefined) {
     decimals = customDecimals;
-  } else if (company?.decimalPlaces !== undefined && typeof company.decimalPlaces === 'number') {
+  } else if (effectiveCurrency === companyCurr && company?.decimalPlaces !== undefined) {
     decimals = company.decimalPlaces;
   } else if (
     effectiveCurrency === 'KWD' ||
@@ -50,7 +123,9 @@ export function formatCurrency(
   }
 
   let symbol = 'د.ك';
-  if (effectiveCurrency === 'KWD' || effectiveCurrency === 'د.ك' || effectiveCurrency.includes('كويتي') || effectiveCurrency.includes('KWD')) {
+  if (effectiveCurrency === companyCurr && company?.currencySymbol) {
+    symbol = company.currencySymbol;
+  } else if (effectiveCurrency === 'KWD' || effectiveCurrency === 'د.ك' || effectiveCurrency.includes('كويتي') || effectiveCurrency.includes('KWD')) {
     symbol = 'د.ك';
   } else if (effectiveCurrency === 'SAR' || effectiveCurrency.includes('سعودي')) {
     symbol = 'ر.س';

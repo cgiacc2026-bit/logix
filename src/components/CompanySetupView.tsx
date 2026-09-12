@@ -50,7 +50,7 @@ import { CompanyOnboardingWizard } from './CompanyOnboardingWizard';
 import { DataService, localDataStore, getDefaultMappingForAccounts } from '../services/dataService.ts';
 import { safeApiFetch } from '../utils/safeJson.ts';
 import { SystemResetService } from '../services/systemResetService.ts';
-import { formatCurrency } from '../utils/formatters.ts';
+import { formatCurrency, setActiveCompanyConfig } from '../utils/formatters.ts';
 import { ThemeService, ERP_THEMES, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
 import { ERPBackupImportService } from '../services/importBackupService.js';
 import { supabase, isSupabaseConfigured, resolveToSupabaseCompanyUUID, getCurrentCompanyId } from '../services/supabaseClient.js';
@@ -568,9 +568,17 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     try {
       const activeCompanyId = resolveToSupabaseCompanyUUID(company?.id || getCurrentCompanyId());
 
+      const funcCurr = (formData.functionalCurrency || formData.currency || 'KWD').trim().toUpperCase();
+      const currSym = formData.currencySymbol || (funcCurr === 'KWD' ? 'د.ك' : funcCurr === 'SAR' ? 'ر.س' : funcCurr === 'AED' ? 'د.إ' : funcCurr === 'BHD' ? 'د.ب' : funcCurr === 'OMR' ? 'ر.ع' : funcCurr === 'QAR' ? 'ر.ق' : funcCurr === 'JOD' ? 'د.أ' : funcCurr === 'EGP' ? 'ج.م' : funcCurr === 'USD' ? '$' : funcCurr === 'EUR' ? '€' : funcCurr);
+      const decPlaces = formData.decimalPlaces !== undefined ? Number(formData.decimalPlaces) : (funcCurr === 'KWD' || funcCurr === 'BHD' || funcCurr === 'OMR' || funcCurr === 'JOD' ? 3 : 2);
+
       const updatedProfile: CompanyProfile = {
         ...(company || {}),
         ...formData,
+        functionalCurrency: funcCurr,
+        currency: funcCurr,
+        currencySymbol: currSym,
+        decimalPlaces: decPlaces,
         defaultAccounts: currentMapping,
       } as CompanyProfile;
 
@@ -580,6 +588,12 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
 
         try {
           await supabase.from('companies').update({
+            company_name: updatedProfile.nameAr,
+            name_ar: updatedProfile.nameAr,
+            functional_currency: funcCurr,
+            currency: funcCurr,
+            currency_symbol: currSym,
+            decimal_places: decPlaces,
             default_accounts: currentMapping,
             default_cash_account_id: currentMapping.cashAccountId || null,
             default_bank_account_id: currentMapping.bankAccountId || null,
@@ -596,8 +610,19 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
         }
       }
 
-      await onSaveCompany(updatedProfile);
+      // Update local single source of truth and global in-memory formatters
+      setActiveCompanyConfig({
+        currency: funcCurr,
+        symbol: currSym,
+        decimals: decPlaces,
+      });
+      localStorage.setItem('supabase_company_info', JSON.stringify(updatedProfile));
       localDataStore.saveCompany(updatedProfile);
+
+      await onSaveCompany(updatedProfile);
+
+      // Broadcast event so all components update immediately without page refresh
+      window.dispatchEvent(new CustomEvent('company_settings_changed', { detail: updatedProfile }));
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
@@ -1447,7 +1472,20 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                 </label>
                 <select
                   value={formData.functionalCurrency || 'KWD'}
-                  onChange={(e) => handleChange('functionalCurrency', e.target.value)}
+                  onChange={(e) => {
+                    const newCurr = e.target.value;
+                    const newSym = newCurr === 'KWD' ? 'د.ك' : newCurr === 'SAR' ? 'ر.س' : newCurr === 'AED' ? 'د.إ' : newCurr === 'BHD' ? 'د.ب' : newCurr === 'OMR' ? 'ر.ع' : newCurr === 'QAR' ? 'ر.ق' : newCurr === 'JOD' ? 'د.أ' : newCurr === 'EGP' ? 'ج.م' : newCurr === 'USD' ? '$' : newCurr === 'EUR' ? '€' : newCurr;
+                    const newDec = (newCurr === 'KWD' || newCurr === 'BHD' || newCurr === 'OMR' || newCurr === 'JOD') ? 3 : 2;
+                    setFormData((prev) => ({
+                      ...prev,
+                      functionalCurrency: newCurr,
+                      currency: newCurr,
+                      currencySymbol: newSym,
+                      decimalPlaces: newDec,
+                    }));
+                    setSaveSuccess(false);
+                    setErrorMessage('');
+                  }}
                   className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-[#1A1A1A] font-bold focus:outline-none focus:border-[#1A1A1A]"
                 >
                   <option value="KWD">الدينار الكويتي (KWD / د.ك) — 3 خانات</option>
