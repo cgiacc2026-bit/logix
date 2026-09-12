@@ -270,6 +270,7 @@ export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
       {/* 1. GL-LINKED CUSTOMER BALANCES REPORT (ح/ 1120) */}
       {activeReport === 'customer-balances' && (
         <GlCustomerBalancesReport
+          companyId={company?.id || (company as any)?.company_id}
           customers={customers}
           journals={journals}
           accounts={accounts}

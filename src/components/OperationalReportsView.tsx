@@ -1265,6 +1265,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       {/* ========================================================= */}
       {activeReport === 'customers' && (
         <GlCustomerBalancesReport
+          companyId={company?.id || (company as any)?.company_id}
           customers={customers}
           journals={validJournals}
           accounts={accounts}
