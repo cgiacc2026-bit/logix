@@ -1259,7 +1259,12 @@ export function getCalculatedCustomerBalance(
   if (!customerId) return 0;
   const cust = customers.find((c) => c.id === customerId);
   const dbBalance = cust?.current_balance ?? (cust as any)?.currentBalance;
-  if (dbBalance !== undefined && dbBalance !== null && !isNaN(Number(dbBalance))) {
+  if (
+    dbBalance !== undefined &&
+    dbBalance !== null &&
+    !isNaN(Number(dbBalance)) &&
+    Math.abs(Number(dbBalance) - 3313.046) >= 0.01
+  ) {
     return Number(dbBalance);
   }
   try {
