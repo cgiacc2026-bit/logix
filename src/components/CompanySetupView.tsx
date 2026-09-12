@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { Account, CompanyProfile, DefaultAccountsMapping } from '../types.js';
 import { DatabaseWizardModal } from './DatabaseWizardModal';
+import { CompanyOnboardingWizard } from './CompanyOnboardingWizard';
 import { DataService, localDataStore, getDefaultMappingForAccounts } from '../services/dataService.ts';
 import { safeApiFetch } from '../utils/safeJson.ts';
 import { SystemResetService } from '../services/systemResetService.ts';
@@ -141,6 +142,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   const [restoreSuccess, setRestoreSuccess] = useState('');
   const [isResettingDb, setIsResettingDb] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
 
   // Enterprise SQL Migration Script States
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
@@ -880,14 +882,25 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={handleSubmit}
-          disabled={isSaving}
-          className="px-5 py-2.5 bg-[#1A1A1A] hover:bg-[#2D2B28] text-white rounded-md text-xs font-semibold flex items-center gap-2 border border-[#1A1A1A] shadow-xs cursor-pointer disabled:opacity-50 transition-all self-start md:self-auto"
-        >
-          <Save className="w-4 h-4 text-[#D4AF37]" />
-          <span>{isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات العامة'}</span>
-        </button>
+        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowOnboardingWizard(true)}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+            title="إعادة تشغيل معالج إعداد المنشأة لتهيئة البيانات خطوة بخطوة"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-200" />
+            <span>معالج إعداد المنشأة (Wizard)</span>
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSaving}
+            className="px-5 py-2.5 bg-[#1A1A1A] hover:bg-[#2D2B28] text-white rounded-md text-xs font-semibold flex items-center gap-2 border border-[#1A1A1A] shadow-xs cursor-pointer disabled:opacity-50 transition-all"
+          >
+            <Save className="w-4 h-4 text-[#D4AF37]" />
+            <span>{isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات العامة'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Alert Messages */}
@@ -2973,6 +2986,19 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Onboarding Wizard Modal */}
+      {showOnboardingWizard && company && (
+        <CompanyOnboardingWizard
+          company={company}
+          onComplete={(updatedCompany) => {
+            setShowOnboardingWizard(false);
+            if (onSaveCompany) onSaveCompany(updatedCompany);
+            if (onRefreshData) onRefreshData();
+          }}
+          onCancel={() => setShowOnboardingWizard(false)}
+        />
       )}
     </div>
   );

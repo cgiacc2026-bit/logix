@@ -365,14 +365,16 @@ class LocalDataStore {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem('supabase_company_id');
       if (saved && saved.trim() && saved.trim() !== 'default') {
-        return resolveToSupabaseCompanyUUID(saved.trim());
+        const res = resolveToSupabaseCompanyUUID(saved.trim());
+        if (res) return res;
       }
       const active = window.localStorage.getItem('activeCompanyId');
       if (active && active.trim() && active.trim() !== 'default') {
-        return resolveToSupabaseCompanyUUID(active.trim());
+        const res = resolveToSupabaseCompanyUUID(active.trim());
+        if (res) return res;
       }
     }
-    return '20000000-0000-0000-0000-000000000001';
+    return '';
   }
 
   public isAlWaleedActive(): boolean {
@@ -380,9 +382,7 @@ class LocalDataStore {
     if (!compId) return false;
     return (
       compId === '20000000-0000-0000-0000-000000000001' ||
-      compId === 'company-alwaleed-client-003' ||
-      compId.toLowerCase().includes('alwaleed') ||
-      compId === '450912'
+      compId === 'company-alwaleed-client-003'
     );
   }
 
@@ -401,16 +401,7 @@ class LocalDataStore {
   public getLocal<T>(key: string, defaultVal: T): T {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        let item = window.localStorage.getItem(key);
-        if (!item) {
-          const compId = this.getEffectiveCompanyId();
-          if (compId && key.includes(compId)) {
-            const rawId = window.localStorage.getItem('supabase_company_id');
-            if (rawId && rawId !== compId) {
-              item = window.localStorage.getItem(key.replace(compId, rawId));
-            }
-          }
-        }
+        const item = window.localStorage.getItem(key);
         if (item) return safeJsonParse<T>(item, defaultVal);
       }
     } catch (e) {
@@ -940,13 +931,8 @@ class LocalDataStore {
         this.markTenantInitialized();
         return alwaleedCustomers;
       }
-      if (isDemoActive()) {
-        const zeroedCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0 }));
-        this.saveCustomers(zeroedCustomers);
-        this.markTenantInitialized();
-        return zeroedCustomers;
-      }
       this.saveCustomers([]);
+      this.markTenantInitialized();
       return [];
     }
     const tombstones = this.getTombstones('customers');
@@ -973,13 +959,8 @@ class LocalDataStore {
         this.markTenantInitialized();
         return alwaleedSuppliers;
       }
-      if (isDemoActive()) {
-        const zeroedSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0 }));
-        this.saveSuppliers(zeroedSuppliers);
-        this.markTenantInitialized();
-        return zeroedSuppliers;
-      }
       this.saveSuppliers([]);
+      this.markTenantInitialized();
       return [];
     }
     const tombstones = this.getTombstones('suppliers');
@@ -6482,125 +6463,127 @@ export class DataService {
       generalRepAdded = true;
     }
 
-    // 3. Ensure Opening Balances dated 2026-08-01 exist
-    const accounts = await this.getAccounts();
-    const journals = await this.getJournals();
-    const customers = localDataStore.getCustomers();
+    // 3. Ensure Opening Balances dated 2026-08-01 exist (STRICTLY for authentic Al-Waleed tenant only - zero leak to new tenants)
+    if (localDataStore.isAlWaleedActive()) {
+      const accounts = await this.getAccounts();
+      const journals = await this.getJournals();
+      const customers = localDataStore.getCustomers();
 
-    const hasOpeningJournal = journals.some(
-      (j) => j.date === '2026-08-01' && (j.description?.includes('رصيد') || j.description?.includes('افتتاحي'))
-    );
-    const acc1120 = accounts.find((a) => a.code === '1120');
-    const acc3100 = accounts.find((a) => a.code === '3100');
+      const hasOpeningJournal = journals.some(
+        (j) => j.date === '2026-08-01' && (j.description?.includes('رصيد') || j.description?.includes('افتتاحي'))
+      );
+      const acc1120 = accounts.find((a) => a.code === '1120');
+      const acc3100 = accounts.find((a) => a.code === '3100');
 
-    if (!hasOpeningJournal || !acc1120 || acc1120.balance === 0) {
-      const COOP_BALANCES = [
-        { code: '9407', nameAr: 'جمعية الجليب التعاونية', nameEn: 'Jleeb Al-Shuyoukh Co-op Society', balance: 2811.222, phone: '+965 2431 0000', city: 'الفروانية' },
-        { code: '4568', nameAr: 'جمعية القيروان التعاونية', nameEn: 'Qairawan Co-op Society', balance: 1514.395, phone: '+965 2467 0000', city: 'العاصمة' },
-        { code: '3124', nameAr: 'جمعية الصباحية التعاونية', nameEn: 'Sabahiya Co-op Society', balance: 2010.164, phone: '+965 2361 0000', city: 'الأحمدي' },
-        { code: '875',  nameAr: 'جمعية الأحمدي التعاونية', nameEn: 'Ahmadi Co-op Society', balance: 950.313, phone: '+965 2398 0000', city: 'الأحمدي' },
-        { code: '3900', nameAr: 'جمعية صباح الأحمد التعاونية', nameEn: 'Sabah Al-Ahmad Co-op Society', balance: 895.338, phone: '+965 2326 0000', city: 'الأحمدي' },
-        { code: '301',  nameAr: 'جمعية شمال غرب الصليبيخات التعاونية', nameEn: 'NW Sulaibikhat Co-op Society', balance: 2941.297, phone: '+965 2467 1111', city: 'العاصمة' },
-        { code: '5563', nameAr: 'جمعية بيان التعاونية', nameEn: 'Bayan Co-op Society', balance: 1743.973, phone: '+965 2538 0000', city: 'حولي' },
-        { code: '2035', nameAr: 'جمعية مدينة سعد العبدالله التعاونية', nameEn: 'Saad Al-Abdullah Co-op Society', balance: 711.214, phone: '+965 2454 0000', city: 'الجهراء' },
-        { code: '3764', nameAr: 'جمعية سلوى التعاونية', nameEn: 'Salwa Co-op Society', balance: 1002.707, phone: '+965 2561 0000', city: 'حولي' },
-        { code: '2537', nameAr: 'جمعية علي صباح السالم التعاونية', nameEn: 'Ali Sabah Al-Salem Co-op Society', balance: 931.940, phone: '+965 2328 8000', city: 'الأحمدي' },
-        { code: '7575', nameAr: 'جمعية صباح الناصر التعاونية', nameEn: 'Sabah Al-Nasser Co-op Society', balance: 760.456, phone: '+965 2471 0000', city: 'الفروانية' },
-        { code: '4640', nameAr: 'جمعية مبارك الكبير التعاونية', nameEn: 'Mubarak Al-Kabeer Co-op Society', balance: 4921.986, phone: '+965 2542 0000', city: 'مبارك الكبير' },
-        { code: '1804', nameAr: 'جمعية إشبيلية التعاونية', nameEn: 'Ishbiliya Co-op Society', balance: 441.429, phone: '+965 2476 0000', city: 'الفروانية' },
-      ];
+      if (!hasOpeningJournal || !acc1120 || acc1120.balance === 0) {
+        const COOP_BALANCES = [
+          { code: '9407', nameAr: 'جمعية الجليب التعاونية', nameEn: 'Jleeb Al-Shuyoukh Co-op Society', balance: 2811.222, phone: '+965 2431 0000', city: 'الفروانية' },
+          { code: '4568', nameAr: 'جمعية القيروان التعاونية', nameEn: 'Qairawan Co-op Society', balance: 1514.395, phone: '+965 2467 0000', city: 'العاصمة' },
+          { code: '3124', nameAr: 'جمعية الصباحية التعاونية', nameEn: 'Sabahiya Co-op Society', balance: 2010.164, phone: '+965 2361 0000', city: 'الأحمدي' },
+          { code: '875',  nameAr: 'جمعية الأحمدي التعاونية', nameEn: 'Ahmadi Co-op Society', balance: 950.313, phone: '+965 2398 0000', city: 'الأحمدي' },
+          { code: '3900', nameAr: 'جمعية صباح الأحمد التعاونية', nameEn: 'Sabah Al-Ahmad Co-op Society', balance: 895.338, phone: '+965 2326 0000', city: 'الأحمدي' },
+          { code: '301',  nameAr: 'جمعية شمال غرب الصليبيخات التعاونية', nameEn: 'NW Sulaibikhat Co-op Society', balance: 2941.297, phone: '+965 2467 1111', city: 'العاصمة' },
+          { code: '5563', nameAr: 'جمعية بيان التعاونية', nameEn: 'Bayan Co-op Society', balance: 1743.973, phone: '+965 2538 0000', city: 'حولي' },
+          { code: '2035', nameAr: 'جمعية مدينة سعد العبدالله التعاونية', nameEn: 'Saad Al-Abdullah Co-op Society', balance: 711.214, phone: '+965 2454 0000', city: 'الجهراء' },
+          { code: '3764', nameAr: 'جمعية سلوى التعاونية', nameEn: 'Salwa Co-op Society', balance: 1002.707, phone: '+965 2561 0000', city: 'حولي' },
+          { code: '2537', nameAr: 'جمعية علي صباح السالم التعاونية', nameEn: 'Ali Sabah Al-Salem Co-op Society', balance: 931.940, phone: '+965 2328 8000', city: 'الأحمدي' },
+          { code: '7575', nameAr: 'جمعية صباح الناصر التعاونية', nameEn: 'Sabah Al-Nasser Co-op Society', balance: 760.456, phone: '+965 2471 0000', city: 'الفروانية' },
+          { code: '4640', nameAr: 'جمعية مبارك الكبير التعاونية', nameEn: 'Mubarak Al-Kabeer Co-op Society', balance: 4921.986, phone: '+965 2542 0000', city: 'مبارك الكبير' },
+          { code: '1804', nameAr: 'جمعية إشبيلية التعاونية', nameEn: 'Ishbiliya Co-op Society', balance: 441.429, phone: '+965 2476 0000', city: 'الفروانية' },
+        ];
 
-      const totalCoopBalance = COOP_BALANCES.reduce((sum, c) => sum + c.balance, 0);
+        const totalCoopBalance = COOP_BALANCES.reduce((sum, c) => sum + c.balance, 0);
 
-      // Merge or update customers
-      const updatedCustomers = [...customers];
-      for (const coop of COOP_BALANCES) {
-        const cleanName = coop.nameAr.replace('جمعية ', '').replace(' التعاونية', '');
-        const existingIdx = updatedCustomers.findIndex(
-          (c) => c.code === coop.code || c.nameAr?.includes(cleanName)
-        );
-        if (existingIdx !== -1) {
-          updatedCustomers[existingIdx] = {
-            ...updatedCustomers[existingIdx],
-            openingBalance: coop.balance,
-            openingBalanceDate: '2026-08-01',
-            balance: updatedCustomers[existingIdx].balance || coop.balance,
-          };
-        } else {
-          updatedCustomers.push({
-            id: `cust-${coop.code}`,
-            code: coop.code,
-            nameAr: coop.nameAr,
-            nameEn: coop.nameEn,
-            phone: coop.phone,
-            city: coop.city,
-            governorate: coop.city,
-            address: coop.city,
-            openingBalance: coop.balance,
-            openingBalanceDate: '2026-08-01',
-            balance: coop.balance,
-            isActive: true,
-          } as Customer);
+        // Merge or update customers
+        const updatedCustomers = [...customers];
+        for (const coop of COOP_BALANCES) {
+          const cleanName = coop.nameAr.replace('جمعية ', '').replace(' التعاونية', '');
+          const existingIdx = updatedCustomers.findIndex(
+            (c) => c.code === coop.code || c.nameAr?.includes(cleanName)
+          );
+          if (existingIdx !== -1) {
+            updatedCustomers[existingIdx] = {
+              ...updatedCustomers[existingIdx],
+              openingBalance: coop.balance,
+              openingBalanceDate: '2026-08-01',
+              balance: updatedCustomers[existingIdx].balance || coop.balance,
+            };
+          } else {
+            updatedCustomers.push({
+              id: `cust-${coop.code}`,
+              code: coop.code,
+              nameAr: coop.nameAr,
+              nameEn: coop.nameEn,
+              phone: coop.phone,
+              city: coop.city,
+              governorate: coop.city,
+              address: coop.city,
+              openingBalance: coop.balance,
+              openingBalanceDate: '2026-08-01',
+              balance: coop.balance,
+              isActive: true,
+            } as Customer);
+          }
         }
-      }
-      localDataStore.saveCustomers(updatedCustomers);
-      if (isSupabaseConfigured) {
-        await SupabaseDataService.saveCustomers(updatedCustomers).catch(() => {});
-      }
-
-      // Add Opening Journal Entry for 2026-08-01 if not already present
-      if (!hasOpeningJournal) {
-        const totalAmount = Number(totalCoopBalance.toFixed(3));
-        const newJournal: JournalEntry = {
-          id: 'jv-ob-2026-08-01',
-          entryNumber: 'JV-2026-0001',
-          date: '2026-08-01',
-          reference: 'OB-2026-08-01',
-          description: 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-08-01',
-          status: 'POSTED',
-          totalDebit: totalAmount,
-          totalCredit: totalAmount,
-          createdAt: '2026-08-01T00:00:00.000Z',
-          sourceModule: 'OPENING',
-          lines: [
-            {
-              id: 'line-ob-dr',
-              accountId: acc1120?.id || 'acc-1120',
-              accountCode: '1120',
-              accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
-              memo: 'إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية بتاريخ 2026-08-01',
-              debit: totalAmount,
-              credit: 0,
-            },
-            {
-              id: 'line-ob-cr',
-              accountId: acc3100?.id || 'acc-3100',
-              accountCode: '3100',
-              accountNameAr: 'رأس المال المكتتب به / الأرصدة الافتتاحية',
-              memo: 'مقابل الأرصدة الافتتاحية المدينة بتاريخ 2026-08-01',
-              debit: 0,
-              credit: totalAmount,
-            },
-          ],
-        };
-        const updatedJournals = [newJournal, ...journals.filter((j) => j.id !== newJournal.id)];
-        localDataStore.saveJournals(updatedJournals);
+        localDataStore.saveCustomers(updatedCustomers);
         if (isSupabaseConfigured) {
-          await SupabaseDataService.saveJournal(newJournal).catch(() => {});
+          await SupabaseDataService.saveCustomers(updatedCustomers).catch(() => {});
         }
-      }
 
-      // Update accounts dynamic balances
-      const refreshedAccounts = localDataStore.getAccounts().map((a) => {
-        if (a.code === '1120') return { ...a, balance: Number(totalCoopBalance.toFixed(3)) };
-        if (a.code === '3100') return { ...a, balance: Number(totalCoopBalance.toFixed(3)) };
-        return a;
-      });
-      localDataStore.saveAccounts(refreshedAccounts);
-      if (isSupabaseConfigured) {
-        await SupabaseDataService.saveAccounts(refreshedAccounts).catch(() => {});
+        // Add Opening Journal Entry for 2026-08-01 if not already present
+        if (!hasOpeningJournal) {
+          const totalAmount = Number(totalCoopBalance.toFixed(3));
+          const newJournal: JournalEntry = {
+            id: 'jv-ob-2026-08-01',
+            entryNumber: 'JV-2026-0001',
+            date: '2026-08-01',
+            reference: 'OB-2026-08-01',
+            description: 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-08-01',
+            status: 'POSTED',
+            totalDebit: totalAmount,
+            totalCredit: totalAmount,
+            createdAt: '2026-08-01T00:00:00.000Z',
+            sourceModule: 'OPENING',
+            lines: [
+              {
+                id: 'line-ob-dr',
+                accountId: acc1120?.id || 'acc-1120',
+                accountCode: '1120',
+                accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+                memo: 'إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية بتاريخ 2026-08-01',
+                debit: totalAmount,
+                credit: 0,
+              },
+              {
+                id: 'line-ob-cr',
+                accountId: acc3100?.id || 'acc-3100',
+                accountCode: '3100',
+                accountNameAr: 'رأس المال المكتتب به / الأرصدة الافتتاحية',
+                memo: 'مقابل الأرصدة الافتتاحية المدينة بتاريخ 2026-08-01',
+                debit: 0,
+                credit: totalAmount,
+              },
+            ],
+          };
+          const updatedJournals = [newJournal, ...journals.filter((j) => j.id !== newJournal.id)];
+          localDataStore.saveJournals(updatedJournals);
+          if (isSupabaseConfigured) {
+            await SupabaseDataService.saveJournal(newJournal).catch(() => {});
+          }
+        }
+
+        // Update accounts dynamic balances
+        const refreshedAccounts = localDataStore.getAccounts().map((a) => {
+          if (a.code === '1120') return { ...a, balance: Number(totalCoopBalance.toFixed(3)) };
+          if (a.code === '3100') return { ...a, balance: Number(totalCoopBalance.toFixed(3)) };
+          return a;
+        });
+        localDataStore.saveAccounts(refreshedAccounts);
+        if (isSupabaseConfigured) {
+          await SupabaseDataService.saveAccounts(refreshedAccounts).catch(() => {});
+        }
+        openingBalancesAdded = true;
       }
-      openingBalancesAdded = true;
     }
 
     return { openingBalancesAdded, mainWarehouseAdded, generalRepAdded };
@@ -6898,29 +6881,9 @@ export class DataService {
       }
     }
 
-    // Fallback to local API ONLY if tenant has NEVER been initialized and local state is virgin
+    // For non-initialized new tenants, ensure virgin state is cleanly preserved and marked
     if (!localDataStore.isTenantInitialized()) {
-      const localCust = localDataStore.getCustomers();
-      const localSupp = localDataStore.getSuppliers();
-      const localInv = localDataStore.getInventory();
-      if (localCust.length === 0 && localSupp.length === 0 && localInv.length === 0) {
-        const apiRes = await safeApiFetch<any>('/api/system/integrity-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        const [customers, suppliers, inventory, accounts] = await Promise.all([
-          safeApiFetch<Customer[]>('/api/customers'),
-          safeApiFetch<Supplier[]>('/api/suppliers'),
-          safeApiFetch<InventoryItem[]>('/api/inventory'),
-          safeApiFetch<Account[]>('/api/chart-of-accounts'),
-        ]);
-        if (customers && customers.length > 0) localDataStore.saveCustomers(customers);
-        if (suppliers && suppliers.length > 0) localDataStore.saveSuppliers(suppliers);
-        if (inventory && inventory.length > 0) localDataStore.saveInventory(inventory);
-        if (accounts && accounts.length > 0) localDataStore.saveAccounts(accounts);
-        localDataStore.markTenantInitialized();
-        return apiRes;
-      }
+      localDataStore.markTenantInitialized();
     }
 
     return { success: true, message: 'Local data retained safely' };

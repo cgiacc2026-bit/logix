@@ -717,6 +717,7 @@ export interface CompanyProfile {
   
   // Default Accounts Mapping (الربط المحاسبي الافتراضي بدليل الحسابات)
   defaultAccounts?: DefaultAccountsMapping;
+  isOnboardingComplete?: boolean;
 
   // POS Terminal Configuration (إعدادات نقاط البيع الافتراضية)
   posTerminalName?: string;

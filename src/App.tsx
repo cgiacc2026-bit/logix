@@ -49,6 +49,7 @@ import { JsonBackupRestoreModal } from './components/JsonBackupRestoreModal.tsx'
 import { AutoBackupController } from './components/AutoBackupController.tsx';
 import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
+import { CompanyOnboardingWizard } from './components/CompanyOnboardingWizard.tsx';
 import { DataService } from './services/dataService.ts';
 import { DataSyncService } from './services/dataSyncService.ts';
 import { ThemeService, ThemeColor, ThemeMode } from './services/themeService.ts';
@@ -632,6 +633,38 @@ export default function App() {
         onLogin={handleLogin}
         availableUsers={users}
         currentCompany={null}
+      />
+    );
+  }
+
+  // Multi-Tenancy Clean Onboarding Enforcement:
+  // For any new tenant, bypass the main view and guide them through the mandatory step-by-step onboarding wizard
+  const isSpecialPreconfiguredTenant =
+    activeCompany.id === '20000000-0000-0000-0000-000000000001' ||
+    activeCompany.id === 'company-alwaleed-client-003' ||
+    activeCompany.id === '30000000-0000-0000-0000-000000000002' ||
+    activeCompany.id === 'company-demo-clients-002' ||
+    activeCompany.id === '10000000-0000-0000-0000-000000000001' ||
+    activeCompany.id === 'company-logix-official-001';
+
+  const isOnboardingWizardDone = Boolean(
+    activeCompany.isOnboardingComplete ||
+    (typeof window !== 'undefined' &&
+      (window.localStorage.getItem(`onboarding_wizard_completed_${activeCompany.id}`) === 'true' ||
+       window.localStorage.getItem(`onboarding_wizard_completed_${activeCompany.id.replace(/-/g, '')}`) === 'true'))
+  );
+
+  if (!isSpecialPreconfiguredTenant && !isOnboardingWizardDone) {
+    return (
+      <CompanyOnboardingWizard
+        company={activeCompany}
+        onComplete={(updatedCompany) => {
+          setCompany(updatedCompany);
+          if (updatedCompany.functionalCurrency) {
+            setCurrency(updatedCompany.functionalCurrency);
+          }
+          refreshAllData(true);
+        }}
       />
     );
   }

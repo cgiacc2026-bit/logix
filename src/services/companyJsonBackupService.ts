@@ -31,6 +31,7 @@ import {
 import {
   localDataStore,
   INITIAL_PRODUCTION_ORDERS,
+  generateCleanChartOfAccounts,
 } from './dataService.js';
 import {
   SupabaseDataService,
@@ -577,12 +578,13 @@ export class CompanyJsonBackupService {
       }
     };
 
-    // Clean accounts with 0 balance
-    const cleanAccounts = INITIAL_ACCOUNTS.map((acc) => ({ ...acc, balance: 0, companyId: canonicalId, company_id: canonicalId }));
-    // Clean customers with 0 balance
-    const cleanCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, balance: 0, openingBalance: 0, companyId: canonicalId, company_id: canonicalId }));
-    // Clean suppliers with 0 balance
-    const cleanSuppliers = INITIAL_SUPPLIERS.map((s) => ({ ...s, balance: 0, openingBalance: 0, companyId: canonicalId, company_id: canonicalId }));
+    // Clean accounts with 0 balance using standard template COA
+    const cleanAccounts = generateCleanChartOfAccounts(canonicalId).map((acc) => ({
+      ...acc,
+      balance: 0,
+      companyId: canonicalId,
+      company_id: canonicalId,
+    }));
 
     setRaw(STORAGE_PREFIX.ACCOUNTS, cleanAccounts);
     setRaw(STORAGE_PREFIX.INVENTORY, []);
@@ -590,8 +592,8 @@ export class CompanyJsonBackupService {
     setRaw(STORAGE_PREFIX.JOURNALS, []);
     setRaw(STORAGE_PREFIX.VOUCHERS, []);
     setRaw(STORAGE_PREFIX.PRODUCTION_ORDERS, []);
-    setRaw(STORAGE_PREFIX.CUSTOMERS, cleanCustomers);
-    setRaw(STORAGE_PREFIX.SUPPLIERS, cleanSuppliers);
+    setRaw(STORAGE_PREFIX.CUSTOMERS, []); // ZERO Customers!
+    setRaw(STORAGE_PREFIX.SUPPLIERS, []); // ZERO Suppliers!
     setRaw(STORAGE_PREFIX.UNITS, INITIAL_UNITS);
     setRaw(STORAGE_PREFIX.USERS, INITIAL_USERS);
 
@@ -602,8 +604,8 @@ export class CompanyJsonBackupService {
     localDataStore.saveJournals([]);
     localDataStore.saveVouchers([]);
     localDataStore.saveProductionOrders([]);
-    localDataStore.saveCustomers(cleanCustomers);
-    localDataStore.saveSuppliers(cleanSuppliers);
+    localDataStore.saveCustomers([]); // ZERO Customers!
+    localDataStore.saveSuppliers([]); // ZERO Suppliers!
 
     if (companyProfileOverride) {
       const current = window.localStorage.getItem(getPartitionKey(STORAGE_PREFIX.COMPANY, companyId));

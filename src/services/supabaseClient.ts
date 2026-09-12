@@ -195,7 +195,14 @@ export function resolveToSupabaseCompanyUUID(companyId: string | null | undefine
   if (uuidRegex.test(clean)) {
     return clean;
   }
-  return ALWALEED_CANONICAL_UUID;
+  // Convert any non-UUID custom string to a deterministic UUID
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  return `${hex}-0000-4000-8000-${(hex + hex).slice(0, 12)}`;
 }
 
 export const STORAGE_KEYS = {
@@ -206,13 +213,12 @@ export const STORAGE_KEYS = {
 
 /**
  * Get current active company ID from authenticated local session
- * Always resolves to a canonical valid Supabase UUID to prevent UUID syntax errors
  */
 export function getCurrentCompanyId(): string {
-  if (typeof window === 'undefined') return ALWALEED_CANONICAL_UUID;
+  if (typeof window === 'undefined') return '';
   const saved = localStorage.getItem(STORAGE_KEYS.COMPANY_ID) || localStorage.getItem('activeCompanyId');
-  if (!saved || !saved.trim() || saved.trim() === 'default') return ALWALEED_CANONICAL_UUID;
-  return resolveToSupabaseCompanyUUID(saved) || ALWALEED_CANONICAL_UUID;
+  if (!saved || !saved.trim() || saved.trim() === 'default') return '';
+  return resolveToSupabaseCompanyUUID(saved) || '';
 }
 
 /**
