@@ -48,6 +48,7 @@ interface AccountStatementViewProps {
   invoices: Invoice[];
   vouchers: PaymentVoucher[];
   journals?: JournalEntry[];
+  creditNotes?: any[];
   company: CompanyProfile | null;
   currency: string;
   initialEntityType?: 'CUSTOMER' | 'SUPPLIER';

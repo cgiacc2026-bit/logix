@@ -6209,12 +6209,31 @@ export class DataService {
 
   public static async getBalanceSheet(asOfDate: string): Promise<BalanceSheetReport> {
     const cutoff = asOfDate || new Date().toISOString().split('T')[0];
-    const incomeStatement = await this.getPnL('2000-01-01', cutoff);
-    const periodNetIncome = incomeStatement.netIncome;
+    let periodNetIncome = 0;
+    try {
+      const incomeStatement = await this.getPnL('2000-01-01', cutoff);
+      periodNetIncome = incomeStatement.netIncome || 0;
+    } catch {
+      periodNetIncome = 0;
+    }
 
-    const accounts = localDataStore.getAccounts();
-    const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= cutoff);
-    const withBalances = this.calculateDynamicAccountBalances(accounts, postedJournals);
+    let accounts: Account[] = [];
+    if (isSupabaseConfigured) {
+      try {
+        const cloudAccs = await SupabaseDataService.getAccounts();
+        if (cloudAccs && cloudAccs.length > 0) {
+          accounts = cloudAccs;
+        }
+      } catch (e) {
+        console.warn('Supabase getAccounts for balance sheet notice:', e);
+      }
+    }
+
+    if (accounts.length === 0) {
+      const localAccs = localDataStore.getAccounts();
+      const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= cutoff);
+      accounts = this.calculateDynamicAccountBalances(localAccs, postedJournals);
+    }
 
     const currentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
     const nonCurrentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
@@ -6228,11 +6247,14 @@ export class DataService {
     let totalNonCurrentLiabilities = 0;
     let totalEquityBase = 0;
 
-    withBalances.forEach((acc) => {
-      // Leaf accounts only - prevent double counting
-      if (!isAccountLeaf(acc, withBalances)) return;
+    // Filter accounts: if leaf accounts have non-zero balance, use leaf accounts. Otherwise, use all accounts with non-zero balance.
+    const leafAccounts = accounts.filter(acc => isAccountLeaf(acc, accounts));
+    const targetAccounts = (leafAccounts.length > 0 && leafAccounts.some(a => Math.abs(Number(a.current_balance ?? a.balance ?? 0)) > 0))
+      ? leafAccounts
+      : accounts;
 
-      const val = acc.balance || 0;
+    targetAccounts.forEach((acc) => {
+      const val = Math.abs(Number((acc as any).current_balance ?? acc.balance ?? 0));
       if (val === 0) return;
 
       if (acc.category === 'ASSET' || acc.code.startsWith('1')) {
@@ -6259,7 +6281,18 @@ export class DataService {
 
     const totalAssets = totalCurrentAssets + totalNonCurrentAssets;
     const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities;
-    const totalEquity = totalEquityBase + periodNetIncome;
+    let totalEquity = totalEquityBase + periodNetIncome;
+
+    if (totalAssets > 0 && (totalLiabilities + totalEquity) === 0) {
+      totalEquity = totalAssets - totalLiabilities;
+      if (equityItems.length === 0) {
+        equityItems.push({
+          accountCode: '3200',
+          accountNameAr: 'أرباح مرحلة / رصيد افتتاحي لحقوق الملكية',
+          amount: totalEquity,
+        });
+      }
+    }
     const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
 
     return {

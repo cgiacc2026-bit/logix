@@ -791,12 +791,6 @@ export class SupabaseDataService {
           phone: row.phone || raw.phone || '',
           address: row.address || raw.address || '',
           city: row.city || raw.city || 'الرياض',
-          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          taxNumber: row.tax_number || raw.taxNumber || '',
-          creditLimit: raw.creditLimit ?? 0,
-          openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
           openingBalanceDate: raw.openingBalanceDate || '2026-07-01',
           isActive: raw.isActive ?? row.is_active ?? true,
           branches: finalBranches,
@@ -1067,9 +1061,7 @@ export class SupabaseDataService {
           phone: row.phone || raw.phone || '',
           address: row.address || raw.address || '',
           city: row.city || raw.city || 'الرياض',
-          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          taxNumber: row.tax_number || raw.taxNumber || '',
           openingBalance: raw.openingBalance ?? 0,
           isActive: raw.isActive ?? true,
           ...raw,
@@ -2496,6 +2488,7 @@ export class SupabaseDataService {
       for (const row of data) {
         const code = String(row.code || row.id || '').trim();
         if (!code) continue;
+        const rawBalance = Number(row.current_balance ?? row.balance ?? 0);
         const mapped: Account = {
           id: row.id,
           code: row.code,
@@ -2508,7 +2501,9 @@ export class SupabaseDataService {
           parentId: row.parent_id || null,
           isSystem: !!row.is_system,
           isActive: row.is_active ?? true,
-          balance: Number(row.balance) || 0,
+          balance: rawBalance,
+          current_balance: rawBalance,
+          currentBalance: rawBalance,
           description: row.description || '',
         };
 
@@ -2518,7 +2513,7 @@ export class SupabaseDataService {
           const existing = codeMap.get(code)!;
           const bestBal = Math.abs(mapped.balance) > Math.abs(existing.balance) ? mapped.balance : existing.balance;
           const preferredId = existing.id.startsWith('acc-') ? existing.id : (mapped.id.startsWith('acc-') ? mapped.id : existing.id);
-          codeMap.set(code, { ...existing, id: preferredId, balance: bestBal });
+          codeMap.set(code, { ...existing, id: preferredId, balance: bestBal, current_balance: bestBal, currentBalance: bestBal });
         }
       }
 

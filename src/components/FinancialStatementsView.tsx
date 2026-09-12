@@ -6,6 +6,7 @@ import {
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { formatKWD } from '../utils/accountingTreeEngine.ts';
+import { supabase, isSupabaseConfigured, getCurrentCompanyId, resolveToSupabaseCompanyUUID } from '../services/supabaseClient.ts';
 import {
   LineChart,
   ShieldCheck,
@@ -17,6 +18,12 @@ import {
   Wallet
 } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
+
+const formatKWD3 = (val: number | string | null | undefined): string => {
+  const num = typeof val === 'number' ? val : Number(val || 0);
+  const safe = isNaN(num) ? 0 : num;
+  return `${safe.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} د.ك`;
+};
 
 interface FinancialStatementsProps {
   currency: string;
@@ -42,8 +49,144 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
       ]);
 
       if (pnlData) setPnl(pnlData);
-      if (bsData) setBalanceSheet(bsData);
       if (cfData) setCashFlow(cfData);
+
+      let customBs: BalanceSheetReport | null = null;
+      // Direct dynamic aggregation from Supabase chart_of_accounts
+      if (isSupabaseConfigured) {
+        try {
+          const rawCompId = getCurrentCompanyId();
+          const compId = resolveToSupabaseCompanyUUID(rawCompId);
+          if (compId) {
+            const { data: coaRows, error: coaError } = await supabase
+              .from('chart_of_accounts')
+              .select('*')
+              .eq('company_id', compId)
+              .order('code', { ascending: true });
+
+            if (!coaError && coaRows && coaRows.length > 0) {
+              const currentAssets: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+              const nonCurrentAssets: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+              const currentLiabilities: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+              const nonCurrentLiabilities: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+              const equity: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+
+              let sumCurrentAssets = 0;
+              let sumNonCurrentAssets = 0;
+              let sumCurrentLiabilities = 0;
+              let sumNonCurrentLiabilities = 0;
+              let sumEquity = 0;
+
+              const parentIds = new Set(coaRows.map((r: any) => r.parent_id).filter(Boolean));
+              const parentCodes = new Set<string>();
+              coaRows.forEach((r: any) => {
+                const c = String(r.code || '').trim();
+                if (c) {
+                  coaRows.forEach((other: any) => {
+                    const oc = String(other.code || '').trim();
+                    if (oc && oc !== c && oc.startsWith(c)) {
+                      parentCodes.add(c);
+                    }
+                  });
+                }
+              });
+
+              const detailAccounts = coaRows.filter((r: any) => {
+                if (r.is_leaf === true || r.type === 'DETAIL') return true;
+                if (parentIds.has(r.id) || parentCodes.has(String(r.code || '').trim())) return false;
+                return true;
+              });
+
+              const targetRows = (detailAccounts.length > 0 && detailAccounts.some((r: any) => Math.abs(Number(r.current_balance ?? r.balance ?? 0)) > 0))
+                ? detailAccounts
+                : coaRows;
+
+              targetRows.forEach((row: any) => {
+                const bal = Math.abs(Number(row.current_balance ?? row.balance ?? 0));
+                if (bal === 0) return;
+                const cat = String(row.category || '').toUpperCase();
+                const code = String(row.code || '').trim();
+                const name = row.name_ar || row.name || code;
+
+                if (cat === 'ASSET' || code.startsWith('1')) {
+                  if (code.startsWith('11')) {
+                    currentAssets.push({ accountCode: code, accountNameAr: name, amount: bal });
+                    sumCurrentAssets += bal;
+                  } else {
+                    nonCurrentAssets.push({ accountCode: code, accountNameAr: name, amount: bal });
+                    sumNonCurrentAssets += bal;
+                  }
+                } else if (cat === 'LIABILITY' || code.startsWith('2')) {
+                  if (code.startsWith('21')) {
+                    currentLiabilities.push({ accountCode: code, accountNameAr: name, amount: bal });
+                    sumCurrentLiabilities += bal;
+                  } else {
+                    nonCurrentLiabilities.push({ accountCode: code, accountNameAr: name, amount: bal });
+                    sumNonCurrentLiabilities += bal;
+                  }
+                } else if (cat === 'EQUITY' || code.startsWith('3')) {
+                  equity.push({ accountCode: code, accountNameAr: name, amount: bal });
+                  sumEquity += bal;
+                }
+              });
+
+              const totalAssets = sumCurrentAssets + sumNonCurrentAssets;
+              const totalLiabilities = sumCurrentLiabilities + sumNonCurrentLiabilities;
+              let totalEquity = sumEquity + (pnlData?.netIncome || 0);
+
+              if (totalAssets > 0 && (totalLiabilities + totalEquity) === 0) {
+                totalEquity = totalAssets - totalLiabilities;
+                if (equity.length === 0) {
+                  equity.push({
+                    accountCode: '3200',
+                    accountNameAr: 'أرباح مرحلة / رصيد افتتاحي لحقوق الملكية',
+                    amount: totalEquity,
+                  });
+                }
+              }
+
+              customBs = {
+                asOfDate: endDate,
+                currentAssets: {
+                  categoryNameAr: 'الأصول المتداولة',
+                  items: currentAssets,
+                  totalAmount: sumCurrentAssets,
+                },
+                nonCurrentAssets: {
+                  categoryNameAr: 'الأصول غير المتداولة (الثابتة)',
+                  items: nonCurrentAssets,
+                  totalAmount: sumNonCurrentAssets,
+                },
+                totalAssets,
+                currentLiabilities: {
+                  categoryNameAr: 'الالتزامات المتداولة',
+                  items: currentLiabilities,
+                  totalAmount: sumCurrentLiabilities,
+                },
+                nonCurrentLiabilities: {
+                  categoryNameAr: 'الالتزامات طويلة الأجل',
+                  items: nonCurrentLiabilities,
+                  totalAmount: sumNonCurrentLiabilities,
+                },
+                totalLiabilities,
+                equity: {
+                  categoryNameAr: 'حقوق الملكية',
+                  items: equity,
+                  totalAmount: sumEquity,
+                },
+                periodNetIncome: pnlData?.netIncome || 0,
+                totalEquity,
+                totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+                isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.005,
+              };
+            }
+          }
+        } catch (coaErr) {
+          console.warn('Direct chart_of_accounts query in FinancialStatementsView notice:', coaErr);
+        }
+      }
+
+      setBalanceSheet(customBs || bsData);
     } catch (err) {
       console.error('Error fetching financial statements:', err);
     } finally {
@@ -168,13 +311,13 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD(it.amount)}
+                            {formatKWD3(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#2D6A4F] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>مجموع الأصول المتداولة:</span>
-                        <span>{formatKWD(balanceSheet.currentAssets.totalAmount)}</span>
+                        <span>{formatKWD3(balanceSheet.currentAssets.totalAmount)}</span>
                       </div>
                     </div>
                   </div>
@@ -194,14 +337,14 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD(it.amount)}
+                            {formatKWD3(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#2D6A4F] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>مجموع الأصول الثابتة:</span>
                         <span>
-                          {formatKWD(balanceSheet.nonCurrentAssets.totalAmount)}
+                          {formatKWD3(balanceSheet.nonCurrentAssets.totalAmount)}
                         </span>
                       </div>
                     </div>
@@ -209,7 +352,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
 
                   <div className="p-3 bg-[#EBF5EE] border border-[#2D6A4F]/30 rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#2D6A4F]">
                     <span>إجمالي الأصول (Total Assets):</span>
-                    <span>{formatKWD(balanceSheet.totalAssets)}</span>
+                    <span>{formatKWD3(balanceSheet.totalAssets)}</span>
                   </div>
                 </div>
 
@@ -234,14 +377,14 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD(it.amount)}
+                            {formatKWD3(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#9E2A2B] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>مجموع الخصوم المتداولة:</span>
                         <span>
-                          {formatKWD(balanceSheet.currentLiabilities.totalAmount)}
+                          {formatKWD3(balanceSheet.currentLiabilities.totalAmount)}
                         </span>
                       </div>
                     </div>
@@ -262,13 +405,13 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD(it.amount)}
+                            {formatKWD3(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#B8860B] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>إجمالي حقوق الملكية:</span>
-                        <span>{formatKWD(balanceSheet.totalEquity)}</span>
+                        <span>{formatKWD3(balanceSheet.totalEquity)}</span>
                       </div>
                     </div>
                   </div>
@@ -276,7 +419,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   <div className="p-3 bg-[#F7F5F0] border border-[#E5E1DA] rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#1A1A1A]">
                     <span>إجمالي الخصوم وحقوق الملكية:</span>
                     <span>
-                      {formatKWD(balanceSheet.totalLiabilitiesAndEquity)}
+                      {formatKWD3(balanceSheet.totalLiabilitiesAndEquity)}
                     </span>
                   </div>
                 </div>

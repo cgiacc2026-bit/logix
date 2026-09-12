@@ -19,6 +19,8 @@ export interface Account {
   type?: 'ROOT' | 'HEADER' | 'DETAIL';
   description?: string;
   balance?: number; // Calculated dynamic balance
+  current_balance?: number;
+  currentBalance?: number;
   isLeaf?: boolean; // True if account has no sub-accounts
 }
 
@@ -61,7 +63,7 @@ export interface JournalEntry {
 
 export interface GeneralLedgerMovement {
   id: string;
-  journalEntryId: string;
+  journalEntryId?: string;
   entryNumber: string;
   date: string;
   reference: string;

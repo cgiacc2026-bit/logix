@@ -1822,6 +1822,14 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   processedInvoices.map((inv) => {
                     const isReturn = inv.type === 'SALES_RETURN' || inv.type === 'PURCHASE_RETURN';
                     const isSelected = selectedInvoiceIds.includes(inv.id);
+                    const invTotal = Number((inv as any).total_amount ?? inv.grandTotal ?? 0);
+                    const invPaid = Number((inv as any).paid_amount ?? inv.paidAmount ?? 0);
+                    const invRemaining = Number(
+                      (inv as any).remaining_amount ??
+                      ((inv as any).total_amount !== undefined
+                        ? ((inv as any).total_amount - ((inv as any).paid_amount || 0))
+                        : (inv.dueAmount !== undefined ? inv.dueAmount : (invTotal - invPaid)))
+                    );
                     return (
                       <tr
                         key={inv.id}
@@ -1896,7 +1904,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                           {inv.discountTotal > 0 ? formatCurrency(inv.discountTotal, currency) : '-'}
                         </td>
                         <td className="py-3 px-4 text-left font-mono font-bold text-[#2D6A4F]">
-                          {formatCurrency(inv.grandTotal, currency)}
+                          {invRemaining.toFixed(3)} {currency}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {inv.status === 'CANCELLED' ? (
@@ -1904,26 +1912,21 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                               ملغاة
                             </span>
                           ) : inv.paymentTerms === 'CREDIT' ? (
-                            Number(inv.paidAmount) > 0 && Number(inv.dueAmount) > 0 ? (
-                              <div className="inline-flex flex-col items-center">
-                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
-                                  مسدد جزئياً ({formatCurrency(inv.paidAmount, currency)})
-                                </span>
-                                <span className="text-[9px] text-neutral-500 font-mono mt-0.5">
-                                  المتبقي: {formatCurrency(inv.dueAmount, currency)}
-                                </span>
-                              </div>
-                            ) : Number(inv.dueAmount) === 0 && Number(inv.grandTotal) > 0 ? (
+                            invPaid <= 0.0001 ? (
+                              <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-neutral-100 text-neutral-800 border-neutral-300 inline-block">
+                                آجل غير مسدد
+                              </span>
+                            ) : invRemaining <= 0.0001 && invTotal > 0 ? (
                               <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
                                 مسددة بالكامل
                               </span>
                             ) : (
                               <div className="inline-flex flex-col items-center">
-                                <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full border bg-neutral-100 text-neutral-800 border-neutral-300">
-                                  آجل غير مسدد
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
+                                  مسدد جزئياً ({invPaid.toFixed(3)} {currency})
                                 </span>
-                                <span className="text-[9px] text-rose-700 font-bold font-mono mt-0.5">
-                                  مستحق: {formatCurrency(inv.dueAmount || inv.grandTotal, currency)}
+                                <span className="text-[9px] text-neutral-500 font-mono mt-0.5">
+                                  المتبقي: {invRemaining.toFixed(3)} {currency}
                                 </span>
                               </div>
                             )
@@ -2213,17 +2216,17 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
                       // 3. Document number (invoices, vouchers, or credit notes)
                       const matchesDoc =
-                        invoices.some((inv) =>
-                          (inv.customerId === c.id || inv.customerName === c.nameAr) &&
-                          (matchesSearch(inv.invoiceNumber, q) || matchesSearch(inv.referenceNumber, q))
+                        invoices.some((inv: any) =>
+                          ((inv.customerId || inv.entityId || inv.customer_id) === c.id || (inv.customerName || inv.entityName) === c.nameAr) &&
+                          (matchesSearch(inv.invoiceNumber, q) || matchesSearch(inv.referenceNumber || inv.reference, q))
                         ) ||
-                        vouchers.some((v) =>
-                          (v.entityId === c.id || v.entityName === c.nameAr) &&
+                        vouchers.some((v: any) =>
+                          (v.entityId === c.id || (v.entityName || v.entityNameAr) === c.nameAr) &&
                           (matchesSearch(v.voucherNumber, q) || matchesSearch(v.reference, q))
                         ) ||
-                        creditNotes.some((cn) =>
-                          (cn.customer_id === c.id || cn.customer_name === c.nameAr) &&
-                          (matchesSearch(cn.credit_note_number, q) || matchesSearch(cn.reference_invoice_number, q))
+                        creditNotes.some((cn: any) =>
+                          ((cn.customer_id || cn.customerId) === c.id || (cn.customer_name || cn.customerName) === c.nameAr) &&
+                          (matchesSearch(cn.credit_note_number || cn.creditNoteNumber, q) || matchesSearch(cn.reference_invoice_number || cn.referenceInvoiceNumber, q))
                         );
 
                       // 4. Status scanning
@@ -2333,12 +2336,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                         matchesSearch(s.phone, q) ||
                         matchesSearch(s.taxNumber, q);
                       const matchesDoc =
-                        invoices.some((inv) =>
-                          (inv.supplierId === s.id || inv.supplierName === s.nameAr) &&
-                          (matchesSearch(inv.invoiceNumber, q) || matchesSearch(inv.referenceNumber, q))
+                        invoices.some((inv: any) =>
+                          ((inv.supplierId || inv.entityId || inv.supplier_id) === s.id || (inv.supplierName || inv.entityName) === s.nameAr) &&
+                          (matchesSearch(inv.invoiceNumber, q) || matchesSearch(inv.referenceNumber || inv.reference, q))
                         ) ||
-                        vouchers.some((v) =>
-                          (v.entityId === s.id || v.entityName === s.nameAr) &&
+                        vouchers.some((v: any) =>
+                          (v.entityId === s.id || (v.entityName || v.entityNameAr) === s.nameAr) &&
                           (matchesSearch(v.voucherNumber, q) || matchesSearch(v.reference, q))
                         );
                       const bal = getSupplierCurrentBalance(s);
