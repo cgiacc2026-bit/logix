@@ -897,31 +897,44 @@ export async function seedDemoCompanyInSupabase(): Promise<boolean> {
     }));
     await supabase.from('customers').upsert(custsPayload);
 
-    // 4. Upsert seed Invoices in sales_master & sales_details
+    // 4. Upsert seed Invoices in invoices & invoice_items (and legacy sales_master & sales_details for dual compatibility)
     for (const inv of DEMO_SEED_INVOICES) {
-      await supabase.from('sales_master').upsert([
-        {
-          id: inv.id,
-          company_id: DEMO_COMPANY_ID,
-          invoice_number: inv.invoiceNumber,
-          date: inv.date,
-          customer_id: inv.entityId,
-          customer_name: inv.entityNameAr,
-          subtotal: inv.subtotal,
-          vat_amount: inv.vatTotal,
-          total_amount: inv.grandTotal,
-          paid_amount: inv.paidAmount,
-          due_amount: inv.dueAmount,
-          payment_status: inv.paymentStatus || 'PAID',
-          status: inv.status,
-          customer_snapshot: {},
-          raw_data: {
-            ...inv,
-            is_seed_data: true,
-          },
-          created_at: `${inv.date}T10:00:00.000Z`,
+      const invoiceMasterPayload = {
+        id: inv.id,
+        company_id: DEMO_COMPANY_ID,
+        invoice_number: inv.invoiceNumber,
+        invoice_type: inv.type || 'SALES',
+        date: inv.date,
+        issue_date: inv.date,
+        entity_type: 'CUSTOMER',
+        entity_id: inv.entityId,
+        customer_id: inv.entityId,
+        customer_name: inv.entityNameAr,
+        entity_name_ar: inv.entityNameAr,
+        subtotal: inv.subtotal,
+        tax_amount: inv.vatTotal,
+        vat_amount: inv.vatTotal,
+        total_amount: inv.grandTotal,
+        grand_total: inv.grandTotal,
+        paid_amount: inv.paidAmount,
+        due_amount: inv.dueAmount,
+        payment_status: inv.paymentStatus || 'PAID',
+        status: inv.status || 'POSTED',
+        payment_method: inv.paymentMethod || 'CREDIT',
+        customer_snapshot: {},
+        lines: inv.lines,
+        raw_data: {
+          ...inv,
+          is_seed_data: true,
         },
-      ]);
+        created_at: `${inv.date}T10:00:00.000Z`,
+        updated_at: `${inv.date}T10:00:00.000Z`,
+      };
+
+      // Canonical ERP table
+      await supabase.from('invoices').upsert([invoiceMasterPayload]);
+      // Legacy compatibility table
+      await supabase.from('sales_master').upsert([invoiceMasterPayload]);
 
       const linesPayload = inv.lines.map((l) => ({
         id: l.id,
@@ -934,6 +947,8 @@ export async function seedDemoCompanyInSupabase(): Promise<boolean> {
         qty: l.quantity,
         unit_price: l.unitPrice,
         total_price: l.total,
+        tax_rate: l.vatRate,
+        tax_amount: l.vatAmount,
         vat_rate: l.vatRate,
         vat_amount: l.vatAmount,
         line_total: l.total,
@@ -943,11 +958,16 @@ export async function seedDemoCompanyInSupabase(): Promise<boolean> {
           ...l,
           is_seed_data: true,
         },
+        created_at: `${inv.date}T10:00:00.000Z`,
       }));
+
+      // Canonical ERP detail table
+      await supabase.from('invoice_items').upsert(linesPayload);
+      // Legacy compatibility detail table
       await supabase.from('sales_details').upsert(linesPayload);
     }
 
-    // 5. Upsert seed Journal Entries
+    // 5. Upsert seed Journal Entries and relational journal_entry_lines
     for (const j of DEMO_SEED_JOURNALS) {
       await supabase.from('journal_entries').upsert([
         {
@@ -959,14 +979,40 @@ export async function seedDemoCompanyInSupabase(): Promise<boolean> {
           status: j.status,
           reference_type: 'OPENING',
           reference_id: j.reference,
+          total_debit: j.totalDebit,
+          total_credit: j.totalCredit,
           lines: j.lines,
           raw_data: {
             ...j,
             is_seed_data: true,
           },
           created_at: j.createdAt,
+          updated_at: j.createdAt,
         },
       ]);
+
+      if (j.lines && Array.isArray(j.lines)) {
+        const jLinesPayload = j.lines.map((l: any, idx: number) => ({
+          id: `${j.id}-line-${idx}`,
+          company_id: DEMO_COMPANY_ID,
+          journal_entry_id: j.id,
+          account_id: l.accountId || null,
+          account_code: l.accountCode || '',
+          account_name: l.accountName || l.accountNameAr || '',
+          account_name_ar: l.accountNameAr || l.accountName || '',
+          description: l.description || j.description || '',
+          debit: Number(l.debit || 0),
+          credit: Number(l.credit || 0),
+          line_order: idx + 1,
+          raw_data: l,
+          created_at: j.createdAt,
+        }));
+        try {
+          await supabase.from('journal_entry_lines').upsert(jLinesPayload);
+        } catch (jLErr) {
+          console.warn('Demo journal line sync notice:', jLErr);
+        }
+      }
     }
 
     return true;

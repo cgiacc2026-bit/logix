@@ -2240,6 +2240,33 @@ export class SupabaseDataService {
         console.warn('Supabase saveJournal error:', error.message);
         return false;
       }
+
+      // Sync lines to relational table journal_entry_lines for strict GL queries and SQL functions
+      if (j.lines && Array.isArray(j.lines) && j.lines.length > 0) {
+        try {
+          await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', entryId);
+          const lineRows = j.lines.map((l: any, idx: number) => ({
+            id: toValidUUID(l.id || `${entryId}-${idx}`),
+            company_id: companyId,
+            journal_entry_id: entryId,
+            account_id: l.accountId ? toValidUUID(l.accountId) : null,
+            account_code: l.accountCode || '',
+            account_name: l.accountName || l.accountNameAr || '',
+            account_name_ar: l.accountNameAr || l.accountName || '',
+            description: l.description || j.description || '',
+            debit: Number(l.debit || 0),
+            credit: Number(l.credit || 0),
+            line_order: idx + 1,
+            cost_center_id: l.costCenterId ? toValidUUID(l.costCenterId) : null,
+            raw_data: l,
+            created_at: new Date().toISOString(),
+          }));
+          await supabase.from('journal_entry_lines').insert(lineRows);
+        } catch (lEx) {
+          console.warn('Supabase saveJournal journal_entry_lines sync notice:', lEx);
+        }
+      }
+
       return true;
     } catch (err: any) {
       console.warn('Supabase saveJournal exception:', err?.message);
@@ -2282,6 +2309,44 @@ export class SupabaseDataService {
           console.warn('Supabase saveJournals batch error:', error.message);
         }
       }
+
+      // Sync lines for all journals to journal_entry_lines in batches
+      const allLines: any[] = [];
+      journals.forEach((j) => {
+        const jId = toValidUUID(j.id);
+        if (j.lines && Array.isArray(j.lines)) {
+          j.lines.forEach((l: any, idx: number) => {
+            allLines.push({
+              id: toValidUUID(l.id || `${jId}-${idx}`),
+              company_id: companyId,
+              journal_entry_id: jId,
+              account_id: l.accountId ? toValidUUID(l.accountId) : null,
+              account_code: l.accountCode || '',
+              account_name: l.accountName || l.accountNameAr || '',
+              account_name_ar: l.accountNameAr || l.accountName || '',
+              description: l.description || j.description || '',
+              debit: Number(l.debit || 0),
+              credit: Number(l.credit || 0),
+              line_order: idx + 1,
+              cost_center_id: l.costCenterId ? toValidUUID(l.costCenterId) : null,
+              raw_data: l,
+              created_at: new Date().toISOString(),
+            });
+          });
+        }
+      });
+
+      if (allLines.length > 0) {
+        for (let i = 0; i < allLines.length; i += 100) {
+          const lBatch = allLines.slice(i, i + 100);
+          try {
+            await supabase.from('journal_entry_lines').upsert(lBatch);
+          } catch (lEx) {
+            console.warn('Supabase batch journal_entry_lines sync notice:', lEx);
+          }
+        }
+      }
+
       return true;
     } catch (err: any) {
       console.warn('Supabase saveJournals exception:', err?.message);
@@ -2477,7 +2542,7 @@ export class SupabaseDataService {
 
       // 2. Fetch journal entries to aggregate balances
       const { data: journals } = await supabase
-        .from('journals')
+        .from('journal_entries')
         .select('id, lines')
         .eq('company_id', companyId);
 
@@ -2493,7 +2558,7 @@ export class SupabaseDataService {
         journals.forEach((j: any) => {
           const lines = Array.isArray(j.lines) ? j.lines : [];
           lines.forEach((l: any) => {
-            const accKey = l.accountId || l.accountCode;
+            const accKey = l.accountId || l.account_id || l.accountCode || l.account_code;
             if (accKey) {
               const debit = Number(l.debit || 0);
               const credit = Number(l.credit || 0);
