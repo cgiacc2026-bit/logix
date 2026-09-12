@@ -54,6 +54,9 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
   currency,
   onViewAccountStatement,
 }) => {
+  const currencySymbol = (company as any)?.currency_symbol || company?.currencySymbol || company?.currency || currency || 'د.ك';
+  const decimals = company?.decimalPlaces ?? (company as any)?.decimal_places ?? 3;
+
   // Date filters
   const today = new Date().toISOString().split('T')[0];
   const firstDayOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
@@ -125,10 +128,10 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
     const headers = [
       'كود العميل',
       'اسم العميل / الجمعية',
-      'الرصيد الافتتاحي (د.ك)',
-      'إجمالي المدين - فواتير ومبيعات (د.ك)',
-      'إجمالي الدائن - تحصيلات وسدادات (د.ك)',
-      'صافي الرصيد المستحق (د.ك)',
+      `الرصيد الافتتاحي (${currencySymbol})`,
+      `إجمالي المدين - فواتير ومبيعات (${currencySymbol})`,
+      `إجمالي الدائن - تحصيلات وسدادات (${currencySymbol})`,
+      `صافي الرصيد المستحق (${currencySymbol})`,
       'حالة الرصيد',
       'عدد الحركات المسجلة',
     ];
@@ -136,10 +139,10 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
     const rows = filteredRows.map((r) => [
       r.customerCode,
       r.customerNameAr,
-      r.openingBalance.toFixed(3),
-      r.totalDebit.toFixed(3),
-      r.totalCredit.toFixed(3),
-      r.netBalance.toFixed(3),
+      r.openingBalance.toFixed(decimals),
+      r.totalDebit.toFixed(decimals),
+      r.totalCredit.toFixed(decimals),
+      r.netBalance.toFixed(decimals),
       r.netBalance > 0.005 ? 'مدين (عليه)' : r.netBalance < -0.005 ? 'دائن (له)' : 'خالص',
       r.movementsCount,
     ]);
@@ -356,7 +359,7 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
                   إجمالي الدائن (تحصيلات ومرتجعات)
                 </th>
                 <th className="py-2.5 px-3 text-center font-black bg-slate-200/60 text-slate-900">
-                  صافي الرصيد المستحق (د.ك)
+                  صافي الرصيد المستحق ({currencySymbol})
                 </th>
                 <th className="py-2.5 px-3 text-center">تفاصيل القيود</th>
               </tr>
@@ -579,7 +582,7 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
             align: 'center',
           },
           {
-            header: 'صافي الرصيد المستحق (د.ك)',
+            header: `صافي الرصيد المستحق (${currencySymbol})`,
             render: (r) => (
               <strong style={{ color: '#000000' }}>
                 {formatCurrency(r.netBalance, '')}

@@ -144,21 +144,24 @@ export const DEMO_CANONICAL_UUID = '00000000-0000-0000-0000-000000000099';
 export const OFFICIAL_CANONICAL_UUID = '10000000-0000-0000-0000-000000000001';
 
 export function toValidUUID(id: string): string {
-  if (!id) return ALWALEED_CANONICAL_UUID;
+  if (!id || !id.trim()) {
+    throw new Error('Company Context Missing: Company ID is strictly required');
+  }
+  const clean = id.trim();
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (uuidRegex.test(id)) return id;
-  if (id === 'default' || id === 'company-alwaleed-client-003' || id.toLowerCase().includes('alwaleed')) {
+  if (uuidRegex.test(clean)) return clean;
+  if (clean === 'company-alwaleed-client-003' || clean.toLowerCase().includes('alwaleed')) {
     return ALWALEED_CANONICAL_UUID;
   }
-  if (id === 'company-demo-clients-002' || id.toLowerCase().includes('demo')) {
+  if (clean === 'company-demo-clients-002' || clean.toLowerCase().includes('demo')) {
     return DEMO_CANONICAL_UUID;
   }
-  if (id === 'company-logix-official-001') {
+  if (clean === 'company-logix-official-001') {
     return OFFICIAL_CANONICAL_UUID;
   }
   let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = ((hash << 5) - hash) + id.charCodeAt(i);
+  for (let i = 0; i < clean.length; i++) {
+    hash = ((hash << 5) - hash) + clean.charCodeAt(i);
     hash |= 0;
   }
   const hex = Math.abs(hash).toString(16).padStart(8, '0');
@@ -166,11 +169,23 @@ export function toValidUUID(id: string): string {
 }
 
 export function resolveToSupabaseCompanyUUID(companyId: string | null | undefined): string {
-  if (!companyId) return ALWALEED_CANONICAL_UUID;
+  if (!companyId || !companyId.trim()) {
+    // Check if there is an active tenant in localStorage before throwing
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.COMPANY_ID) : null;
+    if (stored && stored.trim() && stored !== 'default') {
+      return resolveToSupabaseCompanyUUID(stored);
+    }
+    throw new Error('Company Context Missing: Company ID is strictly required');
+  }
   const clean = companyId.trim();
+  if (clean === 'default') {
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.COMPANY_ID) : null;
+    if (stored && stored.trim() && stored !== 'default') {
+      return resolveToSupabaseCompanyUUID(stored);
+    }
+    throw new Error('Company Context Missing: Company ID is strictly required');
+  }
   if (
-    !clean ||
-    clean === 'default' ||
     clean === ALWALEED_CANONICAL_UUID ||
     clean === 'company-alwaleed-client-003' ||
     clean.toLowerCase().includes('alwaleed') ||

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Account, AccountCategory, JournalEntry } from '../types.js';
-import { getCategoryBadgeClass, getCategoryLabelAr } from '../utils/formatters.ts';
+import { getCategoryBadgeClass, getCategoryLabelAr, formatCurrency } from '../utils/formatters.ts';
+import { useCompany } from '../contexts/CompanyContext.tsx';
 import {
   aggregateChartOfAccountsTree,
   formatKWD,
@@ -65,6 +66,10 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   onDeleteAccount,
   onSelectAccountLedger,
 }) => {
+  const companyContext = useCompany();
+  const currentCompany = companyContext?.currentCompany;
+  const effectiveCurrencySymbol = currentCompany?.currencySymbol || currentCompany?.currency_symbol || currentCompany?.currency || currency || 'د.ك';
+
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [filterActiveMovementsOnly, setFilterActiveMovementsOnly] = useState<boolean>(false);
@@ -441,7 +446,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
           <div className="col-span-6 sm:col-span-4">كود واسم الحساب المحاسبي</div>
           <div className="col-span-3 sm:col-span-2 text-center">نوع وطبيعة الحساب</div>
           <div className="hidden sm:block sm:col-span-2 text-left">حركات المدين / الدائن</div>
-          <div className="col-span-3 sm:col-span-2 text-left">الرصيد المعتمد (د.ك)</div>
+          <div className="col-span-3 sm:col-span-2 text-left">الرصيد المعتمد ({effectiveCurrencySymbol})</div>
           <div className="col-span-12 sm:col-span-2 text-center sm:text-left mt-2 sm:mt-0">إجراءات الحساب</div>
         </div>
 

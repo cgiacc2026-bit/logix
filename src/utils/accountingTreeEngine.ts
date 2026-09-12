@@ -13,6 +13,7 @@
  */
 
 import { Account, AccountCategory, JournalEntry, JournalLine } from '../types.js';
+import { formatCurrency } from './formatters.ts';
 
 export interface EnrichedAccount extends Account {
   isLeaf: boolean;
@@ -51,13 +52,13 @@ export interface TreeAggregationResult {
 }
 
 /**
- * Standard Centralized KWD Formatter
- * Strict 3-decimal precision with official Kuwaiti Dinar symbol
+ * Standard Centralized Currency Formatter
+ * Delegates to dynamic formatCurrency (handles active company currency and decimals)
  */
 export const formatKWD = (val: number | string | null | undefined): string => {
   const num = typeof val === 'number' ? val : Number(val || 0);
   const safeNum = isNaN(num) ? 0 : num;
-  return `${safeNum.toFixed(3)} د.ك`;
+  return formatCurrency(safeNum);
 };
 
 // In-memory stable cache to avoid recalculating on non-data state updates (e.g. filter/tab clicks)

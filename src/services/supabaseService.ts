@@ -1658,6 +1658,10 @@ export class SupabaseDataService {
             raw_data: reversalJournalEntry,
             created_at: new Date().toISOString(),
           }]);
+          // ضبط حالة القيد الأصلي إلى REVERSED
+          if (origJournal.id) {
+            await supabase.from('journal_entries').update({ status: 'REVERSED' }).eq('id', origJournal.id);
+          }
         } catch (saveJErr: any) {
           console.warn('Supabase save reversal journal error:', saveJErr?.message);
         }

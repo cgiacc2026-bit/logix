@@ -29,6 +29,7 @@ import {
 import { formatCurrency } from '../utils/formatters.ts';
 import { VouchersService, BankOrCashAccountSummary } from '../services/vouchersService';
 import { DataService } from '../services/dataService.ts';
+import { getCalculatedCustomerBalance, getCalculatedSupplierBalance } from '../services/statementService.ts';
 
 interface ReceiptVouchersViewProps {
   vouchers: PaymentVoucher[];
@@ -774,16 +775,22 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
                   >
                     <option value="">{vouchType === 'RECEIPT' ? '-- اختر العميل --' : '-- اختر المورد --'}</option>
                     {vouchType === 'RECEIPT'
-                      ? customers.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.nameAr} (الرصيد: {formatCurrency(c.balance, currency)})
-                          </option>
-                        ))
-                      : suppliers.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.nameAr} (الرصيد: {formatCurrency(s.balance, currency)})
-                          </option>
-                        ))}
+                      ? customers.map((c) => {
+                          const liveBal = getCalculatedCustomerBalance(c.id, invoices, vouchers, [], customers);
+                          return (
+                            <option key={c.id} value={c.id}>
+                              {c.nameAr} (الرصيد: {formatCurrency(liveBal, currency)})
+                            </option>
+                          );
+                        })
+                      : suppliers.map((s) => {
+                          const liveBal = getCalculatedSupplierBalance(s.id, invoices, vouchers, [], suppliers);
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {s.nameAr} (الرصيد: {formatCurrency(liveBal, currency)})
+                            </option>
+                          );
+                        })}
                   </select>
                 </div>
 

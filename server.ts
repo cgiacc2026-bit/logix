@@ -1404,7 +1404,12 @@ async function startServer() {
   });
 
   app.get('/api/invoices', (req, res) => {
-    res.json(db.getInvoices().sort((a, b) => b.date.localeCompare(a.date)));
+    const companyId = ((req.query.company_id || req.headers['x-company-id']) as string)?.trim();
+    let invoices = db.getInvoices();
+    if (companyId) {
+      invoices = invoices.filter((inv: any) => !inv.companyId || inv.companyId === companyId);
+    }
+    res.json(invoices.sort((a, b) => b.date.localeCompare(a.date)));
   });
 
   app.post('/api/invoices', (req, res) => {

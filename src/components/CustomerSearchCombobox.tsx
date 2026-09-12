@@ -3,6 +3,8 @@ import { Search, X, User, Building2, Check, ChevronDown, Sparkles } from 'lucide
 import { Customer, Supplier } from '../types.js';
 import { filterAndRankEntities } from '../utils/searchUtils.ts';
 import { formatCurrency } from '../utils/formatters.ts';
+import { getCalculatedCustomerBalance, getCalculatedSupplierBalance } from '../services/statementService.ts';
+import { localDataStore } from '../services/dataService.ts';
 
 interface CustomerSearchComboboxProps {
   entities: (Customer | Supplier)[];
@@ -278,7 +280,11 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
             filteredEntities.map((entity, idx) => {
               const isSelected = entity.id === selectedId;
               const isHighlighted = idx === highlightedIndex;
-              const bal = getBalance ? getBalance(entity) : Number(entity.balance || 0);
+              const bal = getBalance 
+                ? getBalance(entity) 
+                : (isSupplier 
+                    ? getCalculatedSupplierBalance(entity.id, localDataStore.getInvoices(), localDataStore.getVouchers(), localDataStore.getJournals(), [entity as any])
+                    : getCalculatedCustomerBalance(entity.id, localDataStore.getInvoices(), localDataStore.getVouchers(), localDataStore.getJournals(), [entity as any]));
 
               return (
                 <div

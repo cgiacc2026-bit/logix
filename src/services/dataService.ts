@@ -1425,13 +1425,25 @@ class LocalDataStore {
 export const localDataStore = new LocalDataStore();
 
 // Legacy Cloud Sync Helper no-ops (Supabase handles cloud persistence directly)
-async function syncToFirestore(_collectionName: string, _docId: string, _data: any): Promise<void> {
-  // Legacy Firebase sync removed - purely operating on Supabase
+/**
+ * Centralized Cloud Sync Error Notification
+ * Logs error and dispatches system notification for full transparency
+ */
+export function notifyCloudSyncError(operation: string, err: any): void {
+  console.warn('[DataService CloudSync Notice - ' + operation + ']:', err?.message || err);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('logix_system_notice', {
+        detail: {
+          type: 'warning',
+          message: 'تنبيه مزامنة سحابية (' + operation + '): ' + (err?.message || 'تعذر استكمال المزامنة الفورية مع السحابة'),
+        },
+      })
+    );
+  }
 }
 
-async function deleteFromFirestore(_collectionName: string, _docId: string): Promise<void> {
-  // Legacy Firebase delete removed - purely operating on Supabase
-}
+
 
 /**
  * Universal DataService with transparent API + Fallback Architecture
@@ -1458,7 +1470,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase saveCompany notice:', e);
     }
-    syncToFirestore('erp_company', comp.id || localDataStore.getEffectiveCompanyId() || 'company_profile', comp);
     await safeApiFetch<CompanyProfile>('/api/company', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1654,7 +1665,7 @@ export class DataService {
         if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
           const remoteTombstoned = fromSupabase.filter((a) => tombstones.has(a.id));
           if (remoteTombstoned.length > 0) {
-            Promise.all(remoteTombstoned.map((a) => SupabaseDataService.deleteAccount(a.id))).catch(() => {});
+            Promise.all(remoteTombstoned.map((a) => SupabaseDataService.deleteAccount(a.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
           }
           const validRemote = fromSupabase.filter((a) => !tombstones.has(a.id));
           if (localAccounts && localAccounts.length > 0 && isLocked) {
@@ -1674,7 +1685,7 @@ export class DataService {
         accounts = generateCleanChartOfAccounts(localDataStore.getEffectiveCompanyId() || undefined);
         localDataStore.saveAccounts(accounts);
         if (isSupabaseConfigured) {
-          SupabaseDataService.saveAccounts(accounts).catch(() => {});
+          SupabaseDataService.saveAccounts(accounts).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
       }
     }
@@ -1709,7 +1720,6 @@ export class DataService {
         console.warn('Supabase createAccount notice:', err)
       );
     }
-    syncToFirestore('erp_accounts', newAcc.id, newAcc);
     await safeApiFetch('/api/accounts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1730,7 +1740,6 @@ export class DataService {
         console.warn('Supabase updateAccount notice:', err)
       );
     }
-    syncToFirestore('erp_accounts', id, accounts[idx]);
     await safeApiFetch(`/api/accounts/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1749,7 +1758,6 @@ export class DataService {
         console.warn('Supabase deleteAccount notice:', err)
       );
     }
-    deleteFromFirestore('erp_accounts', id);
     await safeApiFetch(`/api/accounts/${id}`, { method: 'DELETE' });
     return true;
   }
@@ -1807,7 +1815,7 @@ export class DataService {
       if (Array.isArray(fromSupabase)) {
         const remoteTombstoned = fromSupabase.filter((j) => tombstones.has(j.id));
         if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-          Promise.all(remoteTombstoned.map((j) => SupabaseDataService.deleteJournal(j.id))).catch(() => {});
+          Promise.all(remoteTombstoned.map((j) => SupabaseDataService.deleteJournal(j.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         const validRemote = fromSupabase.filter((j) => !tombstones.has(j.id));
 
@@ -1841,7 +1849,7 @@ export class DataService {
         const jMap = new Set(localJournals.map((j) => j.sourceId || j.id || j.reference));
         const missing = vouchers.some((v) => v.amount > 0 && !jMap.has(v.id) && !jMap.has(v.voucherNumber));
         if (missing) {
-          this.syncVouchersWithJournals(localJournals).catch(() => {});
+          this.syncVouchersWithJournals(localJournals).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
       }
     } catch {}
@@ -1924,7 +1932,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase saveJournal notice:', e);
     }
-    syncToFirestore('erp_journals', newJournal.id, newJournal);
     await safeApiFetch('/api/journals', {
       method: 'POST',
       headers: {
@@ -2108,7 +2115,6 @@ export class DataService {
         console.warn('Supabase updateJournal notice:', e);
       }
     }
-    syncToFirestore('erp_journals', journals[idx].id, journals[idx]);
 
     try {
       await safeApiFetch<JournalEntry>(`/api/journals/${encodeURIComponent(journals[idx].id)}`, {
@@ -2145,7 +2151,6 @@ export class DataService {
           console.warn('Supabase rebuildOpeningJournal notice:', err)
         );
       }
-      syncToFirestore('erp_journals', apiRes.journal.id, apiRes.journal);
     }
     return apiRes;
   }
@@ -2181,7 +2186,6 @@ export class DataService {
         console.warn('Supabase reverseJournal orig notice:', err)
       );
     }
-    syncToFirestore('erp_journals', orig.id, orig);
 
     const revLines = orig.lines.map((l, i) => ({
       ...l,
@@ -2214,7 +2218,6 @@ export class DataService {
         console.warn('Supabase reverseJournal revEntry notice:', err)
       );
     }
-    syncToFirestore('erp_journals', revEntry.id, revEntry);
 
     await safeApiFetch(`/api/journals/${id}/reverse`, {
       method: 'POST',
@@ -2265,7 +2268,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase deleteJournal notice:', e);
     }
-    deleteFromFirestore('erp_journals', id);
 
     await safeApiFetch(`/api/journals/${id}`, { method: 'DELETE' });
     await safeApiFetch('/api/tombstones', {
@@ -2287,7 +2289,7 @@ export class DataService {
       if (Array.isArray(fromSupabase)) {
         const remoteTombstoned = fromSupabase.filter((inv) => tombstones.has(inv.id));
         if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-          Promise.all(remoteTombstoned.map((inv) => SupabaseDataService.deleteInvoice(inv.id))).catch(() => {});
+          Promise.all(remoteTombstoned.map((inv) => SupabaseDataService.deleteInvoice(inv.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         const validRemote = fromSupabase.filter((inv) => !tombstones.has(inv.id));
 
@@ -2573,7 +2575,6 @@ export class DataService {
           invItem.quantityOnHand = currentQty + incomingQty;
         }
 
-        syncToFirestore('erp_inventory', invItem.id, invItem);
         if (isSupabaseConfigured) {
           await SupabaseDataService.adjustItemStock(
             it.itemId,
@@ -2696,7 +2697,6 @@ export class DataService {
     const journals = localDataStore.getJournals();
     journals.unshift(jEntry);
     localDataStore.saveJournals(journals);
-    syncToFirestore('erp_journals', jEntry.id, jEntry);
     
     newInvoice.journalEntryId = jEntry.id;
     localDataStore.removeTombstone('invoices', newInvoice.id);
@@ -2728,7 +2728,6 @@ export class DataService {
       this.recalculateSupplierBalance(newInvoice.entityId);
     }
     backgroundSync.enqueueInvoiceCreate(newInvoice, data, activeCompanyId);
-    syncToFirestore('erp_invoices', newInvoice.id, newInvoice);
 
     return newInvoice;
   }
@@ -2755,7 +2754,6 @@ export class DataService {
         }
       }
     }
-    syncToFirestore('erp_invoices', id, inv);
     await safeApiFetch(`/api/invoices/${id}/post`, { method: 'POST' });
     return inv;
   }
@@ -2832,9 +2830,8 @@ export class DataService {
     const journals = localDataStore.getJournals();
     journals.unshift(jEntry);
     localDataStore.saveJournals(journals);
-    syncToFirestore('erp_journals', jEntry.id, jEntry);
     if (isSupabaseConfigured) {
-      SupabaseDataService.saveJournal(jEntry).catch(() => {});
+      SupabaseDataService.saveJournal(jEntry).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
     return jEntry;
   }
@@ -2857,7 +2854,6 @@ export class DataService {
         console.warn('Supabase cancelInvoice notice:', err)
       );
     }
-    syncToFirestore('erp_invoices', id, inv);
 
     // If the invoice was posted or paid, perform complete atomic accounting & inventory rollback:
     if (wasPostedOrPaid) {
@@ -2868,8 +2864,9 @@ export class DataService {
       );
 
       for (const origJournal of matchingJournals) {
-        origJournal.status = 'CANCELLED';
-        syncToFirestore('erp_journals', origJournal.id, origJournal);
+        // المحاسبة المعيارية IFRS: نضبط القيد الأصلي إلى REVERSED وننشئ القيد العكسي بـ POSTED
+        // ليتساوى المجموع الجبري للطرفين ويصبح الأثر المالي في الأستاذ العام صفراً تماماً دون أي رصيد سالب زائف
+        origJournal.status = 'REVERSED';
 
         // Generate corresponding Reversal Journal Entry REV-
         const revLines = origJournal.lines.map((l, i) => ({
@@ -2897,8 +2894,11 @@ export class DataService {
           sourceId: inv.id,
         };
 
+        (origJournal as any).reversalJournalId = revJournal.id;
+
         journals.unshift(revJournal);
-        syncToFirestore('erp_journals', revJournal.id, revJournal);
+        SupabaseDataService.saveJournal(origJournal).catch((err) => console.warn('Supabase save original journal status notice:', err));
+        SupabaseDataService.saveJournal(revJournal).catch((err) => console.warn('Supabase save reversal journal notice:', err));
       }
       localDataStore.saveJournals(journals);
 
@@ -2923,7 +2923,6 @@ export class DataService {
             invItem.quantityOnHand += q;
             cancelWhDelta = q;
           }
-          syncToFirestore('erp_inventory', invItem.id, invItem);
         }
         DataService.adjustWarehouseStock(cancelWhId, line.itemId, cancelWhDelta);
       });
@@ -2966,9 +2965,8 @@ export class DataService {
     );
     for (const mj of matchingJournals) {
       localDataStore.addTombstone('journals', mj.id);
-      deleteFromFirestore('erp_journals', mj.id);
       if (isSupabaseConfigured) {
-        SupabaseDataService.deleteJournal(mj.id).catch(() => {});
+        SupabaseDataService.deleteJournal(mj.id).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
     }
     const remainingJournals = journals.filter(
@@ -2984,7 +2982,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase deleteInvoice notice:', e);
     }
-    deleteFromFirestore('erp_invoices', id);
 
     await safeApiFetch(`/api/invoices/${id}`, { method: 'DELETE' });
     return true;
@@ -3031,7 +3028,6 @@ export class DataService {
             invItem.quantityOnHand += q;
             rollbackWhDelta = q;
           }
-          syncToFirestore('erp_inventory', invItem.id, invItem);
         }
         DataService.adjustWarehouseStock(oldWhId, line.itemId, rollbackWhDelta);
       });
@@ -3175,7 +3171,6 @@ export class DataService {
             invItem.quantityOnHand = allowNegStockInUpdate ? invItem.quantityOnHand - q : Math.max(0, invItem.quantityOnHand - q);
             applyWhDelta = -q;
           }
-          syncToFirestore('erp_inventory', invItem.id, invItem);
         }
         DataService.adjustWarehouseStock(newWhId, it.itemId, applyWhDelta);
       });
@@ -3484,7 +3479,6 @@ export class DataService {
         linkedJournal.description = `قيد ترحيل فاتورة ${isSales ? 'مبيعات' : 'مشتريات'} معدلة رقم (${invoiceNumber}) - ${entityNameAr}`;
         linkedJournal.status = 'POSTED';
         linkedJournal.updatedAt = new Date().toISOString();
-        syncToFirestore('erp_journals', linkedJournal.id, linkedJournal);
         updatedInvoice.journalEntryId = linkedJournal.id;
       } else {
         const newJournal: JournalEntry = {
@@ -3504,7 +3498,6 @@ export class DataService {
           sourceId: updatedInvoice.id,
         };
         journals.unshift(newJournal);
-        syncToFirestore('erp_journals', newJournal.id, newJournal);
         updatedInvoice.journalEntryId = newJournal.id;
         linkedJournal = newJournal;
       }
@@ -3522,7 +3515,7 @@ export class DataService {
       localDataStore.saveJournals(cleanJournals);
 
       if (isSupabaseConfigured && linkedJournal) {
-        SupabaseDataService.saveJournal(linkedJournal).catch(() => {});
+        SupabaseDataService.saveJournal(linkedJournal).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
     }
 
@@ -3541,7 +3534,6 @@ export class DataService {
     });
     cleanInvoices.splice(originalIdx, 0, updatedInvoice);
     localDataStore.saveInvoices(cleanInvoices);
-    syncToFirestore('erp_invoices', id, updatedInvoice);
 
     // 5. Update Bank & Cash balances
     const updatedAccounts = this.syncAccountBalances();
@@ -3551,23 +3543,23 @@ export class DataService {
       SupabaseDataService.saveInvoice(updatedInvoice).catch((e) =>
         console.warn('Supabase updateInvoice notice:', e)
       );
-      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      SupabaseDataService.saveAccounts(updatedAccounts).catch((err) => notifyCloudSyncError("CloudSync", err));
       if (newEntityId) {
         if (isSales || isSalesReturn) {
           const c = localDataStore.getCustomers().find((x) => x.id === newEntityId);
-          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+          if (c) SupabaseDataService.saveCustomer(c).catch((err) => notifyCloudSyncError("CloudSync", err));
         } else {
           const s = localDataStore.getSuppliers().find((x) => x.id === newEntityId);
-          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+          if (s) SupabaseDataService.saveSupplier(s).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
       }
       if (original.entityId && original.entityId !== newEntityId) {
         if (isSales || isSalesReturn) {
           const c = localDataStore.getCustomers().find((x) => x.id === original.entityId);
-          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+          if (c) SupabaseDataService.saveCustomer(c).catch((err) => notifyCloudSyncError("CloudSync", err));
         } else {
           const s = localDataStore.getSuppliers().find((x) => x.id === original.entityId);
-          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+          if (s) SupabaseDataService.saveSupplier(s).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
       }
     }
@@ -3577,7 +3569,7 @@ export class DataService {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }).catch(() => {});
+    }).catch((err) => notifyCloudSyncError("CloudSync", err));
 
     return updatedInvoice;
   }
@@ -3602,7 +3594,7 @@ export class DataService {
       if (Array.isArray(fromSupabase)) {
         const remoteTombstoned = fromSupabase.filter((v) => tombstones.has(v.id));
         if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-          Promise.all(remoteTombstoned.map((v) => SupabaseDataService.deleteVoucher(v.id))).catch(() => {});
+          Promise.all(remoteTombstoned.map((v) => SupabaseDataService.deleteVoucher(v.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         const validRemote = fromSupabase.filter((v) => !tombstones.has(v.id));
 
@@ -3697,9 +3689,8 @@ export class DataService {
     cust.balance = balance;
     localDataStore.saveCustomers(customers);
     if (isSupabaseConfigured) {
-      SupabaseDataService.saveCustomer(cust).catch(() => {});
+      SupabaseDataService.saveCustomer(cust).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
-    syncToFirestore('erp_customers', cust.id, cust);
     return balance;
   }
 
@@ -3747,9 +3738,8 @@ export class DataService {
     sup.balance = balance;
     localDataStore.saveSuppliers(suppliers);
     if (isSupabaseConfigured) {
-      SupabaseDataService.saveSupplier(sup).catch(() => {});
+      SupabaseDataService.saveSupplier(sup).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
-    syncToFirestore('erp_suppliers', sup.id, sup);
     return balance;
   }
 
@@ -4005,9 +3995,8 @@ export class DataService {
           if (inv.status !== 'CANCELLED') inv.status = 'POSTED';
         }
         localDataStore.saveInvoices(invoices);
-        syncToFirestore('erp_invoices', inv.id, inv);
         if (isSupabaseConfigured) {
-          SupabaseDataService.saveInvoice(inv).catch(() => {});
+          SupabaseDataService.saveInvoice(inv).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
       }
     }
@@ -4103,7 +4092,6 @@ export class DataService {
     const journals = localDataStore.getJournals();
     journals.unshift(jEntry);
     localDataStore.saveJournals(journals);
-    syncToFirestore('erp_journals', jEntry.id, jEntry);
 
     newVoucher.journalEntryId = jEntry.id;
     localDataStore.removeTombstone('vouchers', newVoucher.id);
@@ -4124,18 +4112,17 @@ export class DataService {
     // High-Performance Optimistic UI: Background Non-Blocking Persistence
     const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
     backgroundSync.enqueueVoucherCreate(newVoucher, data, activeCompanyId);
-    syncToFirestore('erp_vouchers', newVoucher.id, newVoucher);
 
     if (isSupabaseConfigured) {
-      SupabaseDataService.saveVoucher(newVoucher).catch(() => {});
-      SupabaseDataService.saveJournal(jEntry).catch(() => {});
-      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      SupabaseDataService.saveVoucher(newVoucher).catch((err) => notifyCloudSyncError("CloudSync", err));
+      SupabaseDataService.saveJournal(jEntry).catch((err) => notifyCloudSyncError("CloudSync", err));
+      SupabaseDataService.saveAccounts(updatedAccounts).catch((err) => notifyCloudSyncError("CloudSync", err));
       if (isReceipt && newVoucher.entityId) {
         const c = localDataStore.getCustomers().find((x) => x.id === newVoucher.entityId);
-        if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+        if (c) SupabaseDataService.saveCustomer(c).catch((err) => notifyCloudSyncError("CloudSync", err));
       } else if (!isReceipt && newVoucher.entityId) {
         const s = localDataStore.getSuppliers().find((x) => x.id === newVoucher.entityId);
-        if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+        if (s) SupabaseDataService.saveSupplier(s).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
     }
 
@@ -4143,7 +4130,7 @@ export class DataService {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newVoucher),
-    }).catch(() => {});
+    }).catch((err) => notifyCloudSyncError("CloudSync", err));
 
     return newVoucher;
   }
@@ -4160,7 +4147,6 @@ export class DataService {
     if (j) {
       j.status = 'CANCELLED';
       localDataStore.saveJournals(journals);
-      syncToFirestore('erp_journals', j.id, j);
     }
 
     // 2. Revert invoice if linked
@@ -4172,7 +4158,6 @@ export class DataService {
         inv.dueAmount = Math.max(0, inv.grandTotal - inv.paidAmount);
         inv.status = inv.dueAmount === 0 ? 'PAID' : (inv.paidAmount > 0 ? 'PARTIALLY_PAID' : 'POSTED');
         localDataStore.saveInvoices(invoices);
-        syncToFirestore('erp_invoices', inv.id, inv);
       }
     }
 
@@ -4193,18 +4178,17 @@ export class DataService {
 
     const activeCompanyId = localDataStore.getEffectiveCompanyId() || 'default';
     backgroundSync.enqueueVoucherCancel(v, reason, activeCompanyId);
-    syncToFirestore('erp_vouchers', id, v);
 
     if (isSupabaseConfigured) {
-      SupabaseDataService.saveVoucher(v).catch(() => {});
-      if (j) SupabaseDataService.saveJournal(j).catch(() => {});
-      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      SupabaseDataService.saveVoucher(v).catch((err) => notifyCloudSyncError("CloudSync", err));
+      if (j) SupabaseDataService.saveJournal(j).catch((err) => notifyCloudSyncError("CloudSync", err));
+      SupabaseDataService.saveAccounts(updatedAccounts).catch((err) => notifyCloudSyncError("CloudSync", err));
       if (v.entityType === 'CUSTOMER' && v.entityId) {
         const c = localDataStore.getCustomers().find((x) => x.id === v.entityId);
-        if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+        if (c) SupabaseDataService.saveCustomer(c).catch((err) => notifyCloudSyncError("CloudSync", err));
       } else if (v.entityId) {
         const s = localDataStore.getSuppliers().find((x) => x.id === v.entityId);
-        if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+        if (s) SupabaseDataService.saveSupplier(s).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
     }
 
@@ -4212,7 +4196,7 @@ export class DataService {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason }),
-    }).catch(() => {});
+    }).catch((err) => notifyCloudSyncError("CloudSync", err));
 
     return v;
   }
@@ -4428,38 +4412,37 @@ export class DataService {
 
     // 7. Background sync & API call
     if (isSupabaseConfigured) {
-      SupabaseDataService.saveVoucher(updatedVoucher).catch(() => {});
+      SupabaseDataService.saveVoucher(updatedVoucher).catch((err) => notifyCloudSyncError("CloudSync", err));
       const updatedJournal = journals.find((j) => j.id === updatedVoucher.journalEntryId);
       if (updatedJournal) {
-        SupabaseDataService.saveJournal(updatedJournal).catch(() => {});
+        SupabaseDataService.saveJournal(updatedJournal).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
-      SupabaseDataService.saveAccounts(updatedAccounts).catch(() => {});
+      SupabaseDataService.saveAccounts(updatedAccounts).catch((err) => notifyCloudSyncError("CloudSync", err));
       if (oldEntityId) {
         if (oldEntityType === 'CUSTOMER') {
           const c = localDataStore.getCustomers().find((x) => x.id === oldEntityId);
-          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+          if (c) SupabaseDataService.saveCustomer(c).catch((err) => notifyCloudSyncError("CloudSync", err));
         } else {
           const s = localDataStore.getSuppliers().find((x) => x.id === oldEntityId);
-          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+          if (s) SupabaseDataService.saveSupplier(s).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
       }
       if (newEntityId && newEntityId !== oldEntityId) {
         if (isReceipt) {
           const c = localDataStore.getCustomers().find((x) => x.id === newEntityId);
-          if (c) SupabaseDataService.saveCustomer(c).catch(() => {});
+          if (c) SupabaseDataService.saveCustomer(c).catch((err) => notifyCloudSyncError("CloudSync", err));
         } else {
           const s = localDataStore.getSuppliers().find((x) => x.id === newEntityId);
-          if (s) SupabaseDataService.saveSupplier(s).catch(() => {});
+          if (s) SupabaseDataService.saveSupplier(s).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
       }
     }
-    syncToFirestore('erp_vouchers', id, updatedVoucher);
 
     safeApiFetch<PaymentVoucher>(`/api/vouchers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }).catch(() => {});
+    }).catch((err) => notifyCloudSyncError("CloudSync", err));
 
     return updatedVoucher;
   }
@@ -4490,7 +4473,6 @@ export class DataService {
           localDataStore.saveJournals(journals);
         }
         localDataStore.addTombstone('journals', v.journalEntryId);
-        deleteFromFirestore('erp_journals', v.journalEntryId);
       }
 
       // Recalculate entity
@@ -4512,8 +4494,7 @@ export class DataService {
         console.warn('Supabase deleteVoucher notice:', err)
       );
     }
-    deleteFromFirestore('erp_vouchers', id);
-    safeApiFetch(`/api/vouchers/${id}`, { method: 'DELETE' }).catch(() => {});
+    safeApiFetch(`/api/vouchers/${id}`, { method: 'DELETE' }).catch((err) => notifyCloudSyncError("CloudSync", err));
     return true;
   }
 
@@ -4553,7 +4534,7 @@ export class DataService {
         if (Array.isArray(fromSupabase)) {
           const remoteTombstoned = fromSupabase.filter((c) => tombstones.has(c.id));
           if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-            Promise.all(remoteTombstoned.map((c) => SupabaseDataService.deleteCustomer(c.id))).catch(() => {});
+            Promise.all(remoteTombstoned.map((c) => SupabaseDataService.deleteCustomer(c.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
           }
           const validRemote = fromSupabase.filter((c) => !tombstones.has(c.id));
 
@@ -4604,7 +4585,7 @@ export class DataService {
     };
 
     if (localCustomers.length > 0) {
-      fetchRemote().catch(() => {});
+      fetchRemote().catch((err) => notifyCloudSyncError("CloudSync", err));
       return localCustomers;
     }
     return await fetchRemote();
@@ -4642,7 +4623,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase saveCustomer notice:', e);
     }
-    syncToFirestore('erp_customers', newCust.id, newCust);
 
     // [ARCHITECT] Automated Balanced GL Opening Entry Generation
     if (newCust.openingBalance && Number(newCust.openingBalance) > 0) {
@@ -4689,7 +4669,6 @@ export class DataService {
       const journals = localDataStore.getJournals();
       journals.unshift(jEntry);
       localDataStore.saveJournals(journals);
-      syncToFirestore('erp_journals', jEntry.id, jEntry);
     }
 
     await safeApiFetch('/api/customers', {
@@ -4761,7 +4740,6 @@ export class DataService {
           existingJ.totalDebit = newOpening;
           existingJ.totalCredit = newOpening;
           existingJ.status = 'POSTED';
-          syncToFirestore('erp_journals', existingJ.id, existingJ);
         } else {
           const jEntry: JournalEntry = {
             id: 'jv-cust-op-' + Math.random().toString(36).substr(2, 9),
@@ -4801,11 +4779,9 @@ export class DataService {
             sourceId: id,
           };
           journals.unshift(jEntry);
-          syncToFirestore('erp_journals', jEntry.id, jEntry);
         }
       } else if (existingJ) {
         existingJ.status = 'CANCELLED';
-        syncToFirestore('erp_journals', existingJ.id, existingJ);
       }
       localDataStore.saveJournals(journals);
       this.recalculateCustomerBalance(id);
@@ -4817,7 +4793,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase updateCustomer notice:', e);
     }
-    syncToFirestore('erp_customers', id, list[idx]);
     const apiRes = await safeApiFetch<any>(`/api/customers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -4843,7 +4818,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase deleteCustomer notice:', e);
     }
-    deleteFromFirestore('erp_customers', id);
     await safeApiFetch(`/api/customers/${id}`, { method: 'DELETE' });
     return true;
   }
@@ -4883,7 +4857,7 @@ export class DataService {
         if (Array.isArray(fromSupabase)) {
           const remoteTombstoned = fromSupabase.filter((s) => tombstones.has(s.id));
           if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-            Promise.all(remoteTombstoned.map((s) => SupabaseDataService.deleteSupplier(s.id))).catch(() => {});
+            Promise.all(remoteTombstoned.map((s) => SupabaseDataService.deleteSupplier(s.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
           }
           const validRemote = fromSupabase.filter((s) => !tombstones.has(s.id));
 
@@ -4934,7 +4908,7 @@ export class DataService {
     };
 
     if (localSuppliers.length > 0) {
-      fetchRemote().catch(() => {});
+      fetchRemote().catch((err) => notifyCloudSyncError("CloudSync", err));
       return localSuppliers;
     }
     return await fetchRemote();
@@ -4967,7 +4941,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase saveSupplier notice:', e);
     }
-    syncToFirestore('erp_suppliers', newSupp.id, newSupp);
 
     // [ARCHITECT] Automated Balanced GL Opening Entry Generation
     if (newSupp.openingBalance && Number(newSupp.openingBalance) > 0) {
@@ -5014,7 +4987,6 @@ export class DataService {
       const journals = localDataStore.getJournals();
       journals.unshift(jEntry);
       localDataStore.saveJournals(journals);
-      syncToFirestore('erp_journals', jEntry.id, jEntry);
     }
 
     await safeApiFetch('/api/suppliers', {
@@ -5086,7 +5058,6 @@ export class DataService {
           existingJ.totalDebit = newOpening;
           existingJ.totalCredit = newOpening;
           existingJ.status = 'POSTED';
-          syncToFirestore('erp_journals', existingJ.id, existingJ);
         } else {
           const jEntry: JournalEntry = {
             id: 'jv-supp-op-' + Math.random().toString(36).substr(2, 9),
@@ -5126,11 +5097,9 @@ export class DataService {
             sourceId: id,
           };
           journals.unshift(jEntry);
-          syncToFirestore('erp_journals', jEntry.id, jEntry);
         }
       } else if (existingJ) {
         existingJ.status = 'CANCELLED';
-        syncToFirestore('erp_journals', existingJ.id, existingJ);
       }
       localDataStore.saveJournals(journals);
       this.recalculateSupplierBalance(id);
@@ -5142,7 +5111,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase updateSupplier notice:', e);
     }
-    syncToFirestore('erp_suppliers', id, list[idx]);
     const apiRes = await safeApiFetch<any>(`/api/suppliers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -5168,7 +5136,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase deleteSupplier notice:', e);
     }
-    deleteFromFirestore('erp_suppliers', id);
     await safeApiFetch(`/api/suppliers/${id}`, { method: 'DELETE' });
     return true;
   }
@@ -5209,7 +5176,7 @@ export class DataService {
         if (Array.isArray(fromSupabase)) {
           const remoteTombstoned = fromSupabase.filter((i) => tombstones.has(i.id));
           if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-            Promise.all(remoteTombstoned.map((i) => SupabaseDataService.deleteItem(i.id))).catch(() => {});
+            Promise.all(remoteTombstoned.map((i) => SupabaseDataService.deleteItem(i.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
           }
           const validRemote = fromSupabase.filter((i) => !tombstones.has(i.id));
 
@@ -5264,7 +5231,7 @@ export class DataService {
     };
 
     if (localInventory.length > 0) {
-      fetchRemote().catch(() => {});
+      fetchRemote().catch((err) => notifyCloudSyncError("CloudSync", err));
       return localInventory;
     }
     return await fetchRemote();
@@ -5298,7 +5265,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase saveItem notice:', e);
     }
-    syncToFirestore('erp_inventory', newItem.id, newItem);
 
     // [ARCHITECT] Automated Balanced GL Opening Entry Generation
     const initialValuation = (Number(newItem.quantityOnHand) || 0) * (Number(newItem.purchasePrice) || 0);
@@ -5343,7 +5309,6 @@ export class DataService {
       const journals = localDataStore.getJournals();
       journals.unshift(jEntry);
       localDataStore.saveJournals(journals);
-      syncToFirestore('erp_journals', jEntry.id, jEntry);
     }
 
     await safeApiFetch('/api/inventory', {
@@ -5593,7 +5558,6 @@ export class DataService {
           existingJ.totalDebit = newValuation;
           existingJ.totalCredit = newValuation;
           existingJ.status = 'POSTED';
-          syncToFirestore('erp_journals', existingJ.id, existingJ);
         } else {
           const jEntry: JournalEntry = {
             id: 'jv-inv-op-' + Math.random().toString(36).substr(2, 9),
@@ -5631,11 +5595,9 @@ export class DataService {
             sourceId: id,
           };
           journals.unshift(jEntry);
-          syncToFirestore('erp_journals', jEntry.id, jEntry);
         }
       } else if (existingJ) {
         existingJ.status = 'CANCELLED';
-        syncToFirestore('erp_journals', existingJ.id, existingJ);
       }
       localDataStore.saveJournals(journals);
     }
@@ -5646,7 +5608,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase updateItem notice:', e);
     }
-    syncToFirestore('erp_inventory', id, list[idx]);
     await safeApiFetch(`/api/inventory/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -5667,7 +5628,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase deleteItem notice:', e);
     }
-    deleteFromFirestore('erp_inventory', id);
     await safeApiFetch(`/api/inventory/${id}`, { method: 'DELETE' });
     return true;
   }
@@ -5724,7 +5684,6 @@ export class DataService {
     };
     list.push(newUnit);
     localDataStore.saveUnits(list);
-    syncToFirestore('erp_units', newUnit.id, newUnit);
     await safeApiFetch('/api/units', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5739,7 +5698,6 @@ export class DataService {
     if (idx === -1) return null;
     list[idx] = { ...list[idx], ...data };
     localDataStore.saveUnits(list);
-    syncToFirestore('erp_units', id, list[idx]);
     await safeApiFetch(`/api/units/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -5752,7 +5710,6 @@ export class DataService {
     const list = localDataStore.getUnits();
     const filtered = list.filter((u) => u.id !== id);
     localDataStore.saveUnits(filtered);
-    deleteFromFirestore('erp_units', id);
     await safeApiFetch(`/api/units/${id}`, { method: 'DELETE' });
     return true;
   }
@@ -5904,12 +5861,12 @@ export class DataService {
       journals.push(jEntry);
       localDataStore.saveJournals(journals);
       newOrder.journalEntryId = jEntry.id;
-      SupabaseDataService.saveJournal(jEntry).catch(() => {});
+      SupabaseDataService.saveJournal(jEntry).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
 
     orders.unshift(newOrder);
     localDataStore.saveProductionOrders(orders);
-    SupabaseDataService.saveProductionOrder(newOrder).catch(() => {});
+    SupabaseDataService.saveProductionOrder(newOrder).catch((err) => notifyCloudSyncError("CloudSync", err));
 
     await safeApiFetch('/api/production-orders', {
       method: 'POST',
@@ -5940,7 +5897,7 @@ export class DataService {
   ): Promise<ManufacturingStandardSettings> {
     const settings = typeof companyIdOrSettings === 'string' && maybeSettings ? maybeSettings : (companyIdOrSettings as ManufacturingStandardSettings);
     localDataStore.saveManufacturingSettings(settings);
-    SupabaseDataService.saveManufacturingSettings(settings).catch(() => {});
+    SupabaseDataService.saveManufacturingSettings(settings).catch((err) => notifyCloudSyncError("CloudSync", err));
     return settings;
   }
 
@@ -5963,7 +5920,6 @@ export class DataService {
       users.push(user);
     }
     localDataStore.saveUsers(users);
-    syncToFirestore('erp_users', user.id, user);
     await safeApiFetch(`/api/users${idx >= 0 ? `/${user.id}` : ''}`, {
       method: idx >= 0 ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5976,7 +5932,6 @@ export class DataService {
     const users = localDataStore.getUsers();
     const filtered = users.filter((u) => u.id !== id);
     localDataStore.saveUsers(filtered);
-    deleteFromFirestore('erp_users', id);
     await safeApiFetch(`/api/users/${id}`, { method: 'DELETE' });
     return true;
   }
@@ -6417,7 +6372,7 @@ export class DataService {
       const updatedWhs = [defaultWh, ...warehouses];
       localDataStore.saveWarehouses(updatedWhs);
       if (isSupabaseConfigured) {
-        await SupabaseDataService.saveWarehouses(updatedWhs).catch(() => {});
+        await SupabaseDataService.saveWarehouses(updatedWhs).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
       mainWarehouseAdded = true;
     }
@@ -6441,7 +6396,7 @@ export class DataService {
       const updatedReps = [generalRep, ...salesReps];
       localDataStore.saveSalesReps(updatedReps);
       if (isSupabaseConfigured) {
-        await SupabaseDataService.saveSalesReps(updatedReps).catch(() => {});
+        await SupabaseDataService.saveSalesReps(updatedReps).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
       generalRepAdded = true;
     }
@@ -6510,7 +6465,7 @@ export class DataService {
         }
         localDataStore.saveCustomers(updatedCustomers);
         if (isSupabaseConfigured) {
-          await SupabaseDataService.saveCustomers(updatedCustomers).catch(() => {});
+          await SupabaseDataService.saveCustomers(updatedCustomers).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
 
         // Add Opening Journal Entry for 2026-08-01 if not already present
@@ -6551,7 +6506,7 @@ export class DataService {
           const updatedJournals = [newJournal, ...journals.filter((j) => j.id !== newJournal.id)];
           localDataStore.saveJournals(updatedJournals);
           if (isSupabaseConfigured) {
-            await SupabaseDataService.saveJournal(newJournal).catch(() => {});
+            await SupabaseDataService.saveJournal(newJournal).catch((err) => notifyCloudSyncError("CloudSync", err));
           }
         }
 
@@ -6563,7 +6518,7 @@ export class DataService {
         });
         localDataStore.saveAccounts(refreshedAccounts);
         if (isSupabaseConfigured) {
-          await SupabaseDataService.saveAccounts(refreshedAccounts).catch(() => {});
+          await SupabaseDataService.saveAccounts(refreshedAccounts).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         openingBalancesAdded = true;
       }
@@ -6626,27 +6581,27 @@ export class DataService {
         // Background purge of tombstoned records from remote Supabase
         if (Array.isArray(customers)) {
           const remoteCustTomb = customers.filter((c) => custTombstones.has(c.id));
-          if (remoteCustTomb.length > 0) Promise.all(remoteCustTomb.map((c) => SupabaseDataService.deleteCustomer(c.id))).catch(() => {});
+          if (remoteCustTomb.length > 0) Promise.all(remoteCustTomb.map((c) => SupabaseDataService.deleteCustomer(c.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         if (Array.isArray(suppliers)) {
           const remoteSuppTomb = suppliers.filter((s) => suppTombstones.has(s.id));
-          if (remoteSuppTomb.length > 0) Promise.all(remoteSuppTomb.map((s) => SupabaseDataService.deleteSupplier(s.id))).catch(() => {});
+          if (remoteSuppTomb.length > 0) Promise.all(remoteSuppTomb.map((s) => SupabaseDataService.deleteSupplier(s.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         if (Array.isArray(inventory)) {
           const remoteInvTomb = inventory.filter((i) => invTombstones.has(i.id));
-          if (remoteInvTomb.length > 0) Promise.all(remoteInvTomb.map((i) => SupabaseDataService.deleteItem(i.id))).catch(() => {});
+          if (remoteInvTomb.length > 0) Promise.all(remoteInvTomb.map((i) => SupabaseDataService.deleteItem(i.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         if (Array.isArray(journals)) {
           const remoteJrnTomb = journals.filter((j) => journalTombstones.has(j.id));
-          if (remoteJrnTomb.length > 0) Promise.all(remoteJrnTomb.map((j) => SupabaseDataService.deleteJournal(j.id))).catch(() => {});
+          if (remoteJrnTomb.length > 0) Promise.all(remoteJrnTomb.map((j) => SupabaseDataService.deleteJournal(j.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         if (Array.isArray(invoices)) {
           const remoteInvTomb = invoices.filter((i) => invoiceTombstones.has(i.id));
-          if (remoteInvTomb.length > 0) Promise.all(remoteInvTomb.map((i) => SupabaseDataService.deleteInvoice(i.id))).catch(() => {});
+          if (remoteInvTomb.length > 0) Promise.all(remoteInvTomb.map((i) => SupabaseDataService.deleteInvoice(i.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
         if (Array.isArray(vouchers)) {
           const remoteVchTomb = vouchers.filter((v) => voucherTombstones.has(v.id));
-          if (remoteVchTomb.length > 0) Promise.all(remoteVchTomb.map((v) => SupabaseDataService.deleteVoucher(v.id))).catch(() => {});
+          if (remoteVchTomb.length > 0) Promise.all(remoteVchTomb.map((v) => SupabaseDataService.deleteVoucher(v.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
 
         // Merge genuinely new remote records, never overwriting existing local or deleted tombstoned records
@@ -7016,7 +6971,7 @@ export class DataService {
     }
     localDataStore.saveSalesReps(list);
     if (isSupabaseConfigured) {
-      await SupabaseDataService.saveSalesReps(list).catch(() => {});
+      await SupabaseDataService.saveSalesReps(list).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
     return rep;
   }
@@ -7026,7 +6981,7 @@ export class DataService {
     const filtered = list.filter((r) => r.id !== id);
     localDataStore.saveSalesReps(filtered);
     if (isSupabaseConfigured) {
-      await SupabaseDataService.deleteSalesRep(id).catch(() => {});
+      await SupabaseDataService.deleteSalesRep(id).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
     return true;
   }
@@ -7094,7 +7049,7 @@ export class DataService {
     }
     localDataStore.saveWarehouses(list);
     if (isSupabaseConfigured) {
-      await SupabaseDataService.saveWarehouses(list).catch(() => {});
+      await SupabaseDataService.saveWarehouses(list).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
     return warehouse;
   }
@@ -7104,7 +7059,7 @@ export class DataService {
     const filtered = list.filter((w) => w.id !== id);
     localDataStore.saveWarehouses(filtered);
     if (isSupabaseConfigured) {
-      await SupabaseDataService.deleteWarehouse(id).catch(() => {});
+      await SupabaseDataService.deleteWarehouse(id).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
     return true;
   }

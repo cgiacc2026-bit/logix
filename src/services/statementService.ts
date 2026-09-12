@@ -1147,3 +1147,57 @@ export function calculateEntityCurrentBalance(
   return Math.round(net * 1000) / 1000;
 }
 
+/**
+ * المحرك المحاسبي المركزي الموحد لاحتساب رصيد العميل اللحظي (Unified Customer Balance Engine)
+ * يحسب الرصيد النهائي استناداً لكشف الحساب الفعلي، الرصيد الافتتاحي، فواتير المبيعات والمرتجعات غير الملغاة،
+ * سندات القبض، وقيود اليومية غير المكررة.
+ */
+export function getCalculatedCustomerBalance(
+  customerId: string,
+  invoices: Invoice[] = [],
+  vouchers: PaymentVoucher[] = [],
+  journals: JournalEntry[] = [],
+  customers: Customer[] = []
+): number {
+  if (!customerId) return 0;
+  try {
+    const stmt = getAccountStatement(customerId, 'CUSTOMER', '1970-01-01', '2099-12-31', {
+      invoices,
+      vouchers,
+      journals,
+      customers,
+    });
+    return Number(stmt?.closingBalance) || 0;
+  } catch (err) {
+    console.warn('Error in getCalculatedCustomerBalance:', err);
+    const cust = customers.find((c) => c.id === customerId);
+    return Number(cust?.openingBalance) || 0;
+  }
+}
+
+/**
+ * المحرك المحاسبي المركزي الموحد لاحتساب رصيد المورد اللحظي (Unified Supplier Balance Engine)
+ */
+export function getCalculatedSupplierBalance(
+  supplierId: string,
+  invoices: Invoice[] = [],
+  vouchers: PaymentVoucher[] = [],
+  journals: JournalEntry[] = [],
+  suppliers: any[] = []
+): number {
+  if (!supplierId) return 0;
+  try {
+    const stmt = getAccountStatement(supplierId, 'SUPPLIER', '1970-01-01', '2099-12-31', {
+      invoices,
+      vouchers,
+      journals,
+      suppliers,
+    });
+    return Number(stmt?.closingBalance) || 0;
+  } catch (err) {
+    console.warn('Error in getCalculatedSupplierBalance:', err);
+    const supp = suppliers.find((s) => s.id === supplierId);
+    return Number(supp?.openingBalance) || 0;
+  }
+}
+

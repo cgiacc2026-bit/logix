@@ -44,6 +44,7 @@ import {
 import { GlCustomerBalancesReport } from './reports/GlCustomerBalancesReport.tsx';
 import { GlInventoryValuationReport } from './reports/GlInventoryValuationReport.tsx';
 import { GlPostedSalesReport } from './reports/GlPostedSalesReport.tsx';
+import { getCalculatedCustomerBalance, getCalculatedSupplierBalance } from '../services/statementService.ts';
 
 interface OperationalReportsProps {
   invoices: Invoice[];
@@ -323,16 +324,24 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   // -------------------------------------------------------------
   const customerReports = useMemo(() => {
     return customers.map((cust) => {
-      // Find invoices for this customer
-      const custInvoices = invoices.filter((inv) => inv.entityId === cust.id && inv.type === 'SALES');
-      const custReturns = invoices.filter((inv) => inv.entityId === cust.id && inv.type === 'SALES_RETURN');
-      const custReceipts = vouchers.filter((v) => v.entityId === cust.id && v.type === 'RECEIPT');
+      // Find invoices for this customer excluding cancelled and drafts
+      const custInvoices = invoices.filter(
+        (inv) => inv.entityId === cust.id && inv.type === 'SALES' && inv.status !== 'CANCELLED'
+      );
+      const custReturns = invoices.filter(
+        (inv) => inv.entityId === cust.id && inv.type === 'SALES_RETURN' && inv.status !== 'CANCELLED'
+      );
+      const custReceipts = vouchers.filter(
+        (v) => v.entityId === cust.id && v.type === 'RECEIPT' && v.status !== 'CANCELLED'
+      );
 
       const totalInvoiced = custInvoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
       const totalReturned = custReturns.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
       const totalCollected = custReceipts.reduce((s, v) => s + (Number(v.amount) || 0), 0);
       const openBal = Number(cust.openingBalance) || 0;
-      const currentBalance = cust.balance !== undefined ? Number(cust.balance) : (openBal + totalInvoiced - totalReturned - totalCollected);
+      
+      // المحرك المحاسبي الموحد لاحتساب رصيد العميل الدقيق 100% المطابق لكشف الحساب
+      const currentBalance = getCalculatedCustomerBalance(cust.id, invoices, vouchers, journals, customers);
 
       // Calculate Aging (0-30, 31-60, 61-90, +90 days)
       let bucket0to30 = 0;
@@ -376,7 +385,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
         (c.customer.phone && c.customer.phone.includes(term))
       );
     }).sort((a, b) => b.currentBalance - a.currentBalance);
-  }, [customers, invoices, vouchers, searchTerm]);
+  }, [customers, invoices, vouchers, journals, searchTerm]);
 
   const customerStats = useMemo(() => {
     const totalReceivables = customerReports.reduce((s, c) => s + Math.max(0, c.currentBalance), 0);
@@ -392,15 +401,23 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   // -------------------------------------------------------------
   const supplierReports = useMemo(() => {
     return suppliers.map((supp) => {
-      const suppInvoices = invoices.filter((inv) => inv.entityId === supp.id && inv.type === 'PURCHASE');
-      const suppReturns = invoices.filter((inv) => inv.entityId === supp.id && inv.type === 'PURCHASE_RETURN');
-      const suppPayments = vouchers.filter((v) => v.entityId === supp.id && v.type === 'PAYMENT');
+      const suppInvoices = invoices.filter(
+        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE' && inv.status !== 'CANCELLED'
+      );
+      const suppReturns = invoices.filter(
+        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE_RETURN' && inv.status !== 'CANCELLED'
+      );
+      const suppPayments = vouchers.filter(
+        (v) => v.entityId === supp.id && v.type === 'PAYMENT' && v.status !== 'CANCELLED'
+      );
 
       const totalPurchased = suppInvoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
       const totalReturned = suppReturns.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
       const totalPaid = suppPayments.reduce((s, v) => s + (Number(v.amount) || 0), 0);
       const openBal = Number(supp.openingBalance) || 0;
-      const currentBalance = supp.balance !== undefined ? Number(supp.balance) : (openBal + totalPurchased - totalReturned - totalPaid);
+      
+      // المحرك المحاسبي الموحد لاحتساب رصيد المورد الدقيق 100% المطابق لكشف الحساب
+      const currentBalance = getCalculatedSupplierBalance(supp.id, invoices, vouchers, journals, suppliers);
 
       return {
         supplier: supp,
@@ -420,7 +437,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
         (s.supplier.code && s.supplier.code.toLowerCase().includes(term))
       );
     }).sort((a, b) => b.currentBalance - a.currentBalance);
-  }, [suppliers, invoices, vouchers, searchTerm]);
+  }, [suppliers, invoices, vouchers, journals, searchTerm]);
 
   const supplierStats = useMemo(() => {
     const totalPayables = supplierReports.reduce((s, supp) => s + Math.max(0, supp.currentBalance), 0);
