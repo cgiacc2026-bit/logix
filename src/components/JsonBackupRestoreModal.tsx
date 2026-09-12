@@ -206,12 +206,12 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
   };
 
   // Export JSON Backup
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
-      CompanyJsonBackupService.exportCompanyData(targetCompanyId, currentCompanyName);
+      await CompanyJsonBackupService.exportCompanyDataAsync(targetCompanyId, currentCompanyName);
       setFeedback({
         type: 'success',
-        text: 'تم توليد وتنزيل ملف النسخة الاحتياطية JSON بنجاح إلى جهازك!',
+        text: 'تم توليد وتنزيل ملف النسخة الاحتياطية JSON بنجاح إلى جهازك من قاعدة البيانات سحابياً!',
       });
     } catch (e: any) {
       setFeedback({

@@ -40,6 +40,7 @@ import {
   isSupabaseConfigured,
   checkIsSupabaseConfigured,
 } from './supabaseService.js';
+import { supabase } from './supabaseClient.js';
 import { safeApiFetch, safeJsonParse } from '../utils/safeJson.js';
 import { SystemResetService } from './systemResetService.js';
 
@@ -94,6 +95,64 @@ function getPartitionKey(baseKey: string, companyId: string): string {
 }
 
 export class CompanyJsonBackupService {
+  /**
+   * Export fresh data for a company directly from Supabase tables into a JSON backup
+   */
+  public static async exportCompanyDataAsync(companyId: string, companyName: string = 'Company'): Promise<string> {
+    if (typeof window === 'undefined') return '{}';
+
+    const currentCompanyId = resolveToSupabaseCompanyUUID(companyId) || companyId;
+
+    const [accounts, customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
+      supabase.from('chart_of_accounts').select('*').eq('company_id', currentCompanyId),
+      supabase.from('customers').select('*').eq('company_id', currentCompanyId),
+      supabase.from('suppliers').select('*').eq('company_id', currentCompanyId),
+      supabase.from('inventory_items').select('*').eq('company_id', currentCompanyId),
+      supabase.from('journal_entries').select('*, journal_entry_lines(*)').eq('company_id', currentCompanyId),
+      supabase.from('invoices').select('*, invoice_items(*)').eq('company_id', currentCompanyId),
+      supabase.from('payment_vouchers').select('*').eq('company_id', currentCompanyId),
+    ]);
+
+    const company = localDataStore.getCompany() || { ...DEFAULT_COMPANY_PROFILE, id: currentCompanyId, nameAr: companyName };
+    const users = localDataStore.getUsers() || INITIAL_USERS;
+    const units = localDataStore.getUnits() || INITIAL_UNITS;
+
+    const fullBackup = {
+      exportDate: new Date().toISOString(),
+      version: "2.0.0",
+      company,
+      users,
+      accounts: accounts.data || [],
+      customers: customers.data || [],
+      suppliers: suppliers.data || [],
+      inventory: inventory.data || [],
+      journals: journals.data || [],
+      invoices: invoices.data || [],
+      vouchers: vouchers.data || [],
+      units
+    };
+
+    const jsonString = JSON.stringify(fullBackup, null, 2);
+
+    try {
+      const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      const safeName = (company.nameAr || companyName || 'LOGIX_Company').replace(/[\s/\\?%*:|"<>]+/g, '_');
+      link.href = url;
+      link.download = `LOGIX_Backup_${safeName}_${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.warn('Could not auto-download JSON file:', e);
+    }
+
+    return jsonString;
+  }
+
   /**
    * Export all data for a specific company into a formatted JSON string and initiate download
    */

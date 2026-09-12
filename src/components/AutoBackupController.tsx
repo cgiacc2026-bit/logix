@@ -32,8 +32,8 @@ export const AutoBackupController: React.FC<AutoBackupControllerProps> = ({ comp
           // Slight delay to ensure UI shows up before blocking thread
           await new Promise(resolve => setTimeout(resolve, 800));
           
-          // exportCompanyData internally triggers the browser download
-          CompanyJsonBackupService.exportCompanyData(companyId, companyName || 'Company');
+          // exportCompanyDataAsync queries Supabase directly and internally triggers the browser download
+          await CompanyJsonBackupService.exportCompanyDataAsync(companyId, companyName || 'Company');
           
           localStorage.setItem(STORAGE_KEY, now.toString());
           setBackupComplete(true);

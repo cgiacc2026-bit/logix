@@ -26,8 +26,9 @@ import { CompanyProfile, SystemUser } from '../types.js';
 import { ExcelBackupService } from '../services/excelBackupService.ts';
 import { ThemeService, ERP_THEMES, ThemeColor, ThemeMode, useTheme } from '../services/themeService.ts';
 import { resolveActiveCompany } from '../utils/companyResolver.ts';
-import { DataService } from '../services/dataService.ts';
+import { DataService, localDataStore } from '../services/dataService.ts';
 import { useCompany } from '../contexts/CompanyContext.tsx';
+import { supabase, resolveToSupabaseCompanyUUID } from '../services/supabaseClient.js';
 
 interface HeaderProps {
   company: CompanyProfile | null;
@@ -159,10 +160,37 @@ export const Header: React.FC<HeaderProps> = ({
   const handleQuickBackup = async () => {
     setIsExporting(true);
     try {
-      const res = await fetch('/api/backup/export');
-      if (!res.ok) throw new Error('فشل في تصدير النسخة الاحتياطية');
-      const backupData = await res.json();
-      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(backupData, null, 2))}`;
+      const currentCompanyId = resolveToSupabaseCompanyUUID(company?.id) || company?.id || '20000000-0000-0000-0000-000000000001';
+
+      const [accounts, customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
+        supabase.from('chart_of_accounts').select('*').eq('company_id', currentCompanyId),
+        supabase.from('customers').select('*').eq('company_id', currentCompanyId),
+        supabase.from('suppliers').select('*').eq('company_id', currentCompanyId),
+        supabase.from('inventory_items').select('*').eq('company_id', currentCompanyId),
+        supabase.from('journal_entries').select('*, journal_entry_lines(*)').eq('company_id', currentCompanyId),
+        supabase.from('invoices').select('*, invoice_items(*)').eq('company_id', currentCompanyId),
+        supabase.from('payment_vouchers').select('*').eq('company_id', currentCompanyId),
+      ]);
+
+      const users = localDataStore.getUsers();
+      const units = localDataStore.getUnits();
+
+      const fullBackup = {
+        exportDate: new Date().toISOString(),
+        version: "2.0.0",
+        company,
+        users,
+        accounts: accounts.data || [],
+        customers: customers.data || [],
+        suppliers: suppliers.data || [],
+        inventory: inventory.data || [],
+        journals: journals.data || [],
+        invoices: invoices.data || [],
+        vouchers: vouchers.data || [],
+        units
+      };
+
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(fullBackup, null, 2))}`;
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute('href', jsonString);
       const cleanName = (company?.nameAr || 'database').replace(/\s+/g, '_');

@@ -21,6 +21,7 @@ import { ExcelBackupService } from '../services/excelBackupService.ts';
 import { ERPBackupImportService } from '../services/importBackupService.js';
 import { DataService, localDataStore } from '../services/dataService.ts';
 import { formatCurrency } from '../utils/formatters.ts';
+import { supabase, resolveToSupabaseCompanyUUID } from '../services/supabaseClient.js';
 
 interface UnifiedBackupRestoreHubProps {
   company: CompanyProfile;
@@ -66,26 +67,34 @@ export const UnifiedBackupRestoreHub: React.FC<UnifiedBackupRestoreHubProps> = (
     setIsExportingJson(true);
     setFeedback(null);
     try {
-      // Build a full consistent export bundle
-      const backupPayload = {
-        meta: {
-          app: 'LOGIX ERP Enterprise',
-          version: '2026.3.0',
-          exportedAt: new Date().toISOString(),
-          companyId: company.id,
-          companyName: company.nameAr,
-          currency: company.functionalCurrency || currency,
-          exportedBy: currentUser?.name || currentUser?.username || 'Admin',
-        },
+      const currentCompanyId = resolveToSupabaseCompanyUUID(company.id) || company.id;
+
+      const [accounts, customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
+        supabase.from('chart_of_accounts').select('*').eq('company_id', currentCompanyId),
+        supabase.from('customers').select('*').eq('company_id', currentCompanyId),
+        supabase.from('suppliers').select('*').eq('company_id', currentCompanyId),
+        supabase.from('inventory_items').select('*').eq('company_id', currentCompanyId),
+        supabase.from('journal_entries').select('*, journal_entry_lines(*)').eq('company_id', currentCompanyId),
+        supabase.from('invoices').select('*, invoice_items(*)').eq('company_id', currentCompanyId),
+        supabase.from('payment_vouchers').select('*').eq('company_id', currentCompanyId),
+      ]);
+
+      const users = localDataStore.getUsers();
+      const units = localDataStore.getUnits();
+
+      const fullBackup = {
+        exportDate: new Date().toISOString(),
+        version: "2.0.0",
         company,
-        accounts: localDataStore.getAccounts(),
-        journals: localDataStore.getJournals(),
-        invoices: localDataStore.getInvoices(),
-        vouchers: localDataStore.getVouchers(),
-        customers: localDataStore.getCustomers(),
-        suppliers: localDataStore.getSuppliers(),
-        inventory: localDataStore.getInventory(),
-        units: localDataStore.getUnits(),
+        users,
+        accounts: accounts.data || [],
+        customers: customers.data || [],
+        suppliers: suppliers.data || [],
+        inventory: inventory.data || [],
+        journals: journals.data || [],
+        invoices: invoices.data || [],
+        vouchers: vouchers.data || [],
+        units,
         warehouses: localDataStore.getWarehouses(),
         warehouseStocks: localDataStore.getWarehouseStocks(),
         salesReps: localDataStore.getSalesReps(),
@@ -94,7 +103,7 @@ export const UnifiedBackupRestoreHub: React.FC<UnifiedBackupRestoreHubProps> = (
       };
 
       const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-        JSON.stringify(backupPayload, null, 2)
+        JSON.stringify(fullBackup, null, 2)
       )}`;
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute('href', jsonString);
@@ -105,10 +114,14 @@ export const UnifiedBackupRestoreHub: React.FC<UnifiedBackupRestoreHubProps> = (
       downloadAnchor.click();
       downloadAnchor.remove();
 
+      const journalsCount = (fullBackup.journals || []).length;
+      const invoicesCount = (fullBackup.invoices || []).length;
+      const inventoryCount = (fullBackup.inventory || []).length;
+
       setFeedback({
         type: 'success',
         title: 'تم تصدير النسخة الاحتياطية بنجاح تام',
-        message: `تم إنشاء وتحميل ملف JSON متكامل يضم ${journalsCount} قيد يومية، و ${invoicesCount} فاتورة، و ${inventoryCount} صنف مخزني، وكافة الحسابات.`,
+        message: `تم إنشاء وتحميل ملف JSON متكامل يضم ${journalsCount} قيد يومية، و ${invoicesCount} فاتورة، و ${inventoryCount} صنف مخزني، وكافة الحسابات من قاعدة البيانات سحابياً.`,
       });
     } catch (err: any) {
       setFeedback({

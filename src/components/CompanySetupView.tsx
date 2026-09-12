@@ -742,29 +742,40 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     setExportSuccess('');
     setErrorMessage('');
     try {
-      let backupData = await safeApiFetch<any>('/api/backup/export');
-      if (!backupData) {
-        backupData = {
-          exportDate: new Date().toISOString(),
-          version: '2.0.0',
-          company: localDataStore.getCompany(),
-          users: localDataStore.getUsers(),
-          accounts: localDataStore.getAccounts(),
-          customers: localDataStore.getCustomers(),
-          suppliers: localDataStore.getSuppliers(),
-          inventory: localDataStore.getInventory(),
-          journals: localDataStore.getJournals(),
-          invoices: localDataStore.getInvoices(),
-          vouchers: localDataStore.getVouchers(),
-          units: localDataStore.getUnits(),
-          productionOrders: localDataStore.getProductionOrders(),
-        };
-      }
+      const currentCompanyId = resolveToSupabaseCompanyUUID(company?.id) || company?.id || '20000000-0000-0000-0000-000000000001';
 
-      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(backupData, null, 2))}`;
+      const [accounts, customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
+        supabase.from('chart_of_accounts').select('*').eq('company_id', currentCompanyId),
+        supabase.from('customers').select('*').eq('company_id', currentCompanyId),
+        supabase.from('suppliers').select('*').eq('company_id', currentCompanyId),
+        supabase.from('inventory_items').select('*').eq('company_id', currentCompanyId),
+        supabase.from('journal_entries').select('*, journal_entry_lines(*)').eq('company_id', currentCompanyId),
+        supabase.from('invoices').select('*, invoice_items(*)').eq('company_id', currentCompanyId),
+        supabase.from('payment_vouchers').select('*').eq('company_id', currentCompanyId),
+      ]);
+
+      const users = localDataStore.getUsers();
+      const units = localDataStore.getUnits();
+
+      const fullBackup = {
+        exportDate: new Date().toISOString(),
+        version: "2.0.0",
+        company,
+        users,
+        accounts: accounts.data || [],
+        customers: customers.data || [],
+        suppliers: suppliers.data || [],
+        inventory: inventory.data || [],
+        journals: journals.data || [],
+        invoices: invoices.data || [],
+        vouchers: vouchers.data || [],
+        units
+      };
+
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(fullBackup, null, 2))}`;
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute('href', jsonString);
-      const cleanCompanyName = (formData.nameAr || 'database').replace(/\s+/g, '_');
+      const cleanCompanyName = (formData.nameAr || company?.nameAr || 'database').replace(/\s+/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
       downloadAnchor.setAttribute('download', `erp_backup_${cleanCompanyName}_${dateStr}.json`);
       document.body.appendChild(downloadAnchor);
