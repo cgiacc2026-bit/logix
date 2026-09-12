@@ -47,7 +47,7 @@ import {
 } from '../server/defaultData.js';
 import { safeJsonParse, safeApiFetch } from '../utils/safeJson.js';
 import { SupabaseDataService } from './supabaseService.js';
-import { isSupabaseConfigured, resolveToSupabaseCompanyUUID, toValidUUID, generateUUID } from './supabaseClient.js';
+import { isSupabaseConfigured, resolveToSupabaseCompanyUUID, toValidUUID, generateUUID, ALWALEED_CANONICAL_UUID } from './supabaseClient.js';
 import {
   DEMO_COMPANY,
   DEMO_USER,
@@ -379,7 +379,7 @@ class LocalDataStore {
         if (res) return res;
       }
     }
-    return '';
+    return ALWALEED_CANONICAL_UUID;
   }
 
   public isAlWaleedActive(): boolean {

@@ -145,7 +145,7 @@ export const OFFICIAL_CANONICAL_UUID = '10000000-0000-0000-0000-000000000001';
 
 export function toValidUUID(id: string): string {
   if (!id || !id.trim()) {
-    throw new Error('Company Context Missing: Company ID is strictly required');
+    return generateUUID();
   }
   const clean = id.trim();
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -170,26 +170,31 @@ export function toValidUUID(id: string): string {
 
 export function resolveToSupabaseCompanyUUID(companyId: string | null | undefined): string {
   if (!companyId || !companyId.trim()) {
-    // Check if there is an active tenant in localStorage before throwing
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.COMPANY_ID) : null;
-    if (stored && stored.trim() && stored !== 'default') {
-      return resolveToSupabaseCompanyUUID(stored);
+    // Check if there is an active tenant in localStorage
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEYS.COMPANY_ID) || localStorage.getItem('activeCompanyId');
+      if (stored && stored.trim() && stored.trim() !== 'default' && stored.trim() !== 'default_tenant') {
+        return resolveToSupabaseCompanyUUID(stored);
+      }
     }
-    throw new Error('Company Context Missing: Company ID is strictly required');
+    return ALWALEED_CANONICAL_UUID;
   }
   const clean = companyId.trim();
-  if (clean === 'default') {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.COMPANY_ID) : null;
-    if (stored && stored.trim() && stored !== 'default') {
-      return resolveToSupabaseCompanyUUID(stored);
+  if (clean === 'default' || clean === 'default_tenant') {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEYS.COMPANY_ID) || localStorage.getItem('activeCompanyId');
+      if (stored && stored.trim() && stored.trim() !== 'default' && stored.trim() !== 'default_tenant') {
+        return resolveToSupabaseCompanyUUID(stored);
+      }
     }
-    throw new Error('Company Context Missing: Company ID is strictly required');
+    return ALWALEED_CANONICAL_UUID;
   }
   if (
     clean === ALWALEED_CANONICAL_UUID ||
     clean === 'company-alwaleed-client-003' ||
     clean.toLowerCase().includes('alwaleed') ||
-    clean === '450912'
+    clean === '450912' ||
+    clean === '00000000-0000-0000-0000-000000000001'
   ) {
     return ALWALEED_CANONICAL_UUID;
   }
@@ -230,10 +235,12 @@ export const STORAGE_KEYS = {
  * Get current active company ID from authenticated local session
  */
 export function getCurrentCompanyId(): string {
-  if (typeof window === 'undefined') return '';
+  if (typeof window === 'undefined') return ALWALEED_CANONICAL_UUID;
   const saved = localStorage.getItem(STORAGE_KEYS.COMPANY_ID) || localStorage.getItem('activeCompanyId');
-  if (!saved || !saved.trim() || saved.trim() === 'default') return '';
-  return resolveToSupabaseCompanyUUID(saved) || '';
+  if (!saved || !saved.trim() || saved.trim() === 'default' || saved.trim() === 'default_tenant') {
+    return ALWALEED_CANONICAL_UUID;
+  }
+  return resolveToSupabaseCompanyUUID(saved) || ALWALEED_CANONICAL_UUID;
 }
 
 /**

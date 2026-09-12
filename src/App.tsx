@@ -51,6 +51,7 @@ import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } fro
 import { LoginView } from './components/LoginView.tsx';
 import { CompanyOnboardingWizard } from './components/CompanyOnboardingWizard.tsx';
 import { CompanyProvider, useCompany } from './contexts/CompanyContext.tsx';
+import { ALWALEED_CANONICAL_UUID } from './services/supabaseClient.ts';
 import { DataService } from './services/dataService.ts';
 import { DataSyncService } from './services/dataSyncService.ts';
 import { ThemeService, ThemeColor, ThemeMode } from './services/themeService.ts';
@@ -252,6 +253,11 @@ export function AppContent() {
       await updateCompany(selectedCompany);
       if (selectedCompany.functionalCurrency) {
         await setCurrency(selectedCompany.functionalCurrency);
+      }
+    } else {
+      const curCompId = localStorage.getItem('supabase_company_id');
+      if (!curCompId || curCompId === 'default' || curCompId === 'default_tenant') {
+        localStorage.setItem('supabase_company_id', ALWALEED_CANONICAL_UUID);
       }
     }
     refreshAllData();

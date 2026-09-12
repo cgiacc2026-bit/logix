@@ -1926,7 +1926,7 @@ export const INITIAL_INVOICES: Invoice[] = [
 ];
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
-  id: '00000000-0000-0000-0000-000000000001',
+  id: '20000000-0000-0000-0000-000000000001',
   nameAr: 'مطحنة الوليد المتحده',
   nameEn: 'Al-Waleed United Mill & Food Industries',
   tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',

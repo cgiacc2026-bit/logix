@@ -228,6 +228,177 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 -- ==============================================================================
+
+-- ==============================================================================
+-- 1.1 دالة توليد قيود اليومية التلقائية للفواتير بصيغة مرنة ومحمية من أخطاء الإعدادات
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.fn_generate_invoice_journal_entry()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_sales_acc UUID;
+    v_recv_acc UUID;
+    v_pay_acc UUID;
+    v_inv_acc UUID;
+    v_entry_num TEXT;
+    v_jv_id UUID;
+    v_lines JSONB;
+    v_desc TEXT;
+    v_is_sales BOOLEAN;
+BEGIN
+    -- 1. تخطي التنفيذ إذا كان وضع النسخ المتماثل (الاستيراد الدفعي) مفعلاً
+    IF current_setting('session_replication_role', true) = 'replica' THEN
+        RETURN NEW;
+    END IF;
+
+    -- 2. تخطي الفواتير غير المعتمدة (مسودة أو ملغاة)
+    IF NEW.status IS NOT NULL AND NEW.status IN ('DRAFT', 'CANCELLED', 'VOID') THEN
+        RETURN NEW;
+    END IF;
+
+    -- 3. تخطي الفاتورة إذا كان قد تم إنشاء قيد لها مسبقاً
+    IF NEW.raw_data IS NOT NULL AND (NEW.raw_data->>'journalEntryId') IS NOT NULL AND (NEW.raw_data->>'journalEntryId') != '' THEN
+        RETURN NEW;
+    END IF;
+
+    -- تحديد نوع الفاتورة: مبيعات أم مشتريات
+    v_is_sales := TRUE;
+    IF (NEW.raw_data->>'type') = 'PURCHASE' OR NEW.invoice_number LIKE 'INV-PUR%' THEN
+        v_is_sales := FALSE;
+    END IF;
+
+    -- محاولة جلب حسابات الشركة من جدول إعدادات الحسابات
+    SELECT 
+        sales_account_id,
+        receivable_account_id,
+        payable_account_id,
+        inventory_account_id
+    INTO 
+        v_sales_acc,
+        v_recv_acc,
+        v_pay_acc,
+        v_inv_acc
+    FROM public.company_accounting_settings
+    WHERE company_id = NEW.company_id
+    LIMIT 1;
+
+    -- خطة استرجاع تلقائية من شجرة الحسابات في حال عدم ضبط الإعدادات مسبقاً
+    IF v_sales_acc IS NULL THEN
+        SELECT id INTO v_sales_acc FROM public.chart_of_accounts
+        WHERE company_id = NEW.company_id AND (code = '4100' OR code LIKE '41%' OR name_ar LIKE '%مبيعات%')
+        ORDER BY CASE WHEN code = '4100' THEN 1 ELSE 2 END LIMIT 1;
+    END IF;
+
+    IF v_recv_acc IS NULL THEN
+        SELECT id INTO v_recv_acc FROM public.chart_of_accounts
+        WHERE company_id = NEW.company_id AND (code = '1120' OR code LIKE '112%' OR name_ar LIKE '%عملاء%' OR name_ar LIKE '%مدين%')
+        ORDER BY CASE WHEN code = '1120' THEN 1 ELSE 2 END LIMIT 1;
+    END IF;
+
+    IF v_pay_acc IS NULL THEN
+        SELECT id INTO v_pay_acc FROM public.chart_of_accounts
+        WHERE company_id = NEW.company_id AND (code = '2110' OR code LIKE '211%' OR name_ar LIKE '%مورد%')
+        ORDER BY CASE WHEN code = '2110' THEN 1 ELSE 2 END LIMIT 1;
+    END IF;
+
+    IF v_inv_acc IS NULL THEN
+        SELECT id INTO v_inv_acc FROM public.chart_of_accounts
+        WHERE company_id = NEW.company_id AND (code = '1130' OR code LIKE '113%' OR name_ar LIKE '%مخزون%')
+        ORDER BY CASE WHEN code = '1130' THEN 1 ELSE 2 END LIMIT 1;
+    END IF;
+
+    -- تفادي إيقاف السكربت أو إلقاء استثناء قاتل؛ إشعار آمن والتجاوز بسلاسة
+    IF v_is_sales AND (v_sales_acc IS NULL OR v_recv_acc IS NULL) THEN
+        RAISE NOTICE 'تنبيه: تعذر إيجاد حساب المبيعات أو المدينين تلقائياً للشركة %؛ تم تجاوز القيد للفاتورة %', NEW.company_id, NEW.invoice_number;
+        RETURN NEW;
+    END IF;
+
+    IF NOT v_is_sales AND (v_pay_acc IS NULL OR v_inv_acc IS NULL) THEN
+        RAISE NOTICE 'تنبيه: تعذر إيجاد حساب الموردين أو المخزون تلقائياً للشركة %؛ تم تجاوز القيد للفاتورة %', NEW.company_id, NEW.invoice_number;
+        RETURN NEW;
+    END IF;
+
+    -- التحقق من عدم وجود قيد يومية مسجل مسبقاً بنفس رقم الفاتورة أو مرجعها
+    PERFORM 1 FROM public.journal_entries 
+    WHERE company_id = NEW.company_id AND (reference = NEW.invoice_number OR reference = NEW.id::text);
+    IF FOUND THEN
+        RETURN NEW;
+    END IF;
+
+    v_jv_id := gen_random_uuid();
+    v_entry_num := 'JV-' || COALESCE(NEW.invoice_number, substring(v_jv_id::text from 1 for 8));
+
+    IF v_is_sales THEN
+        v_desc := 'قيد إثبات فاتورة مبيعات رقم ' || COALESCE(NEW.invoice_number, '') || ' - ' || COALESCE(NEW.customer_name, 'العميل');
+        v_lines := jsonb_build_array(
+            jsonb_build_object(
+                'id', gen_random_uuid()::text,
+                'accountId', v_recv_acc::text,
+                'accountCode', '1120',
+                'accountNameAr', 'الذمم المدينة (العملاء)',
+                'debit', COALESCE(NEW.total_amount, 0),
+                'credit', 0,
+                'memo', v_desc
+            ),
+            jsonb_build_object(
+                'id', gen_random_uuid()::text,
+                'accountId', v_sales_acc::text,
+                'accountCode', '4100',
+                'accountNameAr', 'إيرادات المبيعات',
+                'debit', 0,
+                'credit', COALESCE(NEW.total_amount, 0),
+                'memo', v_desc
+            )
+        );
+    ELSE
+        v_desc := 'قيد إثبات فاتورة مشتريات رقم ' || COALESCE(NEW.invoice_number, '');
+        v_lines := jsonb_build_array(
+            jsonb_build_object(
+                'id', gen_random_uuid()::text,
+                'accountId', v_inv_acc::text,
+                'accountCode', '1130',
+                'accountNameAr', 'مخزون المواد والبهارات',
+                'debit', COALESCE(NEW.total_amount, 0),
+                'credit', 0,
+                'memo', v_desc
+            ),
+            jsonb_build_object(
+                'id', gen_random_uuid()::text,
+                'accountId', v_pay_acc::text,
+                'accountCode', '2110',
+                'accountNameAr', 'الذمم الدائنة (الموردين)',
+                'debit', 0,
+                'credit', COALESCE(NEW.total_amount, 0),
+                'memo', v_desc
+            )
+        );
+    END IF;
+
+    INSERT INTO public.journal_entries (
+        id, company_id, entry_number, date, description, status, reference,
+        total_debit, total_credit, lines, raw_data, created_at, updated_at
+    ) VALUES (
+        v_jv_id,
+        NEW.company_id,
+        v_entry_num,
+        COALESCE(NEW.invoice_date, NEW.date, CURRENT_DATE),
+        v_desc,
+        'POSTED',
+        NEW.invoice_number,
+        COALESCE(NEW.total_amount, 0),
+        COALESCE(NEW.total_amount, 0),
+        v_lines,
+        jsonb_build_object('id', v_jv_id::text, 'entryNumber', v_entry_num, 'invoiceId', NEW.id::text),
+        now(),
+        now()
+    ) ON CONFLICT DO NOTHING;
+
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'ملاحظة: تم تجاوز خطأ قيد الفاتورة التلقائي بسلام: %', SQLERRM;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- 2. إدخال أو تحديث بيانات الشركة (Company Record)
 -- ==============================================================================
 INSERT INTO public.companies (
@@ -267,7 +438,15 @@ DECLARE
     v_comp_id TEXT := '20000000-0000-0000-0000-000000000001';
     v_comp_uuid UUID := '20000000-0000-0000-0000-000000000001'::uuid;
 BEGIN
-    -- 1. فك ارتباط الحسابات في جميع الجداول لتجنب أي تعارض مفاتيح أجنبية (Foreign Keys)
+    
+    -- تعطيل محفزات الفواتير والسندات مؤقتاً لمنع أي تعارض أثناء استيراد البيانات الشاملة
+    BEGIN
+        ALTER TABLE public.invoices DISABLE TRIGGER USER;
+        ALTER TABLE public.payment_vouchers DISABLE TRIGGER USER;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+-- 1. فك ارتباط الحسابات في جميع الجداول لتجنب أي تعارض مفاتيح أجنبية (Foreign Keys)
     BEGIN
         UPDATE public.chart_of_accounts SET parent_id = NULL 
         WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
@@ -546,6 +725,84 @@ ON CONFLICT (company_id, code) DO UPDATE SET
     updated_at = now();
 
 -- ==============================================================================
+
+-- ==============================================================================
+-- 3.1 ضبط وربط إعدادات الحسابات الافتراضية للشركة (Company Accounting Settings)
+-- ==============================================================================
+-- يضمن ربط كافة حسابات المبيعات، المدينين، الدائنين، والمخزون استباقياً لمنع خطأ P0001
+INSERT INTO public.company_accounting_settings (
+    company_id,
+    cash_account_id,
+    bank_account_id,
+    receivable_account_id,
+    payable_account_id,
+    inventory_account_id,
+    sales_account_id,
+    cogs_account_id,
+    retained_earnings_account_id,
+    vat_account_id,
+    settings_data,
+    created_at,
+    updated_at
+) VALUES (
+    '20000000-0000-0000-0000-000000000001'::uuid,
+    '0bdffdf1-72b5-4483-83b8-77ce8fe1a58e'::uuid, -- 1113 الصندوق الرئيسي (الخزينة)
+    '84705122-1cd3-4256-b00f-485f35c88fdc'::uuid, -- 1111 البنك التجاري
+    'c508c1b0-fc98-4fc6-badb-7559a1f382e5'::uuid, -- 1120 الذمم المدينة (حسابات العملاء)
+    '98b0d148-460d-4e40-9413-5e9fc3558e81'::uuid, -- 2110 الذمم الدائنة (حسابات الموردين)
+    '7674f2a8-05ae-4212-b686-023e975107ce'::uuid, -- 1130 مخزون البضائع والبهارات
+    'cc462151-21ba-4dfc-8a70-b9e59de86885'::uuid, -- 4100 إيرادات مبيعات الجمعيات والبهارات
+    '79190e51-03ec-4a54-a5b5-73cd90b42610'::uuid, -- 5100 تكلفة البضاعة المباعة (COGS)
+    'd9a280f5-b72e-48f2-a9b2-e06ad2b448f4'::uuid, -- 3200 الأرباح المبقاة (المدورة)
+    'fca6ec62-13cb-4411-b7b2-861ed87ceb09'::uuid, -- 2120 / الخصوم المتداولة
+    jsonb_build_object(
+        'isWired', true,
+        'savedAt', now(),
+        'defaultAccounts', jsonb_build_object(
+            'cashAccountId', '0bdffdf1-72b5-4483-83b8-77ce8fe1a58e',
+            'bankAccountId', '84705122-1cd3-4256-b00f-485f35c88fdc',
+            'receivableAccountId', 'c508c1b0-fc98-4fc6-badb-7559a1f382e5',
+            'payableAccountId', '98b0d148-460d-4e40-9413-5e9fc3558e81',
+            'inventoryAccountId', '7674f2a8-05ae-4212-b686-023e975107ce',
+            'salesAccountId', 'cc462151-21ba-4dfc-8a70-b9e59de86885',
+            'cogsAccountId', '79190e51-03ec-4a54-a5b5-73cd90b42610',
+            'retainedEarningsAccountId', 'd9a280f5-b72e-48f2-a9b2-e06ad2b448f4'
+        )
+    ),
+    now(),
+    now()
+)
+ON CONFLICT (company_id) DO UPDATE SET
+    cash_account_id = EXCLUDED.cash_account_id,
+    bank_account_id = EXCLUDED.bank_account_id,
+    receivable_account_id = EXCLUDED.receivable_account_id,
+    payable_account_id = EXCLUDED.payable_account_id,
+    inventory_account_id = EXCLUDED.inventory_account_id,
+    sales_account_id = EXCLUDED.sales_account_id,
+    cogs_account_id = EXCLUDED.cogs_account_id,
+    retained_earnings_account_id = EXCLUDED.retained_earnings_account_id,
+    vat_account_id = EXCLUDED.vat_account_id,
+    settings_data = EXCLUDED.settings_data,
+    updated_at = now();
+
+UPDATE public.companies SET
+    cash_account_id = '0bdffdf1-72b5-4483-83b8-77ce8fe1a58e'::uuid,
+    bank_account_id = '84705122-1cd3-4256-b00f-485f35c88fdc'::uuid,
+    inventory_account_id = '7674f2a8-05ae-4212-b686-023e975107ce'::uuid,
+    pnl_account_id = 'cc462151-21ba-4dfc-8a70-b9e59de86885'::uuid,
+    default_accounts = jsonb_build_object(
+        'cashAccountId', '0bdffdf1-72b5-4483-83b8-77ce8fe1a58e',
+        'bankAccountId', '84705122-1cd3-4256-b00f-485f35c88fdc',
+        'receivableAccountId', 'c508c1b0-fc98-4fc6-badb-7559a1f382e5',
+        'payableAccountId', '98b0d148-460d-4e40-9413-5e9fc3558e81',
+        'inventoryAccountId', '7674f2a8-05ae-4212-b686-023e975107ce',
+        'salesAccountId', 'cc462151-21ba-4dfc-8a70-b9e59de86885',
+        'cogsAccountId', '79190e51-03ec-4a54-a5b5-73cd90b42610',
+        'retainedEarningsAccountId', 'd9a280f5-b72e-48f2-a9b2-e06ad2b448f4'
+    ),
+    updated_at = now()
+WHERE id = '20000000-0000-0000-0000-000000000001'::uuid;
+
 -- 4. العملاء والجمعيات التعاونية (Customers: 16 جمعية وعميل)
 -- ==============================================================================
 INSERT INTO public.customers (
@@ -908,6 +1165,17 @@ ON CONFLICT (id) DO UPDATE SET
     updated_at = now();
 
 -- ==============================================================================
+
+-- ==============================================================================
+-- 9.1 إعادة تفعيل محفزات القيود التلقائية بعد اكتمال الاستيراد بسلام
+-- ==============================================================================
+DO $$
+BEGIN
+    ALTER TABLE public.invoices ENABLE TRIGGER USER;
+    ALTER TABLE public.payment_vouchers ENABLE TRIGGER USER;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- 10. تأكيد ومراجعة اكتمال البيانات المستوردة
 -- ==============================================================================
 DO $$

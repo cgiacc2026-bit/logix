@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { CompanyProfile, DefaultAccountsMapping } from '../types.js';
-import { supabase, getCurrentCompanyId, resolveToSupabaseCompanyUUID, isSupabaseConfigured } from '../services/supabaseClient.ts';
+import { supabase, getCurrentCompanyId, resolveToSupabaseCompanyUUID, isSupabaseConfigured, ALWALEED_CANONICAL_UUID } from '../services/supabaseClient.ts';
 import { SupabaseDataService } from '../services/supabaseService.ts';
 import { localDataStore, DataService } from '../services/dataService.ts';
 import { formatCurrency as globalFormatCurrency, setActiveCompanyConfig } from '../utils/formatters.ts';
@@ -30,31 +30,31 @@ export interface CompanyContextType {
 }
 
 const DEFAULT_ACTIVE_COMPANY: ActiveCompanyData = {
-  id: '',
-  name: 'الشركة الرئيسية',
-  nameAr: 'الشركة الرئيسية',
-  nameEn: 'Main Enterprise',
-  tradeName: '',
-  legalForm: '',
+  id: ALWALEED_CANONICAL_UUID,
+  name: 'مطحنة الوليد المتحده',
+  nameAr: 'مطحنة الوليد المتحده',
+  nameEn: 'Al-Waleed United Mill & Food Industries',
+  tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
+  legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
   taxNumber: '',
-  crNumber: '',
-  crIssueDate: '',
-  crExpiryDate: '',
-  chamberNumber: '',
+  crNumber: '450912',
+  crIssueDate: '2015-04-12',
+  crExpiryDate: '2030-04-11',
+  chamberNumber: '78214',
   vatRate: 0,
   vatType: 'NONE',
   zatcaPhase: 'PHASE_1_BASIC',
   zatcaEnv: 'PRODUCTION',
-  city: '',
-  country: '',
-  streetName: '',
-  buildingNo: '',
-  district: '',
-  postalCode: '',
-  phone: '',
-  mobile: '',
-  email: '',
-  website: '',
+  city: 'الكويت',
+  country: 'دولة الكويت',
+  streetName: 'شارع الغزالي',
+  buildingNo: 'قسيمة 42',
+  district: 'منطقة الري الصناعية',
+  postalCode: '13001',
+  phone: '+965 2484 1888',
+  mobile: '+965 9988 7766',
+  email: 'cgiacc2026@gmail.com',
+  website: 'https://alwaleedmill.com',
   fiscalYearStart: '2026-01-01',
   fiscalYearEnd: '2026-12-31',
   currency: 'KWD',
@@ -67,12 +67,12 @@ const DEFAULT_ACTIVE_COMPANY: ActiveCompanyData = {
   accountingBasis: 'ACCRUAL',
   inventoryCosting: 'WEIGHTED_AVERAGE',
   depreciationMethod: 'STRAIGHT_LINE',
-  generalManager: '',
-  financialManager: '',
-  chiefAccountant: '',
+  generalManager: 'د. خالد السليمان',
+  financialManager: 'أ. محمد الشمري',
+  chiefAccountant: 'أ. محمد الشمري',
   showDigitalStamp: false,
-  allowNegativeInventory: false,
-  allowNegativeBalance: false,
+  allowNegativeInventory: true,
+  allowNegativeBalance: true,
 };
 
 const CompanyContext = createContext<CompanyContextType | null>(null);
@@ -172,78 +172,83 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
 
   // Fetch true live active company record directly from Supabase (companies & company_accounting_settings)
   const fetchLiveCompany = useCallback(async (targetCompanyId?: string): Promise<ActiveCompanyData | null> => {
-    const rawId = targetCompanyId || currentCompany.id || getCurrentCompanyId();
-    const companyId = resolveToSupabaseCompanyUUID(rawId);
+    try {
+      const rawId = targetCompanyId || currentCompany?.id || getCurrentCompanyId() || ALWALEED_CANONICAL_UUID;
+      const companyId = resolveToSupabaseCompanyUUID(rawId);
 
-    if (isSupabaseConfigured && companyId) {
-      try {
-        const { data, error } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', companyId)
-          .maybeSingle();
+      if (isSupabaseConfigured && companyId) {
+        try {
+          const { data, error } = await supabase
+            .from('companies')
+            .select('*')
+            .eq('id', companyId)
+            .maybeSingle();
 
-        if (!error && data) {
-          // Also fetch company_accounting_settings
-          let defaultAccounts: DefaultAccountsMapping | undefined = undefined;
-          try {
-            const { data: casData } = await supabase
-              .from('company_accounting_settings')
-              .select('*')
-              .eq('company_id', companyId)
-              .maybeSingle();
+          if (!error && data) {
+            // Also fetch company_accounting_settings
+            let defaultAccounts: DefaultAccountsMapping | undefined = undefined;
+            try {
+              const { data: casData } = await supabase
+                .from('company_accounting_settings')
+                .select('*')
+                .eq('company_id', companyId)
+                .maybeSingle();
 
-            if (casData) {
-              defaultAccounts = {
-                cashAccountId: casData.default_cash_account_id,
-                bankAccountId: casData.default_bank_account_id,
-                receivableAccountId: casData.default_receivable_account_id,
-                payableAccountId: casData.default_payable_account_id,
-                inventoryAccountId: casData.default_inventory_account_id,
-                salesAccountId: casData.default_sales_account_id,
-                cogsAccountId: casData.default_cogs_account_id,
-                retainedEarningsAccountId: casData.default_retained_earnings_account_id,
-                vatAccountId: casData.default_vat_account_id,
-              };
+              if (casData) {
+                defaultAccounts = {
+                  cashAccountId: casData.default_cash_account_id,
+                  bankAccountId: casData.default_bank_account_id,
+                  receivableAccountId: casData.default_receivable_account_id,
+                  payableAccountId: casData.default_payable_account_id,
+                  inventoryAccountId: casData.default_inventory_account_id,
+                  salesAccountId: casData.default_sales_account_id,
+                  cogsAccountId: casData.default_cogs_account_id,
+                  retainedEarningsAccountId: casData.default_retained_earnings_account_id,
+                  vatAccountId: casData.default_vat_account_id,
+                };
+              }
+            } catch {
+              // non-blocking
             }
-          } catch {
-            // non-blocking
+
+            const merged = {
+              ...data,
+              profile_data: {
+                ...(data.profile_data || {}),
+                ...(defaultAccounts ? { defaultAccounts } : {}),
+              },
+            };
+
+            const normalized = normalizeActiveCompany(merged, companyId);
+            setCurrentCompany(normalized);
+            // Persist to local cache for instant reload
+            localStorage.setItem('supabase_company_info', JSON.stringify(normalized));
+            localDataStore.saveCompany(normalized);
+            return normalized;
           }
+        } catch (err) {
+          console.warn('[CompanyContext] Error fetching company from Supabase:', err);
+        }
+      }
 
-          const merged = {
-            ...data,
-            profile_data: {
-              ...(data.profile_data || {}),
-              ...(defaultAccounts ? { defaultAccounts } : {}),
-            },
-          };
-
-          const normalized = normalizeActiveCompany(merged, companyId);
+      // Fallback to DataService
+      try {
+        const local = localDataStore.getCompany();
+        if (local && local.nameAr) {
+          const normalized = normalizeActiveCompany(local, local.id || companyId);
           setCurrentCompany(normalized);
-          // Persist to local cache for instant reload
-          localStorage.setItem('supabase_company_info', JSON.stringify(normalized));
-          localDataStore.saveCompany(normalized);
           return normalized;
         }
-      } catch (err) {
-        console.warn('[CompanyContext] Error fetching company from Supabase:', err);
+      } catch {
+        // ignore
       }
-    }
 
-    // Fallback to DataService
-    try {
-      const local = localDataStore.getCompany();
-      if (local && local.nameAr) {
-        const normalized = normalizeActiveCompany(local, local.id || companyId);
-        setCurrentCompany(normalized);
-        return normalized;
-      }
-    } catch {
-      // ignore
+      return DEFAULT_ACTIVE_COMPANY;
+    } catch (outerErr) {
+      console.warn('[CompanyContext] fetchLiveCompany error:', outerErr);
+      return DEFAULT_ACTIVE_COMPANY;
     }
-
-    return null;
-  }, [currentCompany.id]);
+  }, [currentCompany?.id]);
 
   // Initial load
   useEffect(() => {
