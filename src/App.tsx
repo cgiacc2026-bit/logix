@@ -44,6 +44,8 @@ import { UnifiedBackupRestoreHub } from './components/UnifiedBackupRestoreHub.ts
 import { BranchesManagementView } from './components/BranchesManagementView.tsx';
 import { WarehousesManagementView } from './components/WarehousesManagementView.tsx';
 import { EnterpriseAccordionHub } from './components/EnterpriseAccordionHub.tsx';
+import { ModernAccountingWorkspaceHeader } from './components/ModernAccountingWorkspaceHeader.tsx';
+import { DedicatedReportsWorkspace, ReportWorkspaceTab } from './components/DedicatedReportsWorkspace.tsx';
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
@@ -198,6 +200,39 @@ export function AppContent() {
   // Single Source of Truth for Company Profile and Currency
   const { currentCompany, currency, setCurrency, updateCompany, reloadCompany } = useCompany();
   const activeCompany = currentCompany;
+
+  // Separation of Concerns: Dedicated Reports Workspace vs Operations
+  const isReportTab = [
+    'reports',
+    'trial-balance',
+    'ledger',
+    'financials',
+    'customer-statements',
+    'supplier-statements',
+    'stock-ledger',
+    'statements',
+  ].includes(activeTab);
+
+  const getReportWorkspaceSubTab = (tab: TabType): ReportWorkspaceTab => {
+    switch (tab) {
+      case 'trial-balance':
+        return 'trial-balance';
+      case 'ledger':
+        return 'general-ledger';
+      case 'financials':
+        return 'financials';
+      case 'customer-statements':
+      case 'statements':
+        return 'customer-statements';
+      case 'supplier-statements':
+        return 'supplier-statements';
+      case 'stock-ledger':
+        return 'inventory-reports';
+      case 'reports':
+      default:
+        return 'one-click';
+    }
+  };
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
@@ -711,6 +746,18 @@ export function AppContent() {
 
         {/* Main View Container */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5">
+          {/* Top Modern Accounting Workspace Header (Dropdowns & Quick Actions) */}
+          {activeTab !== 'company' && (
+            <ModernAccountingWorkspaceHeader
+              activeTab={activeTab}
+              onNavigateTab={(tab) => navigateToTab(tab)}
+              company={activeCompany}
+              currency={currency}
+              invoicesCount={invoices.length}
+              unpaidInvoicesCount={invoices.filter((i) => i.paymentStatus !== 'PAID').length}
+            />
+          )}
+
           {/* Step-by-Step Onboarding Interactive Banner (Prominently on Dashboard) */}
           {activeTab === 'dashboard' && (
             <OnboardingBannerWidget
@@ -751,9 +798,9 @@ export function AppContent() {
             />
           )}
 
-          {/* 2. One-Click Executive Report Hub (Customer/Society Aggregation, Unified GL Ledger, Inventory/Cashbox) */}
-          {activeTab === 'reports' && (
-            <OneClickExecutiveReportHub
+          {/* 2. Dedicated Reports Workspace ("التقارير ليها مكان والمدخلات مكان") */}
+          {isReportTab && (
+            <DedicatedReportsWorkspace
               company={activeCompany}
               currency={currency}
               customers={customers}
@@ -764,15 +811,18 @@ export function AppContent() {
               accounts={accounts}
               journals={journals}
               warehouses={warehouses}
+              salesReps={salesReps}
+              initialSubTab={getReportWorkspaceSubTab(activeTab)}
               onViewAccountStatement={(entityId, entityType) =>
                 setSelectedStatementEntity({ id: entityId, type: entityType })
               }
               onViewInvoice={(inv) => setSelectedPrintInvoice(inv)}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
             />
           )}
 
-          {/* 3. Enterprise 5-Section Collapsible Dynamic Accordion Architecture for Operational Modules */}
-          {!['dashboard', 'reports', 'company', 'users', 'backup-restore', 'system-reset'].includes(activeTab) && (
+          {/* 3. Enterprise Operations & Master Data Architecture */}
+          {!['dashboard', 'company', 'users', 'backup-restore', 'system-reset'].includes(activeTab) && !isReportTab && (
             <EnterpriseAccordionHub
               company={activeCompany}
               currency={currency}

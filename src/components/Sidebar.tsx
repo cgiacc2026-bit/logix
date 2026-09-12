@@ -28,6 +28,8 @@ import {
   ArrowUpRight,
   Layers,
   FileBarChart,
+  FileSpreadsheet,
+  Sparkles,
   Settings,
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
@@ -48,7 +50,7 @@ interface SidebarProps {
   onSaveCompany?: (updated: CompanyProfile) => Promise<void> | void;
 }
 
-type AccordionSectionKey = 'sales' | 'purchasing' | 'inventory' | 'accounting' | 'pos' | 'settings';
+type AccordionSectionKey = 'operations' | 'masterData' | 'reportsHub' | 'settings';
 
 interface SubMenuItem {
   id: TabType;
@@ -102,50 +104,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, []);
 
   const activeCompanyName = liveCompany?.nameAr || companyContext?.currentCompany?.nameAr || company?.nameAr || 'نظام لوجيكس السحابي';
-  // Map any activeTab (including legacy aliases) to its parent accordion section
+
+  // Scientific accounting mapping: Operations vs Master Data vs Reports vs Settings
   const getSectionForTab = (tab: TabType): AccordionSectionKey | null => {
     if (
       [
         'sales-invoices',
-        'quotations',
-        'customers',
+        'purchase-invoices',
         'receipt-vouchers',
-        'customer-statements',
-        'sales-reps',
+        'payment-vouchers',
+        'journals',
+        'quotations',
+        'pos',
+        'stock-ledger',
         'invoices',
-        'entities',
         'vouchers',
-        'statements',
       ].includes(tab)
     ) {
-      return 'sales';
+      return 'operations';
     }
     if (
       [
-        'purchase-invoices',
+        'accounts',
+        'customers',
         'suppliers',
-        'payment-vouchers',
-        'supplier-statements',
+        'inventory',
+        'warehouses',
+        'branches',
+        'units',
+        'production',
+        'sales-reps',
+        'entities',
       ].includes(tab)
     ) {
-      return 'purchasing';
+      return 'masterData';
     }
     if (
-      ['inventory', 'stock-ledger', 'warehouses', 'units', 'production'].includes(tab)
+      [
+        'reports',
+        'trial-balance',
+        'ledger',
+        'financials',
+        'customer-statements',
+        'supplier-statements',
+        'statements',
+      ].includes(tab)
     ) {
-      return 'inventory';
+      return 'reportsHub';
     }
-    if (
-      ['accounts', 'journals', 'ledger', 'trial-balance', 'financials'].includes(tab)
-    ) {
-      return 'accounting';
-    }
-    if (['pos', 'branches'].includes(tab)) {
-      return 'pos';
-    }
-    if (
-      ['company', 'users', 'backup-restore', 'reports', 'system-reset'].includes(tab)
-    ) {
+    if (['company', 'users', 'backup-restore', 'system-reset'].includes(tab)) {
       return 'settings';
     }
     return null;
@@ -153,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // State: single active accordion section
   const [openSection, setOpenSection] = useState<AccordionSectionKey | null>(() => {
-    return getSectionForTab(activeTab) || 'sales';
+    return getSectionForTab(activeTab) || 'operations';
   });
 
   // Automatically expand the section that contains the current activeTab
@@ -174,15 +181,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  // Define the 5 primary enterprise modules + isolated sub-reports
+  // 4 Core Enterprise Accounting Pillars (Based on Accounting Software Studies)
   const sections: AccordionSection[] = useMemo(
     () => [
       {
-        key: 'sales',
+        key: 'operations',
         number: '1',
-        title: 'المبيعات والعملاء',
-        icon: ShoppingBag,
-        accentColor: 'text-emerald-400',
+        title: 'الإدخالات والعمليات اليومية',
+        icon: FileSpreadsheet,
+        accentColor: 'text-teal-400',
         operationalItems: [
           {
             id: 'sales-invoices',
@@ -191,9 +198,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
             badge: unpaidCount > 0 ? unpaidCount : undefined,
           },
           {
+            id: 'purchase-invoices',
+            label: 'فواتير ومردودات الشراء',
+            icon: ShoppingCart,
+          },
+          {
+            id: 'receipt-vouchers',
+            label: 'سندات القبض والتحصيل',
+            icon: ArrowDownLeft,
+          },
+          {
+            id: 'payment-vouchers',
+            label: 'سندات الصرف وسداد الموردين',
+            icon: ArrowUpRight,
+          },
+          {
+            id: 'journals',
+            label: 'القيود اليومية المتوازنة',
+            icon: FileText,
+          },
+          {
+            id: 'pos',
+            label: 'شاشة البيع السريعة (POS)',
+            icon: Store,
+          },
+          {
             id: 'quotations',
             label: 'عروض الأسعار للعملاء',
             icon: FileText,
+          },
+          {
+            id: 'stock-ledger',
+            label: 'أذون الحركات وتحويلات المخزون',
+            icon: Layers,
+          },
+        ],
+        reportItems: [],
+      },
+      {
+        key: 'masterData',
+        number: '2',
+        title: 'البيانات الأساسية والتعريفات',
+        icon: FolderTree,
+        accentColor: 'text-blue-400',
+        operationalItems: [
+          {
+            id: 'accounts',
+            label: 'دليل وشجرة الحسابات (COA)',
+            icon: FolderTree,
           },
           {
             id: 'customers',
@@ -201,79 +253,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             icon: Users2,
           },
           {
-            id: 'receipt-vouchers',
-            label: 'التحصيلات (سندات القبض)',
-            icon: ArrowDownLeft,
-          },
-          {
-            id: 'sales-reps',
-            label: 'مناديب المبيعات والعمولات',
-            icon: UserCheck,
-          },
-        ],
-        reportItems: [
-          {
-            id: 'customer-statements',
-            label: 'كشوف حسابات العملاء',
-            icon: BookOpen,
-            isReport: true,
-          },
-          {
-            id: 'reports',
-            label: 'التقارير التحليلية للمبيعات',
-            icon: BarChart3,
-            isReport: true,
-          },
-        ],
-      },
-      {
-        key: 'purchasing',
-        number: '2',
-        title: 'المشتريات والموردين',
-        icon: ShoppingCart,
-        accentColor: 'text-sky-400',
-        operationalItems: [
-          {
-            id: 'purchase-invoices',
-            label: 'فواتير ومردودات الشراء',
-            icon: ShoppingCart,
-          },
-          {
             id: 'suppliers',
             label: 'سجلات الموردين والمطاحن',
             icon: Building2,
           },
           {
-            id: 'payment-vouchers',
-            label: 'سداد الموردين (سندات الصرف)',
-            icon: ArrowUpRight,
-          },
-        ],
-        reportItems: [
-          {
-            id: 'supplier-statements',
-            label: 'كشوف حسابات الموردين',
-            icon: BookOpen,
-            isReport: true,
-          },
-        ],
-      },
-      {
-        key: 'inventory',
-        number: '3',
-        title: 'إدارة المخازن',
-        icon: Package,
-        accentColor: 'text-teal-400',
-        operationalItems: [
-          {
             id: 'inventory',
-            label: 'سجل الأصناف وكارت الصنف',
+            label: 'دليل الأصناف والباركود',
             icon: Package,
           },
           {
             id: 'warehouses',
             label: 'المستودعات ومواقع التخزين',
             icon: Warehouse,
+          },
+          {
+            id: 'branches',
+            label: 'إدارة الفروع ومحطات البيع',
+            icon: Store,
           },
           {
             id: 'units',
@@ -285,92 +282,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
             label: 'قسم التصنيع والتشغيل',
             icon: Factory,
           },
-        ],
-        reportItems: [
           {
-            id: 'stock-ledger',
-            label: 'أذون الحركات والجرد المجمعة',
-            icon: Layers,
-            isReport: true,
+            id: 'sales-reps',
+            label: 'مناديب المبيعات والعمولات',
+            icon: UserCheck,
           },
         ],
+        reportItems: [],
       },
       {
-        key: 'accounting',
-        number: '4',
-        title: 'الحسابات والمالية',
-        icon: Scale,
-        accentColor: 'text-amber-400',
+        key: 'reportsHub',
+        number: '3',
+        title: 'مركز التقارير والقوائم المالية',
+        icon: FileBarChart,
+        accentColor: 'text-emerald-400',
         operationalItems: [
           {
-            id: 'accounts',
-            label: 'دليل وشجرة الحسابات',
-            icon: FolderTree,
+            id: 'reports',
+            label: '⚡ التقارير المجمعة بنقرة واحدة',
+            icon: Sparkles,
+            badge: 'فوري',
           },
           {
-            id: 'journals',
-            label: 'القيود اليومية المتوازنة',
-            icon: FileText,
+            id: 'customer-statements',
+            label: 'كشوف حسابات العملاء والجمعيات',
+            icon: Users,
           },
-        ],
-        reportItems: [
           {
-            id: 'ledger',
-            label: 'دفتر الأستاذ العام',
-            icon: BookOpen,
-            isReport: true,
+            id: 'supplier-statements',
+            label: 'كشوف حسابات الموردين',
+            icon: Building2,
           },
           {
             id: 'trial-balance',
-            label: 'ميزان المراجعة بالمجاميع',
+            label: 'ميزان المراجعة بالمجاميع والأرصدة',
             icon: Scale,
-            isReport: true,
+          },
+          {
+            id: 'ledger',
+            label: 'دفتر الأستاذ العام (GL)',
+            icon: BookOpen,
           },
           {
             id: 'financials',
-            label: 'القوائم المالية الختامية',
+            label: 'القوائم المالية الختامية وقائمة الدخل',
             icon: LineChart,
-            isReport: true,
           },
         ],
-      },
-      {
-        key: 'pos',
-        number: '5',
-        title: 'نقاط البيع والورديات',
-        icon: Store,
-        accentColor: 'text-rose-400',
-        operationalItems: [
-          {
-            id: 'pos',
-            label: 'شاشة البيع السريعة (POS)',
-            icon: Store,
-          },
-          {
-            id: 'branches',
-            label: 'إدارة الفروع ومحطات البيع',
-            icon: Store,
-          },
-        ],
-        reportItems: [
-          {
-            id: 'reports',
-            label: 'تقارير الورديات والمبيعات',
-            icon: BarChart3,
-            isReport: true,
-          },
-        ],
+        reportItems: [],
       },
       {
         key: 'settings',
-        number: '6',
-        title: 'الإدارة وإعدادات النظام',
+        number: '4',
+        title: 'الإدارة وضبط المنشأة',
         icon: ShieldCheck,
         accentColor: 'text-indigo-400',
         operationalItems: [
           {
             id: 'company',
-            label: 'إعدادات المنشأة والعملة',
+            label: 'إعدادات المنشأة والعملة والضريبة',
             icon: Settings,
           },
           {
@@ -380,7 +350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           },
           {
             id: 'backup-restore',
-            label: 'مركز النسخ والاستعادة',
+            label: 'مركز النسخ الاحتياطي والاستعادة',
             icon: FolderUp,
           },
           {
@@ -658,7 +628,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {section.key === 'sales' && unpaidCount > 0 && (
+                  {section.key === 'operations' && unpaidCount > 0 && (
                     <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[10px] font-mono font-black rounded-full leading-none">
                       {unpaidCount}
                     </span>
