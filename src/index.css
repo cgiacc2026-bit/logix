@@ -84,6 +84,83 @@ html.theme-light tbody tr:hover {
   background-color: #F8FAFC !important;
 }
 
+/* Modern Light Enterprise Sidebar & Header Overrides */
+html.theme-light aside {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: -1px 0 3px 0 rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light aside .bg-\[\#0B1120\],
+html.theme-light aside .bg-\[\#0F172A\] {
+  background-color: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+html.theme-light aside .text-white {
+  color: #0F172A !important;
+}
+
+html.theme-light aside .text-slate-300,
+html.theme-light aside .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.theme-light aside .border-slate-800,
+html.theme-light aside .border-slate-700 {
+  border-color: #E2E8F0 !important;
+}
+
+html.theme-light aside .bg-slate-800 {
+  background-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+html.theme-light aside .bg-slate-800\/60,
+html.theme-light aside .bg-slate-800\/50,
+html.theme-light aside .bg-slate-800\/40,
+html.theme-light aside .bg-slate-800\/30 {
+  background-color: #F8FAFC !important;
+}
+
+html.theme-light aside .hover\:bg-slate-800\/60:hover,
+html.theme-light aside .hover\:bg-slate-800\/50:hover,
+html.theme-light aside .hover\:bg-slate-800\/30:hover {
+  background-color: #F1F5F9 !important;
+}
+
+html.theme-light aside .bg-slate-900,
+html.theme-light aside .bg-slate-900\/90 {
+  background-color: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+html.theme-light header {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light header .text-white {
+  color: #0F172A !important;
+}
+
+html.theme-light header .text-slate-300,
+html.theme-light header .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.theme-light header .border-slate-800,
+html.theme-light header .border-slate-700 {
+  border-color: #E2E8F0 !important;
+}
+
+html.theme-light header .bg-slate-900,
+html.theme-light header .bg-slate-800 {
+  background-color: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
 /* --------------------------------------------------------------------------
    THEME 2: Enterprise Slate (الرمادي المؤسسي)
    درجات رمادية صلبة وأنيقة ومحترفة مستوحاة من أنظمة الـ ERP المالية العالمية

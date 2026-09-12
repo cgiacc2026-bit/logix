@@ -19,10 +19,17 @@ import {
   Receipt,
   BookOpen,
   Users,
+  Code2,
+  Check,
+  Copy,
+  Info,
+  Wand2,
+  HelpCircle
 } from 'lucide-react';
 import { CompanyJsonBackupService } from '../services/companyJsonBackupService.js';
-import { ERPBackupImportService, ImportProgress } from '../services/importBackupService.js';
+import { ERPBackupImportService, ImportProgress, FallbackStats } from '../services/importBackupService.js';
 import { localDataStore } from '../services/dataService.js';
+import { LOGIX_ERP_JSON_SCHEMA, getSampleStandardBackup } from '../services/standardJsonSchemaService.js';
 
 interface JsonBackupRestoreModalProps {
   isOpen: boolean;
@@ -57,12 +64,15 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
       accounts?: number;
       productionOrders?: number;
     };
+    fallbackStats?: FallbackStats;
+    autoProvisionedDetails?: string[];
     cloudSyncNotice?: string;
   } | null>(null);
   const [processingStage, setProcessingStage] = useState<string>('');
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'restore' | 'export' | 'zero'>('restore');
+  const [activeTab, setActiveTab] = useState<'restore' | 'export' | 'schema' | 'zero'>('restore');
+  const [copiedSchema, setCopiedSchema] = useState(false);
 
   if (!isOpen) return null;
 
@@ -79,7 +89,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
       setSyncDetails(null);
       setFeedback({
         type: 'info',
-        text: `تم تحميل الملف "${file.name}" بنجاح (${(file.size / 1024).toFixed(1)} KB). انقر على "تأكيد واستعادة البيانات" لحفظها سحابياً ومحلياً.`,
+        text: `تم تحميل الملف "${file.name}" بنجاح (${(file.size / 1024).toFixed(1)} KB). سيتكفل النظام تلقائياً بإنشاء أي بيانات ناقصة أو قيود محاسبية لازمة.`,
       });
     };
     reader.onerror = () => {
@@ -101,7 +111,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
     }
 
     setIsProcessing(true);
-    setProcessingStage('تهيئة استيراد البيانات الآمن...');
+    setProcessingStage('تهيئة استيراد البيانات الذكي والاستكمال التلقائي...');
     setImportProgress(null);
     setFeedback(null);
     setSyncDetails(null);
@@ -124,7 +134,9 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
         setSyncDetails({
           cloudSynced: true,
           stats: result.stats,
-          cloudSyncNotice: `تم رفع السجلات بنجاح وارتباطها بالشركة ${activeTenantId}`,
+          fallbackStats: result.fallbackStats,
+          autoProvisionedDetails: result.autoProvisionedDetails,
+          cloudSyncNotice: `تم حفظ ومزامنة السجلات سحابياً ومحلياً بنجاح وارتباطها بالمنشأة النشطة.`,
         });
         setFeedback({
           type: 'success',
@@ -158,18 +170,17 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
     setProcessingStage('جاري تجهيز النسخة المرجعية لمطحنة الوليد...');
     setImportProgress(null);
     setFeedback(null);
-    setSyncDetails(null);
 
     try {
-      const alwaleedJson = CompanyJsonBackupService.getAlWaleedMillPresetBackupJson();
-      const activeTenantId =
-        targetCompanyId === 'company-logix-official-001' || targetCompanyId === 'company-demo-clients-002'
-          ? targetCompanyId
-          : '20000000-0000-0000-0000-000000000001';
+      const res = await fetch('/data/alwaleed_mill_full_database.json');
+      if (!res.ok) throw new Error('تعذر العثور على ملف النسخة الاحتياطية لمطحنة الوليد');
+      const data = await res.text();
+      setJsonText(data);
+      setFileName('alwaleed_mill_full_database.json');
 
       const result = await ERPBackupImportService.importCompanyJsonData(
-        activeTenantId,
-        alwaleedJson,
+        currentCompanyId,
+        data,
         (progress) => {
           setImportProgress(progress);
           setProcessingStage(progress.message);
@@ -180,16 +191,16 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
       setProcessingStage('');
 
       if (result.success) {
-        setJsonText(alwaleedJson);
-        setFileName('AlWaleed_Mill_Verified_Backup_2026.json');
         setSyncDetails({
           cloudSynced: true,
           stats: result.stats,
-          cloudSyncNotice: `تم رفع السجلات المرجعية وارتباطها بالشركة ${activeTenantId}`,
+          fallbackStats: result.fallbackStats,
+          autoProvisionedDetails: result.autoProvisionedDetails,
+          cloudSyncNotice: `تمت استعادة وتثبيت شغل مطحنة الوليد المتحدة بنجاح (${result.acceptedTotal} سجل معتمد)`,
         });
         setFeedback({
           type: 'success',
-          text: `تمت استعادة آخر شغل مدخل لمطحنة الوليد بنجاح! السجلات متطابقة على جميع الأجهزة.`,
+          text: 'تمت استعادة بيانات مطحنة الوليد المتحدة بنجاح ومزامنتها سحابياً ومحلياً!',
         });
         onDataRestored();
       } else {
@@ -214,7 +225,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
       await CompanyJsonBackupService.exportCompanyDataAsync(targetCompanyId, currentCompanyName);
       setFeedback({
         type: 'success',
-        text: 'تم توليد وتنزيل ملف النسخة الاحتياطية JSON بنجاح إلى جهازك من قاعدة البيانات سحابياً!',
+        text: 'تم توليد وتنزيل ملف النسخة الاحتياطية JSON بنجاح إلى جهازك وفق المعيار المحاسبي المعتمد!',
       });
     } catch (e: any) {
       setFeedback({
@@ -222,6 +233,26 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
         text: `فشل تصدير النسخة الاحتياطية: ${e?.message || 'خطأ غير معروف'}`,
       });
     }
+  };
+
+  // Download Sample Standard JSON Template
+  const handleDownloadSampleTemplate = () => {
+    const comp = localDataStore.getCompany();
+    const sample = getSampleStandardBackup(comp);
+    const jsonStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(sample, null, 2))}`;
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', jsonStr);
+    anchor.setAttribute('download', 'logix_erp_standard_template.json');
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
+  // Copy Schema JSON
+  const handleCopySchema = () => {
+    navigator.clipboard.writeText(JSON.stringify(LOGIX_ERP_JSON_SCHEMA, null, 2));
+    setCopiedSchema(true);
+    setTimeout(() => setCopiedSchema(false), 2500);
   };
 
   // Zero-Out Data
@@ -243,95 +274,65 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 overflow-y-auto animate-fadeIn">
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden my-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-fadeIn">
+      <div className="relative w-full max-w-3xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden my-6">
         
         {/* Modal Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-6 py-5 border-b border-slate-800 flex items-center justify-between">
+        <div className="bg-slate-50 px-6 py-4.5 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shadow-inner">
-              <Database className="w-6 h-6" />
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shadow-2xs">
+              <Database className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                منظومة النسخ والاستعادة السحابية عبر JSON
-                <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30 font-mono">
-                  LOGIX JSON Engine
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                منظومة النسخ والاستعادة والمعالجة الذكية لـ JSON
+                <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
+                  Logix JSON Engine
                 </span>
               </h2>
-              <p className="text-sm text-slate-400">
-                استعادة آخر شغل مدخل، تصدير ملفات JSON، وتصفير قواعد بيانات الشركات
+              <p className="text-xs text-slate-500 mt-0.5">
+                استيراد ذكي مرن، استكمال تلقائي للمفقودات، وتوليد قيود محاسبية متوازنة
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors"
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Target Company Selector (for Admin) */}
-        <div className="px-6 py-3 bg-slate-800/40 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <div className="flex items-center gap-2 text-slate-300">
-            <Building2 className="w-4 h-4 text-indigo-400" />
-            <span>المنشأة المستهدفة للعمليات:</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setTargetCompanyId('company-logix-official-001')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                targetCompanyId === 'company-logix-official-001'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-            >
-              🏢 شركة لوجيكس الرسمية (فارغة)
-            </button>
-            <button
-              onClick={() => setTargetCompanyId('company-demo-clients-002')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                targetCompanyId === 'company-demo-clients-002'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-            >
-              🧪 شركة ديمو للعملاء
-            </button>
-            <button
-              onClick={() => setTargetCompanyId('20000000-0000-0000-0000-000000000001')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                targetCompanyId === 'company-alwaleed-client-003' || targetCompanyId === '20000000-0000-0000-0000-000000000001'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-            >
-              🏭 شركة مطحنة الوليد (قاعدة البيانات المعتمدة)
-            </button>
-          </div>
-        </div>
-
         {/* Action Tabs */}
-        <div className="px-6 pt-4 flex border-b border-slate-800 gap-4">
+        <div className="px-6 pt-3 flex border-b border-slate-200 gap-6 bg-slate-50/50">
           <button
             onClick={() => { setActiveTab('restore'); setFeedback(null); }}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+            className={`pb-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === 'restore'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-300'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Upload className="w-4 h-4" />
-            استعادة من ملف JSON
+            استعادة واستيراد ملف JSON
+          </button>
+          <button
+            onClick={() => { setActiveTab('schema'); setFeedback(null); }}
+            className={`pb-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'schema'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Code2 className="w-4 h-4" />
+            المخطط القياسي للبيانات (JSON Schema)
           </button>
           <button
             onClick={() => { setActiveTab('export'); setFeedback(null); }}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+            className={`pb-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === 'export'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-300'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Download className="w-4 h-4" />
@@ -339,34 +340,34 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
           </button>
           <button
             onClick={() => { setActiveTab('zero'); setFeedback(null); }}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+            className={`pb-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === 'zero'
-                ? 'border-rose-500 text-rose-400'
-                : 'border-transparent text-slate-400 hover:text-slate-300'
+                ? 'border-rose-600 text-rose-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <RotateCcw className="w-4 h-4" />
-            تصفير شامل للمنشأة
+            تصفير المنشأة (Clean Slate)
           </button>
         </div>
 
         {/* Body Content */}
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
           {/* Active Processing / Cloud Sync Progress Banner */}
           {isProcessing && (
-            <div className="p-4 rounded-xl border border-indigo-500/40 bg-indigo-950/40 text-indigo-200 flex flex-col gap-3">
+            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-900 flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
-                <div className="text-sm font-medium">
-                  {processingStage || 'جاري المعالجة والمزامنة السحابية...'}
+                <RefreshCw className="w-5 h-5 text-emerald-600 animate-spin shrink-0" />
+                <div className="text-xs font-bold">
+                  {processingStage || 'جاري المعالجة الذكية والمزامنة السحابية...'}
                 </div>
               </div>
               {importProgress && importProgress.total > 0 && (
-                <div className="w-full bg-slate-800/80 rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-emerald-200 rounded-full h-2 overflow-hidden">
                   <div
-                    className="bg-indigo-500 h-2.5 transition-all duration-300 ease-out"
+                    className="bg-emerald-600 h-2 transition-all duration-300 ease-out"
                     style={{ width: `${Math.min(100, Math.max(0, (importProgress.current / importProgress.total) * 100))}%` }}
-                  ></div>
+                  />
                 </div>
               )}
             </div>
@@ -377,127 +378,168 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
             <div
               className={`p-4 rounded-xl border flex items-start gap-3 animate-fadeIn ${
                 feedback.type === 'success'
-                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                   : feedback.type === 'error'
-                  ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-                  : 'bg-blue-950/40 border-blue-500/40 text-blue-200'
+                  ? 'bg-rose-50 border-rose-200 text-rose-900'
+                  : 'bg-blue-50 border-blue-200 text-blue-900'
               }`}
             >
               {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               ) : feedback.type === 'error' ? (
-                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               ) : (
-                <Database className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
               )}
-              <div className="text-sm leading-relaxed">{feedback.text}</div>
+              <div className="text-xs font-medium leading-relaxed">{feedback.text}</div>
             </div>
           )}
 
-          {/* Cloud Sync Details Breakdown Card */}
+          {/* Cloud Sync & Fallback Breakdown Card */}
           {syncDetails && syncDetails.stats && (
-            <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 space-y-3 animate-fadeIn">
-              <div className="flex items-center justify-between text-xs border-b border-emerald-500/20 pb-2">
-                <span className="flex items-center gap-1.5 font-bold text-emerald-300">
-                  <Cloud className="w-4 h-4 text-emerald-400" />
-                  حالة المزامنة السحابية المباشرة (Supabase Cloud Sync)
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80 space-y-3.5 animate-fadeIn">
+              <div className="flex items-center justify-between text-xs border-b border-slate-200 pb-2.5">
+                <span className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <Cloud className="w-4 h-4 text-emerald-600" />
+                  حالة الحفظ والاعتماد المحاسبي المباشر
                 </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-[11px]">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  متطابق سحابياً مع جميع الأجهزة
+                  محفوظ ومترابط محاسبياً
                 </span>
               </div>
+
+              {/* Standard Stats Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
-                  <span className="text-slate-400 flex items-center gap-1">
-                    <Boxes className="w-3.5 h-3.5 text-indigo-400" />
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <Boxes className="w-3.5 h-3.5 text-blue-600" />
                     الأصناف:
                   </span>
-                  <span className="font-bold text-white font-mono">{syncDetails.stats.inventory}</span>
+                  <span className="font-bold text-slate-900 font-mono">{syncDetails.stats.inventory}</span>
                 </div>
-                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
-                  <span className="text-slate-400 flex items-center gap-1">
-                    <Receipt className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <Receipt className="w-3.5 h-3.5 text-emerald-600" />
                     الفواتير:
                   </span>
-                  <span className="font-bold text-white font-mono">{syncDetails.stats.invoices}</span>
+                  <span className="font-bold text-slate-900 font-mono">{syncDetails.stats.invoices}</span>
                 </div>
-                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
-                  <span className="text-slate-400 flex items-center gap-1">
-                    <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <BookOpen className="w-3.5 h-3.5 text-amber-600" />
                     السندات:
                   </span>
-                  <span className="font-bold text-white font-mono">{syncDetails.stats.vouchers}</span>
+                  <span className="font-bold text-slate-900 font-mono">{syncDetails.stats.vouchers}</span>
                 </div>
-                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
-                  <span className="text-slate-400 flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <Layers className="w-3.5 h-3.5 text-indigo-600" />
                     القيود اليومية:
                   </span>
-                  <span className="font-bold text-white font-mono">{syncDetails.stats.journals}</span>
+                  <span className="font-bold text-slate-900 font-mono">{syncDetails.stats.journals}</span>
                 </div>
-                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
-                  <span className="text-slate-400 flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-purple-400" />
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <Users className="w-3.5 h-3.5 text-purple-600" />
                     العملاء:
                   </span>
-                  <span className="font-bold text-white font-mono">{syncDetails.stats.customers}</span>
+                  <span className="font-bold text-slate-900 font-mono">{syncDetails.stats.customers}</span>
                 </div>
-                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between">
-                  <span className="text-slate-400 flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-orange-400" />
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <Users className="w-3.5 h-3.5 text-orange-600" />
                     الموردون:
                   </span>
-                  <span className="font-bold text-white font-mono">{syncDetails.stats.suppliers}</span>
+                  <span className="font-bold text-slate-900 font-mono">{syncDetails.stats.suppliers}</span>
                 </div>
-                <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800 flex items-center justify-between col-span-2">
-                  <span className="text-slate-400 flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between col-span-2">
+                  <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <Building2 className="w-3.5 h-3.5 text-slate-700" />
                     دليل الحسابات (شجرة):
                   </span>
-                  <span className="font-bold text-white font-mono">{syncDetails.stats.accounts} حساب</span>
+                  <span className="font-bold text-slate-900 font-mono">{syncDetails.stats.accounts} حساب</span>
                 </div>
               </div>
+
+              {/* Auto-Provisioning & Fallback Values Report */}
+              {syncDetails.fallbackStats && (
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-2">
+                    <Wand2 className="w-4 h-4 text-emerald-600" />
+                    تقرير المعالجة الذكية والاستكمال التلقائي (Auto-Provisioning):
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                    <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                      <span className="text-emerald-900">عملاء تم إنشاؤهم آلياً:</span>
+                      <span className="font-bold text-emerald-700 font-mono">{syncDetails.fallbackStats.customersAutoCreated}</span>
+                    </div>
+                    <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                      <span className="text-emerald-900">موردين تم إنشاؤهم آلياً:</span>
+                      <span className="font-bold text-emerald-700 font-mono">{syncDetails.fallbackStats.suppliersAutoCreated}</span>
+                    </div>
+                    <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                      <span className="text-emerald-900">أصناف تم إنشاؤها آلياً:</span>
+                      <span className="font-bold text-emerald-700 font-mono">{syncDetails.fallbackStats.itemsAutoCreated}</span>
+                    </div>
+                    <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                      <span className="text-emerald-900">حسابات قياسية مزودة:</span>
+                      <span className="font-bold text-emerald-700 font-mono">{syncDetails.fallbackStats.accountsAutoCreated}</span>
+                    </div>
+                    <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                      <span className="text-emerald-900">قيود متوازنة تم توليدها:</span>
+                      <span className="font-bold text-emerald-700 font-mono">{syncDetails.fallbackStats.journalsAutoGenerated}</span>
+                    </div>
+                    <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                      <span className="text-emerald-900">قيود تمت موازنتها (3999):</span>
+                      <span className="font-bold text-emerald-700 font-mono">{syncDetails.fallbackStats.journalsAutoBalanced}</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-2">
+                    💡 ملاحظة: جميع الكيانات والبيانات الافتراضية أعلاه تم اعتمادها بنجاح دون رفض الملف، ويمكنك تعديل أسمائها وأسعارها وتفاصيلها في أي وقت من داخل شاشات النظام.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           {/* TAB 1: RESTORE FROM JSON */}
           {activeTab === 'restore' && (
             <div className="space-y-4">
-              {/* Highlight Box for Al-Waleed Mill work */}
-              <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-950/30 border border-emerald-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-emerald-300 font-semibold text-sm">
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
+              {/* Smart Auto-Provisioning Explainer Card */}
+              <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs text-emerald-950 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-emerald-900">
+                  <Wand2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ميزة المعالجة الذكية والمرونة الفائقة (Smart Auto-Provisioning & Fallback Values)
+                </div>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  يقبل النظام ملف JSON حتى لو كانت به بيانات ناقصة؛ إذا لم يتوفر حساب عميل أو مورد أو كود صنف، يقوم النظام تلقائياً بإنشاء كيانات افتراضية وتوليد قيود متوازنة فورياً لضمان معالجة الملف فوراً دون توقف أو رفض، مع إتاحة تعديلها لاحقاً من داخل النظام.
+                </p>
+              </div>
+
+              {/* Preset Al-Waleed Quick Load Bar */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
                     استعادة قاعدة بيانات مطحنة الوليد المتحدة (أحدث نسخة كاملة)
                   </div>
-                  <p className="text-xs text-slate-400">
-                    استرجاع الأصناف (64 صنف بهارات ومواد غذائية)، 61 قيد يومية متزن، 51 فاتورة، 10 سندات قبض وصرف، 16 جمعية وعميل، ودليل الحسابات المعتمد.
+                  <p className="text-[11px] text-slate-500">
+                    64 صنف بهارات ومواد غذائية، 61 قيد يومية متزن، 51 فاتورة، 10 سندات، و16 جمعية وعميل.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href="/alwaleed_mill_import.sql"
-                    download="alwaleed_mill_import.sql"
-                    className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-700"
-                    title="تحميل سكربت SQL لرفعه مباشرة في Supabase SQL Editor"
-                  >
-                    <Download className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>تحميل SQL</span>
-                  </a>
-                  <button
-                    onClick={handleLoadAlWaleedPreset}
-                    disabled={isProcessing}
-                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/30 disabled:opacity-50"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    استعادة شغل مطحنة الوليد الآن
-                  </button>
-                </div>
+                <button
+                  onClick={handleLoadAlWaleedPreset}
+                  disabled={isProcessing}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 shadow-2xs disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  استعادة شغل مطحنة الوليد
+                </button>
               </div>
 
               {/* Upload File Zone */}
-              <div className="border-2 border-dashed border-slate-700 hover:border-indigo-500/60 rounded-xl p-6 text-center transition-colors bg-slate-950/40">
+              <div className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-5 text-center transition-colors bg-slate-50/50">
                 <input
                   type="file"
                   id="json-file-input"
@@ -507,19 +549,19 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
                 />
                 <label
                   htmlFor="json-file-input"
-                  className="cursor-pointer flex flex-col items-center justify-center gap-2"
+                  className="cursor-pointer flex flex-col items-center justify-center gap-1.5"
                 >
-                  <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 group-hover:text-indigo-400 transition-colors">
-                    <Upload className="w-6 h-6" />
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700">
+                    <Upload className="w-5 h-5" />
                   </div>
-                  <span className="text-sm font-medium text-slate-200">
+                  <span className="text-xs font-bold text-slate-800">
                     انقر هنا لاختيار ملف JSON (.json) من جهازك
                   </span>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-[11px] text-slate-500">
                     أو اسحب وأفلت الملف داخل هذه الخانة مباشرة
                   </span>
                   {fileName && (
-                    <div className="mt-2 text-xs bg-indigo-900/40 text-indigo-300 px-3 py-1 rounded-full border border-indigo-500/30 font-mono">
+                    <div className="mt-1.5 text-xs bg-emerald-50 text-emerald-800 px-3 py-0.5 rounded-full border border-emerald-200 font-bold font-mono">
                       الملف المختار: {fileName}
                     </div>
                   )}
@@ -527,13 +569,13 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
               </div>
 
               {/* Textarea for JSON Paste */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400 flex items-center justify-between">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span>أو الصق محتوى كود JSON هنا مباشرة:</span>
                   {jsonText && (
                     <button
                       onClick={() => setJsonText('')}
-                      className="text-[11px] text-slate-400 hover:text-rose-400"
+                      className="text-[11px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
                     >
                       مسح النص
                     </button>
@@ -542,8 +584,8 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
                 <textarea
                   value={jsonText}
                   onChange={(e) => setJsonText(e.target.value)}
-                  placeholder='{"format": "LOGIX_ERP_BACKUP_V2026", "data": { ... }}'
-                  className="w-full h-32 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500 transition-colors resize-none leading-relaxed"
+                  placeholder='{"version": "2.5.0", "company": { ... }, "accounts": [...], "invoices": [...]}'
+                  className="w-full h-28 bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 font-mono focus:outline-none focus:border-emerald-600 focus:bg-white transition-colors resize-none leading-relaxed"
                   dir="ltr"
                 />
               </div>
@@ -552,64 +594,103 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
               <button
                 onClick={handleRestore}
                 disabled={isProcessing || !jsonText.trim()}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-950 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isProcessing ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
                     <Upload className="w-4 h-4" />
-                    تأكيد واستعادة البيانات إلى المنشأة المحددة
+                    تأكيد واستعادة البيانات الذكية للمنشأة النشطة
                   </>
                 )}
               </button>
             </div>
           )}
 
-          {/* TAB 2: EXPORT JSON */}
+          {/* TAB 2: SCHEMA & TEMPLATE */}
+          {activeTab === 'schema' && (
+            <div className="space-y-4 text-xs">
+              <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 space-y-1">
+                <div className="flex items-center gap-2 font-bold text-blue-950">
+                  <Code2 className="w-4 h-4 text-blue-600 shrink-0" />
+                  المخطط المعياري المعتمد لبيانات لوجيكس ERP (JSON Schema Draft-07)
+                </div>
+                <p className="text-[11px] text-blue-800 leading-relaxed">
+                  يحدد هذا المخطط الهيكل القياسي لتبادل البيانات بين الأنظمة الخارجية ونظام لوجيكس. يدعم استيراد وتصدير الحسابات، العملاء، الموردين، المخزون، الفواتير، السندات، والقيود اليومية.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleDownloadSampleTemplate}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    تحميل نموذج JSON القياسي المكتمل
+                  </button>
+                  <button
+                    onClick={handleCopySchema}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    {copiedSchema ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedSchema ? 'تم نسخ المخطط!' : 'نسخ كود المخطط (Schema)'}
+                  </button>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">الإصدار: v2.5.0 Draft-07</span>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-900 text-slate-100 font-mono text-[11px] p-3 max-h-64 overflow-y-auto" dir="ltr">
+                <pre>{JSON.stringify(LOGIX_ERP_JSON_SCHEMA, null, 2)}</pre>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: EXPORT JSON */}
           {activeTab === 'export' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-2 text-sm text-slate-300">
-                <h4 className="font-bold text-white flex items-center gap-2">
-                  <Download className="w-4 h-4 text-indigo-400" />
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs text-slate-700">
+                <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Download className="w-4 h-4 text-emerald-600" />
                   تصدير نسخة احتياطية آمنة متكاملة
                 </h4>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  يقوم المحرك بتجميع كامل ملفات وبيانات المنشأة المحددة (دليل الحسابات، المخزون، الفواتير، قيود اليومية، العملاء، الموردين، أوامر التصنيع، وحدات القياس) وتغليفها في ملف JSON رسمي معتمد يمكن حفظه في جهازك أو رفعه لأي خادم سحابي.
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  يقوم المحرك بتجميع كامل ملفات وبيانات المنشأة المحددة (دليل الحسابات، المخزون، الفواتير، قيود اليومية، العملاء، الموردين، أوامر التصنيع، وحدات القياس) وتغليفها في ملف JSON رسمي معتمد يمكن حفظه في جهازك أو نقله لأي منشأة أخرى.
                 </p>
               </div>
 
               <button
                 onClick={handleExport}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-950"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 تحميل ملف النسخة الاحتياطية الآن (.json)
               </button>
 
-              <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
-                <span className="text-xs text-slate-400">ملف قاعدة بيانات مطحنة الوليد المعتمدة بآخر التحديثات:</span>
+              <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+                <span className="text-slate-500">ملف قاعدة بيانات مطحنة الوليد المعتمدة بآخر التحديثات:</span>
                 <a
                   href="/alwaleed_mill_latest_backup.json"
                   download="AlWaleed_Mill_Full_Database_2026.json"
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700/60"
+                  className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-300"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  تنزيل ملف مطحنة الوليد المعتمد (.json)
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  تنزيل ملف مطحنة الوليد (.json)
                 </a>
               </div>
             </div>
           )}
 
-          {/* TAB 3: ZERO-OUT (تصفير شامل) */}
+          {/* TAB 4: ZERO-OUT */}
           {activeTab === 'zero' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-2 text-sm text-rose-200">
-                <h4 className="font-bold text-rose-300 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+              <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 space-y-1.5 text-xs text-rose-900">
+                <h4 className="font-bold text-rose-800 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
                   تصفير وتطهير شامل لبيانات المنشأة (Clean Slate / Zero-Out)
                 </h4>
-                <p className="text-xs text-rose-300/80 leading-relaxed">
+                <p className="text-[11px] text-rose-700 leading-relaxed">
                   هذا الإجراء يُفرغ المنشأة المحددة تماماً ويعيد أرصدتها ومخزونها وفواتيرها وأوامر تشغيلها إلى صفر (0.00). يتم الحفاظ فقط على شجرة الحسابات IFRS ووحدات القياس لتكون جاهزة لبدء العمليات النظيفة.
                 </p>
               </div>
@@ -617,7 +698,7 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
               <button
                 onClick={handleZeroOut}
                 disabled={isProcessing}
-                className="w-full py-3 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-950 disabled:opacity-50"
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
                 تصفير المنشأة بالكامل إلى الصفر (0.00)
@@ -627,14 +708,14 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>نظام لوجيكس السحابي • محرك الاستعادة الآمن</span>
+            <span className="font-medium">لوجيكس ERP • محرك المعالجة الذكية والترحيل المحاسبي الآمن</span>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+            className="px-4 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-200 transition-colors cursor-pointer"
           >
             إغلاق النافذة
           </button>
