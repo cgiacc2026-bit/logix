@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { InventoryItem, Invoice, SalesRep, Warehouse, CompanyProfile } from '../../types.js';
+import { InventoryItem, Invoice, SalesRep, Warehouse, CompanyProfile, JournalEntry, Account } from '../../types.js';
 import { formatCurrency } from '../../utils/formatters.ts';
 import {
   Package,
@@ -13,17 +13,21 @@ import {
   Warehouse as WarehouseIcon,
   DollarSign,
   ArrowUpDown,
+  Scale,
 } from 'lucide-react';
 import { StockLedgerAndAuditView } from '../StockLedgerAndAuditView.tsx';
+import { GlInventoryValuationReport } from '../reports/GlInventoryValuationReport.tsx';
 
 interface InventoryReportsViewProps {
   inventory: InventoryItem[];
   invoices: Invoice[];
   salesReps: SalesRep[];
   warehouses: Warehouse[];
+  journals?: JournalEntry[];
+  accounts?: Account[];
   company: CompanyProfile | null;
   currency: string;
-  initialReport?: 'stock-ledger' | 'reps-movement' | 'reorder-deficits';
+  initialReport?: 'gl-valuation' | 'stock-ledger' | 'reps-movement' | 'reorder-deficits';
 }
 
 export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
@@ -31,13 +35,23 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
   invoices,
   salesReps,
   warehouses,
+  journals = [],
+  accounts = [],
   company,
   currency,
-  initialReport = 'stock-ledger',
+  initialReport = 'gl-valuation',
 }) => {
-  const [activeReport, setActiveReport] = useState<'stock-ledger' | 'reps-movement' | 'reorder-deficits'>(initialReport);
+  const [activeReport, setActiveReport] = useState<
+    'gl-valuation' | 'stock-ledger' | 'reps-movement' | 'reorder-deficits'
+  >(initialReport);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('ALL');
+  const [stockLedgerSelectedItemId, setStockLedgerSelectedItemId] = useState<string | undefined>(undefined);
+
+  const handleOpenStockCard = (itemId: string) => {
+    setStockLedgerSelectedItemId(itemId);
+    setActiveReport('stock-ledger');
+  };
 
   // 1. Reorder Deficits (نواقص حد الطلب)
   const deficitItems = useMemo(() => {
@@ -146,6 +160,17 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
         <div className="flex flex-wrap items-center gap-1.5">
           <button
+            onClick={() => setActiveReport('gl-valuation')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeReport === 'gl-valuation'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5" />
+            <span>تقرير تقييم المخزون المالي (ح/ 1130 وح/ 5100)</span>
+          </button>
+          <button
             onClick={() => setActiveReport('stock-ledger')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeReport === 'stock-ledger'
@@ -177,7 +202,7 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
           </button>
         </div>
 
-        {activeReport !== 'stock-ledger' && (
+        {(activeReport === 'reps-movement' || activeReport === 'reorder-deficits') && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.print()}
@@ -190,7 +215,21 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
         )}
       </div>
 
-      {/* Stock Ledger View Component */}
+      {/* 1. GL-LINKED INVENTORY VALUATION REPORT (ح/ 1130 وح/ 5100) */}
+      {activeReport === 'gl-valuation' && (
+        <GlInventoryValuationReport
+          inventory={inventory}
+          journals={journals}
+          accounts={accounts}
+          invoices={invoices}
+          warehouses={warehouses}
+          company={company}
+          currency={currency}
+          onViewStockCard={handleOpenStockCard}
+        />
+      )}
+
+      {/* 2. Stock Ledger View Component */}
       {activeReport === 'stock-ledger' && (
         <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-xs">
           <StockLedgerAndAuditView
@@ -198,12 +237,13 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
             invoices={invoices}
             productionOrders={[]}
             currency={currency}
+            initialItemId={stockLedgerSelectedItemId}
           />
         </div>
       )}
 
       {/* Filters for Reps & Deficits */}
-      {activeReport !== 'stock-ledger' && (
+      {(activeReport === 'reps-movement' || activeReport === 'reorder-deficits') && (
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
           {activeReport === 'reorder-deficits' && (
             <div className="flex items-center gap-2 text-xs">

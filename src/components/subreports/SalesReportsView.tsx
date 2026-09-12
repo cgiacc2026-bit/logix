@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Invoice, Customer, CompanyProfile, InventoryItem } from '../../types.js';
+import { Invoice, Customer, CompanyProfile, InventoryItem, JournalEntry, Account, PaymentVoucher } from '../../types.js';
 import { formatCurrency } from '../../utils/formatters.ts';
 import {
   DollarSign,
@@ -17,29 +17,51 @@ import {
   Building2,
   CheckCircle2,
   Eye,
+  Scale,
 } from 'lucide-react';
 import { AccountStatementView } from '../AccountStatementView.tsx';
+import { GlCustomerBalancesReport } from '../reports/GlCustomerBalancesReport.tsx';
+import { GlPostedSalesReport } from '../reports/GlPostedSalesReport.tsx';
 
 interface SalesReportsViewProps {
   invoices: Invoice[];
   customers: Customer[];
   inventory: InventoryItem[];
+  journals?: JournalEntry[];
+  accounts?: Account[];
+  vouchers?: PaymentVoucher[];
   company: CompanyProfile | null;
   currency: string;
-  initialReport?: 'consolidated' | 'profit' | 'statements';
+  initialReport?: 'customer-balances' | 'gl-sales' | 'consolidated' | 'profit' | 'statements';
   onViewInvoice?: (invoice: Invoice) => void;
+  onViewAccountStatement?: (customerId: string) => void;
 }
 
 export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
   invoices,
   customers,
   inventory,
+  journals = [],
+  accounts = [],
+  vouchers = [],
   company,
   currency,
-  initialReport = 'consolidated',
+  initialReport = 'customer-balances',
   onViewInvoice,
+  onViewAccountStatement,
 }) => {
-  const [activeReport, setActiveReport] = useState<'consolidated' | 'profit' | 'statements'>(initialReport);
+  const [activeReport, setActiveReport] = useState<
+    'customer-balances' | 'gl-sales' | 'consolidated' | 'profit' | 'statements'
+  >(initialReport);
+  const [statementSelectedCustomerId, setStatementSelectedCustomerId] = useState<string | undefined>(undefined);
+
+  const handleOpenCustomerStatement = (customerId: string) => {
+    setStatementSelectedCustomerId(customerId);
+    setActiveReport('statements');
+    if (onViewAccountStatement) {
+      onViewAccountStatement(customerId);
+    }
+  };
 
   // Date filters
   const today = new Date().toISOString().split('T')[0];
@@ -177,6 +199,28 @@ export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
         <div className="flex flex-wrap items-center gap-1.5">
           <button
+            onClick={() => setActiveReport('customer-balances')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeReport === 'customer-balances'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>تقرير أرصدة العملاء (ح/ 1120)</span>
+          </button>
+          <button
+            onClick={() => setActiveReport('gl-sales')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeReport === 'gl-sales'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5" />
+            <span>تقرير المبيعات المعتمدة (ح/ 4100)</span>
+          </button>
+          <button
             onClick={() => setActiveReport('consolidated')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeReport === 'consolidated'
@@ -204,11 +248,11 @@ export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            كشوف حسابات وأرصدة العملاء
+            كشوف حسابات العملاء
           </button>
         </div>
 
-        {activeReport !== 'statements' && (
+        {(activeReport === 'consolidated' || activeReport === 'profit') && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.print()}
@@ -221,24 +265,54 @@ export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
         )}
       </div>
 
-      {/* When Customer Statements selected */}
+      {/* 1. GL-LINKED CUSTOMER BALANCES REPORT (ح/ 1120) */}
+      {activeReport === 'customer-balances' && (
+        <GlCustomerBalancesReport
+          customers={customers}
+          journals={journals}
+          accounts={accounts}
+          invoices={invoices}
+          vouchers={vouchers}
+          company={company}
+          currency={currency}
+          onViewAccountStatement={handleOpenCustomerStatement}
+        />
+      )}
+
+      {/* 2. GL-LINKED POSTED SALES REVENUE REPORT (ح/ 4100) */}
+      {activeReport === 'gl-sales' && (
+        <GlPostedSalesReport
+          journals={journals}
+          accounts={accounts}
+          invoices={invoices}
+          company={company}
+          currency={currency}
+          onViewInvoice={(invoiceId) => {
+            const inv = invoices.find((i) => i.id === invoiceId);
+            if (inv && onViewInvoice) onViewInvoice(inv);
+          }}
+        />
+      )}
+
+      {/* 3. When Customer Statements selected */}
       {activeReport === 'statements' && (
         <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-xs">
           <AccountStatementView
             customers={customers}
             suppliers={[]}
             invoices={invoices}
-            vouchers={[]}
-            journals={[]}
+            vouchers={vouchers}
+            journals={journals}
             company={company}
             currency={currency}
             initialEntityType="CUSTOMER"
+            initialEntityId={statementSelectedCustomerId}
           />
         </div>
       )}
 
       {/* Filter Bar for Consolidated & Profit */}
-      {activeReport !== 'statements' && (
+      {(activeReport === 'consolidated' || activeReport === 'profit') && (
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Presets */}

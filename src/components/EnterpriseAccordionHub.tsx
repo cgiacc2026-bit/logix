@@ -568,9 +568,13 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                   invoices={invoices}
                   customers={customers}
                   inventory={inventory}
+                  journals={journals}
+                  accounts={accounts}
+                  vouchers={vouchers}
                   company={company}
                   currency={currency}
                   onViewInvoice={onViewPrintInvoice}
+                  onViewAccountStatement={(id) => onViewAccountStatement(id, 'CUSTOMER')}
                 />
               )}
             </div>
@@ -1046,6 +1050,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                 <InventoryReportsView
                   inventory={inventory}
                   invoices={invoices}
+                  journals={journals}
+                  accounts={accounts}
                   salesReps={salesReps}
                   warehouses={warehouses}
                   company={company}

@@ -38,8 +38,12 @@ import {
   Package,
   Activity,
   FileSpreadsheet,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Scale,
 } from 'lucide-react';
+import { GlCustomerBalancesReport } from './reports/GlCustomerBalancesReport.tsx';
+import { GlInventoryValuationReport } from './reports/GlInventoryValuationReport.tsx';
+import { GlPostedSalesReport } from './reports/GlPostedSalesReport.tsx';
 
 interface OperationalReportsProps {
   invoices: Invoice[];
@@ -55,7 +59,7 @@ interface OperationalReportsProps {
   onViewAccountStatement?: (entityId: string, entityType: 'CUSTOMER' | 'SUPPLIER') => void;
 }
 
-export type ReportCategory = 'sales' | 'purchases' | 'expenses' | 'customers' | 'suppliers';
+export type ReportCategory = 'customers' | 'sales' | 'inventory-valuation' | 'purchases' | 'expenses' | 'suppliers';
 
 export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   invoices,
@@ -70,7 +74,8 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   onViewInvoice,
   onViewAccountStatement,
 }) => {
-  const [activeReport, setActiveReport] = useState<ReportCategory>('sales');
+  const [activeReport, setActiveReport] = useState<ReportCategory>('customers');
+  const [salesReportMode, setSalesReportMode] = useState<'gl' | 'invoices'>('gl');
 
   // Date Range Filters
   const today = new Date().toISOString().split('T')[0];
@@ -475,14 +480,15 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
           </div>
         </div>
 
-        {/* 5 Main Report Selector Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-[#E5E1DA]">
+        {/* 6 Main Report Selector Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2 border-t border-[#E5E1DA]">
           {[
-            { id: 'sales', label: 'تقرير المبيعات والتحليلات', icon: TrendingUp, count: salesStats.invoiceCount },
-            { id: 'purchases', label: 'تقرير المشتريات والمخزون', icon: ShoppingCart, count: purchaseStats.invoiceCount },
+            { id: 'customers', label: 'أرصدة العملاء (ح/ 1120)', icon: Users, count: customers.length },
+            { id: 'sales', label: 'المبيعات المعتمدة (ح/ 4100)', icon: TrendingUp, count: salesStats.invoiceCount },
+            { id: 'inventory-valuation', label: 'تقييم المخزون (ح/ 1130)', icon: Scale, count: inventory.length },
+            { id: 'purchases', label: 'تقرير المشتريات', icon: ShoppingCart, count: purchaseStats.invoiceCount },
             { id: 'expenses', label: 'تقرير المصاريف والتشغيل', icon: Receipt, count: expenseStats.count },
-            { id: 'customers', label: 'تقرير العملاء والذمم المدينة', icon: Users, count: customerReports.length },
-            { id: 'suppliers', label: 'تقرير الموردين والذمم الدائنة', icon: Building2, count: supplierReports.length },
+            { id: 'suppliers', label: 'تقرير الموردين والالتزامات', icon: Building2, count: supplierReports.length },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeReport === tab.id;
@@ -642,8 +648,48 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       {/* ========================================================= */}
       {activeReport === 'sales' && (
         <div className="space-y-6">
-          {/* Sales KPIs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* View Toggle */}
+          <div className="flex items-center gap-2 bg-[#FAF8F5] p-1.5 rounded-xl border border-[#E5E1DA] w-fit">
+            <button
+              onClick={() => setSalesReportMode('gl')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                salesReportMode === 'gl'
+                  ? 'bg-[#1A1A1A] text-white shadow-xs'
+                  : 'bg-white text-[#6E6659] hover:bg-[#E5E1DA]'
+              }`}
+            >
+              <Scale className="w-3.5 h-3.5 text-[#D4AF37]" />
+              <span>إيرادات المبيعات المعتمدة (ح/ 4100)</span>
+            </button>
+            <button
+              onClick={() => setSalesReportMode('invoices')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                salesReportMode === 'invoices'
+                  ? 'bg-[#1A1A1A] text-white shadow-xs'
+                  : 'bg-white text-[#6E6659] hover:bg-[#E5E1DA]'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>فواتير ومردودات المبيعات التشغيلية</span>
+            </button>
+          </div>
+
+          {salesReportMode === 'gl' ? (
+            <GlPostedSalesReport
+              journals={journals}
+              accounts={accounts}
+              invoices={invoices}
+              company={company}
+              currency={currency}
+              onViewInvoice={(invoiceId) => {
+                const inv = invoices.find((i) => i.id === invoiceId);
+                if (inv && onViewInvoice) onViewInvoice(inv);
+              }}
+            />
+          ) : (
+            <>
+              {/* Sales KPIs */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white border border-[#E5E1DA] rounded-2xl p-4 shadow-xs space-y-1">
               <div className="text-[11px] text-[#8C8273] font-semibold flex items-center justify-between">
                 <span>إجمالي المبيعات الإجمالية</span>
@@ -885,6 +931,8 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
               </table>
             </div>
           </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1167,156 +1215,38 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 4. CUSTOMERS & RECEIVABLES AGING REPORT */}
+      {/* 4. CUSTOMERS & RECEIVABLES REPORT (STRICT GL LINKAGE 1120) */}
       {/* ========================================================= */}
       {activeReport === 'customers' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white border border-[#E5E1DA] rounded-2xl p-4 shadow-xs space-y-1">
-              <div className="text-[11px] text-[#8C8273] font-semibold flex items-center justify-between">
-                <span>إجمالي الذمم المدينة القائمة (أرصدة العملاء)</span>
-                <Users className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div className="text-base font-mono font-black text-emerald-900">
-                {formatCurrency(customerStats.totalReceivables, currency)}
-              </div>
-              <div className="text-[10px] text-emerald-700">{customerStats.activeDebtorsCount} عميل عليهم مستحقات</div>
-            </div>
+        <GlCustomerBalancesReport
+          customers={customers}
+          journals={journals}
+          accounts={accounts}
+          invoices={invoices}
+          vouchers={vouchers}
+          company={company}
+          currency={currency}
+          onViewAccountStatement={(customerId) => {
+            if (onViewAccountStatement) {
+              onViewAccountStatement(customerId, 'CUSTOMER');
+            }
+          }}
+        />
+      )}
 
-            <div className="bg-white border border-[#E5E1DA] rounded-2xl p-4 shadow-xs space-y-1">
-              <div className="text-[11px] text-[#8C8273] font-semibold flex items-center justify-between">
-                <span>إجمالي مبيعات العملاء</span>
-                <TrendingUp className="w-4 h-4 text-blue-600" />
-              </div>
-              <div className="text-base font-mono font-black text-blue-900">
-                {formatCurrency(customerStats.totalSalesVolume, currency)}
-              </div>
-            </div>
-
-            <div className="bg-white border border-[#E5E1DA] rounded-2xl p-4 shadow-xs space-y-1">
-              <div className="text-[11px] text-[#8C8273] font-semibold flex items-center justify-between">
-                <span>إجمالي السدادات والمقبوضات</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div className="text-base font-mono font-black text-emerald-800">
-                {formatCurrency(customerStats.totalReceiptsVolume, currency)}
-              </div>
-            </div>
-
-            <div className="bg-white border border-[#E5E1DA] rounded-2xl p-4 shadow-xs space-y-1">
-              <div className="text-[11px] text-[#8C8273] font-semibold flex items-center justify-between">
-                <span>نسبة التحصيل الإجمالية</span>
-                <Sparkles className="w-4 h-4 text-[#D4AF37]" />
-              </div>
-              <div className="text-base font-mono font-black text-[#1A1A1A]">
-                {customerStats.totalSalesVolume > 0
-                  ? ((customerStats.totalReceiptsVolume / customerStats.totalSalesVolume) * 100).toFixed(1)
-                  : '100'}%
-              </div>
-            </div>
-          </div>
-
-          {/* Customers Table with Aging */}
-          <div className="bg-white border border-[#E5E1DA] rounded-2xl overflow-hidden shadow-xs space-y-2">
-            <div className="p-4 bg-[#FAF8F5] border-b border-[#E5E1DA] flex items-center justify-between">
-              <div className="font-serif font-black text-xs text-[#1A1A1A] flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#B8860B]" />
-                <span>أرصدة العملاء وتصنيف أعمار الديون (Customer Balances & Aging)</span>
-              </div>
-
-              <button
-                onClick={() =>
-                  exportToCSV(
-                    'customers_aging_report',
-                    ['كود العميل', 'اسم العميل', 'الرصيد الافتتاحي', 'المبيعات', 'المقبوضات', 'الرصيد الحالي', '0-30 يوم', '31-60 يوم', '61-90 يوم', '+90 يوم'],
-                    customerReports.map((c) => [
-                      c.customer.code,
-                      c.customer.nameAr,
-                      c.openingBalance,
-                      c.netInvoiced,
-                      c.totalCollected,
-                      c.currentBalance,
-                      c.bucket0to30,
-                      c.bucket31to60,
-                      c.bucket61to90,
-                      c.bucket90plus,
-                    ])
-                  )
-                }
-                className="px-3 py-1.5 bg-white hover:bg-[#E5E1DA] text-[#1A1A1A] border border-[#E5E1DA] rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-700" />
-                <span>تصدير Excel / CSV</span>
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-right border-collapse">
-                <thead className="bg-[#FAF8F5] text-[#6E6659] font-serif font-black border-b border-[#E5E1DA]">
-                  <tr>
-                    <th className="p-3">كود العميل</th>
-                    <th className="p-3">اسم العميل / الجمعية</th>
-                    <th className="p-3 text-left">إجمالي المبيعات</th>
-                    <th className="p-3 text-left">المسدد / مقبوض</th>
-                    <th className="p-3 text-left">الرصيد الحالي</th>
-                    <th className="p-3 text-center text-emerald-800">0 - 30 يوم</th>
-                    <th className="p-3 text-center text-amber-800">31 - 60 يوم</th>
-                    <th className="p-3 text-center text-rose-800">+60 يوم</th>
-                    <th className="p-3 text-center">كشف الحساب</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E1DA]">
-                  {customerReports.length > 0 ? (
-                    customerReports.map((c) => (
-                      <tr key={c.customer.id} className="hover:bg-[#FAF9F6] transition-colors">
-                        <td className="p-3 font-mono font-bold text-[#B8860B] whitespace-nowrap">
-                          {c.customer.code}
-                        </td>
-                        <td className="p-3 font-bold text-[#1A1A1A]">{c.customer.nameAr}</td>
-                        <td className="p-3 font-mono text-left">{formatCurrency(c.netInvoiced, currency)}</td>
-                        <td className="p-3 font-mono text-left text-emerald-800">
-                          {formatCurrency(c.totalCollected, currency)}
-                        </td>
-                        <td className="p-3 font-mono font-black text-left text-[#1A1A1A] whitespace-nowrap">
-                          {formatCurrency(c.currentBalance, currency)}
-                        </td>
-                        <td className="p-3 font-mono text-center text-emerald-800">
-                          {c.bucket0to30 > 0 ? formatCurrency(c.bucket0to30, currency) : '—'}
-                        </td>
-                        <td className="p-3 font-mono text-center text-amber-800">
-                          {c.bucket31to60 > 0 ? formatCurrency(c.bucket31to60, currency) : '—'}
-                        </td>
-                        <td className="p-3 font-mono text-center text-rose-800 font-bold">
-                          {c.bucket61to90 + c.bucket90plus > 0
-                            ? formatCurrency(c.bucket61to90 + c.bucket90plus, currency)
-                            : '—'}
-                        </td>
-                        <td className="p-3 text-center whitespace-nowrap">
-                          {onViewAccountStatement && (
-                            <button
-                              onClick={() => onViewAccountStatement(c.customer.id, 'CUSTOMER')}
-                              title="عرض كشف حساب العميل"
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg font-bold text-[11px] cursor-pointer flex items-center gap-1 mx-auto"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>كشف الحساب</span>
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={9} className="p-8 text-center text-[#8C8273]">
-                        لا توجد بيانات عملاء مسجلة
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      {/* ========================================================= */}
+      {/* 5. INVENTORY VALUATION REPORT (STRICT GL LINKAGE 1130 / 5100) */}
+      {/* ========================================================= */}
+      {activeReport === 'inventory-valuation' && (
+        <GlInventoryValuationReport
+          inventory={inventory}
+          journals={journals}
+          accounts={accounts}
+          invoices={invoices}
+          warehouses={[]}
+          company={company}
+          currency={currency}
+        />
       )}
 
       {/* ========================================================= */}
