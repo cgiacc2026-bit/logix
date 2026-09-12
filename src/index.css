@@ -457,16 +457,18 @@ html.dark:not(.theme-slate) .bg-black\/60 {
 }
 
 /* ==========================================================================
-   PRINT STYLING (الفواتير، السندات، الحسابات والتقارير)
+   PRINT STYLING (الفواتير، السندات، الحسابات والتقارير - Isolated Vector Print)
    ========================================================================== */
 @media print {
   @page {
     size: A4 portrait;
-    margin: 8mm 7mm 8mm 7mm;
+    margin: 8mm 6mm 8mm 6mm;
   }
 
   *, *::before, *::after {
     box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   /* Reset body and html for clean full-page print flow */
@@ -480,29 +482,41 @@ html.dark:not(.theme-slate) .bg-black\/60 {
     min-height: 0 !important;
     overflow: visible !important;
     font-size: 9.5pt !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
   }
 
-  /* Hide all non-printable UI elements */
+  /* 1. Strict UI Purge: Hide ALL UI chrome, navigation, toolbars, buttons, form controls */
   .no-print,
+  .no-print *,
   aside,
   header,
   footer,
   nav,
   button,
-  input[type="button"],
-  input[type="submit"],
-  .no-print * {
+  input,
+  select,
+  textarea,
+  [role="navigation"],
+  [role="banner"],
+  [role="toolbar"],
+  [role="tablist"],
+  .sidebar,
+  .topbar,
+  .app-sidebar,
+  .action-bar,
+  .toast,
+  .tooltip {
     display: none !important;
   }
 
-  /* When printing from a modal document, isolate it and hide all background app siblings */
-  body:has(#printable-document) #root > div > div > main > div:not(:has(#printable-document)),
-  body:has(#printable-statement) #root > div > div > main > div:not(:has(#printable-statement)),
-  body:has(#printable-invoice) #root > div > div > main > div:not(:has(#printable-invoice)),
-  body:has(#printable-voucher) #root > div > div > main > div:not(:has(#printable-voucher)),
-  body:has(#printable-production) #root > div > div > main > div:not(:has(#printable-production)) {
+  /* 2. Container Isolation:
+     When any dedicated printable container is present on the page,
+     hide all other sibling/parent UI elements that are not part of the printable container. */
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > header,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > aside,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > *:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)),
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > div > *:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)),
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) main > *:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)),
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) .fixed:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)) {
     display: none !important;
   }
 
@@ -510,24 +524,31 @@ html.dark:not(.theme-slate) .bg-black\/60 {
     display: block !important;
   }
 
-  /* Reset main app layout wrappers - strip sidebar margins, sticky headers, and flex constraints */
+  /* 3. Reset main app layout wrappers - strip sidebar margins, sticky headers, and flex constraints */
   #root,
   #root > div,
+  #root > div > div,
   .min-h-screen,
   main,
-  .flex-1 {
+  .flex-1,
+  .overflow-y-auto,
+  .overflow-x-auto,
+  .overflow-auto {
     margin: 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
+    height: auto !important;
     width: 100% !important;
     max-width: 100% !important;
     position: static !important;
     display: block !important;
     overflow: visible !important;
     background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
-  /* Reset modal overlays during print so modal content prints as regular flow */
+  /* 4. Reset modal overlays during print so modal content prints as regular flow */
   .fixed.inset-0,
   .fixed,
   div[role="dialog"],
@@ -554,7 +575,8 @@ html.dark:not(.theme-slate) .bg-black\/60 {
   .bg-white.rounded-xl,
   .bg-white.rounded-2xl,
   .max-w-4xl,
-  .max-w-5xl {
+  .max-w-5xl,
+  .max-w-6xl {
     max-height: none !important;
     height: auto !important;
     max-width: 100% !important;
@@ -568,12 +590,14 @@ html.dark:not(.theme-slate) .bg-black\/60 {
     background: #ffffff !important;
   }
 
-  /* Printable containers - strictly 100% width, zero extraneous margins */
+  /* 5. Printable containers - strictly 100% width, zero extraneous margins */
+  #printable-content,
   #printable-document,
   #printable-invoice,
   #printable-voucher,
   #printable-statement,
   #printable-production,
+  #printable-quotation-sheet,
   .printable-card,
   .print-area {
     display: block !important;
@@ -584,6 +608,7 @@ html.dark:not(.theme-slate) .bg-black\/60 {
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
+    border-radius: 0 !important;
     overflow: visible !important;
     background: #ffffff !important;
   }

@@ -33,8 +33,8 @@ export const AccountStatementModal: React.FC<AccountStatementModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-[#E5E1DA] w-full max-w-6xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] dir-rtl text-right">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-transparent print:static print:inset-auto print:backdrop-blur-none print:overflow-visible">
+      <div className="bg-white border border-[#E5E1DA] w-full max-w-6xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] dir-rtl text-right print:border-none print:shadow-none print:rounded-none print:max-h-none print:overflow-visible print:w-full print:max-w-none print:p-0">
         {/* Modal Top Bar */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E1DA] bg-[#F7F5F0] no-print">
           <div className="flex items-center gap-2 text-sm font-serif font-extrabold text-[#1A1A1A]">
@@ -50,7 +50,7 @@ export const AccountStatementModal: React.FC<AccountStatementModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-[#F9F8F6]">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-[#F9F8F6] print:bg-white print:p-0 print:overflow-visible">
           <AccountStatementView
             customers={customers}
             suppliers={suppliers}

@@ -378,6 +378,7 @@ export interface Invoice {
   priceListApplied?: string;
   journalEntryId?: string;
   notes?: string;
+  is_void?: boolean;
   allowNegativeStock?: boolean;
   negativeStockApprovedBy?: string;
   negativeStockApprovedByName?: string;
@@ -541,6 +542,7 @@ export interface PaymentVoucher {
   reference: string;
   notes: string;
   status?: 'POSTED' | 'CANCELLED';
+  is_void?: boolean;
   journalEntryId?: string;
   createdAt: string;
 }

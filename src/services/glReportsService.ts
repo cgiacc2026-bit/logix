@@ -211,22 +211,49 @@ export class GLReportsService {
     const recAccId = recAccount?.id;
     const recAccCode = recAccount?.code || '1120';
 
+    // 0. الاستبعاد الصارم للعمليات والقيود الملغاة
+    const validInvoices = (invoices || []).filter(
+      (inv) => inv && inv.status !== 'CANCELLED' && !inv.is_void && (inv as any).status !== 'VOID'
+    );
+    const validVouchers = (vouchers || []).filter(
+      (v) => v && v.status !== 'CANCELLED' && !v.is_void && (v as any).status !== 'VOID'
+    );
+
+    const cancelledInvoiceIds = new Set<string>();
+    const cancelledInvoiceNumbers = new Set<string>();
+    (invoices || []).forEach((inv) => {
+      if (inv && (inv.status === 'CANCELLED' || inv.is_void || (inv as any).status === 'VOID')) {
+        if (inv.id) cancelledInvoiceIds.add(inv.id);
+        if (inv.invoiceNumber) cancelledInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+      }
+    });
+
     // Only inspect POSTED journals (exclude DRAFT, CANCELLED, REVERSED)
-    const postedJournals = journals.filter(
-      (j) => j.status === 'POSTED' && !(j as any).isReversed && !(j as any).reversedEntryId
+    const postedJournals = (journals || []).filter(
+      (j) =>
+        j &&
+        (j.status as string) === 'POSTED' &&
+        (j.status as string) !== 'CANCELLED' &&
+        (j.status as string) !== 'REVERSED' &&
+        !(j as any).is_void &&
+        !(j as any).isReversed &&
+        !(j as any).reversedEntryId &&
+        !j.entryNumber?.toUpperCase().startsWith('REV-') &&
+        !(j.reference && cancelledInvoiceNumbers.has(j.reference.trim().toUpperCase())) &&
+        !(j.sourceId && cancelledInvoiceIds.has(j.sourceId.trim()))
     );
 
     // Map journals for fast lookup by invoice/voucher source
     const invoiceById = new Map<string, Invoice>();
     const invoiceByNumber = new Map<string, Invoice>();
-    invoices.forEach((inv) => {
+    validInvoices.forEach((inv) => {
       invoiceById.set(inv.id, inv);
       if (inv.invoiceNumber) invoiceByNumber.set(inv.invoiceNumber, inv);
     });
 
     const voucherById = new Map<string, PaymentVoucher>();
     const voucherByNumber = new Map<string, PaymentVoucher>();
-    vouchers.forEach((v) => {
+    validVouchers.forEach((v) => {
       voucherById.set(v.id, v);
       if (v.voucherNumber) voucherByNumber.set(v.voucherNumber, v);
     });
@@ -599,14 +626,38 @@ export class GLReportsService {
     const salesAccId = salesAccount?.id;
     const salesAccCode = salesAccount?.code || '4100';
 
+    // 0. الاستبعاد الصارم للعمليات والقيود الملغاة
+    const validInvoices = (invoices || []).filter(
+      (inv) => inv && inv.status !== 'CANCELLED' && !inv.is_void && (inv as any).status !== 'VOID'
+    );
+
+    const cancelledInvoiceIds = new Set<string>();
+    const cancelledInvoiceNumbers = new Set<string>();
+    (invoices || []).forEach((inv) => {
+      if (inv && (inv.status === 'CANCELLED' || inv.is_void || (inv as any).status === 'VOID')) {
+        if (inv.id) cancelledInvoiceIds.add(inv.id);
+        if (inv.invoiceNumber) cancelledInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+      }
+    });
+
     // Strictly posted, non-reversed entries
-    const postedJournals = journals.filter(
-      (j) => j.status === 'POSTED' && !(j as any).isReversed && !(j as any).reversedEntryId
+    const postedJournals = (journals || []).filter(
+      (j) =>
+        j &&
+        (j.status as string) === 'POSTED' &&
+        (j.status as string) !== 'CANCELLED' &&
+        (j.status as string) !== 'REVERSED' &&
+        !(j as any).is_void &&
+        !(j as any).isReversed &&
+        !(j as any).reversedEntryId &&
+        !j.entryNumber?.toUpperCase().startsWith('REV-') &&
+        !(j.reference && cancelledInvoiceNumbers.has(j.reference.trim().toUpperCase())) &&
+        !(j.sourceId && cancelledInvoiceIds.has(j.sourceId.trim()))
     );
 
     const invoiceById = new Map<string, Invoice>();
     const invoiceByNumber = new Map<string, Invoice>();
-    invoices.forEach((inv) => {
+    validInvoices.forEach((inv) => {
       invoiceById.set(inv.id, inv);
       if (inv.invoiceNumber) invoiceByNumber.set(inv.invoiceNumber, inv);
     });

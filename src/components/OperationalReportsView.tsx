@@ -120,10 +120,37 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   };
 
   // -------------------------------------------------------------
+  // 0. الاستبعاد الصارم للعمليات والقيود الملغاة (Strict Cancellation Filtering)
+  // -------------------------------------------------------------
+  const validInvoices = useMemo(() => {
+    return (invoices || []).filter(
+      (inv) => inv && inv.status !== 'CANCELLED' && !inv.is_void && (inv as any).status !== 'VOID'
+    );
+  }, [invoices]);
+
+  const validVouchers = useMemo(() => {
+    return (vouchers || []).filter(
+      (v) => v && v.status !== 'CANCELLED' && !v.is_void && (v as any).status !== 'VOID'
+    );
+  }, [vouchers]);
+
+  const validJournals = useMemo(() => {
+    return (journals || []).filter(
+      (j) =>
+        j &&
+        (j.status as string) === 'POSTED' &&
+        (j.status as string) !== 'CANCELLED' &&
+        (j.status as string) !== 'REVERSED' &&
+        !(j as any).is_void &&
+        !j.entryNumber?.toUpperCase().startsWith('REV-')
+    );
+  }, [journals]);
+
+  // -------------------------------------------------------------
   // 1. SALES REPORT DATA
   // -------------------------------------------------------------
   const salesInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
+    return validInvoices.filter((inv) => {
       const isSales = inv.type === 'SALES' || inv.type === 'SALES_RETURN';
       if (!isSales) return false;
       if (!isDateInRange(inv.date)) return false;
@@ -137,7 +164,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       }
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoices, startDate, endDate, datePreset, selectedEntityId, selectedStatus, searchTerm]);
+  }, [validInvoices, startDate, endDate, datePreset, selectedEntityId, selectedStatus, searchTerm]);
 
   const salesStats = useMemo(() => {
     let grossSales = 0;
@@ -196,7 +223,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   // 2. PURCHASES REPORT DATA
   // -------------------------------------------------------------
   const purchaseInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
+    return validInvoices.filter((inv) => {
       const isPurchase = inv.type === 'PURCHASE' || inv.type === 'PURCHASE_RETURN';
       if (!isPurchase) return false;
       if (!isDateInRange(inv.date)) return false;
@@ -210,7 +237,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       }
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoices, startDate, endDate, datePreset, selectedEntityId, selectedStatus, searchTerm]);
+  }, [validInvoices, startDate, endDate, datePreset, selectedEntityId, selectedStatus, searchTerm]);
 
   const purchaseStats = useMemo(() => {
     let grossPurchases = 0;
@@ -255,7 +282,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
     }[] = [];
 
     // 1. From Payment Vouchers for Expenses / Operations
-    vouchers
+    validVouchers
       .filter((v) => v.type === 'PAYMENT' && isDateInRange(v.date))
       .forEach((v) => {
         records.push({
@@ -272,8 +299,8 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       });
 
     // 2. From Posted Journals targeting Expense Accounts (5000 series)
-    journals
-      .filter((j) => j.status === 'POSTED' && isDateInRange(j.date))
+    validJournals
+      .filter((j) => isDateInRange(j.date))
       .forEach((j) => {
         (j.lines || []).forEach((line) => {
           const code = line.accountCode || '';
@@ -298,7 +325,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       });
 
     return records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [vouchers, journals, accounts, startDate, endDate, datePreset]);
+  }, [validVouchers, validJournals, accounts, startDate, endDate, datePreset]);
 
   const expenseStats = useMemo(() => {
     let totalExpenseAmount = 0;
@@ -325,14 +352,14 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   const customerReports = useMemo(() => {
     return customers.map((cust) => {
       // Find invoices for this customer excluding cancelled and drafts
-      const custInvoices = invoices.filter(
-        (inv) => inv.entityId === cust.id && inv.type === 'SALES' && inv.status !== 'CANCELLED'
+      const custInvoices = validInvoices.filter(
+        (inv) => inv.entityId === cust.id && inv.type === 'SALES'
       );
-      const custReturns = invoices.filter(
-        (inv) => inv.entityId === cust.id && inv.type === 'SALES_RETURN' && inv.status !== 'CANCELLED'
+      const custReturns = validInvoices.filter(
+        (inv) => inv.entityId === cust.id && inv.type === 'SALES_RETURN'
       );
-      const custReceipts = vouchers.filter(
-        (v) => v.entityId === cust.id && v.type === 'RECEIPT' && v.status !== 'CANCELLED'
+      const custReceipts = validVouchers.filter(
+        (v) => v.entityId === cust.id && v.type === 'RECEIPT'
       );
 
       const totalInvoiced = custInvoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
@@ -341,7 +368,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       const openBal = Number(cust.openingBalance) || 0;
       
       // المحرك المحاسبي الموحد لاحتساب رصيد العميل الدقيق 100% المطابق لكشف الحساب
-      const currentBalance = getCalculatedCustomerBalance(cust.id, invoices, vouchers, journals, customers);
+      const currentBalance = getCalculatedCustomerBalance(cust.id, validInvoices, validVouchers, validJournals, customers);
 
       // Calculate Aging (0-30, 31-60, 61-90, +90 days)
       let bucket0to30 = 0;
@@ -385,7 +412,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
         (c.customer.phone && c.customer.phone.includes(term))
       );
     }).sort((a, b) => b.currentBalance - a.currentBalance);
-  }, [customers, invoices, vouchers, journals, searchTerm]);
+  }, [customers, validInvoices, validVouchers, validJournals, searchTerm]);
 
   const customerStats = useMemo(() => {
     const totalReceivables = customerReports.reduce((s, c) => s + Math.max(0, c.currentBalance), 0);
@@ -401,14 +428,14 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   // -------------------------------------------------------------
   const supplierReports = useMemo(() => {
     return suppliers.map((supp) => {
-      const suppInvoices = invoices.filter(
-        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE' && inv.status !== 'CANCELLED'
+      const suppInvoices = validInvoices.filter(
+        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE'
       );
-      const suppReturns = invoices.filter(
-        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE_RETURN' && inv.status !== 'CANCELLED'
+      const suppReturns = validInvoices.filter(
+        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE_RETURN'
       );
-      const suppPayments = vouchers.filter(
-        (v) => v.entityId === supp.id && v.type === 'PAYMENT' && v.status !== 'CANCELLED'
+      const suppPayments = validVouchers.filter(
+        (v) => v.entityId === supp.id && v.type === 'PAYMENT'
       );
 
       const totalPurchased = suppInvoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
@@ -417,7 +444,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       const openBal = Number(supp.openingBalance) || 0;
       
       // المحرك المحاسبي الموحد لاحتساب رصيد المورد الدقيق 100% المطابق لكشف الحساب
-      const currentBalance = getCalculatedSupplierBalance(supp.id, invoices, vouchers, journals, suppliers);
+      const currentBalance = getCalculatedSupplierBalance(supp.id, validInvoices, validVouchers, validJournals, suppliers);
 
       return {
         supplier: supp,
@@ -437,7 +464,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
         (s.supplier.code && s.supplier.code.toLowerCase().includes(term))
       );
     }).sort((a, b) => b.currentBalance - a.currentBalance);
-  }, [suppliers, invoices, vouchers, journals, searchTerm]);
+  }, [suppliers, validInvoices, validVouchers, validJournals, searchTerm]);
 
   const supplierStats = useMemo(() => {
     const totalPayables = supplierReports.reduce((s, supp) => s + Math.max(0, supp.currentBalance), 0);
@@ -693,13 +720,13 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
 
           {salesReportMode === 'gl' ? (
             <GlPostedSalesReport
-              journals={journals}
+              journals={validJournals}
               accounts={accounts}
-              invoices={invoices}
+              invoices={validInvoices}
               company={company}
               currency={currency}
               onViewInvoice={(invoiceId) => {
-                const inv = invoices.find((i) => i.id === invoiceId);
+                const inv = validInvoices.find((i) => i.id === invoiceId) || invoices.find((i) => i.id === invoiceId);
                 if (inv && onViewInvoice) onViewInvoice(inv);
               }}
             />
@@ -1237,10 +1264,10 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       {activeReport === 'customers' && (
         <GlCustomerBalancesReport
           customers={customers}
-          journals={journals}
+          journals={validJournals}
           accounts={accounts}
-          invoices={invoices}
-          vouchers={vouchers}
+          invoices={validInvoices}
+          vouchers={validVouchers}
           company={company}
           currency={currency}
           onViewAccountStatement={(customerId) => {
@@ -1257,9 +1284,9 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       {activeReport === 'inventory-valuation' && (
         <GlInventoryValuationReport
           inventory={inventory}
-          journals={journals}
+          journals={validJournals}
           accounts={accounts}
-          invoices={invoices}
+          invoices={validInvoices}
           warehouses={[]}
           company={company}
           currency={currency}

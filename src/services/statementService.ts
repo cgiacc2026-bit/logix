@@ -398,9 +398,35 @@ export function getAccountStatement(
     snapshots = [],
   } = options;
 
-  // 1. تنظيف وإزالة التكرار من المدخلات الأساسية
-  const dedupedInvoices = deduplicateStatementInvoices(invoices);
-  const dedupedVouchers = deduplicateStatementVouchers(vouchers);
+  // 0. الاستبعاد الصارم للعمليات والقيود الملغاة (Strict Cancellation Filtering)
+  const validInvoices = (invoices || []).filter(
+    (inv) => inv && inv.status !== 'CANCELLED' && !inv.is_void && (inv as any).status !== 'VOID'
+  );
+  const validVouchers = (vouchers || []).filter(
+    (v) => v && v.status !== 'CANCELLED' && !v.is_void && (v as any).status !== 'VOID'
+  );
+
+  // جمع أرقام ومعرفات الوثائق الملغاة لحظر أي قيود مرتبطة بها أو قيود عكسية تابعة لها
+  const cancelledDocNumbers = new Set<string>();
+  const cancelledDocIds = new Set<string>();
+  for (const inv of (invoices || [])) {
+    if (inv && (inv.status === 'CANCELLED' || inv.is_void || (inv as any).status === 'VOID')) {
+      if (inv.invoiceNumber) cancelledDocNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+      if (inv.id) cancelledDocIds.add(inv.id.trim());
+      if (inv.journalEntryId) cancelledDocIds.add(inv.journalEntryId.trim());
+    }
+  }
+  for (const v of (vouchers || [])) {
+    if (v && (v.status === 'CANCELLED' || v.is_void || (v as any).status === 'VOID')) {
+      if (v.voucherNumber) cancelledDocNumbers.add(v.voucherNumber.trim().toUpperCase());
+      if (v.id) cancelledDocIds.add(v.id.trim());
+      if (v.journalEntryId) cancelledDocIds.add(v.journalEntryId.trim());
+    }
+  }
+
+  // 1. تنظيف وإزالة التكرار من المدخلات الأساسية الصالحة فقط
+  const dedupedInvoices = deduplicateStatementInvoices(validInvoices);
+  const dedupedVouchers = deduplicateStatementVouchers(validVouchers);
 
   // إنشاء فهارس سريعة لجميع أرقام ومعرفات السندات والفواتير لمنع ازدواجية القيود اليومية التابعة لها
   const knownVoucherNumbers = new Set<string>();
@@ -421,8 +447,19 @@ export function getAccountStatement(
     if (inv.journalEntryId) knownInvoiceJournalIds.add(inv.journalEntryId.trim());
   }
 
-  const cleanedJournals = journals.filter(
-    (j) => j && j.id && !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id)
+  // تصفية القيود الصارمة: استبعاد القيود الملغاة والمعكوسة والقيود العكسية الناتجة عن إلغاء فواتير/سندات
+  const cleanedJournals = (journals || []).filter(
+    (j) =>
+      j &&
+      j.id &&
+      (j.status as string) === 'POSTED' &&
+      (j.status as string) !== 'CANCELLED' &&
+      (j.status as string) !== 'REVERSED' &&
+      !(j as any).is_void &&
+      !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id) &&
+      !j.entryNumber?.toUpperCase().startsWith('REV-') &&
+      !(j.reference && cancelledDocNumbers.has(j.reference.trim().toUpperCase())) &&
+      !(j.sourceId && cancelledDocIds.has(j.sourceId.trim()))
   );
 
   // 1. استخراج بيانات الكيان (العميل أو المورد) بمرونة عالية
@@ -533,26 +570,6 @@ export function getAccountStatement(
         originalDocId: inv.id,
         createdAt: inv.createdAt,
       });
-
-      // إذا كانت الفاتورة ملغاة، نضيف قيد العكس / التسوية المحاسبي المقابل لشفافية الرقابة
-      if (isCancelled) {
-        allRawMovements.push({
-          id: `rev-${inv.id}`,
-          date: inv.date,
-          docNumber: `REV-${inv.invoiceNumber}`,
-          docType: isSales ? 'SALES_RETURN' : 'PURCHASE_RETURN',
-          docTypeLabel: `إلغاء وعكس ${docTypeLabel}`,
-          description: `قيد عكسي وتسوية لإلغاء الفاتورة ${inv.invoiceNumber}`,
-          reference: inv.invoiceNumber,
-          debit: credit, // عكس المدين والدائن لإلغاء الأثر
-          credit: debit,
-          status: 'REVERSAL',
-          isCancelled: false,
-          sourceModule: 'INVOICE',
-          originalDocId: inv.id,
-          createdAt: inv.createdAt,
-        });
-      }
     });
 
   // ب) سندات القبض والصرف (من القائمة الفريدة غير المكررة)
@@ -594,25 +611,6 @@ export function getAccountStatement(
         originalDocId: v.id,
         createdAt: v.createdAt,
       });
-
-      if (isCancelled) {
-        allRawMovements.push({
-          id: `rev-${v.id}`,
-          date: v.date,
-          docNumber: `REV-${v.voucherNumber}`,
-          docType,
-          docTypeLabel: `إلغاء وعكس ${docTypeLabel}`,
-          description: `قيد عكسي وتسوية لإلغاء السند ${v.voucherNumber}`,
-          reference: v.voucherNumber,
-          debit: credit,
-          credit: debit,
-          status: 'REVERSAL',
-          isCancelled: false,
-          sourceModule: 'VOUCHER',
-          originalDocId: v.id,
-          createdAt: v.createdAt,
-        });
-      }
     });
 
   // ج) القيود اليومية اليدوية أو التسويات المباشرة لحساب هذا الكيان
@@ -789,16 +787,16 @@ export function getAccountStatement(
   let cancelledCount = 0;
 
   for (const move of sortedRawMovements) {
+    // استبعاد أي حركة ملغاة من كشف الحساب نهائياً
+    if (move.status === 'CANCELLED' || move.isCancelled) {
+      continue;
+    }
+
     // تصفية الحركات الواقعة فقط داخل الفترة المحددة شاملة لليومين
     if (move.date >= cleanStartDate && move.date <= cleanEndDate) {
       totalPeriodDebit += move.debit;
       totalPeriodCredit += move.credit;
-
-      if (move.status === 'CANCELLED') {
-        cancelledCount++;
-      } else {
-        activeCount++;
-      }
+      activeCount++;
 
       // احتساب الأثر على الرصيد الجاري التراكمي
       if (entityType === 'CUSTOMER') {
@@ -994,9 +992,34 @@ export function calculateEntityCurrentBalance(
   
   let net = initialOpening;
 
+  // 0. الاستبعاد الصارم للعمليات والقيود الملغاة
+  const validInvoices = (invoices || []).filter(
+    (inv) => inv && inv.status !== 'CANCELLED' && !inv.is_void && (inv as any).status !== 'VOID'
+  );
+  const validVouchers = (vouchers || []).filter(
+    (v) => v && v.status !== 'CANCELLED' && !v.is_void && (v as any).status !== 'VOID'
+  );
+
+  const cancelledDocNumbers = new Set<string>();
+  const cancelledDocIds = new Set<string>();
+  for (const inv of (invoices || [])) {
+    if (inv && (inv.status === 'CANCELLED' || inv.is_void || (inv as any).status === 'VOID')) {
+      if (inv.invoiceNumber) cancelledDocNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+      if (inv.id) cancelledDocIds.add(inv.id.trim());
+      if (inv.journalEntryId) cancelledDocIds.add(inv.journalEntryId.trim());
+    }
+  }
+  for (const v of (vouchers || [])) {
+    if (v && (v.status === 'CANCELLED' || v.is_void || (v as any).status === 'VOID')) {
+      if (v.voucherNumber) cancelledDocNumbers.add(v.voucherNumber.trim().toUpperCase());
+      if (v.id) cancelledDocIds.add(v.id.trim());
+      if (v.journalEntryId) cancelledDocIds.add(v.journalEntryId.trim());
+    }
+  }
+
   // إزالة التكرار بدقة باستخدام الدوال المساعدة
-  const dedupedInvoices = deduplicateStatementInvoices(invoices || []);
-  const dedupedVouchers = deduplicateStatementVouchers(vouchers || []);
+  const dedupedInvoices = deduplicateStatementInvoices(validInvoices);
+  const dedupedVouchers = deduplicateStatementVouchers(validVouchers);
 
   const knownVoucherNumbers = new Set<string>();
   const knownVoucherIds = new Set<string>();
@@ -1018,7 +1041,7 @@ export function calculateEntityCurrentBalance(
 
   // 1. الفواتير والمرتجعات الفريدة
   const relevantInvoices = dedupedInvoices.filter(
-    (inv) => isDocMatchingEntity(inv, entityId, entity, entityType) && inv.status !== 'CANCELLED'
+    (inv) => isDocMatchingEntity(inv, entityId, entity, entityType) && inv.status !== 'CANCELLED' && !inv.is_void
   );
   for (const inv of relevantInvoices) {
     const total = Number(inv.grandTotal) || 0;
@@ -1033,7 +1056,7 @@ export function calculateEntityCurrentBalance(
 
   // 2. سندات القبض والصرف الفريدة
   const relevantVouchers = dedupedVouchers.filter(
-    (v) => isDocMatchingEntity(v, entityId, entity, entityType) && v.status !== 'CANCELLED'
+    (v) => isDocMatchingEntity(v, entityId, entity, entityType) && v.status !== 'CANCELLED' && !v.is_void
   );
   for (const v of relevantVouchers) {
     const amount = Number(v.amount) || 0;
@@ -1049,7 +1072,17 @@ export function calculateEntityCurrentBalance(
 
   // 3. القيود والتسويات اليدوية الفريدة
   const relevantJournals = (journals || []).filter(
-    (j) => j && j.id && !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id) && j.status !== 'CANCELLED' && j.status !== 'REVERSED'
+    (j) =>
+      j &&
+      j.id &&
+      (j.status as string) === 'POSTED' &&
+      (j.status as string) !== 'CANCELLED' &&
+      (j.status as string) !== 'REVERSED' &&
+      !(j as any).is_void &&
+      !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id) &&
+      !j.entryNumber?.toUpperCase().startsWith('REV-') &&
+      !(j.reference && cancelledDocNumbers.has(j.reference.trim().toUpperCase())) &&
+      !(j.sourceId && cancelledDocIds.has(j.sourceId.trim()))
   );
   for (const j of relevantJournals) {
     // تجنب التكرار للقيود الآلية الصادرة عن الفواتير أو السندات
