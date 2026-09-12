@@ -996,6 +996,7 @@ export async function seedDemoCompanyInSupabase(): Promise<boolean> {
           id: `${j.id}-line-${idx}`,
           company_id: DEMO_COMPANY_ID,
           journal_entry_id: j.id,
+          journal_id: j.id,
           account_id: l.accountId || null,
           account_code: l.accountCode || '',
           account_name: l.accountName || l.accountNameAr || '',

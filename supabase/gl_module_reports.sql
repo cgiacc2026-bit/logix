@@ -7,6 +7,36 @@
 -- 3. get_posted_sales_gl: Posted Sales from Account 4100
 -- ============================================================================
 
+-- Defensive schema check to ensure journal_entry_id exists unconditionally
+CREATE TABLE IF NOT EXISTS public.journal_entry_lines (
+    id TEXT PRIMARY KEY DEFAULT ('jel-' || substring(replace(gen_random_uuid()::text, '-', ''), 1, 9)),
+    company_id UUID,
+    journal_entry_id TEXT,
+    journal_id TEXT,
+    account_id TEXT,
+    account_code TEXT,
+    account_name_ar TEXT,
+    debit NUMERIC(18, 4) DEFAULT 0,
+    credit NUMERIC(18, 4) DEFAULT 0
+);
+
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS company_id UUID;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS journal_entry_id TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS journal_id TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_id TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_code TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_name_ar TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS debit NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS credit NUMERIC(18, 4) DEFAULT 0;
+
+UPDATE public.journal_entry_lines 
+SET journal_entry_id = journal_id::text 
+WHERE (journal_entry_id IS NULL OR journal_entry_id = '') AND journal_id IS NOT NULL;
+
+UPDATE public.journal_entry_lines 
+SET journal_id = journal_entry_id::text 
+WHERE (journal_id IS NULL OR journal_id = '') AND journal_entry_id IS NOT NULL;
+
 -- ----------------------------------------------------------------------------
 -- 1. FUNCTION: get_customer_balances_gl
 -- ----------------------------------------------------------------------------

@@ -2244,11 +2244,15 @@ export class SupabaseDataService {
       // Sync lines to relational table journal_entry_lines for strict GL queries and SQL functions
       if (j.lines && Array.isArray(j.lines) && j.lines.length > 0) {
         try {
-          await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', entryId);
+          await supabase
+            .from('journal_entry_lines')
+            .delete()
+            .or(`journal_entry_id.eq.${entryId},journal_id.eq.${entryId}`);
           const lineRows = j.lines.map((l: any, idx: number) => ({
             id: toValidUUID(l.id || `${entryId}-${idx}`),
             company_id: companyId,
             journal_entry_id: entryId,
+            journal_id: entryId,
             account_id: l.accountId ? toValidUUID(l.accountId) : null,
             account_code: l.accountCode || '',
             account_name: l.accountName || l.accountNameAr || '',
@@ -2320,6 +2324,7 @@ export class SupabaseDataService {
               id: toValidUUID(l.id || `${jId}-${idx}`),
               company_id: companyId,
               journal_entry_id: jId,
+              journal_id: jId,
               account_id: l.accountId ? toValidUUID(l.accountId) : null,
               account_code: l.accountCode || '',
               account_name: l.accountName || l.accountNameAr || '',

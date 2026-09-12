@@ -563,29 +563,51 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 CREATE TABLE IF NOT EXISTS public.journal_entry_lines (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-    journal_entry_id UUID NOT NULL REFERENCES public.journal_entries(id) ON DELETE CASCADE,
-    account_id UUID REFERENCES public.chart_of_accounts(id) ON DELETE RESTRICT,
+    id TEXT PRIMARY KEY DEFAULT ('jel-' || substring(replace(gen_random_uuid()::text, '-', ''), 1, 9)),
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    journal_entry_id TEXT,
+    journal_id TEXT,
+    account_id TEXT,
     account_code TEXT,
     account_name TEXT,
     account_name_ar TEXT,
     description TEXT,
+    memo TEXT,
     debit NUMERIC(18, 4) DEFAULT 0,
     credit NUMERIC(18, 4) DEFAULT 0,
     line_order INT DEFAULT 0,
-    cost_center_id UUID,
+    cost_center_id TEXT,
     raw_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ DEFAULT timezone('utc', now())
 );
 
+-- Defensive alter table to guarantee all columns exist under any historical schema
 ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE;
-ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS journal_entry_id UUID REFERENCES public.journal_entries(id) ON DELETE CASCADE;
-ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES public.chart_of_accounts(id) ON DELETE RESTRICT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS journal_entry_id TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS journal_id TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_id TEXT;
 ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_code TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_name TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS account_name_ar TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS memo TEXT;
 ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS debit NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS credit NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS line_order INT DEFAULT 0;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS cost_center_id TEXT;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+ALTER TABLE public.journal_entry_lines ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+-- Auto-synchronize journal_entry_id and journal_id if either was populated previously
+UPDATE public.journal_entry_lines 
+SET journal_entry_id = journal_id::text 
+WHERE (journal_entry_id IS NULL OR journal_entry_id = '') AND journal_id IS NOT NULL;
+
+UPDATE public.journal_entry_lines 
+SET journal_id = journal_entry_id::text 
+WHERE (journal_id IS NULL OR journal_id = '') AND journal_entry_id IS NOT NULL;
 
 -- ==============================================================================
 -- 10. PAYMENT VOUCHERS (سندات القبض والصرف)
@@ -753,6 +775,7 @@ CREATE INDEX IF NOT EXISTS idx_invoice_items_company ON public.invoice_items(com
 CREATE INDEX IF NOT EXISTS idx_je_company ON public.journal_entries(company_id);
 CREATE INDEX IF NOT EXISTS idx_je_date ON public.journal_entries(company_id, date);
 CREATE INDEX IF NOT EXISTS idx_jel_je ON public.journal_entry_lines(journal_entry_id);
+CREATE INDEX IF NOT EXISTS idx_jel_journal ON public.journal_entry_lines(journal_id);
 CREATE INDEX IF NOT EXISTS idx_jel_account ON public.journal_entry_lines(account_id);
 CREATE INDEX IF NOT EXISTS idx_jel_company ON public.journal_entry_lines(company_id);
 CREATE INDEX IF NOT EXISTS idx_pv_company ON public.payment_vouchers(company_id);
