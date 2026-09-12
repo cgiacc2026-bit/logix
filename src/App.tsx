@@ -45,7 +45,6 @@ import { EnterpriseAccordionHub } from './components/EnterpriseAccordionHub.tsx'
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
-import { JsonBackupRestoreModal } from './components/JsonBackupRestoreModal.tsx';
 import { AutoBackupController } from './components/AutoBackupController.tsx';
 import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
@@ -241,7 +240,6 @@ export function AppContent() {
   });
 
   const [isSuperAdminModalOpen, setIsSuperAdminModalOpen] = useState(false);
-  const [isJsonBackupModalOpen, setIsJsonBackupModalOpen] = useState(false);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
 
   const handleLogin = async (user: SystemUser, selectedCompany?: CompanyProfile) => {
@@ -682,7 +680,7 @@ export function AppContent() {
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
         onOpenCompanySetup={() => navigateToTab('company')}
-        onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
+        onOpenJsonBackup={() => navigateToTab('backup-restore')}
         onSaveCompany={handleSaveCompany}
       />
 
@@ -702,7 +700,7 @@ export function AppContent() {
           onOpenCompanySetup={() => navigateToTab('company')}
           onOpenOnboardingGuide={() => setIsOnboardingModalOpen(true)}
           onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
-          onOpenJsonBackup={() => setIsJsonBackupModalOpen(true)}
+          onOpenJsonBackup={() => navigateToTab('backup-restore')}
           currentUser={currentUser}
           onLogout={handleLogout}
           onSaveCompany={handleSaveCompany}
@@ -821,6 +819,7 @@ export function AppContent() {
               onSaveCompany={handleSaveCompany}
               onRefreshData={refreshAllData}
               onResetDatabase={handleResetSeed}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
             />
           )}
         </main>
@@ -865,18 +864,6 @@ export function AppContent() {
         currentUser={currentUser}
         onSwitchCompany={() => refreshAllData()}
       />
-
-      {/* Direct JSON Backup & Restore Modal */}
-      {isJsonBackupModalOpen && (
-        <JsonBackupRestoreModal
-          isOpen={true}
-          onClose={() => setIsJsonBackupModalOpen(false)}
-          currentCompanyId={activeCompany.id}
-          currentCompanyName={activeCompany.nameAr}
-          isSuperAdmin={Boolean(currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.isPlatformAdmin || currentUser?.email === 'cgiacc2026@gmail.com')}
-          onDataRestored={() => refreshAllData()}
-        />
-      )}
 
       {/* Step-by-Step Onboarding Interactive Guide Modal */}
       <OnboardingGuideModal

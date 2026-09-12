@@ -69,6 +69,7 @@ interface CompanySetupViewProps {
   onSaveCompany: (updated: CompanyProfile) => Promise<void>;
   onRefreshData?: () => Promise<void>;
   onResetDatabase?: () => Promise<void>;
+  onNavigateTab?: (tab: string) => void;
 }
 
 function compressAndOptimizeLogo(file: File, maxDim = 400): Promise<string> {
@@ -124,6 +125,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   onSaveCompany,
   onRefreshData,
   onResetDatabase,
+  onNavigateTab,
 }) => {
   const [activeTab, setActiveTab] = useState<'legal' | 'address' | 'vat' | 'accounting' | 'mapping' | 'branding' | 'backup'>('legal');
   const [formData, setFormData] = useState<Partial<CompanyProfile>>(company || {});
@@ -3012,130 +3014,81 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </div>
             </div>
 
-            {/* ACTION CARDS GRID */}
+            {/* ACTION CARDS GRID: UNIFIED CANONICAL ENTRY POINTS */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Export Backup Card */}
-              <div className="bg-[#FDFCFB] border border-[#E5E1DA] rounded-xl p-6 shadow-xs space-y-4 flex flex-col justify-between hover:border-[#B8860B]/50 transition-all">
+              {/* Canonical Backup & Restore Hub Entry Card */}
+              <div className="bg-[#FDFCFB] border border-[#E5E1DA] rounded-xl p-6 shadow-xs space-y-4 flex flex-col justify-between hover:border-emerald-600/50 transition-all">
                 <div className="space-y-3">
                   <div className="w-12 h-12 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-center text-emerald-700">
-                    <Download className="w-6 h-6" />
+                    <Database className="w-6 h-6" />
                   </div>
                   <div>
                     <h4 className="text-sm font-serif font-bold text-[#1A1A1A]">
-                      تصدير نسخة احتياطية من البيانات (Export Backup JSON)
+                      مركز النسخ الاحتياطي والاستعادة الموحد (Unified Backup & Restore Hub)
                     </h4>
                     <p className="text-xs text-[#8C8273] mt-1 leading-relaxed">
-                      توليد ملف JSON محمي يضم جميع السجلات المحاسبية والعمليات التجارية لتخزينه بأمان على جهازك الشخصي أو السحابة.
+                      المدخل الحصري المعتمد لإجراء الاستعادة الذكية لملفات JSON مع الاستكمال الآلي للكيانات المفقودة، وتنزيل نموذج ومخطط Draft-07 القياسي، وتصدير نسخ JSON وExcel الشاملة.
                     </p>
                   </div>
 
                   <div className="bg-white p-3 rounded-lg border border-[#E5E1DA] text-[11px] text-[#6E6659] space-y-1">
                     <div className="flex items-center gap-1.5 font-bold text-[#1A1A1A]">
-                      <FileJson className="w-4 h-4 text-[#B8860B]" />
-                      محتويات النسخة الاحتياطية المصدرة:
+                      <Sparkles className="w-4 h-4 text-emerald-600" />
+                      الخصائص المعتمدة في المركز الموحد:
                     </div>
                     <ul className="list-disc list-inside space-y-0.5 text-[#8C8273] pr-2">
-                      <li>دليل الحسابات المحاسبية وقوائم قيود اليومية</li>
-                      <li>فواتير المبيعات والمشتريات وسندات القبض والصرف</li>
-                      <li>دليل العملاء والموردين ومنتجات المخزون والوحدات</li>
-                      <li>بيانات الشركة الرسمية والسياسات المالية</li>
+                      <li>استيراد ذكي مع إنشاء تلقائي للعملاء والأصناف والحسابات المفقودة</li>
+                      <li>تنزيل النموذج القياسي LOGIX_ERP_STANDARD_TEMPLATE.json</li>
+                      <li>تصدير نسخ JSON وExcel تفصيلية متعددة أوراق العمل</li>
                     </ul>
                   </div>
                 </div>
 
                 <button
                   type="button"
-                  onClick={handleExportBackup}
-                  disabled={isExporting}
-                  className="w-full py-3 bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 border border-[#1A1A1A] shadow-xs cursor-pointer transition-all disabled:opacity-50 mt-2"
+                  onClick={() => onNavigateTab && onNavigateTab('backup-restore')}
+                  className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all mt-2"
                 >
-                  <Download className={`w-4 h-4 text-[#D4AF37] ${isExporting ? 'animate-bounce' : ''}`} />
-                  <span>{isExporting ? 'جاري استخراج البيانات وتجهيز الملف...' : 'تنزيل النسخة الاحتياطية (تصدير JSON Backup)'}</span>
+                  <FolderUp className="w-4 h-4 text-emerald-200" />
+                  <span>فتح مركز النسخ الاحتياطي والاستعادة الموحد</span>
                 </button>
               </div>
 
-              {/* Import / Restore Backup Card */}
-              <div className="bg-[#FDFCFB] border border-[#E5E1DA] rounded-xl p-6 shadow-xs space-y-4 flex flex-col justify-between hover:border-[#9E2A2B]/40 transition-all">
+              {/* Canonical System Cycle Reset Entry Card */}
+              <div className="bg-[#FDFCFB] border border-rose-200 rounded-xl p-6 shadow-xs space-y-4 flex flex-col justify-between hover:border-rose-400 transition-all">
                 <div className="space-y-3">
-                  <div className="w-12 h-12 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-center text-blue-700">
-                    <FolderUp className="w-6 h-6" />
+                  <div className="w-12 h-12 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-center text-rose-700">
+                    <RotateCcw className="w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-serif font-bold text-[#1A1A1A]">
-                      استعادة نسخة احتياطية من ملف (Restore JSON Backup)
+                    <h4 className="text-sm font-serif font-bold text-rose-950">
+                      تهيئة وتصفير دورة النظام (System Cycle Reset Panel)
                     </h4>
                     <p className="text-xs text-[#8C8273] mt-1 leading-relaxed">
-                      رفع ملف نسخة احتياطية سابق بصيغة JSON لاستعادة كافة البيانات والحسابات السابقة إلى النظام بشكل أوتوماتيكي.
+                      المدخل الحصري لإقفال وتصفير دورة العمليات وبدء دورة محاسبية جديدة نظيفة، والمؤمن بكلمة مرور التأكيد ونسخ الأمان الإلزامي التلقائي.
                     </p>
                   </div>
 
-                  <div className="bg-amber-50/80 p-3 rounded-lg border border-amber-200 text-[11px] text-amber-900 space-y-1">
-                    <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                      <AlertCircle className="w-4 h-4 text-amber-700" />
-                      تنبيه هام قبل إجراء الاستعادة:
+                  <div className="bg-rose-50/60 p-3 rounded-lg border border-rose-200 text-[11px] text-rose-900 space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-rose-950">
+                      <AlertCircle className="w-4 h-4 text-rose-700" />
+                      إجراءات الحماية المطبقة في شاشة التصفير:
                     </div>
-                    <p className="text-xs text-amber-800 leading-snug">
-                      استعادة النسخة الاحتياطية ستقوم باستبدال البيانات الحالية بالكامل بالبيانات المحفوظة في ملف JSON المرفوع.
-                    </p>
+                    <ul className="list-disc list-inside space-y-0.5 text-rose-800 pr-2">
+                      <li>تصدير وأرشفة نسخة أمان تلقائية قبل تنفيذ أي مسح</li>
+                      <li>طلب عبارة تأكيد رسمية وتدقيق صلاحية المشرف</li>
+                      <li>تسجيل سجل تدقيق أمني مفصل للعملية (Audit Log)</li>
+                    </ul>
                   </div>
-                </div>
-
-                <label className="w-full py-3 bg-white hover:bg-[#F7F5F0] text-[#1A1A1A] border border-[#E5E1DA] text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all mt-2 text-center">
-                  <FolderUp className={`w-4 h-4 text-[#B8860B] ${isRestoring ? 'animate-spin' : ''}`} />
-                  <span>{isRestoring ? 'جاري رفع الملف ومعالجة الاستعادة...' : 'استعادة نسخة احتياطية (اختيار ملف JSON)'}</span>
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    onChange={handleImportBackup}
-                    disabled={isRestoring}
-                    className="hidden"
-                  />
-                </label>
-
-                <div className="flex flex-col sm:flex-row items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRestoreAlWaleedPreset}
-                    disabled={isRestoring}
-                    className="flex-1 w-full py-2.5 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
-                  >
-                    <Sparkles className="w-4 h-4 text-emerald-200" />
-                    <span>استعادة قاعدة بيانات شركة مطحنة الوليد المعتمدة (أحدث نسخة كاملة)</span>
-                  </button>
-                  <a
-                    href="/alwaleed_mill_import.sql"
-                    download="alwaleed_mill_import.sql"
-                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all text-center"
-                    title="تحميل سكربت SQL لرفعه مباشرة في قاعدة البيانات"
-                  >
-                    <Download className="w-4 h-4 text-indigo-300" />
-                    <span>تحميل كود SQL</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            {/* DANGER ZONE: SYSTEM RESET & INITIALIZATION */}
-            <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-5 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-rose-950 font-bold text-sm">
-                    <RefreshCw className={`w-4 h-4 text-rose-700 ${isResettingDb ? 'animate-spin' : ''}`} />
-                    <span>تصفير وإعادة تهيئة قاعدة بيانات النظام (Reset & Clean Database)</span>
-                  </div>
-                  <p className="text-xs text-rose-800 leading-relaxed max-w-2xl">
-                    تصفير الحسابات والقيود والفواتير للبدء بقاعدة بيانات نظيفة وجاهزة للإنتاج. يوصى بأخذ نسخة احتياطية أولاً قبل الضغط على التصفير.
-                  </p>
                 </div>
 
                 <button
                   type="button"
-                  onClick={handleResetDatabase}
-                  disabled={isResettingDb}
-                  className="px-4 py-2.5 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                  onClick={() => onNavigateTab && onNavigateTab('system-reset')}
+                  className="w-full py-3 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all mt-2"
                 >
-                  <RefreshCw className={`w-4 h-4 text-rose-200 ${isResettingDb ? 'animate-spin' : ''}`} />
-                  <span>{isResettingDb ? 'جاري تصفير النظام...' : 'تصفير وتهيئة قاعدة البيانات'}</span>
+                  <RotateCcw className="w-4 h-4 text-rose-200" />
+                  <span>الانتقال إلى شاشة تصفير وتهيئة دورة النظام</span>
                 </button>
               </div>
             </div>

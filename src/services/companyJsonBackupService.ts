@@ -654,4 +654,24 @@ export class CompanyJsonBackupService {
   public static getAlWaleedMillPresetBackupJson(): string {
     return JSON.stringify(ALWALEED_MILL_PRESET_BACKUP, null, 2);
   }
+
+  /**
+   * One-click restore of Al-Waleed Mill dataset into the target company
+   */
+  public static async restoreAlWaleedMillPreset(companyId: string): Promise<{
+    success: boolean;
+    message: string;
+    stats?: any;
+  }> {
+    const jsonStr = CompanyJsonBackupService.getAlWaleedMillPresetBackupJson();
+    return CompanyJsonBackupService.importCompanyData(companyId, jsonStr);
+  }
+
+  public static async restoreCompanyFromJsonString(companyId: string, jsonString: string): Promise<{
+    success: boolean;
+    message: string;
+    stats?: any;
+  }> {
+    return CompanyJsonBackupService.importCompanyData(companyId, jsonString);
+  }
 }

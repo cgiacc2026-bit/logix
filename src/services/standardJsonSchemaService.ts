@@ -334,6 +334,9 @@ export function getStandardJsonSchema(): object {
   return LOGIX_ERP_JSON_SCHEMA;
 }
 
+export const getStandardErpJsonSchema = getStandardJsonSchema;
+export const getStandardErpJsonTemplate = getSampleStandardBackup;
+
 /**
  * Generates an executive compliant JSON template with realistic sample data
  */

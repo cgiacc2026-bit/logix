@@ -1441,4 +1441,7 @@ export async function handleJsonImport(
   return ERPBackupImportService.importCompanyJsonData(companyId, jsonInput, onProgress);
 }
 
+export type ImportReport = ImportResultReport;
+export const importBackupWithStrictAutoProvisioning = handleJsonImport;
+
 
