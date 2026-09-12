@@ -53,6 +53,7 @@ import { SystemResetService } from '../services/systemResetService.ts';
 import { formatCurrency, setActiveCompanyConfig } from '../utils/formatters.ts';
 import { ThemeService, ERP_THEMES, THEME_PALETTES, ThemeColor, ThemeMode } from '../services/themeService.ts';
 import { ERPBackupImportService } from '../services/importBackupService.js';
+import { CompanyJsonBackupService } from '../services/companyJsonBackupService.js';
 import { supabase, isSupabaseConfigured, resolveToSupabaseCompanyUUID, getCurrentCompanyId } from '../services/supabaseClient.js';
 import { SupabaseDataService } from '../services/supabaseService.js';
 import {
@@ -886,17 +887,19 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
           throw new Error('الملف المرفوع يحتوي على أخطاء برمجية أو مقطوع. الرجاء نسخ كامل كود JSON ولصقه في ملف نصي وحفظه كـ .json ثم رفعه.');
         }
 
-        if (parsed.company) localDataStore.saveCompany(parsed.company);
-        if (parsed.users) localDataStore.saveUsers(parsed.users);
-        if (parsed.accounts) localDataStore.saveAccounts(parsed.accounts);
-        if (parsed.customers) localDataStore.saveCustomers(parsed.customers);
-        if (parsed.suppliers) localDataStore.saveSuppliers(parsed.suppliers);
-        if (parsed.inventory) localDataStore.saveInventory(parsed.inventory);
-        if (parsed.journals) localDataStore.saveJournals(parsed.journals);
-        if (parsed.invoices) localDataStore.saveInvoices(parsed.invoices);
-        if (parsed.vouchers) localDataStore.saveVouchers(parsed.vouchers);
-        if (parsed.units) localDataStore.saveUnits(parsed.units);
-        if (parsed.productionOrders) localDataStore.saveProductionOrders(parsed.productionOrders);
+        const data = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+
+        if (data.company) localDataStore.saveCompany(data.company);
+        if (data.users) localDataStore.saveUsers(data.users);
+        if (data.accounts) localDataStore.saveAccounts(data.accounts);
+        if (data.customers) localDataStore.saveCustomers(data.customers);
+        if (data.suppliers) localDataStore.saveSuppliers(data.suppliers);
+        if (data.inventory) localDataStore.saveInventory(data.inventory);
+        if (data.journals) localDataStore.saveJournals(data.journals);
+        if (data.invoices) localDataStore.saveInvoices(data.invoices);
+        if (data.vouchers) localDataStore.saveVouchers(data.vouchers);
+        if (data.units) localDataStore.saveUnits(data.units);
+        if (data.productionOrders) localDataStore.saveProductionOrders(data.productionOrders);
 
         // 1. Sync to Express backend DB
         await safeApiFetch('/api/backup/restore', {
@@ -905,14 +908,18 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
           body: JSON.stringify(parsed),
         });
 
-        // 2. Direct Sync to Firestore Cloud Collections (Dual Legacy & Prefixed)
+        // 2. Call robust ERP backup import service to ensure cloud synchronization
+        const targetId = company?.id || '20000000-0000-0000-0000-000000000001';
+        await ERPBackupImportService.importCompanyJsonData(targetId, jsonContent);
+
+        // 3. Direct Sync to Firestore Cloud Collections (Dual Legacy & Prefixed)
         try {
-          await SystemResetService.restoreBackupToFirestore(parsed);
+          await SystemResetService.restoreBackupToFirestore(data);
         } catch (firestoreErr) {
           console.warn('Firestore backup sync warning:', firestoreErr);
         }
 
-        setRestoreSuccess('تمت استعادة قاعدة البيانات بنجاح من ملف JSON وتحديث سحابة Supabase!');
+        setRestoreSuccess('تمت استعادة قاعدة البيانات بنجاح من ملف JSON ومزامنة الخادم والسحابة!');
         if (onRefreshData) {
           await onRefreshData();
         }
@@ -925,6 +932,58 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleRestoreAlWaleedPreset = async () => {
+    if (!confirm('هل ترغب في استعادة قاعدة بيانات مطحنة الوليد المتحدة المعتمدة (64 صنف بهارات ومواد غذائية، 61 قيد يومية متزن، 51 فاتورة، 10 سندات قبض وصرف)؟ سيتم استبدال البيانات الحالية بالبيانات المعتمدة.')) {
+      return;
+    }
+    setIsRestoring(true);
+    setRestoreSuccess('');
+    setErrorMessage('');
+
+    try {
+      const presetJson = CompanyJsonBackupService.getAlWaleedMillPresetBackupJson();
+      const targetId = company?.id || '20000000-0000-0000-0000-000000000001';
+      const parsed = JSON.parse(presetJson);
+      const data = parsed.data || parsed;
+
+      if (data.company) localDataStore.saveCompany(data.company);
+      if (data.users) localDataStore.saveUsers(data.users);
+      if (data.accounts) localDataStore.saveAccounts(data.accounts);
+      if (data.customers) localDataStore.saveCustomers(data.customers);
+      if (data.suppliers) localDataStore.saveSuppliers(data.suppliers);
+      if (data.inventory) localDataStore.saveInventory(data.inventory);
+      if (data.journals) localDataStore.saveJournals(data.journals);
+      if (data.invoices) localDataStore.saveInvoices(data.invoices);
+      if (data.vouchers) localDataStore.saveVouchers(data.vouchers);
+      if (data.units) localDataStore.saveUnits(data.units);
+      if (data.productionOrders) localDataStore.saveProductionOrders(data.productionOrders);
+
+      // Sync to Express backend
+      await safeApiFetch('/api/backup/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      });
+
+      // Import to Supabase / Local storage
+      const result = await ERPBackupImportService.importCompanyJsonData(targetId, presetJson);
+
+      if (result.success) {
+        setRestoreSuccess('تمت استعادة قاعدة بيانات مطحنة الوليد المتحدة المعتمدة بنجاح ومطابقتها على جميع السيرفرات والأجهزة!');
+        if (onRefreshData) {
+          await onRefreshData();
+        }
+      } else {
+        setErrorMessage(result.message || 'فشل استيراد قاعدة بيانات مطحنة الوليد');
+      }
+      setTimeout(() => setRestoreSuccess(''), 6000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'حدث خطأ أثناء استعادة قاعدة بيانات مطحنة الوليد');
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   const handleResetDatabase = async () => {
@@ -3032,6 +3091,27 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                     className="hidden"
                   />
                 </label>
+
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRestoreAlWaleedPreset}
+                    disabled={isRestoring}
+                    className="flex-1 w-full py-2.5 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                  >
+                    <Sparkles className="w-4 h-4 text-emerald-200" />
+                    <span>استعادة قاعدة بيانات شركة مطحنة الوليد المعتمدة (أحدث نسخة كاملة)</span>
+                  </button>
+                  <a
+                    href="/alwaleed_mill_import.sql"
+                    download="alwaleed_mill_import.sql"
+                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all text-center"
+                    title="تحميل سكربت SQL لرفعه مباشرة في قاعدة البيانات"
+                  >
+                    <Download className="w-4 h-4 text-indigo-300" />
+                    <span>تحميل كود SQL</span>
+                  </a>
+                </div>
               </div>
             </div>
 

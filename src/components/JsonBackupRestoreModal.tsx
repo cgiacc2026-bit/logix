@@ -301,14 +301,14 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
               🧪 شركة ديمو للعملاء
             </button>
             <button
-              onClick={() => setTargetCompanyId('company-alwaleed-client-003')}
+              onClick={() => setTargetCompanyId('20000000-0000-0000-0000-000000000001')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                targetCompanyId === 'company-alwaleed-client-003'
+                targetCompanyId === 'company-alwaleed-client-003' || targetCompanyId === '20000000-0000-0000-0000-000000000001'
                   ? 'bg-emerald-600 text-white shadow-md'
                   : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
             >
-              🏭 شركة مطحنة الوليد (عميل مسجل)
+              🏭 شركة مطحنة الوليد (قاعدة البيانات المعتمدة)
             </button>
           </div>
         </div>
@@ -469,20 +469,31 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-emerald-300 font-semibold text-sm">
                     <Sparkles className="w-4 h-4 text-emerald-400" />
-                    استعادة جاهزة بنقرة واحدة لآخر شغل مدخل لمطحنة الوليد
+                    استعادة قاعدة بيانات مطحنة الوليد المتحدة (أحدث نسخة كاملة)
                   </div>
                   <p className="text-xs text-slate-400">
-                    استرجاع الأصناف الـ 22 (بهارات، فلفل أسود، قرنفل)، الموردين، الجمعيات، وفواتير التوريد والتصنيع فوراً.
+                    استرجاع الأصناف (64 صنف بهارات ومواد غذائية)، 61 قيد يومية متزن، 51 فاتورة، 10 سندات قبض وصرف، 16 جمعية وعميل، ودليل الحسابات المعتمد.
                   </p>
                 </div>
-                <button
-                  onClick={handleLoadAlWaleedPreset}
-                  disabled={isProcessing}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/30 shrink-0 disabled:opacity-50"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  استعادة شغل مطحنة الوليد الآن
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href="/alwaleed_mill_import.sql"
+                    download="alwaleed_mill_import.sql"
+                    className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-700"
+                    title="تحميل سكربت SQL لرفعه مباشرة في Supabase SQL Editor"
+                  >
+                    <Download className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>تحميل SQL</span>
+                  </a>
+                  <button
+                    onClick={handleLoadAlWaleedPreset}
+                    disabled={isProcessing}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/30 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    استعادة شغل مطحنة الوليد الآن
+                  </button>
+                </div>
               </div>
 
               {/* Upload File Zone */}
@@ -575,6 +586,18 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
                 <Download className="w-4 h-4" />
                 تحميل ملف النسخة الاحتياطية الآن (.json)
               </button>
+
+              <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <span className="text-xs text-slate-400">ملف قاعدة بيانات مطحنة الوليد المعتمدة بآخر التحديثات:</span>
+                <a
+                  href="/alwaleed_mill_latest_backup.json"
+                  download="AlWaleed_Mill_Full_Database_2026.json"
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700/60"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  تنزيل ملف مطحنة الوليد المعتمد (.json)
+                </a>
+              </div>
             </div>
           )}
 
