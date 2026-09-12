@@ -734,7 +734,6 @@ export function AppContent() {
           onOpenCompanySetup={() => navigateToTab('company')}
           onOpenOnboardingGuide={() => setIsOnboardingModalOpen(true)}
           onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
-          onOpenJsonBackup={() => navigateToTab('backup-restore')}
           currentUser={currentUser}
           onLogout={handleLogout}
           onSaveCompany={handleSaveCompany}

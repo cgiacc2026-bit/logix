@@ -43,6 +43,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Wrench,
 } from 'lucide-react';
 import { Account, CompanyProfile, DefaultAccountsMapping } from '../types.js';
 import { DatabaseWizardModal } from './DatabaseWizardModal';
@@ -152,6 +153,24 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
   const [isResettingDb, setIsResettingDb] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
+  const [isRepairingSystem, setIsRepairingSystem] = useState(false);
+  const [repairSystemNotice, setRepairSystemNotice] = useState<string | null>(null);
+
+  const handleSystemSelfRepair = async () => {
+    setIsRepairingSystem(true);
+    setRepairSystemNotice(null);
+    try {
+      const res = await DataService.executeImmediateRepairAndDeduplication();
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+      setRepairSystemNotice(res.message);
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء إجراء الإصلاح الفوري وتدقيق السجلات');
+    } finally {
+      setIsRepairingSystem(false);
+    }
+  };
 
   // Enterprise SQL Migration Script States
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
@@ -3015,8 +3034,8 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
             </div>
 
             {/* ACTION CARDS GRID: UNIFIED CANONICAL ENTRY POINTS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Canonical Backup & Restore Hub Entry Card */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* 1. Canonical Backup & Restore Hub Entry Card */}
               <div className="bg-[#FDFCFB] border border-[#E5E1DA] rounded-xl p-6 shadow-xs space-y-4 flex flex-col justify-between hover:border-emerald-600/50 transition-all">
                 <div className="space-y-3">
                   <div className="w-12 h-12 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-center text-emerald-700">
@@ -3024,22 +3043,22 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   </div>
                   <div>
                     <h4 className="text-sm font-serif font-bold text-[#1A1A1A]">
-                      مركز النسخ الاحتياطي والاستعادة الموحد (Unified Backup & Restore Hub)
+                      مركز النسخ الاحتياطي والاستعادة الموحد (Backup & Restore Hub)
                     </h4>
                     <p className="text-xs text-[#8C8273] mt-1 leading-relaxed">
-                      المدخل الحصري المعتمد لإجراء الاستعادة الذكية لملفات JSON مع الاستكمال الآلي للكيانات المفقودة، وتنزيل نموذج ومخطط Draft-07 القياسي، وتصدير نسخ JSON وExcel الشاملة.
+                      المدخل الحصري المعتمد لإجراء الاستعادة الذكية لملفات JSON مع الاستكمال الآلي للكيانات المفقودة، وتنزيل مخطط Draft-07 القياسي، وتصدير نسخ JSON وExcel الشاملة.
                     </p>
                   </div>
 
                   <div className="bg-white p-3 rounded-lg border border-[#E5E1DA] text-[11px] text-[#6E6659] space-y-1">
                     <div className="flex items-center gap-1.5 font-bold text-[#1A1A1A]">
                       <Sparkles className="w-4 h-4 text-emerald-600" />
-                      الخصائص المعتمدة في المركز الموحد:
+                      الخصائص المعتمدة:
                     </div>
                     <ul className="list-disc list-inside space-y-0.5 text-[#8C8273] pr-2">
-                      <li>استيراد ذكي مع إنشاء تلقائي للعملاء والأصناف والحسابات المفقودة</li>
-                      <li>تنزيل النموذج القياسي LOGIX_ERP_STANDARD_TEMPLATE.json</li>
-                      <li>تصدير نسخ JSON وExcel تفصيلية متعددة أوراق العمل</li>
+                      <li>استيراد ذكي مع إنشاء تلقائي للعملاء والأصناف</li>
+                      <li>تنزيل النموذج القياسي المعتمد</li>
+                      <li>تصدير نسخ JSON وExcel الشاملة</li>
                     </ul>
                   </div>
                 </div>
@@ -3050,11 +3069,57 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all mt-2"
                 >
                   <FolderUp className="w-4 h-4 text-emerald-200" />
-                  <span>فتح مركز النسخ الاحتياطي والاستعادة الموحد</span>
+                  <span>فتح مركز النسخ والاستعادة الموحد</span>
                 </button>
               </div>
 
-              {/* Canonical System Cycle Reset Entry Card */}
+              {/* 2. Immediate System Repair & Data Deduplication Card */}
+              <div className="bg-[#FDFCFB] border border-teal-200 rounded-xl p-6 shadow-xs space-y-4 flex flex-col justify-between hover:border-teal-400 transition-all">
+                <div className="space-y-3">
+                  <div className="w-12 h-12 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-center text-teal-700">
+                    <Wrench className={`w-6 h-6 ${isRepairingSystem ? 'animate-spin text-teal-600' : ''}`} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-serif font-bold text-teal-950">
+                      الإصلاح الفوري وتدقيق السجلات (System Self-Repair)
+                    </h4>
+                    <p className="text-xs text-[#8C8273] mt-1 leading-relaxed">
+                      فحص فوري وتدقيق تكامل الفواتير والسندات وقيود اليومية، معالجة أي تكرار بالأرقام المميزة، وضبط أرصدة دليل الحسابات وأمان القيود.
+                    </p>
+                  </div>
+
+                  <div className="bg-teal-50/60 p-3 rounded-lg border border-teal-200 text-[11px] text-teal-900 space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-teal-950">
+                      <CheckCheck className="w-4 h-4 text-teal-700" />
+                      عمليات الصيانة الفورية:
+                    </div>
+                    <ul className="list-disc list-inside space-y-0.5 text-teal-800 pr-2">
+                      <li>تطهير ومعالجة السجلات المكررة</li>
+                      <li>مطابقة قيود اليومية مع الحسابات المقابلة</li>
+                      <li>إعادة فحص وتدقيق الأرقام المرجعية تلقائياً</li>
+                    </ul>
+                  </div>
+
+                  {repairSystemNotice && (
+                    <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 p-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{repairSystemNotice}</span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSystemSelfRepair}
+                  disabled={isRepairingSystem}
+                  className="w-full py-3 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all mt-2"
+                >
+                  <Wrench className={`w-4 h-4 text-teal-200 ${isRepairingSystem ? 'animate-spin' : ''}`} />
+                  <span>{isRepairingSystem ? 'جارٍ الفحص والإصلاح الفوري...' : 'تشغيل الإصلاح الفوري وتدقيق السجلات'}</span>
+                </button>
+              </div>
+
+              {/* 3. Canonical System Cycle Reset Entry Card */}
               <div className="bg-[#FDFCFB] border border-rose-200 rounded-xl p-6 shadow-xs space-y-4 flex flex-col justify-between hover:border-rose-400 transition-all">
                 <div className="space-y-3">
                   <div className="w-12 h-12 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-center text-rose-700">
@@ -3088,7 +3153,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   className="w-full py-3 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all mt-2"
                 >
                   <RotateCcw className="w-4 h-4 text-rose-200" />
-                  <span>الانتقال إلى شاشة تصفير وتهيئة دورة النظام</span>
+                  <span>الانتقال إلى شاشة تصفير دورة النظام</span>
                 </button>
               </div>
             </div>
