@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Account, JournalEntry, JournalLine, Customer, Supplier } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
+import { formatKWD, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
 import {
   FileText,
   Plus,
@@ -98,6 +99,13 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
     }
     return 'NONE';
   };
+
+  // Restrict account selection strictly to analytical leaf accounts
+  const leafAccounts = useMemo(() => {
+    return accounts
+      .filter((a) => isAccountLeaf(a, accounts))
+      .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+  }, [accounts]);
 
   // Calculate total debit and credit in real-time
   const totalDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
@@ -267,6 +275,17 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
         setErrorMsg(`يرجى اختيار الحساب المالي للدليل المحاسبي في السطر رقم (${i + 1}).`);
         return;
       }
+      const acc = accounts.find((a) => a.id === l.accountId);
+      if (!acc) {
+        setErrorMsg(`الحساب المالي في السطر رقم (${i + 1}) غير موجود بالدليل.`);
+        return;
+      }
+      if (!isAccountLeaf(acc, accounts)) {
+        setErrorMsg(
+          `مخالفة محاسبية صريحة: الحساب "${acc.code} - ${acc.nameAr}" في السطر (${i + 1}) هو حساب رئيسي/تجميعي (Parent Account). يُمنع منعاً باتاً تسجيل قيود على الحسابات التجميعية؛ القيود تُسجل حصراً على الحسابات التحليلية الطرفية (Leaf Accounts).`
+        );
+        return;
+      }
       const d = Number(l.debit) || 0;
       const c = Number(l.credit) || 0;
       if (d === 0 && c === 0) {
@@ -281,7 +300,7 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
 
     if (!isBalanced) {
       setErrorMsg(
-        `القيد غير متوازن! إجمالي الطرف المدين (${formatCurrency(totalDebit, currency)}) لا يساوي إجمالي الطرف الدائن (${formatCurrency(totalCredit, currency)}). فارق عدم التوازن: ${formatCurrency(diff, currency)}`
+        `القيد غير متوازن! إجمالي الطرف المدين (${formatKWD(totalDebit)}) لا يساوي إجمالي الطرف الدائن (${formatKWD(totalCredit)}). فارق عدم التوازن: ${formatKWD(diff)}`
       );
       return;
     }
@@ -537,10 +556,10 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                           </td>
                           <td className="py-2 px-3 text-[#6E6659]">{l.memo || '-'}</td>
                           <td className="py-2 px-3 font-serif font-bold text-[#2D6A4F]">
-                            {l.debit > 0 ? formatCurrency(l.debit, currency) : '-'}
+                            {l.debit > 0 ? formatKWD(l.debit) : '-'}
                           </td>
                           <td className="py-2 px-3 font-serif font-bold text-[#9E2A2B]">
-                            {l.credit > 0 ? formatCurrency(l.credit, currency) : '-'}
+                            {l.credit > 0 ? formatKWD(l.credit) : '-'}
                           </td>
                         </tr>
                       ))}
@@ -548,8 +567,8 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                         <td colSpan={3} className="py-2.5 px-3 text-left">
                           الإجمالي المتوازن:
                         </td>
-                        <td className="py-2.5 px-3 text-[#2D6A4F]">{formatCurrency(j.totalDebit, currency)}</td>
-                        <td className="py-2.5 px-3 text-[#9E2A2B]">{formatCurrency(j.totalCredit, currency)}</td>
+                        <td className="py-2.5 px-3 text-[#2D6A4F]">{formatKWD(j.totalDebit)}</td>
+                        <td className="py-2.5 px-3 text-[#9E2A2B]">{formatKWD(j.totalCredit)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -667,7 +686,7 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                             {/* Account Selector */}
                             <div className="col-span-12 sm:col-span-4">
                               <label className="block text-[10px] font-bold text-[#6E6659] mb-0.5">
-                                الحساب المالي #{index + 1} *
+                                الحساب التحليلي / الطرفي #{index + 1} *
                               </label>
                               <select
                                 required
@@ -675,25 +694,18 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                                 onChange={(e) => handleLineChange(index, 'accountId', e.target.value)}
                                 className="w-full bg-white border border-[#E5E1DA] rounded px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#1A1A1A]"
                               >
-                                <option value="">-- اختر الحساب من الدليل --</option>
-                                {accounts
-                                  .filter(
-                                    (a) =>
-                                      a.type === 'DETAIL' ||
-                                      a.level >= 2 ||
-                                      !accounts.some((sub) => sub.parentId === a.id)
-                                  )
-                                  .map((a) => (
-                                    <option key={a.id} value={a.id}>
-                                      {a.code} - {a.nameAr} ({formatCurrency(a.balance, currency)})
-                                    </option>
-                                  ))}
+                                <option value="">-- اختر حساباً طرفياً (Leaf Account Only) --</option>
+                                {leafAccounts.map((a) => (
+                                  <option key={a.id} value={a.id}>
+                                    {a.code} - {a.nameAr} ({formatKWD(a.balance || 0)})
+                                  </option>
+                                ))}
                               </select>
                               {selectedAcc && (
                                 <div className="flex items-center justify-between text-[10px] text-[#6E6659] mt-0.5 px-0.5">
                                   <span>التصنيف: {selectedAcc.category}</span>
-                                  <span className="font-mono text-stone-700">
-                                    الرصيد: {formatCurrency(selectedAcc.balance, currency)}
+                                  <span className="font-mono font-bold text-stone-700">
+                                    الرصيد: {formatKWD(selectedAcc.balance || 0)}
                                   </span>
                                 </div>
                               )}
@@ -834,13 +846,13 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                       <span>
                         إجمالي المدين:{' '}
                         <strong className="text-[#2D6A4F] font-mono">
-                          {formatCurrency(totalDebit, currency)}
+                          {formatKWD(totalDebit)}
                         </strong>
                       </span>
                       <span>
                         إجمالي الدائن:{' '}
                         <strong className="text-[#9E2A2B] font-mono">
-                          {formatCurrency(totalCredit, currency)}
+                          {formatKWD(totalCredit)}
                         </strong>
                       </span>
                     </div>
@@ -854,7 +866,7 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                         <div className="flex items-center gap-2">
                           <span className="text-[#9E2A2B] flex items-center gap-1 bg-rose-50 px-2.5 py-1 rounded border border-rose-200">
                             <AlertTriangle className="w-4 h-4" /> فارق التوازن:{' '}
-                            <span className="font-mono">{formatCurrency(diff, currency)}</span>
+                            <span className="font-mono">{formatKWD(diff)}</span>
                           </span>
                           {diff > 0.001 && (
                             <button
@@ -996,10 +1008,10 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                     </td>
                     <td className="p-2 border border-[#E5E1DA]">{l.memo}</td>
                     <td className="p-2 border border-[#E5E1DA] font-bold text-[#2D6A4F]">
-                      {l.debit > 0 ? l.debit.toFixed(3) : '-'}
+                      {l.debit > 0 ? formatKWD(l.debit) : '-'}
                     </td>
                     <td className="p-2 border border-[#E5E1DA] font-bold text-[#9E2A2B]">
-                      {l.credit > 0 ? l.credit.toFixed(3) : '-'}
+                      {l.credit > 0 ? formatKWD(l.credit) : '-'}
                     </td>
                   </tr>
                 ))}
@@ -1007,9 +1019,9 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                   <td colSpan={3} className="p-2 border border-[#E5E1DA] text-left">
                     الإجمالي:
                   </td>
-                  <td className="p-2 border border-[#E5E1DA] text-[#2D6A4F]">{printJournal.totalDebit.toFixed(3)}</td>
+                  <td className="p-2 border border-[#E5E1DA] text-[#2D6A4F]">{formatKWD(printJournal.totalDebit)}</td>
                   <td className="p-2 border border-[#E5E1DA] text-[#9E2A2B]">
-                    {printJournal.totalCredit.toFixed(3)}
+                    {formatKWD(printJournal.totalCredit)}
                   </td>
                 </tr>
               </tbody>

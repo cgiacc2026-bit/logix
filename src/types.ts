@@ -19,6 +19,7 @@ export interface Account {
   type?: 'ROOT' | 'HEADER' | 'DETAIL';
   description?: string;
   balance?: number; // Calculated dynamic balance
+  isLeaf?: boolean; // True if account has no sub-accounts
 }
 
 export type JournalStatus = 'DRAFT' | 'POSTED' | 'CANCELLED' | 'REVERSED';

@@ -177,6 +177,16 @@ export function formatNumber(amount: number, decimals: number = 3): string {
   });
 }
 
+/**
+ * Standard Central Global Financial Formatter for Kuwaiti Dinar
+ * Strict Single Global Currency Injection: 3 decimal places with د.ك
+ */
+export const formatKWD = (val: number | string | null | undefined): string => {
+  const num = typeof val === 'number' ? val : Number(val || 0);
+  const safeNum = isNaN(num) ? 0 : num;
+  return `${safeNum.toFixed(3)} د.ك`;
+};
+
 export function getCategoryLabelAr(category: string): string {
   switch (category) {
     case 'ASSET':

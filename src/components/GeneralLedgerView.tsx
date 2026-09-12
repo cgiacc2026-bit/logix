@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Account, GeneralLedgerReport } from '../types.js';
 import { formatCurrency, getCategoryBadgeClass, getCategoryLabelAr } from '../utils/formatters.ts';
-import { BookOpen, Calendar, Printer, Filter, ArrowLeftRight } from 'lucide-react';
+import { formatKWD, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
+import { BookOpen, Calendar, Printer, Filter, ArrowLeftRight, Layers } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
 
 interface GeneralLedgerProps {
@@ -24,6 +25,15 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [report, setReport] = useState<GeneralLedgerReport | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  const selectedAccount = useMemo(() => {
+    return accounts.find((a) => a.id === currentAccountId);
+  }, [accounts, currentAccountId]);
+
+  const isSelectedLeaf = useMemo(() => {
+    if (!selectedAccount) return true;
+    return isAccountLeaf(selectedAccount, accounts);
+  }, [selectedAccount, accounts]);
 
   useEffect(() => {
     if (selectedAccountId) {
@@ -84,11 +94,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
             onChange={(e) => setCurrentAccountId(e.target.value)}
             className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#1A1A1A] font-semibold"
           >
-            {accounts.map((acc) => (
-              <option key={acc.id} value={acc.id}>
-                {acc.code} - {acc.nameAr}
-              </option>
-            ))}
+            {accounts.map((acc) => {
+              const leaf = isAccountLeaf(acc, accounts);
+              return (
+                <option key={acc.id} value={acc.id}>
+                  {acc.code} - {acc.nameAr} [{leaf ? 'طرفي/تحليلي' : 'رئيسي/تجميعي'}]
+                </option>
+              );
+            })}
           </select>
         </div>
 
@@ -124,6 +137,16 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
         <div className="p-12 text-center text-[#8C8273] font-serif italic">يرجى اختيار حساب لعرض كشف الحساب.</div>
       ) : (
         <div className="bg-white border border-[#E5E1DA] rounded-lg p-6 space-y-6 shadow-xs printable-card">
+          {/* Parent Account Notice if selected */}
+          {!isSelectedLeaf && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs flex items-center gap-2">
+              <Layers className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                <strong>تنبيه محاسبي:</strong> هذا الحساب هو حساب رئيسي/تجميعي (Parent Account). الحركات المعروضة أدناه هي الحركات التراكمية المجمعة لجميع الحسابات الفرعية الطرفية التابعة له.
+              </span>
+            </div>
+          )}
+
           {/* Account Summary Banner */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E5E1DA] pb-4">
             <div>
@@ -139,6 +162,15 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                 >
                   {getCategoryLabelAr(report.account.category)}
                 </span>
+                <span
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded border ${
+                    isSelectedLeaf
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-stone-100 text-stone-700 border-stone-300'
+                  }`}
+                >
+                  {isSelectedLeaf ? 'حساب طرفي/تحليلي' : 'حساب رئيسي/تجميعي'}
+                </span>
               </div>
               <p className="text-xs text-[#8C8273] mt-1 font-serif italic">
                 طبيعة الحساب: {report.account.normalBalance === 'DEBIT' ? 'مدين (Debit)' : 'دائن (Credit)'} • للفترة من {report.startDate} إلى {report.endDate}
@@ -149,14 +181,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
               <div>
                 <span className="text-[11px] text-[#8C8273] block">الرصيد الافتتاحي:</span>
                 <span className="font-serif font-bold text-[#1A1A1A]">
-                  {formatCurrency(report.openingBalance, currency)}
+                  {formatKWD(report.openingBalance)}
                 </span>
               </div>
               <div className="h-8 w-px bg-[#E5E1DA]" />
               <div>
                 <span className="text-[11px] text-[#8C8273] block">رصيد ختام الفترة:</span>
                 <span className="font-serif font-bold text-[#2D6A4F] text-sm">
-                  {formatCurrency(report.closingBalance, currency)}
+                  {formatKWD(report.closingBalance)}
                 </span>
               </div>
             </div>
@@ -186,7 +218,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                   <td className="py-2.5 px-4">-</td>
                   <td className="py-2.5 px-4">-</td>
                   <td className="py-2.5 px-4 font-serif font-bold text-[#1A1A1A]">
-                    {formatCurrency(report.openingBalance, currency)}
+                    {formatKWD(report.openingBalance)}
                   </td>
                 </tr>
 
@@ -206,13 +238,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                       <td className="py-3 px-4 text-[#8C8273]">{m.reference || '-'}</td>
                       <td className="py-3 px-4 font-serif font-bold text-[#1A1A1A] max-w-xs">{m.description}</td>
                       <td className="py-3 px-4 font-serif font-bold text-[#2D6A4F]">
-                        {m.debit > 0 ? formatCurrency(m.debit, currency) : '-'}
+                        {m.debit > 0 ? formatKWD(m.debit) : '-'}
                       </td>
                       <td className="py-3 px-4 font-serif font-bold text-[#9E2A2B]">
-                        {m.credit > 0 ? formatCurrency(m.credit, currency) : '-'}
+                        {m.credit > 0 ? formatKWD(m.credit) : '-'}
                       </td>
                       <td className="py-3 px-4 font-serif font-bold text-[#1A1A1A] bg-[#F7F5F0]">
-                        {formatCurrency(m.runningBalance, currency)}
+                        {formatKWD(m.runningBalance)}
                       </td>
                     </tr>
                   ))
@@ -224,13 +256,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                     مجموع حركات الفترة والرصيد النهائي:
                   </td>
                   <td className="py-3 px-4 text-[#2D6A4F] font-bold">
-                    {formatCurrency(report.totalDebit, currency)}
+                    {formatKWD(report.totalDebit)}
                   </td>
                   <td className="py-3 px-4 text-[#9E2A2B] font-bold">
-                    {formatCurrency(report.totalCredit, currency)}
+                    {formatKWD(report.totalCredit)}
                   </td>
                   <td className="py-3 px-4 text-[#2D6A4F] font-bold text-sm">
-                    {formatCurrency(report.closingBalance, currency)}
+                    {formatKWD(report.closingBalance)}
                   </td>
                 </tr>
               </tbody>

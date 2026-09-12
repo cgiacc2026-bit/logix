@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { TrialBalanceReport } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
-import { Scale, CheckCircle2, AlertTriangle, Printer, Download, ShieldCheck, X, RefreshCw } from 'lucide-react';
+import { formatKWD, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
+import { Scale, CheckCircle2, AlertTriangle, Printer, Download, ShieldCheck, X, RefreshCw, Filter } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
 
 interface TrialBalanceProps {
@@ -12,8 +13,18 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
   const [asOfDate, setAsOfDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [report, setReport] = useState<TrialBalanceReport | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [filterMode, setFilterMode] = useState<'LEAF_ONLY' | 'ALL'>('LEAF_ONLY');
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
   const [auditResult, setAuditResult] = useState<ReturnType<typeof DataService.performSelfAuditing> | null>(null);
+
+  const displayedItems = useMemo(() => {
+    if (!report) return [];
+    if (filterMode === 'LEAF_ONLY') {
+      const allAccs = report.items.map((i) => i.account);
+      return report.items.filter((i) => i.account.isLeaf ?? isAccountLeaf(i.account, allAccs));
+    }
+    return report.items;
+  }, [report, filterMode]);
 
   const handleRunAudit = () => {
     const res = DataService.performSelfAuditing();
@@ -114,30 +125,56 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
         <div className="p-12 text-center text-[#8C8273] font-serif italic">لا توجد بيانات متاحة لميزان المراجعة.</div>
       ) : (
         <div className="bg-white border border-[#E5E1DA] rounded-lg p-6 space-y-6 shadow-xs printable-card">
-          {/* Balance Status Banner */}
-          <div
-            className={`p-4 rounded-md border flex items-center justify-between gap-4 text-xs ${
-              report.isBalanced
-                ? 'bg-[#EBF5EE] border-[#2D6A4F]/30 text-[#2D6A4F]'
-                : 'bg-[#FDF0F0] border-[#9E2A2B]/30 text-[#9E2A2B]'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              {report.isBalanced ? (
-                <CheckCircle2 className="w-5 h-5 text-[#2D6A4F] shrink-0" />
-              ) : (
-                <AlertTriangle className="w-5 h-5 text-[#9E2A2B] shrink-0" />
-              )}
-              <div>
-                <span className="font-serif font-bold text-sm">
-                  {report.isBalanced
-                    ? '✅ ميزان المراجعة متوازن تماماً (إجمالي الجانب المدين = إجمالي الجانب الدائن)'
-                    : '❌ تنبيه: ميزان المراجعة غير متوازن! يوجد خلل في الترحيل المحاسبي.'}
-                </span>
-                <p className="text-[11px] opacity-80 mt-0.5">
-                  حتى تاريخ {report.asOfDate} • عدد الحسابات المتحركة: {report.items.length} حساب
-                </p>
+          {/* Balance Status Banner & Mode Toggle */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div
+              className={`p-4 rounded-md border flex items-center justify-between gap-4 text-xs flex-1 ${
+                report.isBalanced
+                  ? 'bg-[#EBF5EE] border-[#2D6A4F]/30 text-[#2D6A4F]'
+                  : 'bg-[#FDF0F0] border-[#9E2A2B]/30 text-[#9E2A2B]'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {report.isBalanced ? (
+                  <CheckCircle2 className="w-5 h-5 text-[#2D6A4F] shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-[#9E2A2B] shrink-0" />
+                )}
+                <div>
+                  <span className="font-serif font-bold text-sm">
+                    {report.isBalanced
+                      ? '✅ ميزان المراجعة متوازن تماماً (إجمالي الجانب المدين = إجمالي الجانب الدائن)'
+                      : '❌ تنبيه: ميزان المراجعة غير متوازن! يوجد خلل في الترحيل المحاسبي.'}
+                  </span>
+                  <p className="text-[11px] opacity-80 mt-0.5">
+                    حتى تاريخ {report.asOfDate} • عدد الحسابات المعروضة: {displayedItems.length} حساب
+                  </p>
+                </div>
               </div>
+            </div>
+
+            {/* Filter Toggle */}
+            <div className="flex items-center bg-[#F2EFE9] p-1 rounded-lg border border-[#E5E1DA] text-xs no-print self-start md:self-auto">
+              <button
+                onClick={() => setFilterMode('LEAF_ONLY')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
+                  filterMode === 'LEAF_ONLY'
+                    ? 'bg-white text-[#1A1A1A] shadow-xs'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                }`}
+              >
+                الحسابات الطرفية فقط (المعتمد لمنع التكرار)
+              </button>
+              <button
+                onClick={() => setFilterMode('ALL')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
+                  filterMode === 'ALL'
+                    ? 'bg-white text-[#1A1A1A] shadow-xs'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                }`}
+              >
+                كافة مستويات الحسابات
+              </button>
             </div>
           </div>
 
@@ -167,29 +204,36 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E1DA]">
-                {report.items.map((item) => (
+                {displayedItems.map((item) => (
                   <tr key={item.account.id} className="hover:bg-[#FDFCFB] transition-colors">
                     <td className="py-2.5 px-3 font-mono font-bold text-[#B8860B]">
                       {item.account.code}
                     </td>
-                    <td className="py-2.5 px-3 font-serif font-bold text-[#1A1A1A]">{item.account.nameAr}</td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[#6E6659]">
-                      {item.movementDebit > 0 ? formatCurrency(item.movementDebit, currency) : '-'}
+                    <td className="py-2.5 px-3 font-serif font-bold text-[#1A1A1A]">
+                      <div className="flex items-center gap-2">
+                        <span>{item.account.nameAr}</span>
+                        {item.account.isLeaf ? (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            طرفي
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-300">
+                            تجميعي
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2.5 px-3 text-center font-mono text-[#6E6659]">
-                      {item.movementCredit > 0
-                        ? formatCurrency(item.movementCredit, currency)
-                        : '-'}
+                      {item.movementDebit > 0 ? formatKWD(item.movementDebit) : '-'}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[#6E6659]">
+                      {item.movementCredit > 0 ? formatKWD(item.movementCredit) : '-'}
                     </td>
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-[#2D6A4F]">
-                      {item.endingBalanceDebit > 0
-                        ? formatCurrency(item.endingBalanceDebit, currency)
-                        : '-'}
+                      {item.endingBalanceDebit > 0 ? formatKWD(item.endingBalanceDebit) : '-'}
                     </td>
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-[#9E2A2B]">
-                      {item.endingBalanceCredit > 0
-                        ? formatCurrency(item.endingBalanceCredit, currency)
-                        : '-'}
+                      {item.endingBalanceCredit > 0 ? formatKWD(item.endingBalanceCredit) : '-'}
                     </td>
                   </tr>
                 ))}
@@ -197,19 +241,19 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                 {/* Total Summary Row */}
                 <tr className="bg-[#F7F5F0] font-serif font-bold text-xs border-t-2 border-[#E5E1DA] text-[#1A1A1A]">
                   <td colSpan={2} className="py-3.5 px-4 text-left">
-                    الإجمالي الكلي لميزان المراجعة:
+                    الإجمالي الكلي لميزان المراجعة (حسابات طرفية فقط لمنع الازدواجية):
                   </td>
                   <td className="py-3.5 px-3 text-center font-mono text-[#2D6A4F]">
-                    {formatCurrency(report.totalMovementDebit, currency)}
+                    {formatKWD(report.totalMovementDebit)}
                   </td>
                   <td className="py-3.5 px-3 text-center font-mono text-[#9E2A2B]">
-                    {formatCurrency(report.totalMovementCredit, currency)}
+                    {formatKWD(report.totalMovementCredit)}
                   </td>
                   <td className="py-3.5 px-3 text-center font-mono text-[#2D6A4F] bg-[#EBF5EE]">
-                    {formatCurrency(report.totalEndingDebit, currency)}
+                    {formatKWD(report.totalEndingDebit)}
                   </td>
                   <td className="py-3.5 px-3 text-center font-mono text-[#9E2A2B] bg-[#FDF0F0]">
-                    {formatCurrency(report.totalEndingCredit, currency)}
+                    {formatKWD(report.totalEndingCredit)}
                   </td>
                 </tr>
               </tbody>
@@ -287,11 +331,11 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                   <div className="text-xs space-y-1 font-mono text-neutral-600">
                     <div className="flex justify-between">
                       <span>إجمالي المدين:</span>
-                      <span className="font-bold text-[#2D6A4F]">{formatCurrency(auditResult.totalDebit, currency)}</span>
+                      <span className="font-bold text-[#2D6A4F]">{formatKWD(auditResult.totalDebit)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>إجمالي الدائن:</span>
-                      <span className="font-bold text-[#9E2A2B]">{formatCurrency(auditResult.totalCredit, currency)}</span>
+                      <span className="font-bold text-[#9E2A2B]">{formatKWD(auditResult.totalCredit)}</span>
                     </div>
                   </div>
                 </div>
@@ -313,11 +357,11 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                   <div className="text-xs space-y-1 font-mono text-neutral-600">
                     <div className="flex justify-between">
                       <span>أرصدة العملاء:</span>
-                      <span className="font-bold">{formatCurrency(auditResult.receivableSubledger, currency)}</span>
+                      <span className="font-bold">{formatKWD(auditResult.receivableSubledger)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>حساب المراقبة:</span>
-                      <span className="font-bold">{formatCurrency(auditResult.receivableControl, currency)}</span>
+                      <span className="font-bold">{formatKWD(auditResult.receivableControl)}</span>
                     </div>
                   </div>
                 </div>
@@ -339,11 +383,11 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                   <div className="text-xs space-y-1 font-mono text-neutral-600">
                     <div className="flex justify-between">
                       <span>أرصدة الموردين:</span>
-                      <span className="font-bold">{formatCurrency(auditResult.payableSubledger, currency)}</span>
+                      <span className="font-bold">{formatKWD(auditResult.payableSubledger)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>حساب المراقبة:</span>
-                      <span className="font-bold">{formatCurrency(auditResult.payableControl, currency)}</span>
+                      <span className="font-bold">{formatKWD(auditResult.payableControl)}</span>
                     </div>
                   </div>
                 </div>
@@ -365,11 +409,11 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                   <div className="text-xs space-y-1 font-mono text-neutral-600">
                     <div className="flex justify-between">
                       <span>تقييم الأصناف:</span>
-                      <span className="font-bold">{formatCurrency(auditResult.inventorySubledger, currency)}</span>
+                      <span className="font-bold">{formatKWD(auditResult.inventorySubledger)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>حساب المراقبة:</span>
-                      <span className="font-bold">{formatCurrency(auditResult.inventoryControl, currency)}</span>
+                      <span className="font-bold">{formatKWD(auditResult.inventoryControl)}</span>
                     </div>
                   </div>
                 </div>

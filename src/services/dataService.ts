@@ -64,6 +64,7 @@ import { cacheService } from './cacheService.ts';
 import { backgroundSync } from './backgroundSyncService.ts';
 import { getAccountStatement } from './statementService.ts';
 import { IAS2CostingEngine } from './costingEngine.ts';
+import { aggregateChartOfAccountsTree, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
 
 const STORAGE_KEYS = {
   COMPANY: 'alwaleed_erp_company',
@@ -1563,69 +1564,8 @@ export class DataService {
 
   // Accounts
   public static calculateDynamicAccountBalances(accounts: Account[], journals: JournalEntry[]): Account[] {
-    const balanceMap = new Map<string, number>();
-    const debitMap = new Map<string, number>();
-    const creditMap = new Map<string, number>();
-    const countMap = new Map<string, number>();
-
-    const accountByLookup = new Map<string, Account>();
-    accounts.forEach((a) => {
-      accountByLookup.set(a.id, a);
-      if (a.code) accountByLookup.set(a.code, a);
-    });
-
-    const postedJournals = (journals || []).filter((j) => j.status === 'POSTED');
-
-    for (const journal of postedJournals) {
-      for (const line of journal.lines || []) {
-        const acc = accountByLookup.get(line.accountId) || accountByLookup.get(line.accountCode || '');
-        if (!acc) continue;
-
-        const currentDebit = debitMap.get(acc.id) || 0;
-        const currentCredit = creditMap.get(acc.id) || 0;
-        const lineDebit = Number(line.debit) || 0;
-        const lineCredit = Number(line.credit) || 0;
-
-        debitMap.set(acc.id, currentDebit + lineDebit);
-        creditMap.set(acc.id, currentCredit + lineCredit);
-        countMap.set(acc.id, (countMap.get(acc.id) || 0) + 1);
-
-        const currentBal = balanceMap.get(acc.id) || 0;
-        if (acc.normalBalance === 'DEBIT') {
-          balanceMap.set(acc.id, currentBal + (lineDebit - lineCredit));
-        } else {
-          balanceMap.set(acc.id, currentBal + (lineCredit - lineDebit));
-        }
-      }
-    }
-
-    const accountsCopy: Account[] = JSON.parse(JSON.stringify(accounts));
-    accountsCopy.sort((a, b) => b.level - a.level);
-
-    // Roll up into parents
-    accountsCopy.forEach((acc) => {
-      const ownBal = balanceMap.get(acc.id) || 0;
-      acc.balance = ownBal;
-      (acc as any).totalDebitMovement = debitMap.get(acc.id) || 0;
-      (acc as any).totalCreditMovement = creditMap.get(acc.id) || 0;
-      (acc as any).movementCount = countMap.get(acc.id) || 0;
-
-      if (acc.parentId) {
-        const parentBal = balanceMap.get(acc.parentId) || 0;
-        balanceMap.set(acc.parentId, parentBal + ownBal);
-
-        const parentDeb = debitMap.get(acc.parentId) || 0;
-        debitMap.set(acc.parentId, parentDeb + (debitMap.get(acc.id) || 0));
-
-        const parentCred = creditMap.get(acc.parentId) || 0;
-        creditMap.set(acc.parentId, parentCred + (creditMap.get(acc.id) || 0));
-
-        const parentCount = countMap.get(acc.parentId) || 0;
-        countMap.set(acc.parentId, parentCount + (countMap.get(acc.id) || 0));
-      }
-    });
-
-    return accountsCopy.sort((a, b) => a.code.localeCompare(b.code));
+    const result = aggregateChartOfAccountsTree(accounts, journals);
+    return result.accounts;
   }
 
   /**
@@ -6065,10 +6005,15 @@ export class DataService {
     let totalEndingCredit = 0;
 
     const items = accounts.map((acc) => {
+      const isLeaf = isAccountLeaf(acc, accounts);
       const movDeb = debitMap.get(acc.id) || 0;
       const movCred = creditMap.get(acc.id) || 0;
-      totalMovementDebit += movDeb;
-      totalMovementCredit += movCred;
+
+      // Strict rule: Only leaf accounts accumulate into grand totals to prevent double-counting
+      if (isLeaf) {
+        totalMovementDebit += movDeb;
+        totalMovementCredit += movCred;
+      }
 
       let endDeb = 0;
       let endCred = 0;
@@ -6083,11 +6028,13 @@ export class DataService {
         else endDeb = -net;
       }
 
-      totalEndingDebit += endDeb;
-      totalEndingCredit += endCred;
+      if (isLeaf) {
+        totalEndingDebit += endDeb;
+        totalEndingCredit += endCred;
+      }
 
       return {
-        account: acc,
+        account: { ...acc, isLeaf } as any,
         openingBalanceDebit: 0,
         openingBalanceCredit: 0,
         movementDebit: movDeb,
@@ -6120,11 +6067,28 @@ export class DataService {
     let totalDebit = 0;
     let totalCredit = 0;
 
+    const isLeaf = isAccountLeaf(account, accounts);
+    const targetIds = new Set<string>();
+    targetIds.add(account.id);
+    if (!isLeaf) {
+      const code = String(account.code || '').trim();
+      accounts.forEach((a) => {
+        if (a.id === account.id) return;
+        const c = String(a.code || '').trim();
+        if (a.parentId === account.id || (code && c.startsWith(code))) {
+          if (isAccountLeaf(a, accounts)) {
+            targetIds.add(a.id);
+          }
+        }
+      });
+    }
+
     const movements: any[] = [];
 
     journals.forEach((j) => {
       j.lines.forEach((l) => {
-        if (l.accountId === account.id || l.accountCode === account.code) {
+        const isMatch = targetIds.has(l.accountId) || accounts.some((a) => targetIds.has(a.id) && a.code === l.accountCode);
+        if (isMatch) {
           const d = Number(l.debit) || 0;
           const c = Number(l.credit) || 0;
           totalDebit += d;
@@ -6195,9 +6159,8 @@ export class DataService {
     let totalExpenses = 0;
 
     accounts.forEach((acc) => {
-      // Leaf accounts only
-      const hasChildren = accounts.some((child) => child.parentId === acc.id);
-      if (hasChildren && acc.level < 4) return;
+      // Leaf accounts only - prevent double counting
+      if (!isAccountLeaf(acc, accounts)) return;
 
       const isRev = acc.category === 'REVENUE' || acc.code.startsWith('4');
       const isExp = acc.category === 'EXPENSE' || acc.code.startsWith('5');
@@ -6276,8 +6239,8 @@ export class DataService {
     let totalEquityBase = 0;
 
     withBalances.forEach((acc) => {
-      const hasChildren = withBalances.some((child) => child.parentId === acc.id);
-      if (hasChildren && acc.level < 4) return;
+      // Leaf accounts only - prevent double counting
+      if (!isAccountLeaf(acc, withBalances)) return;
 
       const val = acc.balance || 0;
       if (val === 0) return;

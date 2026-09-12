@@ -1,6 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Account, AccountCategory, JournalEntry } from '../types.js';
-import { formatCurrency, getCategoryBadgeClass, getCategoryLabelAr } from '../utils/formatters.ts';
+import { getCategoryBadgeClass, getCategoryLabelAr } from '../utils/formatters.ts';
+import {
+  aggregateChartOfAccountsTree,
+  formatKWD,
+  EnrichedAccount,
+  getDescendantLeaves,
+} from '../utils/accountingTreeEngine.ts';
 import {
   FolderTree,
   Plus,
@@ -22,7 +28,8 @@ import {
   CheckCircle2,
   Calendar,
   Clock,
-  BookOpen
+  BookOpen,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ChartOfAccountsProps {
@@ -46,6 +53,7 @@ interface AccountMovementDetail {
   credit: number;
   runningBalance: number;
   entityName?: string;
+  childAccountName?: string;
 }
 
 export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
@@ -82,175 +90,99 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Quick Movement Inspector Modal
-  const [inspectedAccount, setInspectedAccount] = useState<Account | null>(null);
+  const [inspectedAccount, setInspectedAccount] = useState<EnrichedAccount | null>(null);
 
-  // Compute live movements and rolled up balances across the entire chart with strict deduplication
-  const enrichedAccounts = useMemo(() => {
-    // 1. Deduplicate incoming accounts by code to guarantee single entry per code
-    const dedupedMap = new Map<string, Account>();
-    for (const a of accounts || []) {
-      if (!a) continue;
-      const codeKey = String(a.code || a.id || '').trim();
-      if (!codeKey) continue;
-      if (!dedupedMap.has(codeKey)) {
-        dedupedMap.set(codeKey, { ...a });
-      } else {
-        const existing = dedupedMap.get(codeKey)!;
-        const bestBal = Math.abs(a.balance || 0) > Math.abs(existing.balance || 0) ? (a.balance || 0) : (existing.balance || 0);
-        const preferredId = existing.id.startsWith('acc-') ? existing.id : (a.id.startsWith('acc-') ? a.id : existing.id);
-        dedupedMap.set(codeKey, { ...existing, id: preferredId, balance: bestBal });
-      }
-    }
-    const cleanAccountsList = Array.from(dedupedMap.values());
-
-    const balanceMap = new Map<string, number>();
-    const debitMap = new Map<string, number>();
-    const creditMap = new Map<string, number>();
-    const countMap = new Map<string, number>();
-
-    const accountByLookup = new Map<string, Account>();
-    cleanAccountsList.forEach((a) => {
-      accountByLookup.set(a.id, a);
-      if (a.code) accountByLookup.set(a.code, a);
-    });
-
-    const postedJournals = (journals || []).filter((j) => j.status === 'POSTED');
-
-    for (const journal of postedJournals) {
-      for (const line of journal.lines || []) {
-        const acc = accountByLookup.get(line.accountId) || accountByLookup.get(line.accountCode || '');
-        if (!acc) continue;
-
-        const currentDebit = debitMap.get(acc.id) || 0;
-        const currentCredit = creditMap.get(acc.id) || 0;
-        const lineDebit = Number(line.debit) || 0;
-        const lineCredit = Number(line.credit) || 0;
-
-        debitMap.set(acc.id, currentDebit + lineDebit);
-        creditMap.set(acc.id, currentCredit + lineCredit);
-        countMap.set(acc.id, (countMap.get(acc.id) || 0) + 1);
-
-        const currentBal = balanceMap.get(acc.id) || 0;
-        if (acc.normalBalance === 'DEBIT') {
-          balanceMap.set(acc.id, currentBal + (lineDebit - lineCredit));
-        } else {
-          balanceMap.set(acc.id, currentBal + (lineCredit - lineDebit));
-        }
-      }
-    }
-
-    const accountsCopy: Account[] = JSON.parse(JSON.stringify(cleanAccountsList));
-    accountsCopy.sort((a, b) => b.level - a.level);
-
-    // Roll up into parents
-    accountsCopy.forEach((acc) => {
-      const ownBal = balanceMap.get(acc.id) || 0;
-      acc.balance = ownBal;
-      (acc as any).totalDebitMovement = debitMap.get(acc.id) || 0;
-      (acc as any).totalCreditMovement = creditMap.get(acc.id) || 0;
-      (acc as any).movementCount = countMap.get(acc.id) || 0;
-
-      if (acc.parentId) {
-        const parentBal = balanceMap.get(acc.parentId) || 0;
-        balanceMap.set(acc.parentId, parentBal + ownBal);
-
-        const parentDeb = debitMap.get(acc.parentId) || 0;
-        debitMap.set(acc.parentId, parentDeb + (debitMap.get(acc.id) || 0));
-
-        const parentCred = creditMap.get(acc.parentId) || 0;
-        creditMap.set(acc.parentId, parentCred + (creditMap.get(acc.id) || 0));
-
-        const parentCount = countMap.get(acc.parentId) || 0;
-        countMap.set(acc.parentId, parentCount + (countMap.get(acc.id) || 0));
-      }
-    });
-
-    return accountsCopy.sort((a, b) => a.code.localeCompare(b.code));
+  // 1. Strict Tree Aggregation Result: single snapshot cached calculation (Zero Double-Counting)
+  const aggregationResult = useMemo(() => {
+    return aggregateChartOfAccountsTree(accounts, journals);
   }, [accounts, journals]);
 
-  // Overall Totals for KPIs
-  const summaryKPIs = useMemo(() => {
-    let totalAssets = 0;
-    let totalLiabilities = 0;
-    let totalEquity = 0;
-    let totalRevenues = 0;
-    let totalExpenses = 0;
-    let totalSystemDebit = 0;
-    let totalSystemCredit = 0;
+  const enrichedAccounts = aggregationResult.accounts;
+  const summaryKPIs = aggregationResult.kpis;
 
-    // Sum level 1 or 2 roots
-    const rootAccounts = enrichedAccounts.filter((a) => a.level === 1 || !a.parentId);
-    rootAccounts.forEach((acc) => {
-      const bal = Number(acc.balance) || 0;
-      if (acc.category === 'ASSET') totalAssets += bal;
-      if (acc.category === 'LIABILITY') totalLiabilities += bal;
-      if (acc.category === 'EQUITY') totalEquity += bal;
-      if (acc.category === 'REVENUE') totalRevenues += bal;
-      if (acc.category === 'EXPENSE') totalExpenses += bal;
-    });
-
-    // Sum total debit & credit movements across all posted journals
-    (journals || [])
-      .filter((j) => j.status === 'POSTED')
-      .forEach((j) => {
-        (j.lines || []).forEach((l) => {
-          totalSystemDebit += Number(l.debit) || 0;
-          totalSystemCredit += Number(l.credit) || 0;
-        });
-      });
-
-    return {
-      totalAssets,
-      totalLiabilities,
-      totalEquity,
-      totalRevenues,
-      totalExpenses,
-      totalSystemDebit,
-      totalSystemCredit,
-      isDoubleEntryBalanced: Math.abs(totalSystemDebit - totalSystemCredit) < 0.01,
-    };
-  }, [enrichedAccounts, journals]);
-
-  // Calculate inspected account detailed movements
+  // Calculate inspected account detailed movements (direct if leaf, aggregated if parent)
   const inspectedMovements: AccountMovementDetail[] = useMemo(() => {
     if (!inspectedAccount) return [];
     const moves: AccountMovementDetail[] = [];
     const postedJournals = (journals || [])
-      .filter((j) => j.status === 'POSTED')
+      .filter((j) => j.status === 'POSTED' && !(j as any).isReversed && !(j as any).reversedEntryId)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     let running = 0;
 
-    for (const j of postedJournals) {
-      for (const l of j.lines || []) {
-        if (l.accountId === inspectedAccount.id || l.accountCode === inspectedAccount.code) {
-          const deb = Number(l.debit) || 0;
-          const cred = Number(l.credit) || 0;
+    if (inspectedAccount.isLeaf) {
+      // Direct movements on leaf account
+      for (const j of postedJournals) {
+        for (const l of j.lines || []) {
+          if (l.accountId === inspectedAccount.id || l.accountCode === inspectedAccount.code) {
+            const deb = Number(l.debit) || 0;
+            const cred = Number(l.credit) || 0;
 
-          if (inspectedAccount.normalBalance === 'DEBIT') {
-            running += deb - cred;
-          } else {
-            running += cred - deb;
+            if (inspectedAccount.normalBalance === 'DEBIT') {
+              running += deb - cred;
+            } else {
+              running += cred - deb;
+            }
+
+            moves.push({
+              journalId: j.id,
+              journalNumber: j.entryNumber || (j as any).journalNumber || j.reference || j.id.slice(0, 8),
+              date: j.date,
+              reference: j.reference || '—',
+              description: j.description || '—',
+              memo: l.memo || '',
+              debit: deb,
+              credit: cred,
+              runningBalance: running,
+              entityName: l.entityNameAr || l.entityType,
+            });
           }
+        }
+      }
+    } else {
+      // Aggregated movements across all descendant leaf accounts
+      const descendantLeaves = getDescendantLeaves(inspectedAccount, accounts, aggregationResult.leafAccounts);
+      const descendantIdSet = new Set(descendantLeaves.map((d) => d.id));
+      const descendantCodeSet = new Set(descendantLeaves.map((d) => d.code));
+      const leafNameMap = new Map(descendantLeaves.map((d) => [d.id, `${d.code} - ${d.nameAr}`]));
 
-          moves.push({
-            journalId: j.id,
-            journalNumber: j.entryNumber || (j as any).journalNumber || j.reference || j.id.slice(0, 8),
-            date: j.date,
-            reference: j.reference || '—',
-            description: j.description || '—',
-            memo: l.memo || '',
-            debit: deb,
-            credit: cred,
-            runningBalance: running,
-            entityName: l.entityNameAr || l.entityType,
-          });
+      for (const j of postedJournals) {
+        for (const l of j.lines || []) {
+          if (
+            descendantIdSet.has(l.accountId) ||
+            descendantCodeSet.has(l.accountCode || '') ||
+            l.accountId === inspectedAccount.id ||
+            l.accountCode === inspectedAccount.code
+          ) {
+            const deb = Number(l.debit) || 0;
+            const cred = Number(l.credit) || 0;
+
+            if (inspectedAccount.normalBalance === 'DEBIT') {
+              running += deb - cred;
+            } else {
+              running += cred - deb;
+            }
+
+            moves.push({
+              journalId: j.id,
+              journalNumber: j.entryNumber || (j as any).journalNumber || j.reference || j.id.slice(0, 8),
+              date: j.date,
+              reference: j.reference || '—',
+              description: j.description || '—',
+              memo: l.memo || '',
+              debit: deb,
+              credit: cred,
+              runningBalance: running,
+              entityName: l.entityNameAr || l.entityType,
+              childAccountName: leafNameMap.get(l.accountId) || l.accountNameAr || l.accountCode,
+            });
+          }
         }
       }
     }
 
     return moves;
-  }, [inspectedAccount, journals]);
+  }, [inspectedAccount, journals, accounts, aggregationResult]);
 
   const toggleExpand = (id: string) => {
     setExpandedNodes((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -387,8 +319,9 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
           </div>
           <div className="text-sm font-mono font-black text-emerald-800">
-            {formatCurrency(summaryKPIs.totalAssets, currency)}
+            {formatKWD(summaryKPIs.totalAssets)}
           </div>
+          <div className="text-[9px] text-[#8C8273]">مجموع الحسابات الطرفية فقط</div>
         </div>
 
         <div className="bg-white border border-[#E5E1DA] rounded-xl p-3.5 shadow-xs space-y-1">
@@ -397,8 +330,9 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
             <span className="w-2 h-2 rounded-full bg-rose-500"></span>
           </div>
           <div className="text-sm font-mono font-black text-rose-800">
-            {formatCurrency(summaryKPIs.totalLiabilities, currency)}
+            {formatKWD(summaryKPIs.totalLiabilities)}
           </div>
+          <div className="text-[9px] text-[#8C8273]">مجموع الحسابات الطرفية فقط</div>
         </div>
 
         <div className="bg-white border border-[#E5E1DA] rounded-xl p-3.5 shadow-xs space-y-1">
@@ -407,8 +341,9 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
             <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
           </div>
           <div className="text-sm font-mono font-black text-indigo-800">
-            {formatCurrency(summaryKPIs.totalEquity, currency)}
+            {formatKWD(summaryKPIs.totalEquity)}
           </div>
+          <div className="text-[9px] text-[#8C8273]">مجموع الحسابات الطرفية فقط</div>
         </div>
 
         <div className="bg-white border border-[#E5E1DA] rounded-xl p-3.5 shadow-xs space-y-1">
@@ -417,8 +352,9 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
           </div>
           <div className="text-sm font-mono font-black text-blue-800">
-            {formatCurrency(summaryKPIs.totalRevenues, currency)}
+            {formatKWD(summaryKPIs.totalRevenues)}
           </div>
+          <div className="text-[9px] text-[#8C8273]">مجموع الحسابات الطرفية فقط</div>
         </div>
 
         <div className="bg-white border border-[#E5E1DA] rounded-xl p-3.5 shadow-xs space-y-1">
@@ -427,8 +363,9 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
             <span className="w-2 h-2 rounded-full bg-amber-500"></span>
           </div>
           <div className="text-sm font-mono font-black text-amber-800">
-            {formatCurrency(summaryKPIs.totalExpenses, currency)}
+            {formatKWD(summaryKPIs.totalExpenses)}
           </div>
+          <div className="text-[9px] text-[#8C8273]">مجموع الحسابات الطرفية فقط</div>
         </div>
 
         <div className="bg-gradient-to-br from-[#1A1A1A] to-[#2D2B28] text-white rounded-xl p-3.5 shadow-xs space-y-1">
@@ -438,10 +375,10 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
           </div>
           <div className="text-xs font-mono font-black text-[#D4AF37] flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-            <span>متوازن 100%</span>
+            <span>{summaryKPIs.isDoubleEntryBalanced ? 'متوازن دفترياً 100%' : 'تحت التدقيق'}</span>
           </div>
           <div className="text-[9px] text-gray-400 font-mono truncate">
-            مدين: {formatCurrency(summaryKPIs.totalSystemDebit, currency)}
+            مدين: {formatKWD(summaryKPIs.totalSystemDebit)}
           </div>
         </div>
       </div>
@@ -494,7 +431,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
           }`}
         >
           <Activity className="w-3.5 h-3.5" />
-          <span>الحسابات ذات الحركات فقط ({enrichedAccounts.filter((a) => (a as any).movementCount > 0).length})</span>
+          <span>الحسابات ذات الحركات فقط ({enrichedAccounts.filter((a) => (a.movementCount || 0) > 0).length})</span>
         </button>
       </div>
 
@@ -502,26 +439,28 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
       <div className="bg-white border border-[#E5E1DA] rounded-2xl overflow-hidden shadow-xs">
         <div className="bg-[#FAF8F5] border-b border-[#E5E1DA] px-6 py-3.5 grid grid-cols-12 text-xs font-serif font-black text-[#6E6659]">
           <div className="col-span-6 sm:col-span-4">كود واسم الحساب المحاسبي</div>
-          <div className="col-span-3 sm:col-span-2 text-center">التصنيف والطبيعة</div>
+          <div className="col-span-3 sm:col-span-2 text-center">نوع وطبيعة الحساب</div>
           <div className="hidden sm:block sm:col-span-2 text-left">حركات المدين / الدائن</div>
-          <div className="col-span-3 sm:col-span-2 text-left">الرصيد الفعلي الحالي</div>
+          <div className="col-span-3 sm:col-span-2 text-left">الرصيد المعتمد (د.ك)</div>
           <div className="col-span-12 sm:col-span-2 text-center sm:text-left mt-2 sm:mt-0">إجراءات الحساب</div>
         </div>
 
         <div className="divide-y divide-[#E5E1DA] p-2">
           {filteredAccounts.length > 0 ? (
             filteredAccounts.map((acc) => {
-              const hasChildren = accounts.some((child) => child.parentId === acc.id);
+              const hasChildren = !acc.isLeaf;
               const isExpanded = expandedNodes[acc.id] ?? true;
-              const debitMove = (acc as any).totalDebitMovement || 0;
-              const creditMove = (acc as any).totalCreditMovement || 0;
-              const movCount = (acc as any).movementCount || 0;
+              const debitMove = acc.totalDebitMovement || 0;
+              const creditMove = acc.totalCreditMovement || 0;
+              const movCount = acc.movementCount || 0;
               const paddingRight = `${(acc.level - 1) * 1.5}rem`;
 
               return (
                 <div
                   key={acc.id}
-                  className="hover:bg-[#FAF9F6] transition-colors p-3 rounded-xl grid grid-cols-12 items-center text-xs gap-y-2 sm:gap-y-0"
+                  className={`hover:bg-[#FAF9F6] transition-colors p-3 rounded-xl grid grid-cols-12 items-center text-xs gap-y-2 sm:gap-y-0 ${
+                    acc.isLeaf ? 'bg-white' : 'bg-[#FCFBF9]'
+                  }`}
                   style={{ paddingRight }}
                 >
                   {/* Account Code & Name */}
@@ -541,17 +480,29 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                       <span className="w-6 inline-block text-center text-[#C8C2B7]">•</span>
                     )}
 
-                    <span className="font-mono font-black text-[#B8860B] bg-[#FAF8F5] px-2 py-0.5 rounded-md border border-[#E5E1DA]">
+                    <span
+                      className={`font-mono font-black px-2 py-0.5 rounded-md border text-xs ${
+                        acc.isLeaf
+                          ? 'text-[#1A1A1A] bg-white border-[#E5E1DA]'
+                          : 'text-[#B8860B] bg-[#FAF8F5] border-[#D4AF37]/40'
+                      }`}
+                    >
                       {acc.code}
                     </span>
 
                     <div className="truncate">
-                      <span className="font-serif font-bold text-[#1A1A1A] block truncate">{acc.nameAr}</span>
+                      <span
+                        className={`font-serif block truncate ${
+                          acc.isLeaf ? 'font-bold text-[#1A1A1A]' : 'font-black text-[#1A1A1A] text-sm'
+                        }`}
+                      >
+                        {acc.nameAr}
+                      </span>
                       <span className="text-[10px] text-[#8C8273] block truncate">{acc.nameEn}</span>
                     </div>
                   </div>
 
-                  {/* Category Badge & Normal Balance */}
+                  {/* Category Badge & Leaf/Parent Indicator */}
                   <div className="col-span-3 sm:col-span-2 text-center flex flex-col items-center gap-1">
                     <span
                       className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${getCategoryBadgeClass(
@@ -560,31 +511,49 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                     >
                       {getCategoryLabelAr(acc.category)}
                     </span>
-                    <span className="text-[10px] text-[#8C8273] font-semibold">
-                      {acc.normalBalance === 'DEBIT' ? 'طبيعته مدين' : 'طبيعته دائن'}
-                    </span>
+                    {acc.isLeaf ? (
+                      <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        حساب تحليلي / طرفي
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-50 text-amber-900 border border-amber-300">
+                        حساب رئيسي / تجميعي ({acc.leafCount})
+                      </span>
+                    )}
                   </div>
 
                   {/* Movements Debit / Credit */}
                   <div className="hidden sm:flex sm:col-span-2 flex-col text-left font-mono text-[11px]">
                     <div className="text-emerald-800 flex items-center justify-end gap-1">
-                      <span>+{formatCurrency(debitMove, currency)}</span>
+                      <span>+{formatKWD(debitMove)}</span>
                       <span className="text-[9px] text-[#8C8273]">مدين</span>
                     </div>
                     <div className="text-rose-800 flex items-center justify-end gap-1">
-                      <span>-{formatCurrency(creditMove, currency)}</span>
+                      <span>-{formatKWD(creditMove)}</span>
                       <span className="text-[9px] text-[#8C8273]">دائن</span>
                     </div>
                   </div>
 
                   {/* Dynamic Net Balance */}
                   <div className="col-span-3 sm:col-span-2 text-left space-y-0.5">
-                    <div className="font-mono font-black text-xs sm:text-sm text-[#1A1A1A]">
-                      {formatCurrency(acc.balance || 0, currency)}
+                    <div
+                      className={`font-mono font-black text-xs sm:text-sm ${
+                        acc.isLeaf ? 'text-[#1A1A1A]' : 'text-[#B8860B]'
+                      }`}
+                    >
+                      {formatKWD(acc.balance || 0)}
                     </div>
-                    {movCount > 0 && (
-                      <span className="inline-block px-1.5 py-0.2 bg-blue-50 text-blue-800 text-[10px] rounded font-bold">
-                        {movCount} حركة مسجلة
+                    {acc.isLeaf ? (
+                      movCount > 0 ? (
+                        <span className="inline-block px-1.5 py-0.2 bg-blue-50 text-blue-800 text-[10px] rounded font-bold border border-blue-200">
+                          {movCount} حركة مسجلة
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-[#8C8273]">لا حركات</span>
+                      )
+                    ) : (
+                      <span className="inline-block px-1.5 py-0.2 bg-amber-50 text-amber-900 text-[9px] rounded font-semibold border border-amber-200">
+                        تجميعي من الأبناء
                       </span>
                     )}
                   </div>
@@ -593,7 +562,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                   <div className="col-span-12 sm:col-span-2 flex items-center justify-end gap-1.5 pt-1 sm:pt-0">
                     <button
                       onClick={() => setInspectedAccount(acc)}
-                      title="معاينة حركات الحساب التفصيلية"
+                      title={acc.isLeaf ? 'معاينة حركات الحساب الطرفية' : 'معاينة الحركات المجمعة للحساب التجميعي'}
                       className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
                     >
                       <Eye className="w-3.5 h-3.5" />
@@ -652,7 +621,13 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
           <div className="bg-white border border-[#E5E1DA] w-full max-w-4xl rounded-2xl p-6 shadow-2xl space-y-5 max-h-[90vh] flex flex-col text-right dir-rtl animate-in fade-in zoom-in duration-150">
             <div className="flex items-center justify-between border-b border-[#E5E1DA] pb-4 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-50 text-blue-700 rounded-xl flex items-center justify-center font-bold">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${
+                    inspectedAccount.isLeaf
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
                   <Activity className="w-5 h-5" />
                 </div>
                 <div>
@@ -660,9 +635,20 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                     <span>حركات الحساب:</span>
                     <span className="font-mono text-[#B8860B]">{inspectedAccount.code}</span>
                     <span>- {inspectedAccount.nameAr}</span>
+                    {inspectedAccount.isLeaf ? (
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        حساب تحليلي / طرفي
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-50 text-amber-800 border border-amber-300">
+                        حساب رئيسي / تجميعي ({inspectedAccount.leafCount} فرعي)
+                      </span>
+                    )}
                   </h3>
                   <p className="text-xs text-[#8C8273]">
-                    كافة القيود اليومية المرحلة المؤثرة على هذا الحساب مع الرصيد المتراكم اللحظي
+                    {inspectedAccount.isLeaf
+                      ? 'القيود اليومية المسجلة مباشرة على هذا الحساب التحليلي مع الرصيد المتراكم اللحظي.'
+                      : `الحركات المجمعة من كافة الحسابات الفرعية التحليلية (${inspectedAccount.leafCount} حساب فرعي).`}
                   </p>
                 </div>
               </div>
@@ -675,24 +661,33 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
               </button>
             </div>
 
+            {!inspectedAccount.isLeaf && (
+              <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs flex items-center gap-2 shrink-0">
+                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>
+                  <strong>تنبيه محاسبي:</strong> هذا الحساب حساب تجميعي/رئيسي. لا تُسجل عليه القيود اليومية مباشرة، بل تُعرض حركات الحسابات الفرعية التابعة له منعاً للازدواجية وتكرار الأرصدة.
+                </span>
+              </div>
+            )}
+
             {/* Account Quick Stats Header */}
             <div className="grid grid-cols-3 gap-3 bg-[#FAF8F5] p-3.5 rounded-xl border border-[#E5E1DA] text-xs shrink-0">
               <div>
                 <span className="text-[#8C8273] block">إجمالي حركات المدين:</span>
                 <strong className="font-mono text-emerald-800 text-sm">
-                  {formatCurrency((inspectedAccount as any).totalDebitMovement || 0, currency)}
+                  {formatKWD(inspectedAccount.totalDebitMovement || 0)}
                 </strong>
               </div>
               <div>
                 <span className="text-[#8C8273] block">إجمالي حركات الدائن:</span>
                 <strong className="font-mono text-rose-800 text-sm">
-                  {formatCurrency((inspectedAccount as any).totalCreditMovement || 0, currency)}
+                  {formatKWD(inspectedAccount.totalCreditMovement || 0)}
                 </strong>
               </div>
               <div>
-                <span className="text-[#8C8273] block">الرصيد الفعلي الحالي:</span>
+                <span className="text-[#8C8273] block">الرصيد المعتمد النهائي:</span>
                 <strong className="font-mono text-[#1A1A1A] text-sm">
-                  {formatCurrency(inspectedAccount.balance || 0, currency)}
+                  {formatKWD(inspectedAccount.balance || 0)}
                 </strong>
               </div>
             </div>
@@ -705,6 +700,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                     <tr>
                       <th className="p-3">التاريخ</th>
                       <th className="p-3">رقم القيد / المرجع</th>
+                      {!inspectedAccount.isLeaf && <th className="p-3">الحساب الفرعي الفعلي</th>}
                       <th className="p-3">البيان والشرح</th>
                       <th className="p-3">الطرف المرتبط</th>
                       <th className="p-3 text-left text-emerald-800">مدين (+)</th>
@@ -719,19 +715,24 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                         <td className="p-3 font-mono font-bold text-[#B8860B] whitespace-nowrap">
                           {move.journalNumber}
                         </td>
+                        {!inspectedAccount.isLeaf && (
+                          <td className="p-3 font-semibold text-slate-800 whitespace-nowrap">
+                            {move.childAccountName || '—'}
+                          </td>
+                        )}
                         <td className="p-3">
                           <div className="font-bold text-[#1A1A1A]">{move.description}</div>
                           {move.memo && <div className="text-[11px] text-[#8C8273]">{move.memo}</div>}
                         </td>
                         <td className="p-3 text-[#6E6659]">{move.entityName || '—'}</td>
                         <td className="p-3 font-mono font-bold text-emerald-800 text-left whitespace-nowrap">
-                          {move.debit > 0 ? formatCurrency(move.debit, currency) : '—'}
+                          {move.debit > 0 ? formatKWD(move.debit) : '—'}
                         </td>
                         <td className="p-3 font-mono font-bold text-rose-800 text-left whitespace-nowrap">
-                          {move.credit > 0 ? formatCurrency(move.credit, currency) : '—'}
+                          {move.credit > 0 ? formatKWD(move.credit) : '—'}
                         </td>
                         <td className="p-3 font-mono font-black text-[#1A1A1A] text-left whitespace-nowrap">
-                          {formatCurrency(move.runningBalance, currency)}
+                          {formatKWD(move.runningBalance)}
                         </td>
                       </tr>
                     ))}

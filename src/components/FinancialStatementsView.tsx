@@ -5,6 +5,7 @@ import {
   CashFlowReport
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
+import { formatKWD } from '../utils/accountingTreeEngine.ts';
 import {
   LineChart,
   ShieldCheck,
@@ -167,13 +168,13 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatCurrency(it.amount, currency)}
+                            {formatKWD(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#2D6A4F] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>مجموع الأصول المتداولة:</span>
-                        <span>{formatCurrency(balanceSheet.currentAssets.totalAmount, currency)}</span>
+                        <span>{formatKWD(balanceSheet.currentAssets.totalAmount)}</span>
                       </div>
                     </div>
                   </div>
@@ -193,14 +194,14 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatCurrency(it.amount, currency)}
+                            {formatKWD(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#2D6A4F] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>مجموع الأصول الثابتة:</span>
                         <span>
-                          {formatCurrency(balanceSheet.nonCurrentAssets.totalAmount, currency)}
+                          {formatKWD(balanceSheet.nonCurrentAssets.totalAmount)}
                         </span>
                       </div>
                     </div>
@@ -208,7 +209,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
 
                   <div className="p-3 bg-[#EBF5EE] border border-[#2D6A4F]/30 rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#2D6A4F]">
                     <span>إجمالي الأصول (Total Assets):</span>
-                    <span>{formatCurrency(balanceSheet.totalAssets, currency)}</span>
+                    <span>{formatKWD(balanceSheet.totalAssets)}</span>
                   </div>
                 </div>
 
@@ -233,14 +234,14 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatCurrency(it.amount, currency)}
+                            {formatKWD(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#9E2A2B] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>مجموع الخصوم المتداولة:</span>
                         <span>
-                          {formatCurrency(balanceSheet.currentLiabilities.totalAmount, currency)}
+                          {formatKWD(balanceSheet.currentLiabilities.totalAmount)}
                         </span>
                       </div>
                     </div>
@@ -261,13 +262,13 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                             {it.accountCode} - {it.accountNameAr}
                           </span>
                           <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatCurrency(it.amount, currency)}
+                            {formatKWD(it.amount)}
                           </span>
                         </div>
                       ))}
                       <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#B8860B] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
                         <span>إجمالي حقوق الملكية:</span>
-                        <span>{formatCurrency(balanceSheet.totalEquity, currency)}</span>
+                        <span>{formatKWD(balanceSheet.totalEquity)}</span>
                       </div>
                     </div>
                   </div>
@@ -275,7 +276,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   <div className="p-3 bg-[#F7F5F0] border border-[#E5E1DA] rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#1A1A1A]">
                     <span>إجمالي الخصوم وحقوق الملكية:</span>
                     <span>
-                      {formatCurrency(balanceSheet.totalLiabilitiesAndEquity, currency)}
+                      {formatKWD(balanceSheet.totalLiabilitiesAndEquity)}
                     </span>
                   </div>
                 </div>
@@ -302,12 +303,12 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   {pnl.revenues.map((rev) => (
                     <div key={rev.accountCode} className="flex justify-between text-xs text-[#6E6659]">
                       <span>{rev.accountCode} - {rev.accountNameAr}</span>
-                      <span className="font-serif font-bold text-[#1A1A1A]">{formatCurrency(rev.amount, currency)}</span>
+                      <span className="font-serif font-bold text-[#1A1A1A]">{formatKWD(rev.amount)}</span>
                     </div>
                   ))}
                   <div className="flex justify-between text-xs font-serif font-bold text-[#2D6A4F] pt-2 border-t border-[#E5E1DA]">
                     <span>إجمالي الإيرادات:</span>
-                    <span>{formatCurrency(pnl.totalRevenue, currency)}</span>
+                    <span>{formatKWD(pnl.totalRevenue)}</span>
                   </div>
                 </div>
 
@@ -317,19 +318,19 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   {pnl.cogs.map((cg) => (
                     <div key={cg.accountCode} className="flex justify-between text-xs text-[#6E6659]">
                       <span>{cg.accountCode} - {cg.accountNameAr}</span>
-                      <span className="font-serif font-bold text-[#1A1A1A]">({formatCurrency(cg.amount, currency)})</span>
+                      <span className="font-serif font-bold text-[#1A1A1A]">({formatKWD(cg.amount)})</span>
                     </div>
                   ))}
                   <div className="flex justify-between text-xs font-serif font-bold text-[#B8860B] pt-2 border-t border-[#E5E1DA]">
                     <span>إجمالي تكلفة المبيعات:</span>
-                    <span>({formatCurrency(pnl.totalCogs, currency)})</span>
+                    <span>({formatKWD(pnl.totalCogs)})</span>
                   </div>
                 </div>
 
                 {/* Gross Profit Bar */}
                 <div className="bg-[#EBF5EE] border border-[#2D6A4F]/30 rounded-md p-4 flex justify-between items-center font-serif font-bold text-sm text-[#2D6A4F]">
                   <span>مجمل الربح (Gross Profit):</span>
-                  <span>{formatCurrency(pnl.grossProfit, currency)}</span>
+                  <span>{formatKWD(pnl.grossProfit)}</span>
                 </div>
 
                 {/* Expenses Section */}
@@ -338,12 +339,12 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   {pnl.expenses.map((exp) => (
                     <div key={exp.accountCode} className="flex justify-between text-xs text-[#6E6659]">
                       <span>{exp.accountCode} - {exp.accountNameAr}</span>
-                      <span className="font-serif font-bold text-[#1A1A1A]">({formatCurrency(exp.amount, currency)})</span>
+                      <span className="font-serif font-bold text-[#1A1A1A]">({formatKWD(exp.amount)})</span>
                     </div>
                   ))}
                   <div className="flex justify-between text-xs font-serif font-bold text-[#9E2A2B] pt-2 border-t border-[#E5E1DA]">
                     <span>إجمالي المصروفات الإدارية:</span>
-                    <span>({formatCurrency(pnl.totalExpenses, currency)})</span>
+                    <span>({formatKWD(pnl.totalExpenses)})</span>
                   </div>
                 </div>
 
@@ -356,7 +357,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   }`}
                 >
                   <span>صافي الأرباح / الخسائر (Net Income):</span>
-                  <span>{formatCurrency(pnl.netIncome, currency)}</span>
+                  <span>{formatKWD(pnl.netIncome)}</span>
                 </div>
               </div>
             </div>
@@ -382,11 +383,11 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   </h4>
                   <div className="flex justify-between text-[#6E6659]">
                     <span>صافي أرباح الفترة:</span>
-                    <span className="font-serif font-bold text-[#1A1A1A]">{formatCurrency(cashFlow.operatingCashFlow.netIncome, currency)}</span>
+                    <span className="font-serif font-bold text-[#1A1A1A]">{formatKWD(cashFlow.operatingCashFlow.netIncome)}</span>
                   </div>
                   <div className="flex justify-between text-[#2D6A4F] font-serif font-bold border-t border-[#E5E1DA] pt-2">
                     <span>صافي التدفق النقدي التشغيلي:</span>
-                    <span>{formatCurrency(cashFlow.operatingCashFlow.totalOperating, currency)}</span>
+                    <span>{formatKWD(cashFlow.operatingCashFlow.totalOperating)}</span>
                   </div>
                 </div>
 
@@ -394,15 +395,15 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                 <div className="bg-white p-4 rounded-md border border-[#E5E1DA] space-y-2 font-serif font-bold text-[#1A1A1A]">
                   <div className="flex justify-between">
                     <span>صافي التغير في النقدية خلال الفترة:</span>
-                    <span className="text-[#2D6A4F]">{formatCurrency(cashFlow.netCashChange, currency)}</span>
+                    <span className="text-[#2D6A4F]">{formatKWD(cashFlow.netCashChange)}</span>
                   </div>
                   <div className="flex justify-between text-[#8C8273] font-normal italic">
                     <span>رصيد النقدية في بداية الفترة:</span>
-                    <span>{formatCurrency(cashFlow.openingCash, currency)}</span>
+                    <span>{formatKWD(cashFlow.openingCash)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-[#2D6A4F] pt-2 border-t border-[#E5E1DA]">
                     <span>رصيد النقدية وما في حكمها نهاية الفترة:</span>
-                    <span>{formatCurrency(cashFlow.closingCash, currency)}</span>
+                    <span>{formatKWD(cashFlow.closingCash)}</span>
                   </div>
                 </div>
               </div>
