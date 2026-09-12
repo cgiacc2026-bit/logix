@@ -28,6 +28,8 @@ import {
   Quotation,
   QuotationLine,
   SalesRep,
+  RepCustodyRecord,
+  VanStockItemMovement,
   Warehouse,
   ItemWarehouseStock,
 } from '../types.js';
@@ -78,6 +80,8 @@ const STORAGE_KEYS = {
   MANUFACTURING_SETTINGS: 'alwaleed_erp_mfg_settings',
   QUOTATIONS: 'alwaleed_erp_quotations',
   SALES_REPS: 'alwaleed_erp_sales_reps',
+  REP_CUSTODY: 'alwaleed_erp_rep_custody',
+  REP_VAN_STOCK: 'alwaleed_erp_rep_van_stock',
   WAREHOUSES: 'alwaleed_erp_warehouses',
   WAREHOUSE_STOCKS: 'alwaleed_erp_warehouse_stocks',
 };
@@ -1351,6 +1355,22 @@ class LocalDataStore {
   public saveSalesReps(reps: SalesRep[]): void {
     this.setLocal(this.getKey(STORAGE_KEYS.SALES_REPS), reps);
     this.markTenantInitialized();
+  }
+
+  public getRepCustodyRecords(): RepCustodyRecord[] {
+    return this.getLocal<RepCustodyRecord[]>(this.getKey(STORAGE_KEYS.REP_CUSTODY), []);
+  }
+
+  public saveRepCustodyRecords(records: RepCustodyRecord[]): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.REP_CUSTODY), records);
+  }
+
+  public getVanStockMovements(): VanStockItemMovement[] {
+    return this.getLocal<VanStockItemMovement[]>(this.getKey(STORAGE_KEYS.REP_VAN_STOCK), []);
+  }
+
+  public saveVanStockMovements(records: VanStockItemMovement[]): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.REP_VAN_STOCK), records);
   }
 
   public getWarehouses(): Warehouse[] {
@@ -7046,6 +7066,52 @@ export class DataService {
       await SupabaseDataService.deleteSalesRep(id).catch(() => {});
     }
     return true;
+  }
+
+  // ==========================================
+  // SALES REPS CUSTODY & SUB-LEDGER API
+  // ==========================================
+  public static getRepCustodyRecords(repId?: string): RepCustodyRecord[] {
+    const list = localDataStore.getRepCustodyRecords();
+    if (!repId || repId === 'ALL') return list;
+    return list.filter((r) => r.repId === repId);
+  }
+
+  public static saveRepCustodyRecord(record: RepCustodyRecord): RepCustodyRecord {
+    const list = localDataStore.getRepCustodyRecords();
+    const idx = list.findIndex((r) => r.id === record.id);
+    if (idx !== -1) {
+      list[idx] = record;
+    } else {
+      list.unshift(record);
+    }
+    localDataStore.saveRepCustodyRecords(list);
+    return record;
+  }
+
+  public static deleteRepCustodyRecord(id: string): boolean {
+    const list = localDataStore.getRepCustodyRecords();
+    const filtered = list.filter((r) => r.id !== id);
+    localDataStore.saveRepCustodyRecords(filtered);
+    return true;
+  }
+
+  public static getVanStockMovements(repId?: string): VanStockItemMovement[] {
+    const list = localDataStore.getVanStockMovements();
+    if (!repId || repId === 'ALL') return list;
+    return list.filter((m) => m.repId === repId);
+  }
+
+  public static saveVanStockMovement(movement: VanStockItemMovement): VanStockItemMovement {
+    const list = localDataStore.getVanStockMovements();
+    const idx = list.findIndex((m) => m.id === movement.id || (m.repId === movement.repId && m.itemId === movement.itemId));
+    if (idx !== -1) {
+      list[idx] = movement;
+    } else {
+      list.push(movement);
+    }
+    localDataStore.saveVanStockMovements(list);
+    return movement;
   }
 
   // ==========================================

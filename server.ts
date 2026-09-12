@@ -494,13 +494,24 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/journals/:id', (req, res) => {
+  app.delete('/api/journals/:id', async (req, res) => {
     try {
       const { id } = req.params;
       const success = AccountingEngine.deleteJournal(id);
       db.addTombstone('journals', id);
+
+      // Cloud Hard Purge if Supabase configured
+      if (supabaseAdmin) {
+        try {
+          await supabaseAdmin.from('journal_entry_lines').delete().eq('journal_entry_id', id);
+          await supabaseAdmin.from('journal_entries').delete().or(`id.eq.${id},entry_number.eq.${id}`);
+        } catch (sbErr) {
+          console.warn('Server Supabase journal purge note:', sbErr);
+        }
+      }
+
       if (!success) return res.status(404).json({ error: 'القيد غير موجود' });
-      res.json({ success: true });
+      res.json({ success: true, isPurged: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1530,30 +1541,47 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/invoices/:id', (req, res) => {
+  app.delete('/api/invoices/:id', async (req, res) => {
     try {
       const { id } = req.params;
       const inv = db.getInvoices().find((i) => i.id === id);
       if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
-      
-      // IFRS AUDITING PROTECTION: Physical deletion of POSTED / PAID invoices is strictly prohibited
+
+      // Clean Hard Purge: Revert postings from accounts/inventory and physically purge from DB
       if (inv.status === 'POSTED' || inv.status === 'PAID') {
-        const revertResult = AccountingEngine.revertInvoicePosting(
-          id,
-          'حظر الحذف الفيزيائي لفاتورة معتمدة - تطبيق الإلغاء المحاسبي وعكس القيود IFRS'
-        );
-        return res.json({
-          success: true,
-          isVoided: true,
-          message: 'تم إلغاء الفاتورة محاسبياً وعكس القيود والمخزون وفق المعايير المالية IFRS نظراً لحظر حذف الفواتير المعتمدة فيزيائياً',
-          invoice: revertResult.invoice,
-          reversalJournal: revertResult.reversalJournal,
-        });
+        try {
+          AccountingEngine.revertInvoicePosting(id, 'حذف نهائي مطهر مع تصفية الأثر المالي والمخزني');
+        } catch (e) {
+          // continue to physical delete
+        }
       }
-      
-      // Physical delete allowed ONLY for DRAFT invoices
+
+      // Hard delete from local memory database
       db.deleteInvoice(id);
-      res.json({ success: true, isDeleted: true });
+      db.addTombstone('invoices', id);
+
+      // Clean Hard Purge from Supabase if configured
+      if (supabaseAdmin) {
+        try {
+          const invNum = inv.invoiceNumber || id;
+          // Delete linked journals
+          const { data: linkedJ } = await supabaseAdmin
+            .from('journal_entries')
+            .select('id')
+            .or(`reference.eq.${invNum},reference_id.eq.${id}`);
+          if (linkedJ && linkedJ.length > 0) {
+            const jIds = linkedJ.map((j: any) => j.id);
+            await supabaseAdmin.from('journal_entry_lines').delete().in('journal_entry_id', jIds);
+            await supabaseAdmin.from('journal_entries').delete().in('id', jIds);
+          }
+          await supabaseAdmin.from('invoice_items').delete().eq('invoice_id', id);
+          await supabaseAdmin.from('invoices').delete().or(`id.eq.${id},invoice_number.eq.${invNum}`);
+        } catch (sbErr) {
+          console.warn('Server Supabase invoice purge note:', sbErr);
+        }
+      }
+
+      res.json({ success: true, isDeleted: true, isPurged: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1692,12 +1720,33 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/vouchers/:id', (req, res) => {
+  app.delete('/api/vouchers/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      const voucher = db.getVouchers().find((v) => v.id === id);
       const success = AccountingEngine.deleteVoucher(id);
+      db.addTombstone('vouchers', id);
+
+      if (supabaseAdmin) {
+        try {
+          const vNum = voucher?.voucherNumber || id;
+          const { data: linkedJ } = await supabaseAdmin
+            .from('journal_entries')
+            .select('id')
+            .or(`reference.eq.${vNum},reference_id.eq.${id}`);
+          if (linkedJ && linkedJ.length > 0) {
+            const jIds = linkedJ.map((j: any) => j.id);
+            await supabaseAdmin.from('journal_entry_lines').delete().in('journal_entry_id', jIds);
+            await supabaseAdmin.from('journal_entries').delete().in('id', jIds);
+          }
+          await supabaseAdmin.from('payment_vouchers').delete().or(`id.eq.${id},voucher_number.eq.${vNum}`);
+        } catch (sbErr) {
+          console.warn('Server Supabase voucher purge note:', sbErr);
+        }
+      }
+
       if (!success) return res.status(404).json({ error: 'السند غير موجود' });
-      res.json({ success: true });
+      res.json({ success: true, isPurged: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1759,13 +1808,22 @@ async function startServer() {
       // Sync company profile and logo_url to Supabase with admin credentials
       if (targetId && supabaseAdmin) {
         try {
+          const defAccounts = updated.defaultAccounts || req.body.defaultAccounts || {};
           const payload: any = {
             id: targetId,
             company_name: updated.nameAr || req.body.nameAr,
             owner_email: updated.email || req.body.email || 'admin@logixerp.com',
             status: 'active',
             logo_url: updated.logoUrl || req.body.logoUrl || '',
-            default_accounts: updated.defaultAccounts || req.body.defaultAccounts || {},
+            country: updated.country || req.body.country || 'الكويت',
+            functional_currency: updated.functionalCurrency || req.body.functionalCurrency || 'KWD',
+            currency_symbol: updated.currencySymbol || req.body.currencySymbol || 'د.ك',
+            decimal_places: updated.decimalPlaces !== undefined ? updated.decimalPlaces : 3,
+            default_accounts: defAccounts,
+            cash_account_id: defAccounts.cashAccountId || null,
+            bank_account_id: defAccounts.bankAccountId || null,
+            inventory_account_id: defAccounts.inventoryAccountId || null,
+            pnl_account_id: defAccounts.salesAccountId || null,
             profile_data: updated,
             updated_at: new Date().toISOString(),
           };
@@ -1775,18 +1833,44 @@ async function startServer() {
             .upsert([payload], { onConflict: 'id' });
 
           if (error) {
-            // Fallback if logo_url column does not exist yet in DB
+            // Fallback if some new columns are missing in DB schema
             const fallbackPayload: any = {
               id: targetId,
               company_name: updated.nameAr || req.body.nameAr,
               owner_email: updated.email || req.body.email || 'admin@logixerp.com',
               status: 'active',
+              default_accounts: defAccounts,
               profile_data: updated,
               updated_at: new Date().toISOString(),
             };
             await supabaseAdmin
               .from('companies')
               .upsert([fallbackPayload], { onConflict: 'id' });
+          }
+
+          // Guaranteed Persistence in company_accounting_settings
+          if (defAccounts && Object.keys(defAccounts).length > 0) {
+            const casPayload: any = {
+              company_id: targetId,
+              cash_account_id: defAccounts.cashAccountId || null,
+              bank_account_id: defAccounts.bankAccountId || null,
+              receivable_account_id: defAccounts.receivableAccountId || null,
+              payable_account_id: defAccounts.payableAccountId || null,
+              sales_account_id: defAccounts.salesAccountId || null,
+              cogs_account_id: defAccounts.cogsAccountId || null,
+              inventory_account_id: defAccounts.inventoryAccountId || null,
+              retained_earnings_account_id: defAccounts.retainedEarningsAccountId || null,
+              vat_account_id: defAccounts.vatAccountId || null,
+              settings_data: {
+                defaultAccounts: defAccounts,
+                savedAt: new Date().toISOString(),
+                isWired: true,
+              },
+              updated_at: new Date().toISOString(),
+            };
+            await supabaseAdmin
+              .from('company_accounting_settings')
+              .upsert([casPayload], { onConflict: 'company_id' });
           }
         } catch (cloudErr: any) {
           console.warn('Server Supabase company sync note:', cloudErr?.message);

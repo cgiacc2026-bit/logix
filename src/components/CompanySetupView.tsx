@@ -55,6 +55,12 @@ import { ThemeService, ERP_THEMES, THEME_PALETTES, ThemeColor, ThemeMode } from 
 import { ERPBackupImportService } from '../services/importBackupService.js';
 import { supabase, isSupabaseConfigured, resolveToSupabaseCompanyUUID, getCurrentCompanyId } from '../services/supabaseClient.js';
 import { SupabaseDataService } from '../services/supabaseService.js';
+import {
+  COUNTRY_FINANCIAL_MATRIX,
+  SUPPORTED_COUNTRIES,
+  getCountryFinancialProfile,
+  formatCurrencyStrict,
+} from '../utils/currencyMatrix.ts';
 
 interface CompanySetupViewProps {
   company: CompanyProfile | null;
@@ -410,6 +416,33 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     setTimeout(() => setMappingSuccess(''), 6000);
   };
 
+  const handleCountrySelect = (selectedCountryName: string) => {
+    const profile = getCountryFinancialProfile(selectedCountryName);
+    setFormData((prev) => ({
+      ...prev,
+      country: selectedCountryName,
+      functionalCurrency: profile.functionalCurrency,
+      currencySymbol: profile.currencySymbol,
+      decimalPlaces: profile.decimalPlaces,
+    }));
+    setMappingSuccess(`تم ربط الدولة [${selectedCountryName}] بالعملة [${profile.currencyNameAr} - ${profile.functionalCurrency}] وعدد الكسور [${profile.decimalPlaces}] تلقائياً طبقاً لمعايير البنك المركزي.`);
+    setTimeout(() => setMappingSuccess(''), 6000);
+  };
+
+  /**
+   * Validation of the 6 mandatory COA accounts
+   */
+  const validateMandatoryAccounts = (): { valid: boolean; missingList: string[] } => {
+    const missing: string[] = [];
+    if (!currentMapping.cashAccountId) missing.push('الصندوق / النقدية (1111/1113)');
+    if (!currentMapping.receivableAccountId) missing.push('العملاء والذمم المدينة (1120)');
+    if (!currentMapping.payableAccountId) missing.push('الموردين والذمم الدائنة (2110)');
+    if (!currentMapping.salesAccountId) missing.push('إيرادات المبيعات (4100)');
+    if (!currentMapping.inventoryAccountId) missing.push('مخزون البضائع (1130)');
+    if (!currentMapping.cogsAccountId) missing.push('تكلفة البضاعة المباعة (5100)');
+    return { valid: missing.length === 0, missingList: missing };
+  };
+
   /**
    * 2. Safe Save Default Accounts Logic: Upsert to company_settings & update companies record
    */
@@ -417,6 +450,13 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     setIsSavingMapping(true);
     setMappingSuccess('');
     setErrorMessage('');
+
+    const validation = validateMandatoryAccounts();
+    if (!validation.valid) {
+      setErrorMessage(`تنبيه تدقيق محاسبي إلزامي: يمنع حفظ الإعدادات دون اكتمال ربط الحسابات الستة الأساسية بالدليل المحاسبي. الحسابات غير المحددة: [${validation.missingList.join('، ')}]. يرجى الضغط على زر "الربط الذكي التلقائي" لتحديدها فوراً.`);
+      setIsSavingMapping(false);
+      return;
+    }
 
     const activeCompanyId = resolveToSupabaseCompanyUUID(company?.id || getCurrentCompanyId());
 
@@ -514,6 +554,12 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     e.preventDefault();
     if (!formData.nameAr || !formData.crNumber) {
       setErrorMessage('يرجى تعبئة الحقول الأساسية: اسم الشركة ورقم السجل التجاري.');
+      return;
+    }
+
+    const validation = validateMandatoryAccounts();
+    if (!validation.valid) {
+      setErrorMessage(`تنبيه تدقيق محاسبي إلزامي: يمنع حفظ بيانات الشركة قبل اكتمال ربط الحسابات الستة الأساسية بالدليل المحاسبي. الحسابات غير المحددة: [${validation.missingList.join('، ')}]. يرجى الانتقال لتبويب "الربط المحاسبي" والضغط على "الربط الذكي التلقائي".`);
       return;
     }
 
@@ -1163,13 +1209,47 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[#1A1A1A] font-semibold mb-1">الدولة (Country)</label>
-                <input
-                  type="text"
-                  value={formData.country || 'المملكة العربية السعودية'}
-                  onChange={(e) => handleChange('country', e.target.value)}
-                  className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-[#1A1A1A] focus:outline-none focus:border-[#1A1A1A]"
-                />
+                <label className="block text-[#1A1A1A] font-semibold mb-1 flex items-center justify-between">
+                  <span>الدولة والولاية النقدية (Country)</span>
+                  <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-normal">
+                    مرتبط بمصفوفة العملات والكسور الرسمية
+                  </span>
+                </label>
+                <select
+                  value={formData.country || 'الكويت'}
+                  onChange={(e) => handleCountrySelect(e.target.value)}
+                  className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-[#1A1A1A] font-bold focus:outline-none focus:border-[#1A1A1A] cursor-pointer"
+                >
+                  {SUPPORTED_COUNTRIES.map((c) => {
+                    const prof = COUNTRY_FINANCIAL_MATRIX[c];
+                    return (
+                      <option key={c} value={c}>
+                        {prof.flag} {c} — {prof.currencyNameAr} ({prof.functionalCurrency} / {prof.currencySymbol})
+                      </option>
+                    );
+                  })}
+                </select>
+                {(() => {
+                  const prof = getCountryFinancialProfile(formData.country || 'الكويت');
+                  return (
+                    <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-700">المعيار النقدي المركزي:</span>
+                        <span className="font-mono text-emerald-700 font-bold bg-emerald-100/60 px-2 py-0.5 rounded">
+                          {prof.centralBankStandard}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-600 text-[11px]">
+                        <span>العملة والرمز المقترن:</span>
+                        <span className="font-bold text-slate-900">{prof.currencyNameAr} ({prof.currencySymbol})</span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-600 text-[11px]">
+                        <span>دقة الكسور الإلزامية:</span>
+                        <span className="font-mono font-bold text-slate-900">{prof.decimalPlaces} خانات عشرية ({prof.subUnitNameAr})</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1359,23 +1439,31 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[#1A1A1A] font-semibold mb-1">العملة الوظيفية والأساسية (Functional Currency)</label>
+                <label className="block text-[#1A1A1A] font-semibold mb-1 flex items-center justify-between">
+                  <span>العملة الوظيفية والأساسية (Functional Currency)</span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
+                    مقترنة تلقائياً بالدولة
+                  </span>
+                </label>
                 <select
                   value={formData.functionalCurrency || 'KWD'}
                   onChange={(e) => handleChange('functionalCurrency', e.target.value)}
-                  className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-[#1A1A1A] focus:outline-none focus:border-[#1A1A1A]"
+                  className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-[#1A1A1A] font-bold focus:outline-none focus:border-[#1A1A1A]"
                 >
-                  <option value="KWD">الدينار الكويتي (KWD / د.ك)</option>
-                  <option value="SAR">الريال السعودي (SAR / ر.س)</option>
-                  <option value="USD">الدولار الأمريكي (USD / $)</option>
-                  <option value="AED">الدرهم الإماراتي (AED / د.إ)</option>
-                  <option value="EUR">اليورو الأوروبي (EUR / €)</option>
-                  <option value="EGP">الجنيه المصري (EGP / ج.م)</option>
-                  <option value="BHD">الدينار البحريني (BHD / د.ب)</option>
-                  <option value="OMR">الريال العماني (OMR / ر.ع)</option>
-                  <option value="QAR">الريال القطري (QAR / ر.ق)</option>
-                  <option value="JOD">الدينار الأردني (JOD / د.أ)</option>
+                  <option value="KWD">الدينار الكويتي (KWD / د.ك) — 3 خانات</option>
+                  <option value="SAR">الريال السعودي (SAR / ر.س) — خانتان</option>
+                  <option value="AED">الدرهم الإماراتي (AED / د.إ) — خانتان</option>
+                  <option value="BHD">الدينار البحريني (BHD / د.ب) — 3 خانات</option>
+                  <option value="OMR">الريال العماني (OMR / ر.ع) — 3 خانات</option>
+                  <option value="QAR">الريال القطري (QAR / ر.ق) — خانتان</option>
+                  <option value="JOD">الدينار الأردني (JOD / د.أ) — 3 خانات</option>
+                  <option value="EGP">الجنيه المصري (EGP / ج.م) — خانتان</option>
+                  <option value="USD">الدولار الأمريكي (USD / $) — خانتان</option>
+                  <option value="EUR">اليورو الأوروبي (EUR / €) — خانتان</option>
                 </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  الرمز المعتمد في الفواتير والتقارير: <strong className="text-slate-800 font-mono">{formData.currencySymbol || 'د.ك'}</strong>
+                </p>
               </div>
 
               <div>
@@ -1403,15 +1491,24 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[#1A1A1A] font-semibold mb-1">دقة التقريب للكسور العشرية</label>
+                <label className="block text-[#1A1A1A] font-semibold mb-1 flex items-center justify-between">
+                  <span>دقة التقريب للكسور العشرية (Decimal Places)</span>
+                  <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-bold">
+                    معيار البنك المركزي
+                  </span>
+                </label>
                 <select
                   value={formData.decimalPlaces || 2}
                   onChange={(e) => handleChange('decimalPlaces', Number(e.target.value))}
-                  className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-[#1A1A1A] focus:outline-none focus:border-[#1A1A1A]"
+                  className="w-full bg-white border border-[#E5E1DA] rounded-md px-3 py-2 text-[#1A1A1A] font-bold focus:outline-none focus:border-[#1A1A1A]"
                 >
-                  <option value={2}>خانتي كسر عشرية (0.00)</option>
-                  <option value={3}>3 خانات كسر عشرية (0.000)</option>
+                  <option value={3}>3 خانات كسر عشرية (0.000) — فلوس/بيسة/مليم</option>
+                  <option value={2}>خانتي كسر عشرية (0.00) — هللة/قرش/سنت</option>
+                  <option value={4}>4 خانات كسر عشرية (0.0000) — دقة تسعير متقدمة</option>
                 </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  مثال العرض: <span className="font-mono font-bold text-slate-800">{formatCurrencyStrict(1250.75, formData.functionalCurrency || 'KWD', formData.decimalPlaces || 3)}</span>
+                </p>
               </div>
 
               <div>
@@ -1593,6 +1690,80 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Mandatory 6 COA Accounts Audit Banner */}
+            {(() => {
+              const mandatoryList = [
+                { key: 'cashAccountId' as const, nameAr: 'الصندوق والنقدية', code: '1111 / 1113', id: currentMapping.cashAccountId },
+                { key: 'receivableAccountId' as const, nameAr: 'العملاء والذمم المدينة', code: '1120', id: currentMapping.receivableAccountId },
+                { key: 'payableAccountId' as const, nameAr: 'الموردين والذمم الدائنة', code: '2110', id: currentMapping.payableAccountId },
+                { key: 'salesAccountId' as const, nameAr: 'إيرادات المبيعات', code: '4100', id: currentMapping.salesAccountId },
+                { key: 'inventoryAccountId' as const, nameAr: 'مخزون البضائع', code: '1130', id: currentMapping.inventoryAccountId },
+                { key: 'cogsAccountId' as const, nameAr: 'تكلفة المبيعات (COGS)', code: '5100', id: currentMapping.cogsAccountId },
+              ];
+              const mappedCount = mandatoryList.filter(m => !!m.id).length;
+              const allComplete = mappedCount === 6;
+
+              return (
+                <div className={`p-4 rounded-xl border ${allComplete ? 'bg-emerald-50/70 border-emerald-300' : 'bg-amber-50/80 border-amber-300'} space-y-3`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className={`w-5 h-5 ${allComplete ? 'text-emerald-600' : 'text-amber-600'}`} />
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          تدقيق الحسابات الستة الإلزامية للدليل المحاسبي ({mappedCount}/6 مكتمل)
+                        </h4>
+                        <p className="text-[11px] text-slate-600">
+                          {allComplete
+                            ? 'تم ربط كامل الركائز الست الأساسية للقيود الآلية في فواتير البيع، الشراء، الصرف، وتكلفة المخزون.'
+                            : 'يتطلب النظام المحاسبي اكتمال تعيين الحسابات الستة لتوليد القيود الآلية بدقة ومنع الفروقات المعلقة.'}
+                        </p>
+                      </div>
+                    </div>
+                    {!allComplete && (
+                      <button
+                        type="button"
+                        onClick={handleAutoMapAccounts}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer shadow-xs"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>تسكين الحسابات الستة تلقائياً</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                    {mandatoryList.map((item) => {
+                      const isMapped = !!item.id;
+                      const acc = companyAccounts.find(a => a.id === item.id);
+                      return (
+                        <div
+                          key={item.key}
+                          className={`p-2 rounded-lg border text-center text-xs transition-colors ${
+                            isMapped
+                              ? 'bg-white border-emerald-300 text-emerald-900'
+                              : 'bg-white border-rose-300 text-rose-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            {isMapped ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                            )}
+                            <span className="font-bold text-[11px]">{item.nameAr}</span>
+                          </div>
+                          <div className="font-mono text-[10px] text-slate-500">{item.code}</div>
+                          <div className="text-[10px] font-semibold truncate mt-0.5" title={acc ? `${acc.code} - ${acc.nameAr}` : 'غير معين'}>
+                            {acc ? `${acc.code} - ${acc.nameAr}` : <span className="text-rose-600 font-bold">غير محدد</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Account Mapping Groups */}
             <div className="space-y-6">

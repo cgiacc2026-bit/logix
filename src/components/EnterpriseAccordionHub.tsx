@@ -991,6 +991,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         salesReps={salesReps}
                         invoices={invoices}
                         vouchers={vouchers}
+                        inventory={inventory}
+                        warehouses={warehouses}
                         currency={currency}
                         onRefreshAll={async () => {
                           await onRefreshAll();

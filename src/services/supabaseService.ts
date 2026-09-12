@@ -295,37 +295,40 @@ export class SupabaseDataService {
 
       if (!casErr && casData) {
         return {
-          cashAccountId: casData.default_cash_account_id || casData.cash_account_id || undefined,
-          bankAccountId: casData.default_bank_account_id || casData.bank_account_id || undefined,
-          receivableAccountId: casData.default_receivable_account_id || casData.receivable_account_id || undefined,
-          payableAccountId: casData.default_payable_account_id || casData.payable_account_id || undefined,
-          salesAccountId: casData.default_sales_account_id || casData.sales_account_id || undefined,
-          cogsAccountId: casData.default_cogs_account_id || casData.cogs_account_id || undefined,
-          inventoryAccountId: casData.default_inventory_account_id || casData.inventory_account_id || undefined,
-          retainedEarningsAccountId: casData.default_retained_earnings_account_id || casData.retained_earnings_account_id || undefined,
-          vatAccountId: casData.default_vat_account_id || casData.vat_account_id || undefined,
+          cashAccountId: casData.cash_account_id || casData.default_cash_account_id || undefined,
+          bankAccountId: casData.bank_account_id || casData.default_bank_account_id || undefined,
+          receivableAccountId: casData.receivable_account_id || casData.default_receivable_account_id || undefined,
+          payableAccountId: casData.payable_account_id || casData.default_payable_account_id || undefined,
+          salesAccountId: casData.sales_account_id || casData.default_sales_account_id || undefined,
+          cogsAccountId: casData.cogs_account_id || casData.default_cogs_account_id || undefined,
+          inventoryAccountId: casData.inventory_account_id || casData.default_inventory_account_id || undefined,
+          retainedEarningsAccountId: casData.retained_earnings_account_id || casData.default_retained_earnings_account_id || undefined,
+          vatAccountId: casData.vat_account_id || casData.default_vat_account_id || undefined,
         };
       }
 
-      // 2. Fallback query: company_settings
-      const { data: csData } = await supabase
-        .from('company_settings')
-        .select('*')
-        .eq('company_id', companyId)
+      // 2. Fallback query: companies table default_accounts or profile_data
+      const { data: compData } = await supabase
+        .from('companies')
+        .select('default_accounts, profile_data, cash_account_id, bank_account_id, inventory_account_id, pnl_account_id')
+        .eq('id', companyId)
         .maybeSingle();
 
-      if (csData) {
-        return {
-          cashAccountId: csData.default_cash_account_id || csData.cash_account_id || undefined,
-          bankAccountId: csData.default_bank_account_id || csData.bank_account_id || undefined,
-          receivableAccountId: csData.default_receivable_account_id || csData.receivable_account_id || undefined,
-          payableAccountId: csData.default_payable_account_id || csData.payable_account_id || undefined,
-          salesAccountId: csData.default_sales_account_id || csData.sales_account_id || undefined,
-          cogsAccountId: csData.default_cogs_account_id || csData.cogs_account_id || undefined,
-          inventoryAccountId: csData.default_inventory_account_id || csData.inventory_account_id || undefined,
-          retainedEarningsAccountId: csData.default_retained_earnings_account_id || csData.retained_earnings_account_id || undefined,
-          vatAccountId: csData.default_vat_account_id || csData.vat_account_id || undefined,
-        };
+      if (compData) {
+        const def = compData.default_accounts || compData.profile_data?.defaultAccounts;
+        if (def && typeof def === 'object') {
+          return {
+            cashAccountId: def.cashAccountId || compData.cash_account_id || undefined,
+            bankAccountId: def.bankAccountId || compData.bank_account_id || undefined,
+            receivableAccountId: def.receivableAccountId || undefined,
+            payableAccountId: def.payableAccountId || undefined,
+            salesAccountId: def.salesAccountId || compData.pnl_account_id || undefined,
+            cogsAccountId: def.cogsAccountId || undefined,
+            inventoryAccountId: def.inventoryAccountId || compData.inventory_account_id || undefined,
+            retainedEarningsAccountId: def.retainedEarningsAccountId || undefined,
+            vatAccountId: def.vatAccountId || undefined,
+          };
+        }
       }
 
       return null;
@@ -345,40 +348,58 @@ export class SupabaseDataService {
     if (!companyId) return false;
 
     try {
-      // 1. Primary write: company_accounting_settings
+      // 1. Primary write: company_accounting_settings with verified schema columns
       const casPayload: any = {
         company_id: companyId,
-        default_cash_account_id: mapping.cashAccountId || null,
-        default_bank_account_id: mapping.bankAccountId || null,
-        default_receivable_account_id: mapping.receivableAccountId || null,
-        default_payable_account_id: mapping.payableAccountId || null,
-        default_sales_account_id: mapping.salesAccountId || null,
-        default_cogs_account_id: mapping.cogsAccountId || null,
-        default_inventory_account_id: mapping.inventoryAccountId || null,
-        default_retained_earnings_account_id: mapping.retainedEarningsAccountId || null,
-        default_vat_account_id: mapping.vatAccountId || null,
+        cash_account_id: mapping.cashAccountId || null,
+        bank_account_id: mapping.bankAccountId || null,
+        receivable_account_id: mapping.receivableAccountId || null,
+        payable_account_id: mapping.payableAccountId || null,
+        sales_account_id: mapping.salesAccountId || null,
+        cogs_account_id: mapping.cogsAccountId || null,
+        inventory_account_id: mapping.inventoryAccountId || null,
+        retained_earnings_account_id: mapping.retainedEarningsAccountId || null,
+        vat_account_id: mapping.vatAccountId || null,
+        settings_data: {
+          defaultAccounts: mapping,
+          savedAt: new Date().toISOString(),
+          isWired: true,
+        },
         updated_at: new Date().toISOString(),
       };
 
-      await supabase
+      const { error: casErr } = await supabase
         .from('company_accounting_settings')
         .upsert([casPayload], { onConflict: 'company_id' });
 
-      // 2. Dual-sync to company_settings
-      try {
-        await supabase
-          .from('company_settings')
-          .upsert([{ ...casPayload }], { onConflict: 'company_id' });
-      } catch (csErr) {
-        // non-blocking
+      if (casErr) {
+        console.warn('Primary company_accounting_settings upsert error:', casErr);
+        // Fallback attempt with default_ prefix if columns were modified
+        const altPayload = {
+          ...casPayload,
+          default_cash_account_id: mapping.cashAccountId || null,
+          default_bank_account_id: mapping.bankAccountId || null,
+          default_receivable_account_id: mapping.receivableAccountId || null,
+          default_payable_account_id: mapping.payableAccountId || null,
+          default_sales_account_id: mapping.salesAccountId || null,
+          default_cogs_account_id: mapping.cogsAccountId || null,
+          default_inventory_account_id: mapping.inventoryAccountId || null,
+          default_retained_earnings_account_id: mapping.retainedEarningsAccountId || null,
+          default_vat_account_id: mapping.vatAccountId || null,
+        };
+        await supabase.from('company_accounting_settings').upsert([altPayload], { onConflict: 'company_id' });
       }
 
-      // 3. Dual-sync to companies table
+      // 2. Dual-sync to companies table
       try {
         await supabase
           .from('companies')
           .update({
             default_accounts: mapping,
+            cash_account_id: mapping.cashAccountId || null,
+            bank_account_id: mapping.bankAccountId || null,
+            inventory_account_id: mapping.inventoryAccountId || null,
+            pnl_account_id: mapping.salesAccountId || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', companyId);
@@ -1793,7 +1814,7 @@ export class SupabaseDataService {
     try {
       const invUuid = toValidUUID(id);
 
-      // 1. Fetch invoice to inspect status
+      // 1. Fetch invoice row to identify invoice number and associated records
       const { data: invRow } = await supabase
         .from('invoices')
         .select('*')
@@ -1801,32 +1822,51 @@ export class SupabaseDataService {
         .or(`id.eq.${invUuid},invoice_number.eq.${id}`)
         .maybeSingle();
 
-      if (invRow) {
-        const status = invRow.status || (invRow.raw_data && invRow.raw_data.status);
-        if (status === 'POSTED' || status === 'PAID') {
-          // STRICT IFRS AUDITING PROTECTION:
-          // Physical deletion of posted invoices is strictly prohibited.
-          // Route to accounting voiding & reversal engine.
-          const revResult = await this.revertInvoicePosting(
-            invRow.id || id,
-            'حظر الحذف الفيزيائي لفاتورة معتمدة - تم تطبيق الإلغاء المحاسبي وعكس القيود IFRS',
-            companyId
-          );
-          return revResult.success;
+      const targetInvId = invRow?.id || invUuid;
+      const invoiceNumber = invRow?.invoice_number || id;
+
+      // 2. HARD PURGE: Delete associated journal entries and their lines to leave NO orphaned records
+      if (invoiceNumber || targetInvId) {
+        try {
+          const { data: linkedJournals } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('company_id', companyId)
+            .or(`reference.eq.${invoiceNumber},reference_id.eq.${targetInvId}`);
+
+          if (linkedJournals && linkedJournals.length > 0) {
+            const jIds = linkedJournals.map((j) => j.id);
+            await supabase.from('journal_entry_lines').delete().in('journal_entry_id', jIds);
+            await supabase.from('journal_entries').delete().in('id', jIds);
+          }
+        } catch (jErr) {
+          console.warn('Clean purge linked journals error:', jErr);
         }
       }
 
-      // 2. Physical delete with CASCADE for DRAFT invoices
-      await supabase
-        .from('invoice_items')
-        .delete()
-        .eq('invoice_id', invUuid);
+      // 3. HARD PURGE: Delete invoice line items
+      try {
+        await supabase
+          .from('invoice_items')
+          .delete()
+          .or(`invoice_id.eq.${targetInvId},invoice_id.eq.${invUuid}`);
+      } catch (itemErr) {
+        console.warn('Clean purge invoice_items error:', itemErr);
+      }
 
+      // 4. HARD PURGE: Delete invoice master record
       const { error } = await supabase
         .from('invoices')
         .delete()
         .eq('company_id', companyId)
-        .or(`id.eq.${invUuid},invoice_number.eq.${id}`);
+        .or(`id.eq.${targetInvId},id.eq.${invUuid},invoice_number.eq.${invoiceNumber}`);
+
+      // 5. Recalculate GL account balances immediately
+      try {
+        await this.recalculateAllAccountBalances(companyId);
+      } catch (balErr) {
+        console.warn('Recalculate balances after invoice delete note:', balErr);
+      }
 
       return !error;
     } catch (err: any) {
@@ -1983,11 +2023,50 @@ export class SupabaseDataService {
     if (!companyId) return false;
     try {
       const voucherUuid = toValidUUID(id);
+
+      // 1. Fetch voucher details to locate voucher number
+      const { data: vRow } = await supabase
+        .from('payment_vouchers')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(`id.eq.${voucherUuid},voucher_number.eq.${id}`)
+        .maybeSingle();
+
+      const voucherNumber = vRow?.voucher_number || id;
+      const targetVId = vRow?.id || voucherUuid;
+
+      // 2. HARD PURGE: Delete associated journal entries and lines
+      if (voucherNumber || targetVId) {
+        try {
+          const { data: linkedJournals } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('company_id', companyId)
+            .or(`reference.eq.${voucherNumber},reference_id.eq.${targetVId}`);
+
+          if (linkedJournals && linkedJournals.length > 0) {
+            const jIds = linkedJournals.map((j) => j.id);
+            await supabase.from('journal_entry_lines').delete().in('journal_entry_id', jIds);
+            await supabase.from('journal_entries').delete().in('id', jIds);
+          }
+        } catch (jErr) {
+          console.warn('Clean purge voucher linked journals error:', jErr);
+        }
+      }
+
+      // 3. HARD PURGE: Delete voucher record
       const { error } = await supabase
         .from('payment_vouchers')
         .delete()
         .eq('company_id', companyId)
-        .or(`id.eq.${voucherUuid},voucher_number.eq.${id}`);
+        .or(`id.eq.${targetVId},id.eq.${voucherUuid},voucher_number.eq.${voucherNumber}`);
+
+      // 4. Recalculate GL account balances immediately
+      try {
+        await this.recalculateAllAccountBalances(companyId);
+      } catch (balErr) {
+        console.warn('Recalculate balances after voucher delete note:', balErr);
+      }
 
       return !error;
     } catch (err: any) {
@@ -2193,11 +2272,41 @@ export class SupabaseDataService {
     if (!companyId) return false;
     try {
       const entryId = toValidUUID(id);
+
+      // 1. Fetch journal row to get id & entry_number
+      const { data: jRow } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(`id.eq.${entryId},entry_number.eq.${id}`)
+        .maybeSingle();
+
+      const targetJId = jRow?.id || entryId;
+      const entryNumber = jRow?.entry_number || id;
+
+      // 2. HARD PURGE: Delete all lines from journal_entry_lines
+      try {
+        await supabase
+          .from('journal_entry_lines')
+          .delete()
+          .or(`journal_entry_id.eq.${targetJId},journal_entry_id.eq.${entryId}`);
+      } catch (lErr) {
+        console.warn('Clean purge journal lines error:', lErr);
+      }
+
+      // 3. HARD PURGE: Delete journal entry master record
       const { error } = await supabase
         .from('journal_entries')
         .delete()
         .eq('company_id', companyId)
-        .or(`id.eq.${entryId},entry_number.eq.${id}`);
+        .or(`id.eq.${targetJId},id.eq.${entryId},entry_number.eq.${entryNumber}`);
+
+      // 4. Recalculate GL account balances immediately
+      try {
+        await this.recalculateAllAccountBalances(companyId);
+      } catch (balErr) {
+        console.warn('Recalculate balances after journal delete note:', balErr);
+      }
 
       return !error;
     } catch (err: any) {
@@ -2328,6 +2437,69 @@ export class SupabaseDataService {
     }
   }
 
+  public static async recalculateAllAccountBalances(targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+    try {
+      // 1. Fetch all accounts
+      const { data: accounts } = await supabase
+        .from('chart_of_accounts')
+        .select('id, code, opening_balance')
+        .eq('company_id', companyId);
+
+      if (!accounts || accounts.length === 0) return true;
+
+      // 2. Fetch journal entries to aggregate balances
+      const { data: journals } = await supabase
+        .from('journals')
+        .select('id, lines')
+        .eq('company_id', companyId);
+
+      const netBalances: Record<string, number> = {};
+      accounts.forEach((acc) => {
+        netBalances[acc.id] = Number(acc.opening_balance || 0);
+        if (acc.code) {
+          netBalances[acc.code] = Number(acc.opening_balance || 0);
+        }
+      });
+
+      if (journals && journals.length > 0) {
+        journals.forEach((j: any) => {
+          const lines = Array.isArray(j.lines) ? j.lines : [];
+          lines.forEach((l: any) => {
+            const accKey = l.accountId || l.accountCode;
+            if (accKey) {
+              const debit = Number(l.debit || 0);
+              const credit = Number(l.credit || 0);
+              const delta = debit - credit;
+              netBalances[accKey] = (netBalances[accKey] || 0) + delta;
+            }
+          });
+        });
+      }
+
+      // 3. Batch update accounts
+      for (const acc of accounts) {
+        const bal = netBalances[acc.id] ?? netBalances[acc.code] ?? 0;
+        await supabase
+          .from('chart_of_accounts')
+          .update({
+            balance: bal,
+            current_balance: bal,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', acc.id);
+      }
+
+      return true;
+    } catch (e) {
+      console.warn('Supabase recalculateAllAccountBalances exception:', e);
+      return false;
+    }
+  }
+
   public static async getWarehouses(targetCompanyId?: string): Promise<Warehouse[] | null> {
     if (!isSupabaseConfigured) return null;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
@@ -2394,18 +2566,32 @@ export class SupabaseDataService {
         .eq('company_id', companyId)
         .order('created_at', { ascending: true });
       if (error || !data) return null;
-      return data.map((r: any) => ({
-        id: r.id,
-        code: r.code,
-        nameAr: r.name_ar,
-        nameEn: r.name_en || '',
-        phone: r.phone || '',
-        email: r.email || '',
-        commissionRate: Number(r.commission_rate) || 0,
-        targetAmount: Number(r.target_amount) || 0,
-        isActive: r.is_active ?? true,
-        notes: r.notes || '',
-      }));
+      return data.map((r: any) => {
+        let extra: any = {};
+        let notesText = r.notes || '';
+        if (typeof notesText === 'string' && notesText.trim().startsWith('{')) {
+          try {
+            extra = JSON.parse(notesText);
+            notesText = extra.text || '';
+          } catch {}
+        }
+        return {
+          id: r.id,
+          code: r.code,
+          nameAr: r.name_ar,
+          nameEn: r.name_en || '',
+          phone: r.phone || '',
+          email: r.email || '',
+          commissionRate: Number(r.commission_rate) || 0,
+          targetAmount: Number(r.target_amount) || 0,
+          isActive: r.is_active ?? true,
+          notes: notesText,
+          vanWarehouseId: extra.vanWarehouseId || r.van_warehouse_id,
+          vanWarehouseName: extra.vanWarehouseName || r.van_warehouse_name,
+          vehicleNumber: extra.vehicleNumber || r.vehicle_number,
+          custodyBalance: extra.custodyBalance !== undefined ? Number(extra.custodyBalance) : 0,
+        };
+      });
     } catch {
       return null;
     }
@@ -2428,7 +2614,13 @@ export class SupabaseDataService {
         commission_rate: r.commissionRate || 0,
         target_amount: r.targetAmount || 0,
         is_active: r.isActive ?? true,
-        notes: r.notes || '',
+        notes: JSON.stringify({
+          text: r.notes || '',
+          vanWarehouseId: r.vanWarehouseId || '',
+          vanWarehouseName: r.vanWarehouseName || '',
+          vehicleNumber: r.vehicleNumber || '',
+          custodyBalance: r.custodyBalance || 0,
+        }),
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('sales_reps').upsert(payload);

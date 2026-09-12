@@ -470,9 +470,40 @@ export interface SalesRep {
   targetAmount?: number;
   isActive: boolean;
   notes?: string;
+  vanWarehouseId?: string;
+  vanWarehouseName?: string;
+  vehicleNumber?: string;
+  custodyBalance?: number;
   companyId?: string;
   company_id?: string;
   createdAt?: string;
+}
+
+export interface RepCustodyRecord {
+  id: string;
+  repId: string;
+  repName: string;
+  date: string;
+  type: 'ADVANCE' | 'REMITTANCE' | 'COLLECTION' | 'COMMISSION_SETTLE';
+  amount: number;
+  referenceNo: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface VanStockItemMovement {
+  id: string;
+  repId: string;
+  itemId: string;
+  itemCode: string;
+  itemNameAr: string;
+  unit: string;
+  dispatchedQty: number; // بضاعة منصرفة لسيارة المندوب
+  soldQty: number;       // مباع من السيارة
+  returnedQty: number;   // مرتجع لمستودع الشركة
+  currentQty: number;    // الرصيد الفعلي الحالي
+  costPrice: number;
+  salePrice: number;
 }
 
 export interface NegativeStockAlert {
@@ -684,6 +715,7 @@ export interface CompanyProfile {
   crIssueDate?: string;
   crExpiryDate?: string;
   chamberNumber?: string;
+  currencySymbol?: string;
   vatRate: number;
   vatType: 'NONE' | 'MONTHLY' | 'QUARTERLY';
   zatcaPhase: 'PHASE_1_BASIC' | 'PHASE_2_INTEGRATED';
