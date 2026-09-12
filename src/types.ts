@@ -793,6 +793,8 @@ export interface TenantCompanyRecord {
   status: 'pending' | 'active' | 'suspended' | 'rejected';
   type?: 'system' | 'demo' | 'client';
   login_code?: string;
+  logo_url?: string;
+  functional_currency?: string;
   profile_data?: Partial<CompanyProfile>;
   created_at: string;
   updated_at?: string;

@@ -547,7 +547,7 @@ export class SupabaseDataService {
   }
 
   /**
-   * Directly and atomically adjusts stock quantity for an item in Supabase.
+   * Directly and atomically adjusts stock quantity and moving average cost for an item in Supabase.
    * Matches by SKU/code, barcode, or UUID to guarantee exact row update.
    */
   public static async adjustItemStock(
@@ -555,7 +555,8 @@ export class SupabaseDataService {
     sku?: string,
     barcode?: string,
     newBalance?: number,
-    targetCompanyId?: string
+    targetCompanyId?: string,
+    newCostPrice?: number
   ): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
@@ -563,7 +564,7 @@ export class SupabaseDataService {
     if (!companyId) return false;
 
     try {
-      let query = supabase.from('items').select('id, current_balance, raw_data').eq('company_id', companyId);
+      let query = supabase.from('items').select('id, current_balance, cost_price, raw_data').eq('company_id', companyId);
       if (sku) {
         query = query.eq('code', sku);
       } else if (barcode) {
@@ -580,14 +581,23 @@ export class SupabaseDataService {
         const balance = typeof newBalance === 'number' ? newBalance : itemRow.current_balance;
         const updatedRaw = { ...(itemRow.raw_data || {}), quantityOnHand: balance };
 
+        const updatePayload: any = {
+          current_balance: balance,
+          qty_on_hand: balance,
+          raw_data: updatedRaw,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (typeof newCostPrice === 'number' && !isNaN(newCostPrice) && newCostPrice >= 0) {
+          const roundedCost = Math.round(newCostPrice * 1000) / 1000;
+          updatePayload.cost_price = roundedCost;
+          updatedRaw.costPrice = roundedCost;
+          updatedRaw.purchasePrice = roundedCost;
+        }
+
         const { error } = await supabase
           .from('items')
-          .update({
-            current_balance: balance,
-            qty_on_hand: balance,
-            raw_data: updatedRaw,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq('id', itemRow.id);
 
         if (error) {

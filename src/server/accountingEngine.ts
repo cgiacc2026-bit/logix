@@ -639,7 +639,7 @@ export class AccountingEngine {
       invoice.lines.forEach((line) => {
         const invItem = inventoryItems.find((i) => i.id === line.itemId);
         if (invItem) {
-          const itemCost = Number(invItem.purchasePrice) || 0;
+          const itemCost = Number((invItem as any).costPrice ?? invItem.purchasePrice ?? 0);
           totalCogs += line.quantity * itemCost;
           if (isReturn) {
             // Return to stock
@@ -857,8 +857,18 @@ export class AccountingEngine {
               quantityOnHand: allowNeg ? invItem.quantityOnHand - line.quantity : Math.max(0, invItem.quantityOnHand - line.quantity),
             });
           } else {
+            const currentQty = Number(invItem.quantityOnHand) || 0;
+            const currentCost = Number((invItem as any).costPrice ?? invItem.purchasePrice ?? 0);
+            const incomingQty = Number(line.quantity) || 0;
+            const purchasePrice = Number(line.unitPrice) || 0;
+            const newAvgCost = currentQty <= 0
+              ? purchasePrice
+              : Math.round((((currentQty * currentCost) + (incomingQty * purchasePrice)) / (currentQty + incomingQty)) * 1000) / 1000;
+
             db.updateInventoryItem(invItem.id, {
-              quantityOnHand: invItem.quantityOnHand + line.quantity,
+              quantityOnHand: currentQty + incomingQty,
+              purchasePrice: newAvgCost,
+              costPrice: newAvgCost,
             });
           }
         }

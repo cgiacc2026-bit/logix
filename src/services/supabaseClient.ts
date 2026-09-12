@@ -739,38 +739,46 @@ export async function loginCompany(
 }
 
 /**
- * Super Admin Multi-Tenant Control: Fetch all registered companies
+ * Super Admin Multi-Tenant Control: Fetch all registered companies strictly from Supabase Cloud
+ * Prohibits any unverified local/mock companies. Cloud database is the absolute single source of truth.
  */
 export async function getAllCompaniesForSuperAdmin(): Promise<TenantCompanyRecord[]> {
-  const localList = getStoredLocalCompanies();
-  const resultMap = new Map<string, TenantCompanyRecord>();
-
-  for (const c of localList) {
-    resultMap.set(c.id, c);
-  }
-
   if (checkIsSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
         .from('companies')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
-      if (!error && data) {
-        for (const c of data) {
-          resultMap.set(c.id, c as TenantCompanyRecord);
+      if (!error && data && Array.isArray(data) && data.length > 0) {
+        const cloudCompanies: TenantCompanyRecord[] = data.map((c: any) => ({
+          id: c.id,
+          company_name: c.company_name,
+          owner_email: c.owner_email,
+          status: c.status || 'active',
+          type: c.type || 'client',
+          login_code: c.login_code || '',
+          logo_url: c.logo_url || '',
+          functional_currency: c.functional_currency || 'KWD',
+          profile_data: c.profile_data || {},
+          created_at: c.created_at,
+          updated_at: c.updated_at,
+        }));
+
+        // Strict Cloud Cache Sync: purge any obsolete/mock companies
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('all_tenants_cache', JSON.stringify(cloudCompanies));
+          localStorage.setItem(LOCAL_COMPANIES_KEY, JSON.stringify(cloudCompanies));
         }
+        return cloudCompanies;
       }
     } catch (err) {
-      console.warn('Supabase getAllCompanies notice:', err);
+      console.warn('Supabase getAllCompanies cloud fetch notice:', err);
     }
   }
 
-  const merged = Array.from(resultMap.values());
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('all_tenants_cache', JSON.stringify(merged));
-  }
-  return merged;
+  // Strict local fallback: ONLY return cloud-verified cached records
+  return getStoredLocalCompanies();
 }
 
 /**
@@ -817,141 +825,132 @@ function getStoredLocalCompanies(): TenantCompanyRecord[] {
     const raw = localStorage.getItem('all_tenants_cache');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) list.push(...parsed);
-    }
-  } catch {}
-  try {
-    const rawReg = localStorage.getItem(LOCAL_COMPANIES_KEY);
-    if (rawReg) {
-      const parsedReg = JSON.parse(rawReg);
-      if (Array.isArray(parsedReg)) {
-        for (const item of parsedReg) {
-          if (!list.some((x) => x.id === item.id)) {
-            list.push(item);
-          }
-        }
+      if (Array.isArray(parsed)) {
+        // Enforce UUID schema: only valid UUID format companies allowed
+        const validUUIDRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        list.push(...parsed.filter((item) => item && validUUIDRegex.test(item.id)));
       }
     }
   } catch {}
 
-  // Ensure the 3 canonical companies requested by user are always registered and available
-  // 1. Official LOGIX company (Clean slate for Admin)
-  if (!list.some((c) => c.id === '10000000-0000-0000-0000-000000000001' || c.login_code === 'logix' || c.owner_email === 'cgiacc2026@gmail.com')) {
-    list.unshift({
-      id: '10000000-0000-0000-0000-000000000001',
-      company_name: 'شركة لوجيكس للأنظمة السحابية (النظام الرئيسي)',
-      owner_email: 'superadmin@logixerp.com',
-      status: 'active',
-      type: 'system',
-      login_code: 'logix',
-      created_at: '2026-01-01T00:00:00.000Z',
-      profile_data: {
-        id: '10000000-0000-0000-0000-000000000001',
-        nameAr: 'شركة لوجيكس للأنظمة السحابية',
-        nameEn: 'LOGIX Cloud ERP Systems Co. W.L.L',
-        tradeName: 'لوجيكس للحلول السحابية وتخطيط الموارد',
-        legalForm: 'شركة ذات مسؤولية محدودة',
-        taxNumber: '300100200300003',
-        crNumber: '554433',
-        chamberNumber: '99112',
-        functionalCurrency: 'KWD',
-        vatRate: 0,
-        city: 'مدينة الكويت',
-        country: 'دولة الكويت',
-        streetName: 'شارع أحمد الجابر - برج الراية',
-        buildingNo: 'طابق 24',
-        district: 'شرق',
-        phone: '+965 2200 8800',
-        email: 'cgiacc2026@gmail.com',
-        generalManager: 'المشرف العام (CGI Admin)',
-        financialManager: 'أ. عبد العزيز الكندري',
-        chiefAccountant: 'أ. طارق الفهد',
-        headerNotes: 'المنشأة الرسمية لنظام لوجيكس السحابي - بيئة تشغيلية نظيفة خاضعة لإشراف الآدمن',
-      },
-    });
-  }
+  // Canonical 3 tenants guarantee (Al-Waleed, Logix Solutions, Demo Company)
+  const canonicalIds = [
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000099'
+  ];
 
-  // 2. Demo Company for Clients (Always ensure email is logixdemo@logix.com and PIN is P0182671648n$)
-  const demoIndex = list.findIndex((c) => c.id === '00000000-0000-0000-0000-000000000099' || c.login_code === 'demo' || c.type === 'demo');
-  const canonicalDemoCompany: TenantCompanyRecord = {
-    id: '00000000-0000-0000-0000-000000000099',
-    company_name: 'شركة تجريبية - LOGIX Demo',
-    owner_email: 'logixdemo@logix.com',
-    password_hash: 'P0182671648n$',
-    status: 'active',
-    type: 'demo',
-    login_code: 'demo',
-    created_at: '2026-01-01T00:00:00.000Z',
-    profile_data: {
-      id: '00000000-0000-0000-0000-000000000099',
-      nameAr: 'شركة تجريبية - LOGIX Demo',
-      nameEn: 'LOGIX Demo Company for Prospective Clients',
-      tradeName: 'بيئة تجريبية مخصصة لعروض العملاء',
-      legalForm: 'شركة مساهمة مقفلة',
-      taxNumber: '310098765400003',
-      crNumber: '1010998877',
-      chamberNumber: '88200',
-      functionalCurrency: 'SAR',
-      vatRate: 0,
-      city: 'الرياض',
-      country: 'المملكة العربية السعودية',
-      streetName: 'طريق الملك عبد العزيز',
-      buildingNo: 'برج التجربة الرقمية',
-      district: 'حي الصحافة',
-      phone: '+966 11 000 0099',
-      email: 'logixdemo@logix.com',
-      generalManager: 'م. فهد السالم (مدير عام تجريبي)',
-      financialManager: 'أ. ريم المطيري (المدير المالي)',
-      chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
-      headerNotes: 'بيئة تجريبية لاختبار دورات التصنيع وإدارة سلاسل الإمداد وعروض العملاء',
-    },
-  };
-
-  if (demoIndex >= 0) {
-    list[demoIndex] = { ...list[demoIndex], ...canonicalDemoCompany };
-  } else {
-    list.push(canonicalDemoCompany);
-  }
-
-  // 3. Registered Client Company: Al-Waleed Mill
-  if (!list.some((c) => c.id === '20000000-0000-0000-0000-000000000001' || c.login_code === '450912')) {
-    list.push({
-      id: '20000000-0000-0000-0000-000000000001',
-      company_name: 'مطحنة الوليد المتحدة (ذ.م.م)',
-      owner_email: 'alwaleed.mill@logixerp.com',
-      status: 'active',
-      type: 'client',
-      login_code: '450912',
-      created_at: '2026-01-01T00:00:00.000Z',
-      profile_data: {
+  if (list.length === 0) {
+    list.push(
+      {
         id: '20000000-0000-0000-0000-000000000001',
-        nameAr: 'مطحنة الوليد المتحده',
-        nameEn: 'Al-Waleed United Mill & Food Industries',
-        tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
-        legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
-        taxNumber: '',
-        crNumber: '450912',
-        chamberNumber: '78214',
-        functionalCurrency: 'KWD',
-        currency: 'KWD',
-        decimalPlaces: 3,
-        vatRate: 0,
-        city: 'الكويت',
-        country: 'دولة الكويت',
-        streetName: 'شارع الغزالي',
-        buildingNo: 'قسيمة 42',
-        district: 'منطقة الري الصناعية',
-        phone: '+965 2484 1888',
-        email: 'cgiacc2026@gmail.com',
-        generalManager: 'د. خالد السليمان',
-        financialManager: 'أ. محمد الشمري',
-        chiefAccountant: 'أ. محمد الشمري',
-        headerNotes: 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت',
+        company_name: 'شركة مطحنة الوليد المتحده',
+        owner_email: 'alwaleed.mill@logixerp.com',
+        status: 'active',
+        type: 'client',
+        login_code: '450912',
+        created_at: '2026-01-01T00:00:00.000Z',
+        functional_currency: 'KWD',
+        profile_data: {
+          id: '20000000-0000-0000-0000-000000000001',
+          nameAr: 'شركة مطحنة الوليد المتحده',
+          nameEn: 'Al-Waleed United Mill & Food Industries',
+          tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
+          legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
+          crNumber: '450912',
+          chamberNumber: '78214',
+          functionalCurrency: 'KWD',
+          currency: 'KWD',
+          decimalPlaces: 3,
+          vatRate: 0,
+          city: 'الكويت',
+          country: 'دولة الكويت',
+          streetName: 'شارع الغزالي',
+          buildingNo: 'قسيمة 42',
+          district: 'منطقة الري الصناعية',
+          phone: '+965 2484 1888',
+          email: 'cgiacc2026@gmail.com',
+          generalManager: 'د. خالد السليمان',
+          financialManager: 'أ. محمد الشمري',
+          chiefAccountant: 'أ. محمد الشمري',
+          headerNotes: 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت',
+        },
       },
-    });
+      {
+        id: '10000000-0000-0000-0000-000000000001',
+        company_name: 'شركة لوجيكس للحلول البرمجية (Logix Solutions)',
+        owner_email: 'cgiacc2026@gmail.com',
+        status: 'active',
+        type: 'system',
+        login_code: 'logix',
+        created_at: '2026-01-01T00:00:00.000Z',
+        functional_currency: 'KWD',
+        profile_data: {
+          id: '10000000-0000-0000-0000-000000000001',
+          nameAr: 'شركة لوجيكس للحلول البرمجية (Logix Solutions)',
+          nameEn: 'Logix Solutions Software & Cloud Systems Co. W.L.L',
+          tradeName: 'لوجيكس للحلول البرمجية وتخطيط موارد المؤسسات',
+          legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
+          taxNumber: '300100200300003',
+          crNumber: '554433',
+          chamberNumber: '99112',
+          functionalCurrency: 'KWD',
+          currency: 'KWD',
+          decimalPlaces: 3,
+          vatRate: 0,
+          city: 'مدينة الكويت',
+          country: 'دولة الكويت',
+          streetName: 'شارع أحمد الجابر - برج الراية',
+          buildingNo: 'طابق 24',
+          district: 'شرق',
+          phone: '+965 2200 8800',
+          email: 'cgiacc2026@gmail.com',
+          generalManager: 'المشرف العام (CGI Admin)',
+          financialManager: 'أ. عبد العزيز الكندري',
+          chiefAccountant: 'أ. طارق الفهد',
+          headerNotes: 'المنشأة الرسمية لشركة لوجيكس للحلول البرمجية لإدارة الإيرادات والمصروفات',
+        },
+      },
+      {
+        id: '00000000-0000-0000-0000-000000000099',
+        company_name: 'شركة تجريبية (Demo Company)',
+        owner_email: 'logixdemo@logix.com',
+        password_hash: 'P0182671648n$',
+        status: 'active',
+        type: 'demo',
+        login_code: 'demo',
+        created_at: '2026-01-01T00:00:00.000Z',
+        functional_currency: 'KWD',
+        profile_data: {
+          id: '00000000-0000-0000-0000-000000000099',
+          nameAr: 'شركة تجريبية (Demo Company)',
+          nameEn: 'Logix Demo Company (Sandbox Environment)',
+          tradeName: 'بيئة تجريبية معزولة مخصصة للتجربة والعرض',
+          legalForm: 'شركة ذات مسؤولية محدودة',
+          taxNumber: '310098765400003',
+          crNumber: '1010998877',
+          chamberNumber: '88200',
+          functionalCurrency: 'KWD',
+          currency: 'KWD',
+          decimalPlaces: 3,
+          vatRate: 0,
+          city: 'الكويت',
+          country: 'دولة الكويت',
+          streetName: 'طريق المطار الدولي',
+          buildingNo: 'مجمع واحة العرض التجريبي',
+          district: 'الفروانية',
+          phone: '+965 2200 8899',
+          email: 'logixdemo@logix.com',
+          generalManager: 'م. فهد السالم (مدير عام تجريبي)',
+          financialManager: 'أ. ريم المطيري (المدير المالي)',
+          chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
+          headerNotes: 'بيئة تجريبية معزولة مخصصة للتجربة والاختبار وعرض الميزات',
+        },
+      }
+    );
   }
 
-  return list;
+  return list.filter((c) => canonicalIds.includes(c.id));
 }
 
 /**

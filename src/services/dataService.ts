@@ -61,6 +61,7 @@ import { ThemeService } from './themeService.ts';
 import { cacheService } from './cacheService.ts';
 import { backgroundSync } from './backgroundSyncService.ts';
 import { getAccountStatement } from './statementService.ts';
+import { IAS2CostingEngine } from './costingEngine.ts';
 
 const STORAGE_KEYS = {
   COMPANY: 'alwaleed_erp_company',
@@ -2602,13 +2603,35 @@ export class DataService {
       const qtyDelta = isOutbound ? -Number(it.quantity) : Number(it.quantity);
 
       if (invItem) {
+        let newUnitCost: number | undefined = undefined;
+
         if (isOutbound) {
+          // Outbound sales or purchase return: unit cost remains constant (IAS-2 rule)
           invItem.quantityOnHand = allowNegativeStock
             ? (invItem.quantityOnHand || 0) - Number(it.quantity)
             : Math.max(0, (invItem.quantityOnHand || 0) - Number(it.quantity));
         } else {
-          invItem.quantityOnHand = (invItem.quantityOnHand || 0) + Number(it.quantity);
+          // Inbound: purchase or sales return
+          const currentQty = Number(invItem.quantityOnHand) || 0;
+          const currentCost = Number(invItem.costPrice ?? invItem.purchasePrice ?? 0);
+          const incomingQty = Number(it.quantity) || 0;
+          const purchasePrice = Number(it.unitPrice) || 0;
+
+          if (isPurchase) {
+            // IAS-2 Moving Weighted Average Cost (MAC) Formula:
+            newUnitCost = IAS2CostingEngine.calculateMovingAverageCost(
+              currentQty,
+              currentCost,
+              incomingQty,
+              purchasePrice
+            );
+            invItem.costPrice = newUnitCost;
+            invItem.purchasePrice = newUnitCost;
+          }
+
+          invItem.quantityOnHand = currentQty + incomingQty;
         }
+
         syncToFirestore('erp_inventory', invItem.id, invItem);
         if (isSupabaseConfigured) {
           await SupabaseDataService.adjustItemStock(
@@ -2616,7 +2639,8 @@ export class DataService {
             it.itemSku || invItem.sku,
             it.barcode || invItem.barcode,
             invItem.quantityOnHand,
-            activeCompanyId
+            activeCompanyId,
+            newUnitCost
           ).catch((e) => console.warn('Supabase adjustItemStock notice:', e));
         }
       }
@@ -2645,13 +2669,16 @@ export class DataService {
       if (computedVatTotal > 0) {
         jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.vat.id, accountCode: resolved.vat.code, accountNameAr: resolved.vat.nameAr, debit: 0, credit: computedVatTotal, memo: `ضريبة القيمة المضافة المحصلة - فاتورة ${invoiceNumber}` });
       }
+      // IAS-2 COGS: Calculated at latest Moving Weighted Average Cost (Unit cost unchanged on sales)
       const totalCost = lines.reduce((sum: number, line: any) => {
-        const invItem = inventory.find(i => i.id === line.itemId);
-        return sum + ((invItem ? (Number(invItem.costPrice || invItem.purchasePrice || 0)) : 0) * line.quantity);
+        const invItem = inventory.find(i => i.id === line.itemId || (line.itemSku && (i.sku === line.itemSku || (i as any).code === line.itemSku)));
+        const unitCost = Number(invItem ? (invItem.costPrice ?? invItem.purchasePrice ?? 0) : 0);
+        return sum + (unitCost * line.quantity);
       }, 0);
-      if (totalCost > 0) {
-        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.cogs.id, accountCode: resolved.cogs.code, accountNameAr: resolved.cogs.nameAr, debit: totalCost, credit: 0, memo: `تكلفة بضاعة مباعة - فاتورة ${invoiceNumber}` });
-        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.inventory.id, accountCode: resolved.inventory.code, accountNameAr: resolved.inventory.nameAr, debit: 0, credit: totalCost, memo: `تخفيض المخزون المباع - فاتورة ${invoiceNumber}` });
+      const roundedCOGS = IAS2CostingEngine.roundToPrecision(totalCost);
+      if (roundedCOGS > 0) {
+        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.cogs.id, accountCode: resolved.cogs.code, accountNameAr: resolved.cogs.nameAr, debit: roundedCOGS, credit: 0, memo: `تكلفة بضاعة مباعة (IAS-2 MAC) - فاتورة ${invoiceNumber}` });
+        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.inventory.id, accountCode: resolved.inventory.code, accountNameAr: resolved.inventory.nameAr, debit: 0, credit: roundedCOGS, memo: `تخفيض المخزون المباع - فاتورة ${invoiceNumber}` });
       }
     } else if (isSalesReturn) {
       const netRevenue = Math.max(0, grandTotal - computedVatTotal);
@@ -2666,13 +2693,16 @@ export class DataService {
         const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
         jLines.push({ id: `jl-${jLines.length + 1}`, accountId: paymentAcc.id, accountCode: paymentAcc.code, accountNameAr: paymentAcc.nameAr, debit: 0, credit: grandTotal, memo: `تخفيض رصيد حساب العميل ${entityNameAr}` });
       }
+      // IAS-2 Sales Return: Returned items restore to inventory at their sold unit cost
       const totalCost = lines.reduce((sum: number, line: any) => {
-        const invItem = inventory.find(i => i.id === line.itemId);
-        return sum + ((invItem ? (Number(invItem.costPrice || invItem.purchasePrice || 0)) : 0) * line.quantity);
+        const invItem = inventory.find(i => i.id === line.itemId || (line.itemSku && (i.sku === line.itemSku || (i as any).code === line.itemSku)));
+        const unitCost = Number(line.costPrice ?? (invItem ? (invItem.costPrice ?? invItem.purchasePrice ?? 0) : 0));
+        return sum + (unitCost * line.quantity);
       }, 0);
-      if (totalCost > 0) {
-        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.inventory.id, accountCode: resolved.inventory.code, accountNameAr: resolved.inventory.nameAr, debit: totalCost, credit: 0, memo: `رد بضاعة للمخزون - مرتجع ${invoiceNumber}` });
-        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.cogs.id, accountCode: resolved.cogs.code, accountNameAr: resolved.cogs.nameAr, debit: 0, credit: totalCost, memo: `تخفيض تكلفة بضاعة مباعة - مرتجع ${invoiceNumber}` });
+      const roundedCOGS = IAS2CostingEngine.roundToPrecision(totalCost);
+      if (roundedCOGS > 0) {
+        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.inventory.id, accountCode: resolved.inventory.code, accountNameAr: resolved.inventory.nameAr, debit: roundedCOGS, credit: 0, memo: `رد بضاعة للمخزون (مرتجع مبيعات) - مرتجع ${invoiceNumber}` });
+        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.cogs.id, accountCode: resolved.cogs.code, accountNameAr: resolved.cogs.nameAr, debit: 0, credit: roundedCOGS, memo: `تخفيض تكلفة بضاعة مباعة - مرتجع ${invoiceNumber}` });
       }
     } else if (isPurchase) {
       const netPurchase = Math.max(0, grandTotal - computedVatTotal);
