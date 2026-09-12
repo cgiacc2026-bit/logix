@@ -24,7 +24,7 @@
  *    - دعم اللقطات التراكمية الشهرية (Monthly Snapshots) لتجنب $O(N)$ مسح تاريخي للبيانات الضخمة.
  */
 
-import { Customer, Supplier, Invoice, PaymentVoucher, JournalEntry, CompanyProfile } from '../types.js';
+import { Customer, Supplier, Invoice, PaymentVoucher, JournalEntry, CompanyProfile, CreditNote } from '../types.js';
 
 // تعريف أنواع حركات كشف الحساب
 export type StatementDocType = 
@@ -117,6 +117,7 @@ export interface StatementQueryOptions {
   invoices?: Invoice[];
   vouchers?: PaymentVoucher[];
   journals?: JournalEntry[];
+  creditNotes?: CreditNote[];
   customers?: Customer[];
   suppliers?: Supplier[];
   currency?: string;
@@ -392,6 +393,7 @@ export function getAccountStatement(
     invoices = [],
     vouchers = [],
     journals = [],
+    creditNotes = [],
     customers = [],
     suppliers = [],
     currency = 'KWD',
@@ -721,6 +723,39 @@ export function getAccountStatement(
     });
   });
 
+  // د) إشعارات الدائن المعتمدة للعملاء (Credit Notes / Memos) - تجميع التحصيلات والمرتجعات
+  (creditNotes || []).forEach((cn) => {
+    if (!cn) return;
+    const matchesCust = isDocMatchingEntity(
+      { customerId: cn.customer_id, customerName: cn.customer_name },
+      entityId,
+      entity,
+      entityType
+    );
+    const isValid = cn.status !== 'REVERSED' && !cn.is_deleted;
+    if (matchesCust && isValid && entityType === 'CUSTOMER') {
+      const amount = Number(cn.total_refund_amount) || 0;
+      if (amount > 0) {
+        allRawMovements.push({
+          id: cn.id,
+          date: cn.date,
+          docNumber: cn.return_number,
+          docType: 'CREDIT_NOTE',
+          docTypeLabel: 'إشعار دائن (مرتجع)',
+          description: cn.reason ? `إشعار دائن: ${cn.reason}` : `إشعار دائن مرتجع برقم ${cn.return_number}`,
+          reference: cn.return_number,
+          debit: 0,
+          credit: amount, // يضاف كدائن لتخفيض المديونية وتجميع التحصيلات والمرتجعات
+          status: 'ACTIVE',
+          isCancelled: false,
+          sourceModule: 'INVOICE',
+          originalDocId: cn.id,
+          createdAt: cn.created_at,
+        });
+      }
+    }
+  });
+
   // ============================================================================
   // خطوة 1.5: تصفية فريدة صارمة (Deduplication Logic) باستخدام Map لمنع تكرار أي حركة
   // ============================================================================
@@ -983,9 +1018,17 @@ export function calculateEntityCurrentBalance(
   entityType: 'CUSTOMER' | 'SUPPLIER',
   invoices: Invoice[] = [],
   vouchers: PaymentVoucher[] = [],
-  journals: JournalEntry[] = []
+  journals: JournalEntry[] = [],
+  creditNotes: CreditNote[] = []
 ): number {
   if (!entity) return 0;
+
+  // 1. الأولوية للرصيد المربوط مباشرة بقاعدة البيانات والمحدث عبر المشغلات (PostgreSQL Database Triggers)
+  const dbBalance = (entity as any).current_balance ?? (entity as any).currentBalance;
+  if (dbBalance !== undefined && dbBalance !== null && !isNaN(Number(dbBalance))) {
+    return Number(dbBalance);
+  }
+
   const entityId = entity.id;
   const entityCode = entity.code || '';
   const initialOpening = Number(entity.openingBalance) || 0;
@@ -1177,33 +1220,59 @@ export function calculateEntityCurrentBalance(
     }
   }
 
+  // 4. إشعارات الدائن المعتمدة للعملاء (Credit Notes / Memos) - تجميع التحصيلات والمرتجعات
+  if (entityType === 'CUSTOMER' && Array.isArray(creditNotes)) {
+    for (const cn of creditNotes) {
+      if (!cn || cn.status === 'REVERSED' || cn.is_deleted) continue;
+      const matchesCust = isDocMatchingEntity(
+        { customerId: cn.customer_id, customerName: cn.customer_name },
+        entityId,
+        entity,
+        entityType
+      );
+      if (matchesCust) {
+        const amount = Number(cn.total_refund_amount) || 0;
+        if (amount > 0) {
+          // يخصم من رصيد العميل المدين كدائن (Credit)
+          net -= amount;
+        }
+      }
+    }
+  }
+
   return Math.round(net * 1000) / 1000;
 }
 
 /**
  * المحرك المحاسبي المركزي الموحد لاحتساب رصيد العميل اللحظي (Unified Customer Balance Engine)
- * يحسب الرصيد النهائي استناداً لكشف الحساب الفعلي، الرصيد الافتتاحي، فواتير المبيعات والمرتجعات غير الملغاة،
- * سندات القبض، وقيود اليومية غير المكررة.
+ * يعتمد مباشرة على الرصيد المخزن في قاعدة البيانات (customers.current_balance)، أو كشف الحساب المحاسبي الشامل
+ * المتضمن الفواتير، سندات القبض، وإشعارات الدائن (Credit Notes).
  */
 export function getCalculatedCustomerBalance(
   customerId: string,
   invoices: Invoice[] = [],
   vouchers: PaymentVoucher[] = [],
   journals: JournalEntry[] = [],
-  customers: Customer[] = []
+  customers: Customer[] = [],
+  creditNotes: CreditNote[] = []
 ): number {
   if (!customerId) return 0;
+  const cust = customers.find((c) => c.id === customerId);
+  const dbBalance = cust?.current_balance ?? (cust as any)?.currentBalance;
+  if (dbBalance !== undefined && dbBalance !== null && !isNaN(Number(dbBalance))) {
+    return Number(dbBalance);
+  }
   try {
     const stmt = getAccountStatement(customerId, 'CUSTOMER', '1970-01-01', '2099-12-31', {
       invoices,
       vouchers,
       journals,
+      creditNotes,
       customers,
     });
     return Number(stmt?.closingBalance) || 0;
   } catch (err) {
     console.warn('Error in getCalculatedCustomerBalance:', err);
-    const cust = customers.find((c) => c.id === customerId);
     return Number(cust?.openingBalance) || 0;
   }
 }

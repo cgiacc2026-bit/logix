@@ -215,6 +215,7 @@ export interface Customer {
   governorate?: string;
   city?: string;
   balance: number;
+  current_balance?: number;
   currentBalance?: number;
   creditLimit?: number;
   accountId?: string;
@@ -250,6 +251,7 @@ export interface Supplier {
   governorate?: string;
   city?: string;
   balance: number;
+  current_balance?: number;
   currentBalance?: number;
   creditLimit?: number;
   accountId?: string;

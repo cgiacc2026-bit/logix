@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Invoice, Customer, CompanyProfile, InventoryItem, JournalEntry, Account, PaymentVoucher } from '../../types.js';
+import { Invoice, Customer, CompanyProfile, InventoryItem, JournalEntry, Account, PaymentVoucher, CreditNote } from '../../types.js';
 import { formatCurrency } from '../../utils/formatters.ts';
 import {
   DollarSign,
@@ -30,6 +30,7 @@ interface SalesReportsViewProps {
   journals?: JournalEntry[];
   accounts?: Account[];
   vouchers?: PaymentVoucher[];
+  creditNotes?: CreditNote[];
   company: CompanyProfile | null;
   currency: string;
   initialReport?: 'customer-balances' | 'gl-sales' | 'consolidated' | 'profit' | 'statements';
@@ -44,6 +45,7 @@ export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
   journals = [],
   accounts = [],
   vouchers = [],
+  creditNotes = [],
   company,
   currency,
   initialReport = 'customer-balances',
@@ -273,6 +275,7 @@ export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
           accounts={accounts}
           invoices={invoices}
           vouchers={vouchers}
+          creditNotes={creditNotes}
           company={company}
           currency={currency}
           onViewAccountStatement={handleOpenCustomerStatement}
@@ -303,6 +306,7 @@ export const SalesReportsView: React.FC<SalesReportsViewProps> = ({
             invoices={invoices}
             vouchers={vouchers}
             journals={journals}
+            creditNotes={creditNotes}
             company={company}
             currency={currency}
             initialEntityType="CUSTOMER"

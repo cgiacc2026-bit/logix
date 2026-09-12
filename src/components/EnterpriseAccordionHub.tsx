@@ -14,6 +14,7 @@ import {
   Warehouse,
   UnitDefinition,
   FinancialKPIs,
+  CreditNote,
 } from '../types.js';
 import { TabType } from './Navigation.tsx';
 import { formatCurrency } from '../utils/formatters.ts';
@@ -74,6 +75,7 @@ interface EnterpriseAccordionHubProps {
   vouchers: PaymentVoucher[];
   accounts: Account[];
   journals: JournalEntry[];
+  creditNotes?: CreditNote[];
   productionOrders: ProductionOrder[];
   quotations: Quotation[];
   salesReps: SalesRep[];
@@ -124,6 +126,7 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
   vouchers,
   accounts,
   journals,
+  creditNotes = [],
   productionOrders,
   quotations,
   salesReps,
@@ -451,6 +454,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="invoices"
@@ -498,6 +503,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="entities"
@@ -533,6 +540,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="vouchers"
@@ -571,6 +580,7 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                   journals={journals}
                   accounts={accounts}
                   vouchers={vouchers}
+                  creditNotes={creditNotes}
                   company={company}
                   currency={currency}
                   onViewInvoice={onViewPrintInvoice}
@@ -698,6 +708,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="invoices"
@@ -733,6 +745,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="entities"
@@ -768,6 +782,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="vouchers"
@@ -949,6 +965,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="inventory"
@@ -1019,6 +1037,8 @@ export const EnterpriseAccordionHub: React.FC<EnterpriseAccordionHubProps> = ({
                         invoices={invoices}
                         vouchers={vouchers}
                         accounts={accounts}
+                        journals={journals}
+                        creditNotes={creditNotes}
                         units={units}
                         currency={currency}
                         activeSubTab="units"

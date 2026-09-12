@@ -6,6 +6,7 @@ import {
   Invoice,
   PaymentVoucher,
   CompanyProfile,
+  CreditNote,
 } from '../../types.js';
 import {
   GLReportsService,
@@ -39,6 +40,7 @@ interface GlCustomerBalancesReportProps {
   accounts: Account[];
   invoices: Invoice[];
   vouchers: PaymentVoucher[];
+  creditNotes?: CreditNote[];
   company: CompanyProfile | null;
   currency: string;
   onViewAccountStatement?: (customerId: string) => void;
@@ -50,6 +52,7 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
   accounts,
   invoices,
   vouchers,
+  creditNotes = [],
   company,
   currency,
   onViewAccountStatement,
@@ -68,6 +71,7 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [balanceFilter, setBalanceFilter] = useState<'ALL' | 'DEBTORS' | 'ZERO' | 'CREDITORS'>('ALL');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
 
   // Print modal state
@@ -82,7 +86,7 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
     }
   };
 
-  // 1. Strict GL-Calculated Customer Balances
+  // 1. Strict GL-Calculated Customer Balances (incorporating Credit Notes)
   const reportData: GlCustomerBalancesSummary = useMemo(() => {
     return GLReportsService.calculateCustomerBalances(
       customers,
@@ -91,28 +95,59 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
       invoices,
       vouchers,
       datePreset === 'ALL' ? undefined : startDate,
-      datePreset === 'ALL' ? undefined : endDate
+      datePreset === 'ALL' ? undefined : endDate,
+      creditNotes
     );
-  }, [customers, journals, accounts, invoices, vouchers, datePreset, startDate, endDate]);
+  }, [customers, journals, accounts, invoices, vouchers, datePreset, startDate, endDate, creditNotes]);
 
-  // 2. Client-side Search & Balance Status Filter
+  // 2. Client-side Search & Filters (Document Number, Branch/Customer Code, Status)
   const filteredRows = useMemo(() => {
     return reportData.rows.filter((row) => {
+      const custObj = customers.find((c) => c.id === row.customerId);
+
+      // Customer Activity Status Filter
+      if (customerStatusFilter === 'ACTIVE' && custObj && (custObj as any).status === 'INACTIVE') return false;
+      if (customerStatusFilter === 'INACTIVE' && custObj && (custObj as any).status !== 'INACTIVE') return false;
+
       // Balance filter
       if (balanceFilter === 'DEBTORS' && row.netBalance <= 0.005) return false;
       if (balanceFilter === 'ZERO' && Math.abs(row.netBalance) > 0.005) return false;
       if (balanceFilter === 'CREDITORS' && row.netBalance >= -0.005) return false;
 
-      // Text search
+      // Text search: document number, branch/customer code, and status
       if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
-      return (
+      const q = searchQuery.toLowerCase().trim();
+
+      const matchesCustomer =
         row.customerNameAr.toLowerCase().includes(q) ||
         row.customerCode.toLowerCase().includes(q) ||
-        (row.phone && row.phone.includes(q))
+        (row.phone && row.phone.includes(q)) ||
+        (custObj?.taxNumber && custObj.taxNumber.toLowerCase().includes(q));
+
+      const matchesBranch = Boolean(
+        custObj?.branches?.some((b: any) =>
+          (b.branchCode && b.branchCode.toLowerCase().includes(q)) ||
+          (b.branchName && b.branchName.toLowerCase().includes(q))
+        )
       );
+
+      const matchesDocNumber = row.glMovements.some(
+        (m) =>
+          (m.entryNumber && m.entryNumber.toLowerCase().includes(q)) ||
+          (m.reference && m.reference.toLowerCase().includes(q)) ||
+          (m.description && m.description.toLowerCase().includes(q))
+      );
+
+      const matchesStatus =
+        (q === 'مدين' && row.netBalance > 0.005) ||
+        (q === 'دائن' && row.netBalance < -0.005) ||
+        (q === 'خالص' && Math.abs(row.netBalance) <= 0.005) ||
+        (q === 'نشط' && (custObj as any)?.status !== 'INACTIVE') ||
+        (q === 'معلق' && (custObj as any)?.status === 'INACTIVE');
+
+      return matchesCustomer || matchesBranch || matchesDocNumber || matchesStatus;
     });
-  }, [reportData.rows, balanceFilter, searchQuery]);
+  }, [reportData.rows, balanceFilter, customerStatusFilter, searchQuery, customers]);
 
   // Filtered Totals
   const filteredTotals = useMemo(() => {
@@ -310,19 +345,30 @@ export const GlCustomerBalancesReport: React.FC<GlCustomerBalancesReportProps> =
             onChange={(e) => setBalanceFilter(e.target.value as any)}
             className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-xs font-bold text-slate-700 outline-none"
           >
-            <option value="ALL">جميع الحسابات ({reportData.rows.length})</option>
+            <option value="ALL">جميع الأرصدة ({reportData.rows.length})</option>
             <option value="DEBTORS">أرصدة مدينة (عليهم مستحقات) ({reportData.activeDebtorsCount})</option>
             <option value="ZERO">أرصدة مصفية (صفر)</option>
             <option value="CREDITORS">أرصدة دائنة (لهم دفعات مقدمة)</option>
           </select>
+
+          {/* Customer Activity Status Filter */}
+          <select
+            value={customerStatusFilter}
+            onChange={(e) => setCustomerStatusFilter(e.target.value as any)}
+            className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-xs font-bold text-slate-700 outline-none"
+          >
+            <option value="ALL">جميع الحالات</option>
+            <option value="ACTIVE">حسابات نشطة</option>
+            <option value="INACTIVE">حسابات معلقة / غير نشطة</option>
+          </select>
         </div>
 
         {/* Search */}
-        <div className="relative min-w-[240px]">
+        <div className="relative min-w-[280px]">
           <Search className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="بحث بكود العميل أو اسم الجمعية..."
+            placeholder="مسح وتصفية برقم المستند، كود العميل/الفرع، أو الحالة..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-1.5 text-xs text-slate-800 font-bold outline-none focus:ring-2 focus:ring-slate-900"

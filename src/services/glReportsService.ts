@@ -19,6 +19,7 @@ import {
   JournalEntry,
   CompanyProfile,
   StockMovement,
+  CreditNote,
 } from '../types.js';
 import { StockLedgerService } from './stockLedgerService.ts';
 import { getAccountStatement, isDocMatchingEntity } from './statementService.ts';
@@ -206,7 +207,8 @@ export class GLReportsService {
     invoices: Invoice[] = [],
     vouchers: PaymentVoucher[] = [],
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    creditNotes: CreditNote[] = []
   ): GlCustomerBalancesSummary {
     const recAccount = this.resolveReceivableAccount(accounts);
     const recAccId = recAccount?.id;
@@ -290,14 +292,22 @@ export class GLReportsService {
           invoices: validInvoices,
           vouchers: validVouchers,
           journals: postedJournals,
+          creditNotes,
           customers,
         }
       );
 
       const custOpening = Number(stmt?.openingBalance) || 0;
       const totalDebit = Number(stmt?.totalPeriodDebit) || 0;
+      // إجمالي الدائن يشمل كلاً من سندات القبض وإشعارات الدائن المعتمدة (Credit Notes)
       const totalCredit = Number(stmt?.totalPeriodCredit) || 0;
-      const netBalance = Number(stmt?.closingBalance) || 0;
+
+      // عند عدم تطبيق تصفية زمنية، يرتبط الرصيد المعروض مباشرة بـ customer.current_balance المحدث بقواعد البيانات
+      const isDateFiltered = Boolean(startDate || endDate);
+      const dbBalance = (cust as any).current_balance ?? (cust as any).currentBalance;
+      const netBalance = (!isDateFiltered && dbBalance !== undefined && dbBalance !== null && !isNaN(Number(dbBalance)))
+        ? Number(dbBalance)
+        : (Number(stmt?.closingBalance) || 0);
 
       const glMovements: GlCustomerBalanceRow['glMovements'] = (stmt?.transactions || [])
         .filter((t) => !t.isCancelled && t.status !== 'CANCELLED')

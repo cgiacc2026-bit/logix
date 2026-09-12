@@ -12,6 +12,8 @@ import {
   SalesRep,
   Warehouse,
   Branch,
+  CreditNote,
+  JournalEntry,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
@@ -75,6 +77,8 @@ interface InvoicesProps {
   invoices: Invoice[];
   vouchers: PaymentVoucher[];
   accounts?: Account[];
+  journals?: JournalEntry[];
+  creditNotes?: CreditNote[];
   units?: UnitDefinition[];
   currency: string;
   activeSubTab?: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units';
@@ -119,6 +123,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   invoices,
   vouchers,
   accounts = [],
+  journals = [],
+  creditNotes = [],
   units,
   currency,
   activeSubTab,
@@ -1169,14 +1175,22 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
   };
 
-  // Dynamic accurate balance calculator for customers
+  // الربط المباشر برصيد العميل اللحظي في قاعدة البيانات المحدث عبر المشغلات (Database Triggers)
   const getCustomerCurrentBalance = (c: Customer): number => {
-    return calculateEntityCurrentBalance(c, 'CUSTOMER', invoices, vouchers);
+    const dbBal = (c as any).current_balance ?? (c as any).currentBalance;
+    if (dbBal !== undefined && dbBal !== null && !isNaN(Number(dbBal))) {
+      return Number(dbBal);
+    }
+    return calculateEntityCurrentBalance(c, 'CUSTOMER', invoices, vouchers, journals, creditNotes);
   };
 
-  // Dynamic accurate balance calculator for suppliers
+  // الربط المباشر برصيد المورد اللحظي في قاعدة البيانات المحدث عبر المشغلات (Database Triggers)
   const getSupplierCurrentBalance = (s: Supplier): number => {
-    return calculateEntityCurrentBalance(s, 'SUPPLIER', invoices, vouchers);
+    const dbBal = (s as any).current_balance ?? (s as any).currentBalance;
+    if (dbBal !== undefined && dbBal !== null && !isNaN(Number(dbBal))) {
+      return Number(dbBal);
+    }
+    return calculateEntityCurrentBalance(s, 'SUPPLIER', invoices, vouchers, journals);
   };
 
   // Inventory Filtering & Categories with Multi-Tenant Scoping & Normalized Search
@@ -2177,13 +2191,52 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 </h4>
                 <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
                   {scopedCustomers
-                    .filter((c) =>
-                      !entitySearch ||
-                      matchesSearch(c.nameAr, entitySearch) ||
-                      matchesSearch((c as any).nameEn, entitySearch) ||
-                      matchesSearch(c.code, entitySearch) ||
-                      matchesSearch(c.phone, entitySearch)
-                    )
+                    .filter((c) => {
+                      if (!entitySearch) return true;
+                      const q = entitySearch.trim().toLowerCase();
+
+                      // 1. Name, code, phone, taxNumber
+                      const matchesBasic =
+                        matchesSearch(c.nameAr, q) ||
+                        matchesSearch((c as any).nameEn, q) ||
+                        matchesSearch(c.code, q) ||
+                        matchesSearch(c.phone, q) ||
+                        matchesSearch(c.taxNumber, q);
+
+                      // 2. Branch code or branch name
+                      const matchesBranch = Boolean(
+                        c.branches?.some((b: any) =>
+                          matchesSearch(b.branchCode, q) ||
+                          matchesSearch(b.branchName, q)
+                        )
+                      );
+
+                      // 3. Document number (invoices, vouchers, or credit notes)
+                      const matchesDoc =
+                        invoices.some((inv) =>
+                          (inv.customerId === c.id || inv.customerName === c.nameAr) &&
+                          (matchesSearch(inv.invoiceNumber, q) || matchesSearch(inv.referenceNumber, q))
+                        ) ||
+                        vouchers.some((v) =>
+                          (v.entityId === c.id || v.entityName === c.nameAr) &&
+                          (matchesSearch(v.voucherNumber, q) || matchesSearch(v.reference, q))
+                        ) ||
+                        creditNotes.some((cn) =>
+                          (cn.customer_id === c.id || cn.customer_name === c.nameAr) &&
+                          (matchesSearch(cn.credit_note_number, q) || matchesSearch(cn.reference_invoice_number, q))
+                        );
+
+                      // 4. Status scanning
+                      const bal = getCustomerCurrentBalance(c);
+                      const matchesStatus =
+                        (q === 'مدين' && bal > 0.005) ||
+                        (q === 'دائن' && bal < -0.005) ||
+                        (q === 'مصفى' && Math.abs(bal) <= 0.005) ||
+                        (q === 'نشط' && (c as any).status !== 'INACTIVE') ||
+                        (q === 'معلق' && (c as any).status === 'INACTIVE');
+
+                      return matchesBasic || matchesBranch || matchesDoc || matchesStatus;
+                    })
                     .map((c) => (
                       <div key={c.id} className="py-3.5 space-y-2 text-xs">
                         <div className="flex justify-between items-start">
@@ -2270,13 +2323,33 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 </h4>
                 <div className="divide-y divide-[#E5E1DA] max-h-[600px] overflow-y-auto">
                   {scopedSuppliers
-                    .filter((s) =>
-                      !entitySearch ||
-                      matchesSearch(s.nameAr, entitySearch) ||
-                      matchesSearch((s as any).nameEn, entitySearch) ||
-                      matchesSearch(s.code, entitySearch) ||
-                      matchesSearch(s.phone, entitySearch)
-                    )
+                    .filter((s) => {
+                      if (!entitySearch) return true;
+                      const q = entitySearch.trim().toLowerCase();
+                      const matchesBasic =
+                        matchesSearch(s.nameAr, q) ||
+                        matchesSearch((s as any).nameEn, q) ||
+                        matchesSearch(s.code, q) ||
+                        matchesSearch(s.phone, q) ||
+                        matchesSearch(s.taxNumber, q);
+                      const matchesDoc =
+                        invoices.some((inv) =>
+                          (inv.supplierId === s.id || inv.supplierName === s.nameAr) &&
+                          (matchesSearch(inv.invoiceNumber, q) || matchesSearch(inv.referenceNumber, q))
+                        ) ||
+                        vouchers.some((v) =>
+                          (v.entityId === s.id || v.entityName === s.nameAr) &&
+                          (matchesSearch(v.voucherNumber, q) || matchesSearch(v.reference, q))
+                        );
+                      const bal = getSupplierCurrentBalance(s);
+                      const matchesStatus =
+                        (q === 'دائن' && bal > 0.005) ||
+                        (q === 'مدين' && bal < -0.005) ||
+                        (q === 'مصفى' && Math.abs(bal) <= 0.005) ||
+                        (q === 'نشط' && (s as any).status !== 'INACTIVE') ||
+                        (q === 'معلق' && (s as any).status === 'INACTIVE');
+                      return matchesBasic || matchesDoc || matchesStatus;
+                    })
                     .map((s) => (
                       <div key={s.id} className="py-3.5 space-y-2 text-xs">
                         <div className="flex justify-between items-start">
@@ -4253,6 +4326,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
           suppliers={suppliers}
           invoices={invoices}
           vouchers={vouchers}
+          journals={journals}
+          creditNotes={creditNotes}
           company={company}
           currency={currency}
         />

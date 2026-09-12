@@ -1,5 +1,5 @@
 import React from 'react';
-import { Customer, Supplier, Invoice, PaymentVoucher, JournalEntry, CompanyProfile } from '../types.js';
+import { Customer, Supplier, Invoice, PaymentVoucher, JournalEntry, CompanyProfile, CreditNote } from '../types.js';
 import { AccountStatementView } from './AccountStatementView.tsx';
 import { X } from 'lucide-react';
 
@@ -13,6 +13,7 @@ interface AccountStatementModalProps {
   invoices: Invoice[];
   vouchers: PaymentVoucher[];
   journals?: JournalEntry[];
+  creditNotes?: CreditNote[];
   company: CompanyProfile | null;
   currency: string;
 }
@@ -27,6 +28,7 @@ export const AccountStatementModal: React.FC<AccountStatementModalProps> = ({
   invoices,
   vouchers,
   journals = [],
+  creditNotes = [],
   company,
   currency,
 }) => {
@@ -57,6 +59,7 @@ export const AccountStatementModal: React.FC<AccountStatementModalProps> = ({
             invoices={invoices}
             vouchers={vouchers}
             journals={journals}
+            creditNotes={creditNotes}
             company={company}
             currency={currency}
             initialEntityType={entityType}

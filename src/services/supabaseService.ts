@@ -791,7 +791,9 @@ export class SupabaseDataService {
           phone: row.phone || raw.phone || '',
           address: row.address || raw.address || '',
           city: row.city || raw.city || 'الرياض',
-          balance: Number(row.balance ?? raw.balance ?? 0),
+          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
           taxNumber: row.tax_number || raw.taxNumber || '',
           creditLimit: raw.creditLimit ?? 0,
           openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
@@ -800,6 +802,9 @@ export class SupabaseDataService {
           branches: finalBranches,
           priceListName: raw.priceListName || '',
           ...raw,
+          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
         };
       });
     } catch (err: any) {
@@ -976,6 +981,61 @@ export class SupabaseDataService {
   }
 
   /**
+   * Calls the PostgreSQL RPC fn_customer_statement_of_account for server-side
+   * authoritative date-ranged customer statement calculation.
+   */
+  public static async getCustomerStatementOfAccount(
+    customerId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<any> {
+    if (!isSupabaseConfigured) return null;
+    try {
+      const custUuid = toValidUUID(customerId);
+      const { data, error } = await supabase.rpc('fn_customer_statement_of_account', {
+        p_customer_id: custUuid,
+        p_start_date: startDate || null,
+        p_end_date: endDate || null,
+      });
+
+      if (error) {
+        console.warn('Supabase fn_customer_statement_of_account RPC notice:', error.message);
+        return null;
+      }
+      return data;
+    } catch (err: any) {
+      console.warn('Supabase fn_customer_statement_of_account exception:', err?.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fetches posted credit notes (إشعارات الدائن والمرتجعات)
+   */
+  public static async getCreditNotes(targetCompanyId?: string): Promise<any[]> {
+    if (!isSupabaseConfigured) return [];
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('credit_notes')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Supabase getCreditNotes notice:', error.message);
+        return [];
+      }
+      return data || [];
+    } catch (err: any) {
+      console.warn('Supabase getCreditNotes exception:', err?.message);
+      return [];
+    }
+  }
+
+  /**
    * 3.1 SUPPLIERS (الموردين)
    */
   public static async getSuppliers(targetCompanyId?: string): Promise<Supplier[]> {
@@ -1007,10 +1067,15 @@ export class SupabaseDataService {
           phone: row.phone || raw.phone || '',
           address: row.address || raw.address || '',
           city: row.city || raw.city || 'الرياض',
-          balance: Number(row.balance ?? raw.balance ?? 0),
+          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
           openingBalance: raw.openingBalance ?? 0,
           isActive: raw.isActive ?? true,
           ...raw,
+          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
         };
       });
     } catch (err: any) {
