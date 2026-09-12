@@ -54,7 +54,9 @@ export class AccountingEngine {
         error: 'لا يمكن حفظ قيد بأرصدة صفرية! يجب إدخال مبالغ أكبر من الصفر.',
       };
     }
-    if (diff > 0.005) {
+    // Precision: Kuwaiti Dinar (KWD) has 3 decimal places (1 KWD = 1000 fils).
+    // Allow max 0.0005 KWD tolerance strictly for floating-point IEEE-754 representation noise.
+    if (diff > 0.0005) {
       return {
         isValid: false,
         error: `القيد غير متوازن! إجمالي المدين (${totalDebit.toFixed(3)}) لا يساوي إجمالي الدائن (${totalCredit.toFixed(3)}). الفرق: ${diff.toFixed(3)}`,
@@ -688,6 +690,19 @@ export class AccountingEngine {
           },
         ];
 
+        // Debit Output VAT reversal if applicable (تخفيض ضريبة المخرجات لضمان توازن القيد)
+        if (invoice.vatTotal > 0) {
+          lines.push({
+            id: 'jl-' + Math.random().toString(36).substr(2, 9),
+            accountId: 'acc-2120',
+            accountCode: '2120',
+            accountNameAr: 'ضريبة القيمة المضافة - مخرجات (عكس)',
+            debit: invoice.vatTotal,
+            credit: 0,
+            memo: `عكس ضريبة القيمة المضافة لمردودات مبيعات ${invoice.invoiceNumber}`,
+          });
+        }
+
         // Reverse COGS & Return Inventory
         if (totalCogs > 0) {
           lines.push(
@@ -809,9 +824,10 @@ export class AccountingEngine {
       // Update Customer Ledger Balance
       const customer = db.getCustomers().find((c) => c.id === invoice.entityId);
       if (customer) {
-        const newBalance = isReturn
-          ? Math.max(0, customer.balance - invoice.grandTotal)
-          : customer.balance + invoice.grandTotal;
+        const rawBalance = isReturn
+          ? (Number(customer.balance) || 0) - (Number(invoice.grandTotal) || 0)
+          : (Number(customer.balance) || 0) + (Number(invoice.grandTotal) || 0);
+        const newBalance = Math.round(rawBalance * 1000) / 1000;
         db.updateCustomer(customer.id, { balance: newBalance });
       }
 
@@ -874,9 +890,10 @@ export class AccountingEngine {
         }
       });
 
+      const netPurchase = Math.max(0, (Number(invoice.grandTotal) || 0) - (Number(invoice.vatTotal) || 0));
       let lines = [];
       if (isReturn) {
-        // Purchase Return: Debit Supplier (AP) & Credit Inventory
+        // Purchase Return: Debit Supplier (AP) & Credit Inventory & Reverse Input VAT
         lines = [
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
@@ -895,20 +912,32 @@ export class AccountingEngine {
             accountCode: '1130',
             accountNameAr: 'مخزون البضائع والمنتجات',
             debit: 0,
-            credit: invoice.grandTotal,
+            credit: netPurchase,
             memo: `إخراج بضاعة مردودة للمورد - إشعار ${invoice.invoiceNumber}`,
           },
         ];
+
+        if (invoice.vatTotal > 0) {
+          lines.push({
+            id: 'jl-' + Math.random().toString(36).substr(2, 9),
+            accountId: 'acc-1140',
+            accountCode: '1140',
+            accountNameAr: 'ضريبة القيمة المضافة - مدخلات (عكس)',
+            debit: 0,
+            credit: invoice.vatTotal,
+            memo: `عكس ضريبة مدخلات لمردود مشتريات ${invoice.invoiceNumber}`,
+          });
+        }
       } else {
-        // Standard Purchase Invoice
+        // Standard Purchase Invoice: Debit Inventory (IAS-2 Net Cost) & Debit Input VAT, Credit Accounts Payable
         lines = [
-          // 1. Debit: Merchandise Inventory (زيادة المخزون بالتكلفة الصافية)
+          // 1. Debit: Merchandise Inventory (صافي تكلفة المخزون المشتراة دون الضريبة المستردة)
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
             accountId: 'acc-1130',
             accountCode: '1130',
             accountNameAr: 'مخزون البضائع والمنتجات',
-            debit: invoice.grandTotal,
+            debit: netPurchase,
             credit: 0,
             memo: `إثبات مشتريات بضائع - فاتورة مورد رقم ${invoice.invoiceNumber}`,
           },
@@ -925,6 +954,18 @@ export class AccountingEngine {
             entityId: invoice.entityId,
           },
         ];
+
+        if (invoice.vatTotal > 0) {
+          lines.push({
+            id: 'jl-' + Math.random().toString(36).substr(2, 9),
+            accountId: 'acc-1140',
+            accountCode: '1140',
+            accountNameAr: 'ضريبة القيمة المضافة - مدخلات (مستردة)',
+            debit: invoice.vatTotal,
+            credit: 0,
+            memo: `ضريبة مدخلات فاتورة مشتريات ${invoice.invoiceNumber}`,
+          });
+        }
       }
 
       // Double-Entry Invariant Validation (Debit === Credit)
@@ -954,12 +995,13 @@ export class AccountingEngine {
 
       db.addJournal(journalEntry);
 
-      // Update Supplier Balance
+      // Update Supplier Balance without arbitrary zero-clamping
       const supplier = db.getSuppliers().find((s) => s.id === invoice.entityId);
       if (supplier) {
-        const newBalance = isReturn
-          ? Math.max(0, supplier.balance - invoice.grandTotal)
-          : supplier.balance + invoice.grandTotal;
+        const rawBalance = isReturn
+          ? (Number(supplier.balance) || 0) - (Number(invoice.grandTotal) || 0)
+          : (Number(supplier.balance) || 0) + (Number(invoice.grandTotal) || 0);
+        const newBalance = Math.round(rawBalance * 1000) / 1000;
         db.updateSupplier(supplier.id, { balance: newBalance });
       }
 
@@ -1215,16 +1257,24 @@ export class AccountingEngine {
 
     // Invoices
     const invoices = db.getInvoices().filter((i) => i.entityId === customerId && i.status !== 'CANCELLED');
+    const vouchers = db.getVouchers().filter((v) => v.entityId === customerId && v.status !== 'CANCELLED');
+
     for (const inv of invoices) {
+      // Direct cash payment on the invoice not captured by a standalone voucher
+      const settledByVouchers = vouchers
+        .filter((v) => v.invoiceId === inv.id && v.status !== 'CANCELLED')
+        .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+      const directInvoicePaid = Math.max(0, (Number(inv.paidAmount) || 0) - settledByVouchers);
+      const effectiveReceivableImpact = Math.max(0, (Number(inv.grandTotal) || 0) - directInvoicePaid);
+
       if (inv.type === 'SALES') {
-        balance += Number(inv.grandTotal) || 0;
+        balance += effectiveReceivableImpact;
       } else if (inv.type === 'SALES_RETURN') {
-        balance -= Number(inv.grandTotal) || 0;
+        balance -= effectiveReceivableImpact;
       }
     }
 
     // Vouchers
-    const vouchers = db.getVouchers().filter((v) => v.entityId === customerId && v.status !== 'CANCELLED');
     for (const v of vouchers) {
       if (v.type === 'RECEIPT') {
         balance -= Number(v.amount) || 0;
@@ -1259,16 +1309,24 @@ export class AccountingEngine {
 
     // Invoices
     const invoices = db.getInvoices().filter((i) => i.entityId === supplierId && i.status !== 'CANCELLED');
+    const vouchers = db.getVouchers().filter((v) => v.entityId === supplierId && v.status !== 'CANCELLED');
+
     for (const inv of invoices) {
+      // Direct cash payment on the invoice not captured by a standalone voucher
+      const settledByVouchers = vouchers
+        .filter((v) => v.invoiceId === inv.id && v.status !== 'CANCELLED')
+        .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+      const directInvoicePaid = Math.max(0, (Number(inv.paidAmount) || 0) - settledByVouchers);
+      const effectivePayableImpact = Math.max(0, (Number(inv.grandTotal) || 0) - directInvoicePaid);
+
       if (inv.type === 'PURCHASE') {
-        balance += Number(inv.grandTotal) || 0;
+        balance += effectivePayableImpact;
       } else if (inv.type === 'PURCHASE_RETURN') {
-        balance -= Number(inv.grandTotal) || 0;
+        balance -= effectivePayableImpact;
       }
     }
 
     // Vouchers
-    const vouchers = db.getVouchers().filter((v) => v.entityId === supplierId && v.status !== 'CANCELLED');
     for (const v of vouchers) {
       if (v.type === 'PAYMENT') {
         balance -= Number(v.amount) || 0;
@@ -1361,20 +1419,6 @@ export class AccountingEngine {
             entityId: voucher.entityId,
           }
         );
-
-        // Update invoice paid amount if invoiceId specified
-        if (voucher.invoiceId) {
-          const inv = db.getInvoices().find((i) => i.id === voucher.invoiceId);
-          if (inv) {
-            const newPaid = (inv.paidAmount || 0) + voucher.amount;
-            const newDue = Math.max(0, inv.grandTotal - newPaid);
-            db.updateInvoice(inv.id, {
-              paidAmount: newPaid,
-              dueAmount: newDue,
-              status: newDue === 0 ? 'PAID' : 'PARTIALLY_PAID',
-            });
-          }
-        }
       } else {
         // Payment to Supplier (صرف): Debit Accounts Payable, Credit Bank/Cash
         lines.push(
@@ -1399,6 +1443,20 @@ export class AccountingEngine {
             memo: `سند صرف رقم ${voucher.voucherNumber} إلى ${voucher.entityNameAr}`,
           }
         );
+      }
+
+      // Update linked invoice paid amount and status for both RECEIPT and PAYMENT
+      if (voucher.invoiceId) {
+        const inv = db.getInvoices().find((i) => i.id === voucher.invoiceId);
+        if (inv) {
+          const newPaid = Math.min(inv.grandTotal, Math.round(((inv.paidAmount || 0) + voucher.amount) * 1000) / 1000);
+          const newDue = Math.max(0, Math.round((inv.grandTotal - newPaid) * 1000) / 1000);
+          db.updateInvoice(inv.id, {
+            paidAmount: newPaid,
+            dueAmount: newDue,
+            status: newDue === 0 ? 'PAID' : (newPaid > 0 ? 'PARTIALLY_PAID' : inv.status),
+          });
+        }
       }
 
       // Validate Voucher entry balance

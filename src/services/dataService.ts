@@ -3692,16 +3692,24 @@ export class DataService {
 
     // Invoices
     const invoices = localDataStore.getInvoices().filter((i) => i.entityId === customerId && i.status !== 'CANCELLED');
+    const vouchers = localDataStore.getVouchers().filter((v) => v.entityId === customerId && v.status !== 'CANCELLED');
+
     for (const inv of invoices) {
+      // Calculate how much was settled via standalone vouchers linked to this invoice
+      const settledByVouchers = vouchers
+        .filter((v) => v.invoiceId === inv.id && v.status !== 'CANCELLED')
+        .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+      const directInvoicePaid = Math.max(0, (Number(inv.paidAmount) || 0) - settledByVouchers);
+      const effectiveReceivableImpact = Math.max(0, (Number(inv.grandTotal) || 0) - directInvoicePaid);
+
       if (inv.type === 'SALES') {
-        balance += Number(inv.grandTotal) || 0;
+        balance += effectiveReceivableImpact;
       } else if (inv.type === 'SALES_RETURN') {
-        balance -= Number(inv.grandTotal) || 0;
+        balance -= effectiveReceivableImpact;
       }
     }
 
     // Vouchers
-    const vouchers = localDataStore.getVouchers().filter((v) => v.entityId === customerId && v.status !== 'CANCELLED');
     for (const v of vouchers) {
       if (v.type === 'RECEIPT') {
         balance -= Number(v.amount) || 0;
@@ -3741,16 +3749,24 @@ export class DataService {
 
     // Invoices
     const invoices = localDataStore.getInvoices().filter((i) => i.entityId === supplierId && i.status !== 'CANCELLED');
+    const vouchers = localDataStore.getVouchers().filter((v) => v.entityId === supplierId && v.status !== 'CANCELLED');
+
     for (const inv of invoices) {
+      // Calculate how much was settled via standalone vouchers linked to this invoice
+      const settledByVouchers = vouchers
+        .filter((v) => v.invoiceId === inv.id && v.status !== 'CANCELLED')
+        .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+      const directInvoicePaid = Math.max(0, (Number(inv.paidAmount) || 0) - settledByVouchers);
+      const effectivePayableImpact = Math.max(0, (Number(inv.grandTotal) || 0) - directInvoicePaid);
+
       if (inv.type === 'PURCHASE') {
-        balance += Number(inv.grandTotal) || 0;
+        balance += effectivePayableImpact;
       } else if (inv.type === 'PURCHASE_RETURN') {
-        balance -= Number(inv.grandTotal) || 0;
+        balance -= effectivePayableImpact;
       }
     }
 
     // Vouchers
-    const vouchers = localDataStore.getVouchers().filter((v) => v.entityId === supplierId && v.status !== 'CANCELLED');
     for (const v of vouchers) {
       if (v.type === 'PAYMENT') {
         balance -= Number(v.amount) || 0;
@@ -4020,8 +4036,8 @@ export class DataService {
     if (data.invoiceId) {
       const inv = invoices.find((i) => i.id === data.invoiceId);
       if (inv) {
-        inv.paidAmount = (inv.paidAmount || 0) + amount;
-        inv.dueAmount = Math.max(0, inv.grandTotal - inv.paidAmount);
+        inv.paidAmount = Math.min(inv.grandTotal, Math.round(((inv.paidAmount || 0) + amount) * 1000) / 1000);
+        inv.dueAmount = Math.max(0, Math.round((inv.grandTotal - inv.paidAmount) * 1000) / 1000);
         if (inv.dueAmount <= 0) {
           inv.paymentStatus = 'PAID';
           if (inv.status !== 'CANCELLED') inv.status = 'POSTED';

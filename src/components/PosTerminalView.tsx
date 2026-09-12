@@ -549,32 +549,9 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
       posSessionService.recordSale(paymentMethod, grandTotal);
       refreshSession();
 
-      // Create Receipt Voucher if paid cash or card
-      if (paymentMethod !== 'CREDIT') {
-        try {
-          await DataService.createVoucher({
-            type: 'RECEIPT',
-            entityType: 'CUSTOMER',
-            entityId: cust ? cust.id : '',
-            entityNameAr: cust ? cust.nameAr : 'عميل كاش نقدي',
-            salesRepId: effectiveRepId,
-            salesRepName: rep ? rep.nameAr : 'المندوب العام',
-            amount: grandTotal,
-            paymentMethod: paymentMethod === 'CASH' ? 'CASH' : 'BANK',
-            invoiceId: createdInvoice.id,
-            reference: `POS-${createdInvoice.invoiceNumber}`,
-            notes: `تحصيل مباشر من نقطة البيع POS - الفاتورة ${createdInvoice.invoiceNumber}`,
-            companyId: activeCompany.id,
-            company_id: activeCompany.id,
-            branch_id: activeBranch.id,
-          });
-        } catch (vErr) {
-          console.warn('[POS] Receipt voucher notice:', vErr);
-        }
-      }
-
       // STRICT PERSISTENCE GUARANTEE:
-      // Only now is it safe to clear cart and show receipt!
+      // Note: Cash/Card POS sales are already posted directly to Cash/Bank via createInvoice.
+      // We do not create a redundant receipt voucher here to prevent double-counting cash in the GL.
       setCompletedInvoice(createdInvoice);
       setRecentInvoices((prev) => [createdInvoice, ...prev.slice(0, 14)]);
       setIsReceiptModalOpen(true);
