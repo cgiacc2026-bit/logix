@@ -512,7 +512,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Pinned Executive Dashboard Button */}
         <button
           onClick={() => setActiveTab('dashboard')}
-          title={collapsed ? 'لوحة التحكم' : undefined}
+          title={collapsed ? 'إحصائيات النظام' : undefined}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'dashboard'
               ? isLight
@@ -537,7 +537,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <LayoutDashboard className="w-4 h-4 text-emerald-600" />
           </div>
           {!collapsed && (
-            <span className="truncate flex-1 text-right">لوحة التحكم التنفيذية</span>
+            <span className="truncate flex-1 text-right">إحصائيات النظام (لوحة القيادة)</span>
+          )}
+        </button>
+
+        {/* Pinned One-Click Executive Report Hub Button */}
+        <button
+          onClick={() => setActiveTab('reports')}
+          title={collapsed ? 'مركز التقارير المجمعة' : undefined}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'reports'
+              ? isLight
+                ? 'bg-emerald-50 text-emerald-950 border-r-4 border-emerald-600 shadow-2xs pr-2.5 font-bold'
+                : 'bg-slate-800 text-white border-r-4 border-emerald-500 shadow-md pr-2.5'
+              : isLight
+              ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+          } ${collapsed ? 'justify-center px-1' : 'justify-start'}`}
+        >
+          <div
+            className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+              activeTab === 'reports'
+                ? isLight
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-emerald-500/20 text-emerald-400'
+                : isLight
+                ? 'bg-slate-100 text-slate-600 group-hover:text-emerald-700'
+                : 'bg-slate-800 text-slate-400 group-hover:text-emerald-300'
+            }`}
+          >
+            <FileBarChart className="w-4 h-4 text-emerald-600" />
+          </div>
+          {!collapsed && (
+            <span className="truncate flex-1 text-right">مركز التقارير المجمعة (One-Click)</span>
           )}
         </button>
 

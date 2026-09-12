@@ -38,6 +38,8 @@ import { UsersView } from './components/UsersView.tsx';
 import { SystemResetPanel } from './components/SystemResetPanel.tsx';
 import { AccountingCycleBar } from './components/AccountingCycleBar.tsx';
 import { OperationalReportsView } from './components/OperationalReportsView.tsx';
+import { ExecutiveDashboardView } from './components/ExecutiveDashboardView.tsx';
+import { OneClickExecutiveReportHub } from './components/OneClickExecutiveReportHub.tsx';
 import { UnifiedBackupRestoreHub } from './components/UnifiedBackupRestoreHub.tsx';
 import { BranchesManagementView } from './components/BranchesManagementView.tsx';
 import { WarehousesManagementView } from './components/WarehousesManagementView.tsx';
@@ -732,8 +734,45 @@ export function AppContent() {
             />
           )}
 
-          {/* Enterprise 5-Section Collapsible Dynamic Accordion Architecture with Embedded Sub-Reports */}
-          {!['company', 'users', 'backup-restore', 'system-reset'].includes(activeTab) && (
+          {/* 1. Executive Modern KPI Dashboard (Zero-Click Redundancy) */}
+          {activeTab === 'dashboard' && (
+            <ExecutiveDashboardView
+              company={activeCompany}
+              currency={currency}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              warehouses={warehouses}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
+            />
+          )}
+
+          {/* 2. One-Click Executive Report Hub (Customer/Society Aggregation, Unified GL Ledger, Inventory/Cashbox) */}
+          {activeTab === 'reports' && (
+            <OneClickExecutiveReportHub
+              company={activeCompany}
+              currency={currency}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              warehouses={warehouses}
+              onViewAccountStatement={(entityId, entityType) =>
+                setSelectedStatementEntity({ id: entityId, type: entityType })
+              }
+              onViewInvoice={(inv) => setSelectedPrintInvoice(inv)}
+            />
+          )}
+
+          {/* 3. Enterprise 5-Section Collapsible Dynamic Accordion Architecture for Operational Modules */}
+          {!['dashboard', 'reports', 'company', 'users', 'backup-restore', 'system-reset'].includes(activeTab) && (
             <EnterpriseAccordionHub
               company={activeCompany}
               currency={currency}
