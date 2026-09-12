@@ -1229,5 +1229,37 @@ export interface CustomerCreditEvaluation {
   message: string;
 }
 
+export interface CompanyBackupEnvelope {
+  format: 'LOGIX_ERP_BACKUP_V2026';
+  exportTimestamp: string;
+  companyId: string;
+  companyName: string;
+  version: string;
+  stats: {
+    accountsCount: number;
+    inventoryCount: number;
+    invoicesCount: number;
+    journalsCount: number;
+    vouchersCount: number;
+    customersCount: number;
+    suppliersCount: number;
+    productionOrdersCount: number;
+    unitsCount: number;
+  };
+  data: {
+    company?: CompanyProfile;
+    accounts?: Account[];
+    inventory?: InventoryItem[];
+    invoices?: Invoice[];
+    journals?: JournalEntry[];
+    vouchers?: PaymentVoucher[];
+    customers?: Customer[];
+    suppliers?: Supplier[];
+    productionOrders?: ProductionOrder[];
+    units?: UnitDefinition[];
+    users?: SystemUser[];
+  };
+}
+
 
 

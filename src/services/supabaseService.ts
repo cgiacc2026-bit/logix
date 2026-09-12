@@ -1270,14 +1270,20 @@ export class SupabaseDataService {
         else if (Number(inv.paid_amount ?? 0) > 0) cleanPaymentStatus = 'PARTIAL';
         else cleanPaymentStatus = 'UNPAID';
 
+        const invNum = (inv.invoice_number || raw.invoiceNumber || inv.id || '').trim().toUpperCase();
+        const isPur = invNum.startsWith('INV-PUR') || inv.invoice_type === 'PURCHASE' || raw.type === 'PURCHASE';
+        const isPurRet = invNum.startsWith('RET-PUR') || inv.invoice_type === 'PURCHASE_RETURN' || raw.type === 'PURCHASE_RETURN';
+        const isSalRet = invNum.startsWith('RET-SAL') || inv.invoice_type === 'SALES_RETURN' || raw.type === 'SALES_RETURN';
+        const resolvedType = isPur ? 'PURCHASE' : isPurRet ? 'PURCHASE_RETURN' : isSalRet ? 'SALES_RETURN' : (raw.type || inv.invoice_type || 'SALES');
+
         return {
           ...raw,
           id: raw.id || inv.id,
           invoiceNumber: inv.invoice_number || raw.invoiceNumber || inv.id,
-          type: raw.type || inv.invoice_type || 'SALES',
+          type: resolvedType,
           paymentTerms: raw.paymentTerms || (inv.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
-          entityId: inv.customer_id || raw.entityId || snapshot.id || '',
-          entityNameAr: inv.customer_name || raw.entityNameAr || snapshot.nameAr || '',
+          entityId: inv.customer_id || inv.supplier_id || raw.entityId || raw.supplierId || snapshot.id || '',
+          entityNameAr: inv.customer_name || inv.supplier_name || raw.entityNameAr || raw.supplierName || snapshot.nameAr || '',
           entityNameEn: raw.entityNameEn || snapshot.nameEn || '',
           date: inv.invoice_date || inv.date || raw.date,
           dueDate: raw.dueDate || inv.invoice_date || inv.date,

@@ -45,6 +45,7 @@ import {
   INITIAL_UNITS,
   INITIAL_WAREHOUSES,
 } from '../server/defaultData.js';
+import { ALWALEED_MILL_PRESET_BACKUP } from '../data/alwaleedPresetData.js';
 import { safeJsonParse, safeApiFetch } from '../utils/safeJson.js';
 import { SupabaseDataService } from './supabaseService.js';
 import { isSupabaseConfigured, resolveToSupabaseCompanyUUID, toValidUUID, generateUUID, ALWALEED_CANONICAL_UUID } from './supabaseClient.js';
@@ -1177,6 +1178,17 @@ class LocalDataStore {
       const num = (inv.invoiceNumber || '').trim().toUpperCase();
       const id = (inv.id || '').trim();
 
+      // Ensure proper type normalization
+      if (num.startsWith('INV-PUR') && inv.type !== 'PURCHASE') {
+        inv.type = 'PURCHASE';
+      } else if (num.startsWith('INV-SAL') && inv.type !== 'SALES') {
+        inv.type = 'SALES';
+      } else if (num.startsWith('RET-PUR') && inv.type !== 'PURCHASE_RETURN') {
+        inv.type = 'PURCHASE_RETURN';
+      } else if (num.startsWith('RET-SAL') && inv.type !== 'SALES_RETURN') {
+        inv.type = 'SALES_RETURN';
+      }
+
       const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
       if (existing) {
         const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
@@ -1272,12 +1284,14 @@ class LocalDataStore {
 
   public getInvoices(): Invoice[] {
     const list = this.getLocal<Invoice[] | null>(this.getKey(STORAGE_KEYS.INVOICES), null);
+    const tombstones = this.getTombstones('invoices');
+
     if (list === null) {
       if (this.isTenantInitialized()) {
         return [];
       }
       if (this.isAlWaleedActive()) {
-        const alwaleedInvoices = JSON.parse(JSON.stringify(INITIAL_INVOICES));
+        const alwaleedInvoices = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP?.data?.invoices || INITIAL_INVOICES));
         this.saveInvoices(alwaleedInvoices);
         this.markTenantInitialized();
         return this.deduplicateInvoices(alwaleedInvoices);
@@ -1285,11 +1299,35 @@ class LocalDataStore {
       this.saveInvoices([]);
       return [];
     }
-    const tombstones = this.getTombstones('invoices');
+
     let filtered = list;
     if (tombstones.size > 0) {
       filtered = list.filter((inv) => !tombstones.has(inv.id));
     }
+
+    // If Al-Waleed is active and local storage has fewer invoices than the full preset backup, reconcile missing ones
+    if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.invoices)) {
+      const presetInvoices = ALWALEED_MILL_PRESET_BACKUP.data.invoices;
+      if (filtered.length < presetInvoices.length) {
+        const existingNumbers = new Set(filtered.map((i) => (i.invoiceNumber || '').trim().toUpperCase()));
+        const existingIds = new Set(filtered.map((i) => (i.id || '').trim()));
+        let hasNew = false;
+        const merged = [...filtered];
+        for (const pi of presetInvoices) {
+          const num = (pi.invoiceNumber || '').trim().toUpperCase();
+          const id = (pi.id || '').trim();
+          if ((!num || !existingNumbers.has(num)) && (!id || !existingIds.has(id)) && !tombstones.has(pi.id)) {
+            merged.push(JSON.parse(JSON.stringify(pi)));
+            hasNew = true;
+          }
+        }
+        if (hasNew) {
+          filtered = merged;
+          this.saveInvoices(this.deduplicateInvoices(filtered));
+        }
+      }
+    }
+
     return this.deduplicateInvoices(filtered);
   }
   public saveInvoices(inv: Invoice[]): void {
@@ -2352,7 +2390,7 @@ export class DataService {
               const remoteHasLines = Array.isArray(rInv.lines) && rInv.lines.length > 0;
               const localHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
 
-              if (remoteTime > localTime || (remoteHasLines && !localHasLines)) {
+              if (remoteTime > localTime || (remoteHasLines && !localHasLines) || existing.type !== rInv.type || !existing.type) {
                 Object.assign(existing, rInv);
                 hasChanges = true;
               }

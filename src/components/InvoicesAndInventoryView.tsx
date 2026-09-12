@@ -1069,11 +1069,22 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
     // 1. Transaction Type filter
     if (invFilterType === 'SALES') {
-      list = list.filter((inv) => inv.type === 'SALES');
+      list = list.filter((inv) => {
+        const num = (inv.invoiceNumber || '').trim().toUpperCase();
+        if (num.startsWith('INV-PUR') || num.startsWith('RET-PUR') || num.startsWith('RET-SAL')) return false;
+        return inv.type === 'SALES' || num.startsWith('INV-SAL') || !inv.type;
+      });
     } else if (invFilterType === 'PURCHASE') {
-      list = list.filter((inv) => inv.type === 'PURCHASE');
+      list = list.filter((inv) => {
+        const num = (inv.invoiceNumber || '').trim().toUpperCase();
+        if (num.startsWith('INV-SAL') || num.startsWith('RET-PUR') || num.startsWith('RET-SAL')) return false;
+        return inv.type === 'PURCHASE' || num.startsWith('INV-PUR');
+      });
     } else if (invFilterType === 'RETURNS') {
-      list = list.filter((inv) => inv.type === 'SALES_RETURN' || inv.type === 'PURCHASE_RETURN');
+      list = list.filter((inv) => {
+        const num = (inv.invoiceNumber || '').trim().toUpperCase();
+        return inv.type === 'SALES_RETURN' || inv.type === 'PURCHASE_RETURN' || num.startsWith('RET-');
+      });
     }
 
     // 2. Search query (Invoice # or Customer/Supplier Name)

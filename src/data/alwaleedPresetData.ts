@@ -1,4 +1,4 @@
-import { CompanyBackupEnvelope } from "../services/companyJsonBackupService.js";
+import { CompanyBackupEnvelope } from "../types.js";
 
 export const ALWALEED_MILL_PRESET_BACKUP: CompanyBackupEnvelope = {
   "format": "LOGIX_ERP_BACKUP_V2026",

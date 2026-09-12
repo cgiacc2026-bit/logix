@@ -1088,12 +1088,18 @@ export function calculateEntityCurrentBalance(
   );
   for (const inv of relevantInvoices) {
     const total = Number(inv.grandTotal) || 0;
+    const invNum = (inv.invoiceNumber || '').trim().toUpperCase();
+    const isPurchase = inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR');
+    const isPurchaseReturn = inv.type === 'PURCHASE_RETURN' || invNum.startsWith('RET-PUR');
+    const isSalesReturn = inv.type === 'SALES_RETURN' || invNum.startsWith('RET-SAL');
+    const isSales = (inv.type === 'SALES' || invNum.startsWith('INV-SAL') || !inv.type) && !isPurchase && !isPurchaseReturn;
+
     if (entityType === 'CUSTOMER') {
-      if (inv.type === 'SALES') net += total;
-      else if (inv.type === 'SALES_RETURN') net -= total;
+      if (isSales) net += total;
+      else if (isSalesReturn) net -= total;
     } else {
-      if (inv.type === 'PURCHASE') net += total;
-      else if (inv.type === 'PURCHASE_RETURN') net -= total;
+      if (isPurchase) net += total;
+      else if (isPurchaseReturn) net -= total;
     }
   }
 
