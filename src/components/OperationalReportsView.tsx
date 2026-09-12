@@ -44,7 +44,7 @@ import {
 import { GlCustomerBalancesReport } from './reports/GlCustomerBalancesReport.tsx';
 import { GlInventoryValuationReport } from './reports/GlInventoryValuationReport.tsx';
 import { GlPostedSalesReport } from './reports/GlPostedSalesReport.tsx';
-import { getCalculatedCustomerBalance, getCalculatedSupplierBalance } from '../services/statementService.ts';
+import { getCalculatedCustomerBalance, getCalculatedSupplierBalance, isDocMatchingEntity } from '../services/statementService.ts';
 
 interface OperationalReportsProps {
   invoices: Invoice[];
@@ -351,15 +351,15 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   // -------------------------------------------------------------
   const customerReports = useMemo(() => {
     return customers.map((cust) => {
-      // Find invoices for this customer excluding cancelled and drafts
+      // Find invoices for this customer using unified entity matcher, excluding cancelled and drafts
       const custInvoices = validInvoices.filter(
-        (inv) => inv.entityId === cust.id && inv.type === 'SALES'
+        (inv) => isDocMatchingEntity(inv, cust.id, cust, 'CUSTOMER') && inv.type === 'SALES'
       );
       const custReturns = validInvoices.filter(
-        (inv) => inv.entityId === cust.id && inv.type === 'SALES_RETURN'
+        (inv) => isDocMatchingEntity(inv, cust.id, cust, 'CUSTOMER') && inv.type === 'SALES_RETURN'
       );
       const custReceipts = validVouchers.filter(
-        (v) => v.entityId === cust.id && v.type === 'RECEIPT'
+        (v) => isDocMatchingEntity(v, cust.id, cust, 'CUSTOMER') && v.type === 'RECEIPT'
       );
 
       const totalInvoiced = custInvoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
@@ -429,13 +429,13 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   const supplierReports = useMemo(() => {
     return suppliers.map((supp) => {
       const suppInvoices = validInvoices.filter(
-        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE'
+        (inv) => isDocMatchingEntity(inv, supp.id, supp, 'SUPPLIER') && inv.type === 'PURCHASE'
       );
       const suppReturns = validInvoices.filter(
-        (inv) => inv.entityId === supp.id && inv.type === 'PURCHASE_RETURN'
+        (inv) => isDocMatchingEntity(inv, supp.id, supp, 'SUPPLIER') && inv.type === 'PURCHASE_RETURN'
       );
       const suppPayments = validVouchers.filter(
-        (v) => v.entityId === supp.id && v.type === 'PAYMENT'
+        (v) => isDocMatchingEntity(v, supp.id, supp, 'SUPPLIER') && v.type === 'PAYMENT'
       );
 
       const totalPurchased = suppInvoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
@@ -497,7 +497,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Header & Navigation Tabs */}
-      <div className="bg-white border border-[#E5E1DA] rounded-2xl p-6 shadow-xs space-y-5">
+      <div className="bg-white border border-[#E5E1DA] rounded-2xl p-6 shadow-xs space-y-5 no-print">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-[#FAF8F5] border border-[#E5E1DA] flex items-center justify-center text-[#B8860B] shadow-xs">
@@ -569,7 +569,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
       </div>
 
       {/* Date & Filter Toolbar */}
-      <div className="bg-white border border-[#E5E1DA] rounded-2xl p-4 shadow-xs space-y-3">
+      <div className="bg-white border border-[#E5E1DA] rounded-2xl p-4 shadow-xs space-y-3 no-print">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Preset Buttons */}
           <div className="flex items-center gap-1.5 overflow-x-auto">
@@ -687,9 +687,11 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 1. SALES REPORT VIEW */}
-      {/* ========================================================= */}
+      {/* Printable Report Wrapper */}
+      <div id="printable-report-area" className="printable-report-area space-y-6">
+        {/* ========================================================= */}
+        {/* 1. SALES REPORT VIEW */}
+        {/* ========================================================= */}
       {activeReport === 'sales' && (
         <div className="space-y-6">
           {/* View Toggle */}
@@ -1423,6 +1425,7 @@ export const OperationalReportsView: React.FC<OperationalReportsProps> = ({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

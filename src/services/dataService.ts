@@ -659,11 +659,33 @@ class LocalDataStore {
     }
 
     const stored = this.getLocal<CompanyProfile | null>(this.getKey(STORAGE_KEYS.COMPANY), null);
-    if (stored && (stored.id === compId || !stored.id) && stored.nameAr) {
+    const compUuid = resolveToSupabaseCompanyUUID(compId);
+    const storedUuid = stored?.id ? resolveToSupabaseCompanyUUID(stored.id) : null;
+    const isIdMatch = stored && (!stored.id || stored.id === compId || storedUuid === compUuid || !compId);
+    if (stored && isIdMatch && stored.nameAr) {
       if (dedicatedLogo && !stored.logoUrl) {
         stored.logoUrl = dedicatedLogo;
       }
       return stored;
+    }
+
+    // Check supabase_company_info in localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const rawSupabaseComp = window.localStorage.getItem('supabase_company_info');
+        if (rawSupabaseComp) {
+          const parsed = JSON.parse(rawSupabaseComp);
+          const parsedUuid = parsed?.id ? resolveToSupabaseCompanyUUID(parsed.id) : null;
+          if (parsed && (parsed.id === compId || parsedUuid === compUuid || !parsed.id) && parsed.nameAr) {
+            if (dedicatedLogo && !parsed.logoUrl) {
+              parsed.logoUrl = dedicatedLogo;
+            }
+            return parsed;
+          }
+        }
+      } catch (e) {
+        console.warn('Error reading supabase_company_info in getCompany:', e);
+      }
     }
 
     if (compId === '10000000-0000-0000-0000-000000000001' || compId === 'company-logix-official-001') {
@@ -838,11 +860,24 @@ class LocalDataStore {
       }
     }
 
+    const compUuid = compId ? resolveToSupabaseCompanyUUID(compId) : '';
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY, compId || undefined), comp);
+    if (compUuid && compUuid !== compId) {
+      this.setLocal(this.getKey(STORAGE_KEYS.COMPANY, compUuid), comp);
+    }
 
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         window.localStorage.setItem('supabase_company_info', JSON.stringify(comp));
+        if (comp.nameAr) {
+          window.localStorage.setItem('logix_current_company_name', comp.nameAr);
+          if (compId) {
+            window.localStorage.setItem(`logix_company_name_${compId}`, comp.nameAr);
+          }
+          if (compUuid) {
+            window.localStorage.setItem(`logix_company_name_${compUuid}`, comp.nameAr);
+          }
+        }
 
         // Update tenant caches
         const cacheRaw = window.localStorage.getItem('all_tenants_cache') || window.localStorage.getItem('logix_registered_companies');

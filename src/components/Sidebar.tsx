@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { TabType } from './Navigation.tsx';
 import { CompanyProfile, SystemUser } from '../types.js';
+import { useCompany } from '../contexts/CompanyContext.tsx';
 
 interface SidebarProps {
   currentUser?: SystemUser | null;
@@ -75,6 +76,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   setCollapsed,
 }) => {
+  let companyContext: any = null;
+  try {
+    companyContext = useCompany();
+  } catch {
+    // fallback
+  }
+
+  const [liveCompany, setLiveCompany] = useState<any>(null);
+
+  useEffect(() => {
+    const handleCompanyUpdate = (e: any) => {
+      if (e?.detail) {
+        setLiveCompany(e.detail);
+      }
+    };
+    window.addEventListener('company_settings_changed', handleCompanyUpdate);
+    return () => {
+      window.removeEventListener('company_settings_changed', handleCompanyUpdate);
+    };
+  }, []);
+
+  const activeCompanyName = liveCompany?.nameAr || companyContext?.currentCompany?.nameAr || company?.nameAr || 'نظام لوجيكس السحابي';
   // Map any activeTab (including legacy aliases) to its parent accordion section
   const getSectionForTab = (tab: TabType): AccordionSectionKey | null => {
     if (
@@ -443,7 +466,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="truncate text-right">
               <div className="text-xs font-bold text-white leading-tight truncate">
-                {company?.nameAr || 'نظام لوجيكس السحابي'}
+                {activeCompanyName}
               </div>
               <div className="text-[10px] text-slate-400 flex items-center gap-1 font-mono mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

@@ -64,7 +64,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
   return (
     <div className="space-y-6">
       {/* View Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-[#E5E1DA] p-6 rounded-lg shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-[#E5E1DA] p-6 rounded-lg shadow-xs no-print">
         <div>
           <h2 className="text-2xl font-serif font-bold text-[#1A1A1A] flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-[#B8860B]" /> دفتر الأستاذ العام (General Ledger)

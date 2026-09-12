@@ -64,7 +64,22 @@ export const Header: React.FC<HeaderProps> = ({
   } catch {
     // fallback if rendered outside provider
   }
-  const activeCompany = companyContext?.currentCompany || resolveActiveCompany(company);
+
+  const [liveCompany, setLiveCompany] = useState<any>(null);
+
+  useEffect(() => {
+    const handleCompanyUpdate = (e: any) => {
+      if (e?.detail) {
+        setLiveCompany(e.detail);
+      }
+    };
+    window.addEventListener('company_settings_changed', handleCompanyUpdate);
+    return () => {
+      window.removeEventListener('company_settings_changed', handleCompanyUpdate);
+    };
+  }, []);
+
+  const activeCompany = liveCompany || companyContext?.currentCompany || resolveActiveCompany(company);
   const effectiveCurrency = companyContext?.currency || activeCompany.functionalCurrency || activeCompany.currency || currency || 'KWD';
 
   const handleCurrencyChange = (newCurr: string) => {

@@ -1614,7 +1614,7 @@
       "entityNameAr": "جمعية القيروان التعاونية",
       "date": "2026-01-15",
       "dueDate": "2026-02-14",
-      "status": "PAID",
+      "status": "POSTED",
       "lines": [
         {
           "id": "inv-line-1",
@@ -1699,8 +1699,8 @@
       "discountValue": 0,
       "discountTotal": 0,
       "grandTotal": 188,
-      "paidAmount": 188,
-      "dueAmount": 0,
+      "paidAmount": 0,
+      "dueAmount": 188,
       "notes": "توريد دفعة لفرع السوق المركزي واللوازم والعطور",
       "createdAt": "2026-01-15T10:30:00.000Z"
     },

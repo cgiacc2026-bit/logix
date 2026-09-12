@@ -303,6 +303,9 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
     if (company) {
       setFormData(company);
     }
+  }, [company?.id, company?.nameAr, company?.logoUrl]);
+
+  React.useEffect(() => {
     fetchAccountsForActiveCompany();
     fetchSavedDefaultAccounts();
   }, [company?.id]);
@@ -552,15 +555,19 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.nameAr || !formData.crNumber) {
-      setErrorMessage('يرجى تعبئة الحقول الأساسية: اسم الشركة ورقم السجل التجاري.');
+    if (!formData.nameAr?.trim()) {
+      setErrorMessage('يرجى تعبئة اسم الشركة (باللغة العربية).');
       return;
     }
 
-    const validation = validateMandatoryAccounts();
-    if (!validation.valid) {
-      setErrorMessage(`تنبيه تدقيق محاسبي إلزامي: يمنع حفظ بيانات الشركة قبل اكتمال ربط الحسابات الستة الأساسية بالدليل المحاسبي. الحسابات غير المحددة: [${validation.missingList.join('، ')}]. يرجى الانتقال لتبويب "الربط المحاسبي" والضغط على "الربط الذكي التلقائي".`);
-      return;
+    // Auto-fill any unmapped accounts from standard accounts so saving company profile is never blocked
+    let mappingToUse = { ...currentMapping };
+    if (companyAccounts.length > 0) {
+      const autoDefault = getDefaultMappingForAccounts(companyAccounts);
+      mappingToUse = {
+        ...autoDefault,
+        ...mappingToUse,
+      };
     }
 
     setIsSaving(true);
@@ -579,12 +586,12 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
         currency: funcCurr,
         currencySymbol: currSym,
         decimalPlaces: decPlaces,
-        defaultAccounts: currentMapping,
+        defaultAccounts: mappingToUse,
       } as CompanyProfile;
 
       // Upsert into company_accounting_settings and company_settings
       if (isSupabaseConfigured) {
-        await SupabaseDataService.saveCompanyAccountingSettings(currentMapping, activeCompanyId);
+        await SupabaseDataService.saveCompanyAccountingSettings(mappingToUse, activeCompanyId);
 
         try {
           await supabase.from('companies').update({
@@ -594,14 +601,14 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
             currency: funcCurr,
             currency_symbol: currSym,
             decimal_places: decPlaces,
-            default_accounts: currentMapping,
-            default_cash_account_id: currentMapping.cashAccountId || null,
-            default_bank_account_id: currentMapping.bankAccountId || null,
-            default_receivable_account_id: currentMapping.receivableAccountId || null,
-            default_payable_account_id: currentMapping.payableAccountId || null,
-            default_sales_account_id: currentMapping.salesAccountId || null,
-            default_cogs_account_id: currentMapping.cogsAccountId || null,
-            default_inventory_account_id: currentMapping.inventoryAccountId || null,
+            default_accounts: mappingToUse,
+            default_cash_account_id: mappingToUse.cashAccountId || null,
+            default_bank_account_id: mappingToUse.bankAccountId || null,
+            default_receivable_account_id: mappingToUse.receivableAccountId || null,
+            default_payable_account_id: mappingToUse.payableAccountId || null,
+            default_sales_account_id: mappingToUse.salesAccountId || null,
+            default_cogs_account_id: mappingToUse.cogsAccountId || null,
+            default_inventory_account_id: mappingToUse.inventoryAccountId || null,
             profile_data: updatedProfile,
             updated_at: new Date().toISOString(),
           }).eq('id', activeCompanyId);

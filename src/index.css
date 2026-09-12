@@ -508,15 +508,64 @@ html.dark:not(.theme-slate) .bg-black\/60 {
     display: none !important;
   }
 
-  /* 2. Container Isolation:
+  /* 2. Universal Printable Target Isolation:
      When any dedicated printable container is present on the page,
-     hide all other sibling/parent UI elements that are not part of the printable container. */
-  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > header,
-  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > aside,
-  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > *:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)),
-  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) #root > div > div > *:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)),
-  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) main > *:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)),
-  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet) .fixed:not(:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet)) {
+     hide the entire background DOM and isolate only the printable document. */
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) {
+    visibility: hidden !important;
+    background: #ffffff !important;
+  }
+
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-document,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-invoice,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-statement,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-content,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-voucher,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-production,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-quotation-sheet,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #pos-thermal-receipt,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) .printable-modal-doc,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) .print-modal {
+    visibility: visible !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border: none !important;
+    z-index: 99999 !important;
+  }
+
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-document *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-invoice *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-statement *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-content *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-voucher *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-production *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #printable-quotation-sheet *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) #pos-thermal-receipt *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) .printable-modal-doc *,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) .print-modal * {
+    visibility: visible !important;
+  }
+
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) .no-print,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Fallback hiding for structural shells */
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) header,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) aside,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) footer,
+  body:has(#printable-document, #printable-invoice, #printable-statement, #printable-content, #printable-voucher, #printable-production, #printable-quotation-sheet, #pos-thermal-receipt, .printable-modal-doc, .print-modal) nav {
     display: none !important;
   }
 
@@ -548,7 +597,7 @@ html.dark:not(.theme-slate) .bg-black\/60 {
     box-shadow: none !important;
   }
 
-  /* 4. Reset modal overlays during print so modal content prints as regular flow */
+  /* 4. Reset modal overlays during print so modal content prints cleanly */
   .fixed.inset-0,
   .fixed,
   div[role="dialog"],
@@ -598,6 +647,8 @@ html.dark:not(.theme-slate) .bg-black\/60 {
   #printable-statement,
   #printable-production,
   #printable-quotation-sheet,
+  #pos-thermal-receipt,
+  #printable-report-area,
   .printable-card,
   .print-area {
     display: block !important;

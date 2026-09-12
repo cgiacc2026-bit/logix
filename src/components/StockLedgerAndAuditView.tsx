@@ -287,7 +287,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   return (
     <div className="space-y-6">
       {/* Top Banner & Title */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-700">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-700 no-print">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 flex items-center gap-1">
@@ -434,7 +434,7 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
       {activeSubTab === 'audit' && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
           {/* Controls */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-slate-100 pb-4 no-print">
             <div className="flex flex-wrap items-center gap-2">
               {/* Category */}
               <select

@@ -21,6 +21,7 @@ import {
   StockMovement,
 } from '../types.js';
 import { StockLedgerService } from './stockLedgerService.ts';
+import { getAccountStatement, isDocMatchingEntity } from './statementService.ts';
 
 // ----------------------------------------------------------------------------
 // 1. CUSTOMER BALANCES REPORT TYPES & FORMULAS
@@ -277,157 +278,47 @@ export class GLReportsService {
       }
     }
 
-    // Process each customer strictly from posted movements
+    // Process each customer strictly from posted movements using the unified statement engine
     const rows: GlCustomerBalanceRow[] = customers.map((cust) => {
-      const custOpening = Number(cust.openingBalance) || 0;
-      let totalDebit = 0;
-      let totalCredit = 0;
-      let lastMovementDate: string | undefined;
-      const glMovements: GlCustomerBalanceRow['glMovements'] = [];
-
-      // Find all posted journal movements linked to this customer
-      for (const j of postedJournals) {
-        if (startDate && j.date < startDate) continue;
-        if (endDate && j.date > endDate) continue;
-
-        // Check if journal entry is linked to customer
-        let isCustomerMatch = false;
-        let matchedType: GlCustomerBalanceRow['glMovements'][0]['type'] = 'JOURNAL_ADJUSTMENT';
-
-        // 1. Linked via Invoice
-        const linkedInv =
-          (j.sourceId && invoiceById.get(j.sourceId)) ||
-          (j.reference && invoiceByNumber.get(j.reference));
-        if (linkedInv && (linkedInv.entityId === cust.id || linkedInv.entityNameAr === cust.nameAr)) {
-          isCustomerMatch = true;
-          matchedType = linkedInv.type === 'SALES_RETURN' ? 'SALES_RETURN' : 'SALES_INVOICE';
+      // Use getAccountStatement so Customer Balances Report and Account Statement are 100% synchronized
+      const stmt = getAccountStatement(
+        cust.id,
+        'CUSTOMER',
+        startDate || '1970-01-01',
+        endDate || '2099-12-31',
+        {
+          invoices: validInvoices,
+          vouchers: validVouchers,
+          journals: postedJournals,
+          customers,
         }
+      );
 
-        // 2. Linked via Voucher
-        if (!isCustomerMatch) {
-          const linkedVoucher =
-            (j.sourceId && voucherById.get(j.sourceId)) ||
-            (j.reference && voucherByNumber.get(j.reference));
-          if (linkedVoucher && linkedVoucher.entityId === cust.id) {
-            isCustomerMatch = true;
-            matchedType = 'PAYMENT_RECEIPT';
-          }
-        }
+      const custOpening = Number(stmt?.openingBalance) || 0;
+      const totalDebit = Number(stmt?.totalPeriodDebit) || 0;
+      const totalCredit = Number(stmt?.totalPeriodCredit) || 0;
+      const netBalance = Number(stmt?.closingBalance) || 0;
 
-        // 3. Linked via metadata on entry or lines
-        if (!isCustomerMatch) {
-          const searchKeyName = cust.nameAr.trim().toLowerCase();
-          const searchKeyCode = cust.code ? cust.code.trim().toLowerCase() : '';
-          const descLower = (j.description || '').toLowerCase();
-          const refLower = (j.reference || '').toLowerCase();
+      const glMovements: GlCustomerBalanceRow['glMovements'] = (stmt?.transactions || [])
+        .filter((t) => !t.isCancelled && t.status !== 'CANCELLED')
+        .map((t) => ({
+          journalId: t.id,
+          entryNumber: t.docNumber,
+          date: t.date,
+          reference: t.reference || t.docNumber,
+          description: t.description,
+          debit: Number(t.debit) || 0,
+          credit: Number(t.credit) || 0,
+          type: (t.docType === 'SALES_RETURN'
+            ? 'SALES_RETURN'
+            : t.docType === 'PAYMENT_RECEIPT'
+            ? 'PAYMENT_RECEIPT'
+            : t.docType === 'SALES_INVOICE'
+            ? 'SALES_INVOICE'
+            : 'JOURNAL_ADJUSTMENT') as GlCustomerBalanceRow['glMovements'][0]['type'],
+        }));
 
-          if (
-            (searchKeyCode && (descLower.includes(searchKeyCode) || refLower.includes(searchKeyCode))) ||
-            descLower.includes(searchKeyName)
-          ) {
-            isCustomerMatch = true;
-          }
-        }
-
-        if (isCustomerMatch) {
-          for (const line of j.lines || []) {
-            const isRecLine =
-              line.accountId === recAccId ||
-              line.accountCode === recAccCode ||
-              line.accountCode === '1120' ||
-              (line.accountNameAr && line.accountNameAr.includes('عملاء'));
-
-            if (isRecLine) {
-              const debit = Number(line.debit) || 0;
-              const credit = Number(line.credit) || 0;
-
-              totalDebit += debit;
-              totalCredit += credit;
-
-              glMovements.push({
-                journalId: j.id,
-                entryNumber: j.entryNumber,
-                date: j.date,
-                reference: j.reference || j.entryNumber,
-                description: line.memo || j.description || 'حركة حساب جاري',
-                debit,
-                credit,
-                type: matchedType,
-              });
-
-              if (!lastMovementDate || j.date > lastMovementDate) {
-                lastMovementDate = j.date;
-              }
-            }
-          }
-        }
-      }
-
-      // If no movements from journals were matched yet customer has direct invoices/vouchers,
-      // synthesize strictly so no customer is dropped:
-      if (glMovements.length === 0) {
-        const custInvoices = invoices.filter(
-          (inv) =>
-            inv.entityId === cust.id &&
-            (inv.status === 'POSTED' || inv.status === 'PAID' || inv.status === 'PARTIALLY_PAID')
-        );
-        for (const inv of custInvoices) {
-          if (startDate && inv.date < startDate) continue;
-          if (endDate && inv.date > endDate) continue;
-
-          const total = Number(inv.grandTotal) || 0;
-          if (inv.type === 'SALES') {
-            totalDebit += total;
-            glMovements.push({
-              journalId: `inv-${inv.id}`,
-              entryNumber: inv.invoiceNumber,
-              date: inv.date,
-              reference: inv.invoiceNumber,
-              description: `فاتورة مبيعات ${inv.invoiceNumber}`,
-              debit: total,
-              credit: 0,
-              type: 'SALES_INVOICE',
-            });
-          } else if (inv.type === 'SALES_RETURN') {
-            totalCredit += total;
-            glMovements.push({
-              journalId: `ret-${inv.id}`,
-              entryNumber: inv.invoiceNumber,
-              date: inv.date,
-              reference: inv.invoiceNumber,
-              description: `مرتجع مبيعات ${inv.invoiceNumber}`,
-              debit: 0,
-              credit: total,
-              type: 'SALES_RETURN',
-            });
-          }
-        }
-
-        const custReceipts = vouchers.filter(
-          (v) => v.entityId === cust.id && v.type === 'RECEIPT' && v.status !== 'CANCELLED'
-        );
-        for (const v of custReceipts) {
-          if (startDate && v.date < startDate) continue;
-          if (endDate && v.date > endDate) continue;
-
-          const amount = Number(v.amount) || 0;
-          totalCredit += amount;
-          glMovements.push({
-            journalId: `vch-${v.id}`,
-            entryNumber: v.voucherNumber,
-            date: v.date,
-            reference: v.voucherNumber,
-            description: v.notes || `سند قبض ${v.voucherNumber}`,
-            debit: 0,
-            credit: amount,
-            type: 'PAYMENT_RECEIPT',
-          });
-        }
-      }
-
-      // STRICT ACCUMULATIVE FORMULA:
-      // Customer Balance = (Opening Balance) + (Posted Debits) - (Posted Credits)
-      const netBalance = custOpening + totalDebit - totalCredit;
+      const lastMovement = glMovements[glMovements.length - 1];
 
       return {
         customerId: cust.id,
@@ -441,10 +332,8 @@ export class GLReportsService {
         totalCredit,
         netBalance,
         movementsCount: glMovements.length,
-        lastMovementDate,
-        glMovements: glMovements.sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        ),
+        lastMovementDate: lastMovement?.date,
+        glMovements,
       };
     });
 

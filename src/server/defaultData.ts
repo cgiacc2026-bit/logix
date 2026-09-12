@@ -1711,7 +1711,7 @@ export const INITIAL_INVOICES: Invoice[] = [
     entityNameAr: 'جمعية القيروان التعاونية',
     date: '2026-01-15',
     dueDate: '2026-02-14',
-    status: 'PAID',
+    status: 'POSTED',
     lines: [
       {
         id: 'inv-line-1',
@@ -1796,8 +1796,8 @@ export const INITIAL_INVOICES: Invoice[] = [
     discountValue: 0,
     discountTotal: 0,
     grandTotal: 188.000,
-    paidAmount: 188.000,
-    dueAmount: 0,
+    paidAmount: 0.000,
+    dueAmount: 188.000,
     notes: 'توريد دفعة لفرع السوق المركزي واللوازم والعطور',
     createdAt: '2026-01-15T10:30:00.000Z',
   },
