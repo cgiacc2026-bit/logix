@@ -87,21 +87,24 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
         balance: 0,
       };
 
-      let rpcData: any = null;
+      let ledgerEntries: any = null;
       let rpcSuccess = false;
 
       // 1. Dedicated RPC Call: rpc_get_general_ledger
       if (isSupabaseConfigured && companyId) {
         try {
+          const currentCompanyId = companyId;
+          const selectedAccountId = targetAccount.id;
+
           const { data, error } = await supabase.rpc('rpc_get_general_ledger', {
-            p_company_id: companyId,
-            p_account_id: targetAccount.id,
+            p_company_id: currentCompanyId,
+            p_account_id: selectedAccountId,
             p_from_date: fromDate,
             p_to_date: toDate,
           });
 
           if (!error && data) {
-            rpcData = data;
+            ledgerEntries = data;
             rpcSuccess = true;
           } else if (error) {
             console.warn('rpc_get_general_ledger notice:', error.message);
@@ -111,30 +114,28 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
         }
       }
 
-      // If RPC succeeded, map results
-      if (rpcSuccess && rpcData) {
+      // If RPC succeeded, map rows directly to cumulative_balance returned from the RPC
+      if (rpcSuccess && ledgerEntries) {
         let movementsList: any[] = [];
         let openingBal = 0;
         let totalDeb = 0;
         let totalCred = 0;
 
-        if (Array.isArray(rpcData)) {
-          movementsList = rpcData;
-        } else if (typeof rpcData === 'object') {
-          movementsList = rpcData.movements || rpcData.lines || rpcData.transactions || [];
-          openingBal = Number(rpcData.opening_balance ?? rpcData.openingBalance ?? 0);
+        if (Array.isArray(ledgerEntries)) {
+          movementsList = ledgerEntries;
+        } else if (typeof ledgerEntries === 'object') {
+          movementsList = ledgerEntries.movements || ledgerEntries.lines || ledgerEntries.transactions || [];
+          openingBal = Number(ledgerEntries.opening_balance ?? ledgerEntries.openingBalance ?? 0);
+          totalDeb = Number(ledgerEntries.total_debit ?? ledgerEntries.totalDebit ?? 0);
+          totalCred = Number(ledgerEntries.total_credit ?? ledgerEntries.totalCredit ?? 0);
         }
 
-        let running = openingBal;
         const mappedMovements = movementsList.map((m: any, idx: number) => {
           const d = Number(m.debit ?? m.debit_amount ?? 0);
           const c = Number(m.credit ?? m.credit_amount ?? 0);
-          totalDeb += d;
-          totalCred += c;
-          if (targetAccount.normalBalance === 'DEBIT') {
-            running += (d - c);
-          } else {
-            running += (c - d);
+          if (!totalDeb && !totalCred) {
+            totalDeb += d;
+            totalCred += c;
           }
           return {
             id: m.id || `mov-${idx}`,
@@ -145,9 +146,13 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
             description: m.description || m.narration || m.notes || m.memo || 'قيد محاسبي',
             debit: d,
             credit: c,
-            runningBalance: m.running_balance != null ? Number(m.running_balance) : running,
+            runningBalance: Number(m.cumulative_balance ?? m.running_balance ?? 0),
           };
         });
+
+        const closingBal = movementsList.length > 0
+          ? Number(movementsList[movementsList.length - 1].cumulative_balance ?? movementsList[movementsList.length - 1].running_balance ?? openingBal)
+          : openingBal;
 
         setReport({
           account: targetAccount,
@@ -157,7 +162,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
           movements: mappedMovements,
           totalDebit: totalDeb,
           totalCredit: totalCred,
-          closingBalance: running,
+          closingBalance: closingBal,
         });
         return;
       }

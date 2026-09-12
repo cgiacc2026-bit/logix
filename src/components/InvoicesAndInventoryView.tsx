@@ -1820,16 +1820,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   </tr>
                 ) : (
                   processedInvoices.map((inv) => {
+                    const invoice = inv as any;
                     const isReturn = inv.type === 'SALES_RETURN' || inv.type === 'PURCHASE_RETURN';
                     const isSelected = selectedInvoiceIds.includes(inv.id);
-                    const invTotal = Number((inv as any).total_amount ?? inv.grandTotal ?? 0);
-                    const invPaid = Number((inv as any).paid_amount ?? inv.paidAmount ?? 0);
-                    const invRemaining = Number(
-                      (inv as any).remaining_amount ??
-                      ((inv as any).total_amount !== undefined
-                        ? ((inv as any).total_amount - ((inv as any).paid_amount || 0))
-                        : (inv.dueAmount !== undefined ? inv.dueAmount : (invTotal - invPaid)))
-                    );
+                    const invTotal = Number(invoice.total_amount ?? invoice.grandTotal ?? 0);
+                    const invPaid = Number(invoice.paid_amount ?? invoice.paidAmount ?? 0);
+                    const dueAmount = Number(invoice.remaining_amount ?? (invoice.total_amount !== undefined ? (invoice.total_amount - (invoice.paid_amount || 0)) : (invTotal - invPaid)));
                     return (
                       <tr
                         key={inv.id}
@@ -1904,44 +1900,34 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                           {inv.discountTotal > 0 ? formatCurrency(inv.discountTotal, currency) : '-'}
                         </td>
                         <td className="py-3 px-4 text-left font-mono font-bold text-[#2D6A4F]">
-                          {invRemaining.toFixed(3)} {currency}
+                          <span>{dueAmount.toFixed(3)} د.ك</span>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {inv.status === 'CANCELLED' ? (
+                          {invoice.status === 'CANCELLED' ? (
                             <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-rose-50 text-rose-800 border-rose-200">
                               ملغاة
                             </span>
-                          ) : inv.paymentTerms === 'CREDIT' ? (
-                            invPaid <= 0.0001 ? (
-                              <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-neutral-100 text-neutral-800 border-neutral-300 inline-block">
-                                آجل غير مسدد
-                              </span>
-                            ) : invRemaining <= 0.0001 && invTotal > 0 ? (
-                              <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
-                                مسددة بالكامل
-                              </span>
-                            ) : (
-                              <div className="inline-flex flex-col items-center">
-                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
-                                  مسدد جزئياً ({invPaid.toFixed(3)} {currency})
-                                </span>
-                                <span className="text-[9px] text-neutral-500 font-mono mt-0.5">
-                                  المتبقي: {invRemaining.toFixed(3)} {currency}
-                                </span>
-                              </div>
-                            )
-                          ) : inv.status === 'PAID' || inv.paymentTerms === 'CASH' ? (
+                          ) : Number(invoice.paid_amount || 0) === 0 ? (
+                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-neutral-100 text-neutral-800 border-neutral-300 inline-block">
+                              آجل غير مسدد
+                            </span>
+                          ) : dueAmount <= 0.0001 && invTotal > 0 ? (
+                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                              مسددة بالكامل
+                            </span>
+                          ) : invoice.paymentTerms === 'CASH' || invoice.status === 'PAID' ? (
                             <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
                               نقدي مسدد
                             </span>
-                          ) : inv.status === 'POSTED' ? (
-                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-blue-50 text-blue-800 border-blue-200">
-                              مرحّلة مالياً
-                            </span>
                           ) : (
-                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
-                              مسودة غير مرحلة
-                            </span>
+                            <div className="inline-flex flex-col items-center">
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
+                                مسدد جزئياً ({invPaid.toFixed(3)} د.ك)
+                              </span>
+                              <span className="text-[9px] text-neutral-500 font-mono mt-0.5">
+                                المتبقي: {dueAmount.toFixed(3)} د.ك
+                              </span>
+                            </div>
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">
