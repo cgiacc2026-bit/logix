@@ -16,6 +16,7 @@ import {
   Quotation,
   SalesRep,
   Warehouse,
+  CreditNote,
 } from './types.js';
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
@@ -36,15 +37,10 @@ import { SalesRepsView } from './components/SalesRepsView.tsx';
 import { CompanySetupView } from './components/CompanySetupView.tsx';
 import { UsersView } from './components/UsersView.tsx';
 import { SystemResetPanel } from './components/SystemResetPanel.tsx';
-import { AccountingCycleBar } from './components/AccountingCycleBar.tsx';
-import { OperationalReportsView } from './components/OperationalReportsView.tsx';
 import { ExecutiveDashboardView } from './components/ExecutiveDashboardView.tsx';
-import { OneClickExecutiveReportHub } from './components/OneClickExecutiveReportHub.tsx';
 import { UnifiedBackupRestoreHub } from './components/UnifiedBackupRestoreHub.tsx';
 import { BranchesManagementView } from './components/BranchesManagementView.tsx';
 import { WarehousesManagementView } from './components/WarehousesManagementView.tsx';
-import { EnterpriseAccordionHub } from './components/EnterpriseAccordionHub.tsx';
-import { ModernAccountingWorkspaceHeader } from './components/ModernAccountingWorkspaceHeader.tsx';
 import { DedicatedReportsWorkspace, ReportWorkspaceTab } from './components/DedicatedReportsWorkspace.tsx';
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
@@ -249,6 +245,7 @@ export function AppContent() {
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]);
 
   const [units, setUnits] = useState<UnitDefinition[]>([]);
@@ -746,59 +743,37 @@ export function AppContent() {
 
         {/* Main View Container */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5">
-          {/* Top Modern Accounting Workspace Header (Dropdowns & Quick Actions) */}
-          {activeTab !== 'company' && (
-            <ModernAccountingWorkspaceHeader
-              activeTab={activeTab}
-              onNavigateTab={(tab) => navigateToTab(tab)}
-              company={activeCompany}
-              currency={currency}
-              invoicesCount={invoices.length}
-              unpaidInvoicesCount={invoices.filter((i) => i.paymentStatus !== 'PAID').length}
-            />
-          )}
-
-          {/* Step-by-Step Onboarding Interactive Banner (Prominently on Dashboard) */}
+          {/* 1. Executive Modern KPI Dashboard */}
           {activeTab === 'dashboard' && (
-            <OnboardingBannerWidget
-              company={activeCompany}
-              onOpenFullGuide={() => setIsOnboardingModalOpen(true)}
-              onNavigateTab={(tab) => navigateToTab(tab)}
-              accountsCount={accounts.length}
-              customersCount={customers.length}
-              suppliersCount={suppliers.length}
-              inventoryCount={inventory.length}
-              journalsCount={journals.length}
-              invoicesCount={invoices.length}
-            />
+            <div className="space-y-4">
+              <OnboardingBannerWidget
+                company={activeCompany}
+                onOpenFullGuide={() => setIsOnboardingModalOpen(true)}
+                onNavigateTab={(tab) => navigateToTab(tab)}
+                accountsCount={accounts.length}
+                customersCount={customers.length}
+                suppliersCount={suppliers.length}
+                inventoryCount={inventory.length}
+                journalsCount={journals.length}
+                invoicesCount={invoices.length}
+              />
+              <ExecutiveDashboardView
+                company={activeCompany}
+                currency={currency}
+                customers={customers}
+                suppliers={suppliers}
+                inventory={inventory}
+                invoices={invoices}
+                vouchers={vouchers}
+                accounts={accounts}
+                journals={journals}
+                warehouses={warehouses}
+                onNavigateTab={(tab) => navigateToTab(tab as any)}
+              />
+            </div>
           )}
 
-          {activeTab !== 'company' && (
-            <AccountingCycleBar
-              company={activeCompany}
-              activeTab={activeTab}
-              onNavigateTab={(tab) => navigateToTab(tab as any)}
-            />
-          )}
-
-          {/* 1. Executive Modern KPI Dashboard (Zero-Click Redundancy) */}
-          {activeTab === 'dashboard' && (
-            <ExecutiveDashboardView
-              company={activeCompany}
-              currency={currency}
-              customers={customers}
-              suppliers={suppliers}
-              inventory={inventory}
-              invoices={invoices}
-              vouchers={vouchers}
-              accounts={accounts}
-              journals={journals}
-              warehouses={warehouses}
-              onNavigateTab={(tab) => navigateToTab(tab as any)}
-            />
-          )}
-
-          {/* 2. Dedicated Reports Workspace ("التقارير ليها مكان والمدخلات مكان") */}
+          {/* 2. Dedicated Reports Workspace */}
           {isReportTab && (
             <DedicatedReportsWorkspace
               company={activeCompany}
@@ -812,6 +787,7 @@ export function AppContent() {
               journals={journals}
               warehouses={warehouses}
               salesReps={salesReps}
+              creditNotes={creditNotes}
               initialSubTab={getReportWorkspaceSubTab(activeTab)}
               onViewAccountStatement={(entityId, entityType) =>
                 setSelectedStatementEntity({ id: entityId, type: entityType })
@@ -821,11 +797,10 @@ export function AppContent() {
             />
           )}
 
-          {/* 3. Enterprise Operations & Master Data Architecture */}
-          {!['dashboard', 'company', 'users', 'backup-restore', 'system-reset'].includes(activeTab) && !isReportTab && (
-            <EnterpriseAccordionHub
-              company={activeCompany}
-              currency={currency}
+          {/* 3. Direct Operational & Master Data Views (Zero Redundancy) */}
+          {(activeTab === 'sales-invoices' || activeTab === 'invoices') && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
               customers={customers}
               suppliers={suppliers}
               inventory={inventory}
@@ -833,14 +808,15 @@ export function AppContent() {
               vouchers={vouchers}
               accounts={accounts}
               journals={journals}
-              productionOrders={productionOrders}
-              quotations={quotations}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
               salesReps={salesReps}
               warehouses={warehouses}
-              units={units}
-              kpis={kpis}
-              activeTab={activeTab}
-              onNavigateTab={(tab) => navigateToTab(tab)}
+              activeSubTab="invoices"
+              initialInvoiceFilter="SALES"
+              hideSubTabBar={true}
+              customViewTitle="فواتير ومرتجعات المبيعات"
               onRefreshAll={refreshAllData}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
@@ -860,18 +836,467 @@ export function AppContent() {
               onCreateInventoryItem={handleCreateInventoryItem}
               onUpdateInventoryItem={handleUpdateInventoryItem}
               onDeleteInventoryItem={handleDeleteInventoryItem}
-              handleAddAccount={handleAddAccount}
-              handleUpdateAccount={handleUpdateAccount}
-              handleDeleteAccount={handleDeleteAccount}
-              handleCreateJournal={handleCreateJournal}
-              handleUpdateJournal={handleUpdateJournal}
-              handleDeleteJournal={handleDeleteJournal}
-              handleReverseJournal={handleReverseJournal}
-              handleCreateProductionOrder={handleCreateProductionOrder}
-              onViewPrintInvoice={(inv) => setSelectedPrintInvoice(inv)}
-              onViewAccountStatement={(entityId, entityType) =>
-                setSelectedStatementEntity({ id: entityId, type: entityType })
-              }
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'purchase-invoices' && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="invoices"
+              initialInvoiceFilter="PURCHASE"
+              hideSubTabBar={true}
+              customViewTitle="فواتير ومردودات الشراء"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {(activeTab === 'receipt-vouchers' || activeTab === 'vouchers') && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="vouchers"
+              initialVoucherFilter="RECEIPT"
+              hideSubTabBar={true}
+              customViewTitle="سندات القبض والتحصيل"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'payment-vouchers' && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="vouchers"
+              initialVoucherFilter="PAYMENT"
+              hideSubTabBar={true}
+              customViewTitle="سندات الصرف وسداد الموردين"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'quotations' && (
+            <QuotationsView
+              company={activeCompany}
+              quotations={quotations}
+              salesReps={salesReps}
+              customers={customers}
+              inventory={inventory}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
+            />
+          )}
+
+          {activeTab === 'customers' && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="entities"
+              initialEntityFilter="CUSTOMER"
+              hideSubTabBar={true}
+              customViewTitle="سجلات ودليل العملاء والجمعيات"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'suppliers' && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="entities"
+              initialEntityFilter="SUPPLIER"
+              hideSubTabBar={true}
+              customViewTitle="سجلات ودليل الموردين والمطاحن"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'entities' && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="entities"
+              initialEntityFilter="ALL"
+              hideSubTabBar={true}
+              customViewTitle="دليل وسجلات العملاء والموردين"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'inventory' && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="inventory"
+              hideSubTabBar={true}
+              customViewTitle="دليل الأصناف وكارت الصنف"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'units' && (
+            <InvoicesAndInventoryView
+              company={activeCompany!}
+              customers={customers}
+              suppliers={suppliers}
+              inventory={inventory}
+              invoices={invoices}
+              vouchers={vouchers}
+              accounts={accounts}
+              journals={journals}
+              creditNotes={creditNotes}
+              units={units}
+              currency={currency}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              activeSubTab="units"
+              hideSubTabBar={true}
+              customViewTitle="وحدات القياس والشد (Units)"
+              onRefreshAll={refreshAllData}
+              onCreateInvoice={handleCreateInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
+              onPostInvoice={handlePostInvoice}
+              onCancelInvoice={handleCancelInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onCreateVoucher={handleCreateVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onCancelVoucher={handleCancelVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
+              onCreateCustomer={handleCreateCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onCreateSupplier={handleCreateSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onCreateInventoryItem={handleCreateInventoryItem}
+              onUpdateInventoryItem={handleUpdateInventoryItem}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              onCreateUnit={handleCreateUnit}
+              onUpdateUnit={handleUpdateUnit}
+              onDeleteUnit={handleDeleteUnit}
+            />
+          )}
+
+          {activeTab === 'warehouses' && (
+            <WarehousesManagementView
+              company={activeCompany!}
+              inventory={inventory}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+              onNavigateTab={(tab) => navigateToTab(tab as any)}
+            />
+          )}
+
+          {activeTab === 'branches' && (
+            <BranchesManagementView
+              company={activeCompany!}
+              warehouses={warehouses}
+              accounts={accounts}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+            />
+          )}
+
+          {activeTab === 'production' && (
+            <ProductionOrdersView
+              company={activeCompany!}
+              productionOrders={productionOrders}
+              inventory={inventory}
+              currency={currency}
+              onCreateProductionOrder={handleCreateProductionOrder}
+            />
+          )}
+
+          {activeTab === 'sales-reps' && (
+            <SalesRepsView
+              company={activeCompany}
+              salesReps={salesReps}
+              invoices={invoices}
+              vouchers={vouchers}
+              inventory={inventory}
+              warehouses={warehouses}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+            />
+          )}
+
+          {activeTab === 'pos' && (
+            <PosTerminalView
+              company={activeCompany}
+              inventory={inventory}
+              customers={customers}
+              salesReps={salesReps}
+              warehouses={warehouses}
+              currency={currency}
+              onRefreshAll={refreshAllData}
+            />
+          )}
+
+          {activeTab === 'accounts' && (
+            <ChartOfAccountsView
+              accounts={accounts}
+              journals={journals}
+              currency={currency}
+              onAddAccount={handleAddAccount}
+              onUpdateAccount={handleUpdateAccount}
+              onDeleteAccount={handleDeleteAccount}
+              onSelectAccountLedger={(accId) => {
+                setSelectedStatementEntity({ id: accId, type: 'CUSTOMER' });
+                navigateToTab('ledger' as any);
+              }}
+            />
+          )}
+
+          {activeTab === 'journals' && (
+            <JournalEntriesView
+              journals={journals}
+              accounts={accounts}
+              customers={customers}
+              suppliers={suppliers}
+              currency={currency}
+              onCreateJournal={handleCreateJournal}
+              onUpdateJournal={handleUpdateJournal}
+              onDeleteJournal={handleDeleteJournal}
+              onReverseJournal={handleReverseJournal}
+              companyName={activeCompany?.nameAr}
+            />
+          )}
+
+          {activeTab === 'stock-ledger' && (
+            <StockLedgerAndAuditView
+              inventory={inventory}
+              invoices={invoices}
+              productionOrders={productionOrders}
+              currency={currency}
+              onRefreshData={refreshAllData}
             />
           )}
 
