@@ -17,6 +17,7 @@ import {
   UnitDefinition,
   SystemUser,
 } from '../types.js';
+import { ALWALEED_MILL_PRESET_BACKUP } from '../data/alwaleedPresetData.js';
 import {
   DEFAULT_COMPANY_PROFILE,
   INITIAL_ACCOUNTS,
@@ -677,61 +678,9 @@ export class CompanyJsonBackupService {
 
   /**
    * Generates the authentic pre-configured JSON backup of Al-Waleed Mill's complete dataset
-   * (The 22 spice items, milling lines, orders, co-op customers, and initial invoices)
+   * (The full 64 items, 61 journals, 51 invoices, 10 vouchers, co-op customers, and chart of accounts)
    */
   public static getAlWaleedMillPresetBackupJson(): string {
-    const envelope: CompanyBackupEnvelope = {
-      format: 'LOGIX_ERP_BACKUP_V2026',
-      exportTimestamp: '2026-08-30T10:00:00.000Z',
-      companyId: 'company-alwaleed-client-003',
-      companyName: 'شركة مطحنة الوليد المتحدة ذ.م.م',
-      version: '2026.1',
-      stats: {
-        accountsCount: INITIAL_ACCOUNTS.length,
-        inventoryCount: INITIAL_INVENTORY.length,
-        invoicesCount: INITIAL_INVOICES.length,
-        journalsCount: INITIAL_JOURNALS.length,
-        vouchersCount: 0,
-        customersCount: INITIAL_CUSTOMERS.length,
-        suppliersCount: INITIAL_SUPPLIERS.length,
-        productionOrdersCount: INITIAL_PRODUCTION_ORDERS.length,
-        unitsCount: INITIAL_UNITS.length,
-      },
-      data: {
-        company: {
-          ...DEFAULT_COMPANY_PROFILE,
-          id: 'company-alwaleed-client-003',
-          nameAr: 'شركة مطحنة الوليد المتحدة ذ.م.م',
-          nameEn: 'Al-Waleed United Mill & Food Industries Co. W.L.L',
-          tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
-          legalForm: 'شركة ذات مسؤولية محدودة',
-          crNumber: '450912',
-          chamberNumber: '78214',
-          functionalCurrency: 'KWD',
-          vatRate: 0,
-          city: 'الكويت',
-          country: 'دولة الكويت',
-          district: 'الشويخ الصناعية',
-          streetName: 'شارع الغزالي - قسيمة 42',
-          phone: '+965 6571 0278',
-          email: 'alwaleed.client@logixerp.cloud',
-          generalManager: 'د. خالد بن عبد العزيز السليمان',
-          financialManager: 'أ. محمد بن عبد الله الشمري',
-          chiefAccountant: 'أ. أحمد علي المصطفى',
-        },
-        accounts: INITIAL_ACCOUNTS,
-        inventory: INITIAL_INVENTORY,
-        invoices: INITIAL_INVOICES,
-        journals: INITIAL_JOURNALS,
-        vouchers: [],
-        customers: INITIAL_CUSTOMERS,
-        suppliers: INITIAL_SUPPLIERS,
-        productionOrders: INITIAL_PRODUCTION_ORDERS,
-        units: INITIAL_UNITS,
-        users: INITIAL_USERS,
-      },
-    };
-
-    return JSON.stringify(envelope, null, 2);
+    return JSON.stringify(ALWALEED_MILL_PRESET_BACKUP, null, 2);
   }
 }

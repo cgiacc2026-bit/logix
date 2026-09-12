@@ -22,6 +22,10 @@ export interface Account {
   current_balance?: number;
   currentBalance?: number;
   isLeaf?: boolean; // True if account has no sub-accounts
+  totalDebitMovement?: number;
+  totalCreditMovement?: number;
+  movementCount?: number;
+  companyId?: string;
 }
 
 export type JournalStatus = 'DRAFT' | 'POSTED' | 'CANCELLED' | 'REVERSED';
@@ -544,12 +548,24 @@ export interface PaymentVoucher {
   paymentMethod: 'BANK' | 'CASH';
   bankAccountId: string; // Account ID for cash/bank
   invoiceId?: string;
-  reference: string;
+  reference?: string | null;
   notes: string;
   status?: 'POSTED' | 'CANCELLED';
   is_void?: boolean;
   journalEntryId?: string;
   createdAt: string;
+  companyId?: string;
+  updatedAt?: string;
+  raw_data?: any;
+  entity_id?: string;
+  account_id?: string;
+  company_id?: string;
+  created_at?: string;
+  description?: string;
+  entity_name?: string;
+  entity_type?: string;
+  payment_method?: string;
+  voucher_number?: string;
 }
 
 export type ManufacturingIndustryType =

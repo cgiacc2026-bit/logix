@@ -119,6 +119,33 @@ class DatabaseStore {
   }
 
   public seedInitial() {
+    const fullPresetPath = path.join(process.cwd(), 'data/alwaleed_mill_full_database.json');
+    if (fs.existsSync(fullPresetPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(fullPresetPath, 'utf-8'));
+        const envelopeData = raw.data || raw;
+        this.data = {
+          company: envelopeData.company || JSON.parse(JSON.stringify(DEFAULT_COMPANY_PROFILE)),
+          users: envelopeData.users || JSON.parse(JSON.stringify(INITIAL_USERS)),
+          accounts: envelopeData.accounts || JSON.parse(JSON.stringify(INITIAL_ACCOUNTS)),
+          customers: envelopeData.customers || JSON.parse(JSON.stringify(INITIAL_CUSTOMERS)),
+          suppliers: envelopeData.suppliers || JSON.parse(JSON.stringify(INITIAL_SUPPLIERS)),
+          inventory: envelopeData.inventory || JSON.parse(JSON.stringify(INITIAL_INVENTORY)),
+          journals: envelopeData.journals || JSON.parse(JSON.stringify(INITIAL_JOURNALS)),
+          invoices: envelopeData.invoices || JSON.parse(JSON.stringify(INITIAL_INVOICES)),
+          vouchers: envelopeData.vouchers || [],
+          units: envelopeData.units || JSON.parse(JSON.stringify(INITIAL_UNITS)),
+          productionOrders: envelopeData.productionOrders || [],
+          tombstones: this.data?.tombstones || { journals: [] },
+        };
+        this.save();
+        console.log('🌱 Seeded full Al-Waleed ERP database from authentic dataset.');
+        return;
+      } catch (e) {
+        console.error('Failed to load full preset during seed, falling back:', e);
+      }
+    }
+
     const tombJournals = this.getTombstones('journals');
     const tombSet = new Set(tombJournals);
     this.data = {
@@ -132,7 +159,7 @@ class DatabaseStore {
       invoices: JSON.parse(JSON.stringify(INITIAL_INVOICES)),
       vouchers: [],
       units: JSON.parse(JSON.stringify(INITIAL_UNITS)),
-      tombstones: this.data.tombstones || { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] },
+      tombstones: this.data?.tombstones || { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] },
     };
     this.save();
     console.log('🌱 Seeded authentic Al-Waleed ERP database.');

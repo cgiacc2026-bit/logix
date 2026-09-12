@@ -162,7 +162,10 @@ export const JsonBackupRestoreModal: React.FC<JsonBackupRestoreModalProps> = ({
 
     try {
       const alwaleedJson = CompanyJsonBackupService.getAlWaleedMillPresetBackupJson();
-      const activeTenantId = targetCompanyId.includes('alwaleed') ? targetCompanyId : currentCompanyId;
+      const activeTenantId =
+        targetCompanyId === 'company-logix-official-001' || targetCompanyId === 'company-demo-clients-002'
+          ? targetCompanyId
+          : '20000000-0000-0000-0000-000000000001';
 
       const result = await ERPBackupImportService.importCompanyJsonData(
         activeTenantId,

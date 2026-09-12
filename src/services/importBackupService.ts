@@ -11,6 +11,7 @@ import { supabase, toValidUUID } from './supabaseClient.js';
 import { resolveToSupabaseCompanyUUID } from './supabaseService.js';
 import { localDataStore } from './dataService.js';
 import { cacheService } from './cacheService.js';
+import { safeApiFetch } from '../utils/safeJson.js';
 
 export interface ImportProgress {
   total: number;
@@ -861,6 +862,16 @@ export class ERPBackupImportService {
 
       report.success = report.acceptedTotal > 0 || totalSteps === 0;
       report.message = `تمت استعادة وحفظ ${report.acceptedTotal} سجل بنجاح وربطها بالشركة (${activeCompanyUUID}).`;
+
+      try {
+        await safeApiFetch('/api/backup/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed),
+        });
+      } catch (backendSyncErr) {
+        console.warn('Sync to Express server backup/restore notice:', backendSyncErr);
+      }
       
       updateProgress('COMPLETE', report.message, 0);
       return report;
