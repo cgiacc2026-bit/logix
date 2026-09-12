@@ -71,6 +71,7 @@ export interface GeneralLedgerMovement {
   debit: number;
   credit: number;
   runningBalance: number;
+  cumulative_balance?: number;
 }
 
 export interface GeneralLedgerReport {

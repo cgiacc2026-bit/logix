@@ -147,6 +147,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
             debit: d,
             credit: c,
             runningBalance: Number(m.cumulative_balance ?? m.running_balance ?? 0),
+            cumulative_balance: Number(m.cumulative_balance ?? m.running_balance ?? 0),
           };
         });
 
@@ -527,7 +528,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                       {m.credit > 0 ? formatKWD3(m.credit) : '-'}
                     </td>
                     <td className="py-2.5 px-4 text-left font-mono font-bold text-[#1A1A1A] bg-[#FAF9F5] whitespace-nowrap">
-                      {formatKWD3(m.runningBalance)}
+                      {formatKWD3(m.cumulative_balance ?? m.runningBalance)}
                     </td>
                   </tr>
                 ))

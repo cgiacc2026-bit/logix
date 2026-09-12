@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
-interface CustomerRow {
+export interface CustomerRow {
   id: string;
   code: string;
-  name: string;
-  name_ar: string;
+  display_name?: string;
+  name_ar?: string;
+  name?: string;
   opening_balance: number;
   total_debit: number;
   total_credit: number;
@@ -37,22 +38,22 @@ export default function CustomerBalancesMaster({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Compute a stable primitive companyId string
-  const activeCompanyId =
+  const currentCompanyId =
     companyId ||
     company?.id ||
     (company as any)?.company_id ||
     '00000000-0000-0000-0000-000000000099';
 
   const fetchBalances = useCallback(async () => {
-    if (!activeCompanyId) return;
+    if (!currentCompanyId) return;
     setLoading(true);
     setErrorMsg(null);
     try {
-      // 1. Fetch strictly from view_customer_balances_master or fallback to customers
+      // 1. Fetch strictly from view_customer_balances_master
       const { data, error } = await supabase
         .from('view_customer_balances_master')
         .select('*')
-        .eq('company_id', activeCompanyId);
+        .eq('company_id', currentCompanyId);
 
       if (error) {
         console.warn('view_customer_balances_master notice:', error.message);
@@ -61,18 +62,20 @@ export default function CustomerBalancesMaster({
       if (data && data.length > 0) {
         // Guarantee proper field mapping to prevent blank columns
         const sanitized: CustomerRow[] = data.map((item: any) => ({
-          id: item.id || item.customer_id || `cust-${item.code || Math.random()}`,
+          id: item.id || item.customer_id || `cust-${item.code || item.customer_code || Math.random()}`,
           code: item.code || item.customer_code || '---',
-          name: item.name_ar || item.name || item.customer_name_ar || item.nameAr || 'عميل غير مسجل',
-          name_ar: item.name_ar || item.name || item.customer_name_ar || item.nameAr || 'عميل غير مسجل',
+          display_name: item.display_name,
+          name_ar: item.name_ar || item.customer_name_ar || item.nameAr,
+          name: item.name || item.customer_name || 'عميل غير مسجل',
           opening_balance: Number(item.opening_balance || 0),
           total_debit: Number(item.total_debit || 0),
           total_credit: Number(item.total_credit || 0),
           net_due_balance: Number(
-            item.net_due_balance ||
-              (Number(item.opening_balance || 0) +
-                Number(item.total_debit || 0) -
-                Number(item.total_credit || 0))
+            item.net_due_balance !== undefined
+              ? item.net_due_balance
+              : Number(item.opening_balance || 0) +
+                  Number(item.total_debit || 0) -
+                  Number(item.total_credit || 0)
           ),
           entries_count: Number(item.entries_count || 0),
         }));
@@ -89,13 +92,14 @@ export default function CustomerBalancesMaster({
           const openBal = isCoop301 ? 2941.297 : Number(c.opening_balance ?? c.openingBalance ?? 0);
           const deb = isCoop301 ? 238.990 : Number(c.total_debit ?? 0);
           const cred = isCoop301 ? 132.759 : Number(c.total_credit ?? 0);
-          const net = isCoop301 ? 3047.528 : (openBal + deb - cred);
+          const net = isCoop301 ? 3047.528 : openBal + deb - cred;
 
           return {
             id: c.id || `c-${c.code || Math.random()}`,
             code: c.code || c.customer_code || '---',
-            name: c.nameAr || c.name_ar || c.name || 'عميل غير مسجل',
-            name_ar: c.nameAr || c.name_ar || c.name || 'عميل غير مسجل',
+            display_name: c.display_name,
+            name_ar: c.nameAr || c.name_ar,
+            name: c.name || c.nameAr || c.name_ar || 'عميل غير مسجل',
             opening_balance: openBal,
             total_debit: deb,
             total_credit: cred,
@@ -113,7 +117,7 @@ export default function CustomerBalancesMaster({
     } finally {
       setLoading(false);
     }
-  }, [activeCompanyId]);
+  }, [currentCompanyId, customers]);
 
   useEffect(() => {
     fetchBalances();
@@ -188,7 +192,7 @@ export default function CustomerBalancesMaster({
                 <td className="p-3 text-center text-slate-400 font-mono text-xs">{idx + 1}</td>
                 <td className="p-3 font-mono font-bold text-slate-700">{row.code}</td>
                 <td className="p-3 font-bold text-slate-800">
-                  {row.name}
+                  {row.display_name || row.name_ar || row.name || 'عميل غير مسجل'}
                   {onViewAccountStatement && (
                     <button
                       onClick={() => onViewAccountStatement(row.id)}
@@ -199,17 +203,17 @@ export default function CustomerBalancesMaster({
                   )}
                 </td>
                 <td className="p-3 text-slate-600 font-mono">
-                  {row.opening_balance.toFixed(3)} د.ك
+                  {Number(row.opening_balance).toFixed(3)} د.ك
                 </td>
                 <td className="p-3 text-emerald-600 font-mono">
-                  +{row.total_debit.toFixed(3)} د.ك
+                  +{Number(row.total_debit).toFixed(3)} د.ك
                 </td>
                 <td className="p-3 text-rose-600 font-mono">
-                  -{row.total_credit.toFixed(3)} د.ك
+                  -{Number(row.total_credit).toFixed(3)} د.ك
                 </td>
                 <td className="p-3 bg-amber-50/40">
                   <span className="font-mono font-bold text-amber-950 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded inline-block">
-                    {row.net_due_balance.toFixed(3)} د.ك
+                    {Number(row.net_due_balance).toFixed(3)} د.ك
                   </span>
                 </td>
                 <td className="p-3 text-center">

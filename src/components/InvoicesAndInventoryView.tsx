@@ -1825,7 +1825,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     const isSelected = selectedInvoiceIds.includes(inv.id);
                     const invTotal = Number(invoice.total_amount ?? invoice.grandTotal ?? 0);
                     const invPaid = Number(invoice.paid_amount ?? invoice.paidAmount ?? 0);
-                    const dueAmount = Number(invoice.remaining_amount ?? (invoice.total_amount !== undefined ? (invoice.total_amount - (invoice.paid_amount || 0)) : (invTotal - invPaid)));
+                    const dueAmount = Number(invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0)));
                     return (
                       <tr
                         key={inv.id}
