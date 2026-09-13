@@ -1073,13 +1073,18 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     if (invFilterType === 'SALES') {
       list = list.filter((inv) => {
         const num = (inv.invoiceNumber || '').trim().toUpperCase();
-        if (num.startsWith('INV-PUR') || num.startsWith('RET-PUR') || num.startsWith('RET-SAL')) return false;
-        return inv.type === 'SALES' || num.startsWith('INV-SAL') || !inv.type;
+        if (num.startsWith('RET-PUR') || num.startsWith('RET-SAL')) return false;
+        const isCoopCustomer = (inv.entityNameAr || '').includes('جمعية') || ((inv as any).customerSnapshot?.nameAr || '').includes('جمعية');
+        if (num.startsWith('INV-SAL') || isCoopCustomer) return true;
+        if (num.startsWith('INV-PUR')) return false;
+        return inv.type === 'SALES' || !inv.type;
       });
     } else if (invFilterType === 'PURCHASE') {
       list = list.filter((inv) => {
         const num = (inv.invoiceNumber || '').trim().toUpperCase();
         if (num.startsWith('INV-SAL') || num.startsWith('RET-PUR') || num.startsWith('RET-SAL')) return false;
+        const isCoopCustomer = (inv.entityNameAr || '').includes('جمعية') || ((inv as any).customerSnapshot?.nameAr || '').includes('جمعية');
+        if (isCoopCustomer) return false;
         return inv.type === 'PURCHASE' || num.startsWith('INV-PUR');
       });
     } else if (invFilterType === 'RETURNS') {

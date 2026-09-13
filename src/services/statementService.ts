@@ -522,10 +522,11 @@ export function getAccountStatement(
   dedupedInvoices
     .filter((inv) => isDocMatchingEntity(inv, entityId, entity, entityType))
     .forEach((inv) => {
-      const isSales = inv.type === 'SALES';
-      const isSalesReturn = inv.type === 'SALES_RETURN';
-      const isPurchase = inv.type === 'PURCHASE';
-      const isPurchaseReturn = inv.type === 'PURCHASE_RETURN';
+      const invNum = (inv.invoiceNumber || '').trim().toUpperCase();
+      const isSalesReturn = inv.type === 'SALES_RETURN' || invNum.startsWith('RET-SAL');
+      const isPurchaseReturn = inv.type === 'PURCHASE_RETURN' || invNum.startsWith('RET-PUR');
+      const isSales = entityType === 'CUSTOMER' ? !isSalesReturn : (inv.type === 'SALES' || invNum.startsWith('INV-SAL'));
+      const isPurchase = entityType === 'SUPPLIER' ? !isPurchaseReturn : (inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR'));
       const isCancelled = inv.status === 'CANCELLED';
 
       let debit = 0;
@@ -1089,10 +1090,10 @@ export function calculateEntityCurrentBalance(
   for (const inv of relevantInvoices) {
     const total = Number(inv.grandTotal) || 0;
     const invNum = (inv.invoiceNumber || '').trim().toUpperCase();
-    const isPurchase = inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR');
     const isPurchaseReturn = inv.type === 'PURCHASE_RETURN' || invNum.startsWith('RET-PUR');
     const isSalesReturn = inv.type === 'SALES_RETURN' || invNum.startsWith('RET-SAL');
-    const isSales = (inv.type === 'SALES' || invNum.startsWith('INV-SAL') || !inv.type) && !isPurchase && !isPurchaseReturn;
+    const isSales = entityType === 'CUSTOMER' ? !isSalesReturn : (inv.type === 'SALES' || invNum.startsWith('INV-SAL'));
+    const isPurchase = entityType === 'SUPPLIER' ? !isPurchaseReturn : (inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR'));
 
     if (entityType === 'CUSTOMER') {
       if (isSales) net += total;

@@ -419,20 +419,6 @@ class LocalDataStore {
   }
 
   public setLocal<T>(key: string, value: T): void {
-    // [ARCHITECT] Strict Bypass: Do not write financial data to LocalStorage if cloud is configured.
-    if (isSupabaseConfigured && (
-      key.includes(STORAGE_KEYS.INVOICES) || 
-      key.includes(STORAGE_KEYS.VOUCHERS) || 
-      key.includes(STORAGE_KEYS.JOURNALS) || 
-      key.includes(STORAGE_KEYS.INVENTORY) ||
-      key.includes(STORAGE_KEYS.CUSTOMERS) ||
-      key.includes(STORAGE_KEYS.SUPPLIERS) ||
-      key.includes(STORAGE_KEYS.ACCOUNTS) ||
-      key.includes(STORAGE_KEYS.PRODUCTION_ORDERS)
-    )) {
-      return; // Absolute eradication of local writing for transactional data
-    }
-    
     const serialized = JSON.stringify(value);
     this.memoryFallback[key] = serialized;
     try {
@@ -963,25 +949,45 @@ class LocalDataStore {
 
   public getCustomers(): Customer[] {
     const list = this.getLocal<Customer[] | null>(this.getKey(STORAGE_KEYS.CUSTOMERS), null);
+    const tombstones = this.getTombstones('customers');
     if (list === null) {
+      if (this.isAlWaleedActive()) {
+        const alwaleedCustomers = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP?.data?.customers || INITIAL_CUSTOMERS)).filter((c: any) => !tombstones.has(c.id));
+        this.saveCustomers(alwaleedCustomers);
+        return this.deduplicateCustomers(alwaleedCustomers);
+      }
       if (this.isTenantInitialized()) {
         return [];
       }
-      if (this.isAlWaleedActive()) {
-        const alwaleedCustomers = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP?.data?.customers || INITIAL_CUSTOMERS));
-        this.saveCustomers(alwaleedCustomers);
-        this.markTenantInitialized();
-        return this.deduplicateCustomers(alwaleedCustomers);
-      }
       this.saveCustomers([]);
-      this.markTenantInitialized();
       return [];
     }
-    const tombstones = this.getTombstones('customers');
+    let filtered = list;
     if (tombstones.size > 0) {
-      return this.deduplicateCustomers(list.filter((c) => !tombstones.has(c.id)));
+      filtered = list.filter((c) => !tombstones.has(c.id));
     }
-    return this.deduplicateCustomers(list);
+    if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.customers)) {
+      const presetCustomers = ALWALEED_MILL_PRESET_BACKUP.data.customers;
+      if (filtered.length < presetCustomers.length) {
+        const existingCodes = new Set(filtered.map((c) => (c.code || '').trim()));
+        const existingIds = new Set(filtered.map((c) => (c.id || '').trim()));
+        let hasNew = false;
+        const merged = [...filtered];
+        for (const pc of presetCustomers) {
+          const code = (pc.code || '').trim();
+          const id = (pc.id || '').trim();
+          if ((!code || !existingCodes.has(code)) && (!id || !existingIds.has(id)) && !tombstones.has(pc.id)) {
+            merged.push(JSON.parse(JSON.stringify(pc)));
+            hasNew = true;
+          }
+        }
+        if (hasNew) {
+          filtered = merged;
+          this.saveCustomers(this.deduplicateCustomers(filtered));
+        }
+      }
+    }
+    return this.deduplicateCustomers(filtered);
   }
   public saveCustomers(customers: Customer[]): void {
     const deduped = this.deduplicateCustomers(customers);
@@ -1138,10 +1144,47 @@ class LocalDataStore {
     const seen = new Map<string, JournalEntry>();
     const result: JournalEntry[] = [];
 
+    const BOGUS_PUR_JOURNALS = new Set([
+      'JV-INV-PUR-2026-0045',
+      'JV-INV-PUR-2026-0023',
+      'JV-INV-PUR-2026-0022',
+      'JV-INV-PUR-2026-0021',
+      'JV-INV-PUR-2026-0012',
+      'JV-INV-PUR-2026-0009',
+    ]);
+
+    const COOP_MISCLASSIFIED: Record<string, string> = {
+      'INV-PUR-2026-0045': 'INV-SAL-2026-0045',
+      'INV-PUR-2026-0023': 'INV-SAL-2026-0023',
+      'INV-PUR-2026-0022': 'INV-SAL-2026-0022',
+      'INV-PUR-2026-0021': 'INV-SAL-2026-0021',
+      'INV-PUR-2026-0012': 'INV-SAL-2026-0012',
+      'INV-PUR-2026-0009': 'INV-SAL-2026-0009',
+    };
+
     for (const j of journals) {
       if (!j) continue;
-      const num = (j.entryNumber || '').trim().toUpperCase();
-      const ref = (j.reference || '').trim().toUpperCase();
+      let num = (j.entryNumber || '').trim().toUpperCase();
+      let ref = (j.reference || '').trim().toUpperCase();
+
+      // Drop phantom purchase entries for coop customer sales
+      if (BOGUS_PUR_JOURNALS.has(num) || (BOGUS_PUR_JOURNALS.has('JV-' + ref) && j.description?.includes('مشتريات'))) {
+        continue;
+      }
+
+      // Normalize references for sales journals
+      if (COOP_MISCLASSIFIED[ref]) {
+        j.reference = COOP_MISCLASSIFIED[ref];
+        ref = j.reference;
+      }
+      if (num.startsWith('JV-INV-INV-PUR-')) {
+        const rawPurNum = num.replace('JV-INV-INV-PUR-', 'INV-PUR-');
+        if (COOP_MISCLASSIFIED[rawPurNum]) {
+          j.entryNumber = 'JV-INV-INV-' + COOP_MISCLASSIFIED[rawPurNum];
+          num = j.entryNumber;
+        }
+      }
+
       const srcKey = j.sourceModule && j.sourceId ? `${j.sourceModule}_${j.sourceId}` : '';
       const key = num || (ref ? `REF_${ref}` : (srcKey || j.id));
 
@@ -1174,20 +1217,38 @@ class LocalDataStore {
     const seenIds = new Map<string, Invoice>();
     const result: Invoice[] = [];
 
+    const COOP_MISCLASSIFIED: Record<string, string> = {
+      'INV-PUR-2026-0045': 'INV-SAL-2026-0045',
+      'INV-PUR-2026-0023': 'INV-SAL-2026-0023',
+      'INV-PUR-2026-0022': 'INV-SAL-2026-0022',
+      'INV-PUR-2026-0021': 'INV-SAL-2026-0021',
+      'INV-PUR-2026-0012': 'INV-SAL-2026-0012',
+      'INV-PUR-2026-0009': 'INV-SAL-2026-0009',
+    };
+
     for (const inv of invoices) {
       if (!inv) continue;
-      const num = (inv.invoiceNumber || '').trim().toUpperCase();
+      let num = (inv.invoiceNumber || '').trim().toUpperCase();
       const id = (inv.id || '').trim();
 
-      // Ensure proper type normalization
-      if (num.startsWith('INV-PUR') && inv.type !== 'PURCHASE') {
-        inv.type = 'PURCHASE';
-      } else if (num.startsWith('INV-SAL') && inv.type !== 'SALES') {
+      // Normalize coop customer invoices misclassified with INV-PUR prefix
+      if (COOP_MISCLASSIFIED[num]) {
+        inv.invoiceNumber = COOP_MISCLASSIFIED[num];
         inv.type = 'SALES';
-      } else if (num.startsWith('RET-PUR') && inv.type !== 'PURCHASE_RETURN') {
+        num = inv.invoiceNumber;
+      }
+
+      const isCustomerEntity = !!(inv as any).customerSnapshot || !!(inv as any).customerId || ((inv.entityNameAr || '') as string).includes('جمعية');
+
+      // Ensure proper type normalization
+      if (num.startsWith('RET-PUR') && inv.type !== 'PURCHASE_RETURN') {
         inv.type = 'PURCHASE_RETURN';
       } else if (num.startsWith('RET-SAL') && inv.type !== 'SALES_RETURN') {
         inv.type = 'SALES_RETURN';
+      } else if (isCustomerEntity || inv.type === 'SALES' || num.startsWith('INV-SAL')) {
+        inv.type = 'SALES';
+      } else if (num.startsWith('INV-PUR') && inv.type !== 'PURCHASE') {
+        inv.type = 'PURCHASE';
       }
 
       const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
@@ -1339,14 +1400,46 @@ class LocalDataStore {
 
   public getVouchers(): PaymentVoucher[] {
     const list = this.getLocal<PaymentVoucher[] | null>(this.getKey(STORAGE_KEYS.VOUCHERS), null);
+    const tombstones = this.getTombstones('vouchers');
+
     if (!list) {
+      if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.vouchers)) {
+        const alwaleedVouchers = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP.data.vouchers));
+        this.saveVouchers(alwaleedVouchers);
+        return this.deduplicateVouchers(alwaleedVouchers);
+      }
+      this.saveVouchers([]);
       return [];
     }
-    const tombstones = this.getTombstones('vouchers');
+
     let filtered = list;
     if (tombstones.size > 0) {
       filtered = list.filter((v) => !tombstones.has(v.id));
     }
+
+    // If Al-Waleed is active and local storage has fewer vouchers than the preset backup, reconcile missing ones
+    if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.vouchers)) {
+      const presetVouchers = ALWALEED_MILL_PRESET_BACKUP.data.vouchers;
+      if (filtered.length < presetVouchers.length) {
+        const existingNumbers = new Set(filtered.map((v) => (v.voucherNumber || '').trim().toUpperCase()));
+        const existingIds = new Set(filtered.map((v) => (v.id || '').trim()));
+        let hasNew = false;
+        const merged = [...filtered];
+        for (const pv of presetVouchers) {
+          const num = (pv.voucherNumber || '').trim().toUpperCase();
+          const id = (pv.id || '').trim();
+          if ((!num || !existingNumbers.has(num)) && (!id || !existingIds.has(id)) && !tombstones.has(pv.id)) {
+            merged.push(JSON.parse(JSON.stringify(pv)));
+            hasNew = true;
+          }
+        }
+        if (hasNew) {
+          filtered = merged;
+          this.saveVouchers(this.deduplicateVouchers(filtered));
+        }
+      }
+    }
+
     return this.deduplicateVouchers(filtered);
   }
   public saveVouchers(v: PaymentVoucher[]): void {
@@ -4074,48 +4167,26 @@ export class DataService {
     const cust = customers.find((c) => c.id === customerId);
     if (!cust) return 0;
 
-    let balance = Number(cust.openingBalance) || 0;
+    const invoices = localDataStore.getInvoices().filter((i) => i.status !== 'CANCELLED');
+    const vouchers = localDataStore.getVouchers().filter((v) => v.status !== 'CANCELLED');
+    const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
 
-    // Invoices
-    const invoices = localDataStore.getInvoices().filter((i) => i.entityId === customerId && i.status !== 'CANCELLED');
-    const vouchers = localDataStore.getVouchers().filter((v) => v.entityId === customerId && v.status !== 'CANCELLED');
-
-    for (const inv of invoices) {
-      // Calculate how much was settled via standalone vouchers linked to this invoice
-      const settledByVouchers = vouchers
-        .filter((v) => v.invoiceId === inv.id && v.status !== 'CANCELLED')
-        .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
-      const directInvoicePaid = Math.max(0, (Number(inv.paidAmount) || 0) - settledByVouchers);
-      const effectiveReceivableImpact = Math.max(0, (Number(inv.grandTotal) || 0) - directInvoicePaid);
-
-      if (inv.type === 'SALES') {
-        balance += effectiveReceivableImpact;
-      } else if (inv.type === 'SALES_RETURN') {
-        balance -= effectiveReceivableImpact;
+    const stmt = getAccountStatement(
+      customerId,
+      'CUSTOMER',
+      '1970-01-01',
+      '2099-12-31',
+      {
+        invoices,
+        vouchers,
+        journals,
+        customers,
       }
-    }
+    );
 
-    // Vouchers
-    for (const v of vouchers) {
-      if (v.type === 'RECEIPT') {
-        balance -= Number(v.amount) || 0;
-      } else if (v.type === 'PAYMENT') {
-        balance += Number(v.amount) || 0;
-      }
-    }
-
-    // Manual Journals touching this customer
-    const journals = localDataStore.getJournals().filter((j) => (j.status === 'POSTED' || j.status === 'REVERSED') && !j.isAutoGenerated);
-    for (const j of journals) {
-      for (const line of j.lines || []) {
-        if (line.entityId === customerId || (line.entityType === 'CUSTOMER' && line.entityId === customerId)) {
-          balance += (Number(line.debit) || 0) - (Number(line.credit) || 0);
-        }
-      }
-    }
-
-    balance = Math.round(balance * 1000) / 1000;
+    const balance = Math.round((Number(stmt?.closingBalance) || 0) * 1000) / 1000;
     cust.balance = balance;
+    cust.currentBalance = balance;
     localDataStore.saveCustomers(customers);
     if (isSupabaseConfigured) {
       SupabaseDataService.saveCustomer(cust).catch((err) => notifyCloudSyncError("CloudSync", err));
@@ -4996,8 +5067,12 @@ export class DataService {
                 if (rPhone) localMap.set(rPhone, rc);
                 hasNew = true;
               } else {
-                Object.assign(existing, rc);
-                hasNew = true;
+                const localTime = new Date((existing as any).updatedAt || (existing as any).createdAt || 0).getTime();
+                const remoteTime = new Date((rc as any).updatedAt || (rc as any).createdAt || 0).getTime();
+                if (remoteTime > localTime && remoteTime > 0) {
+                  Object.assign(existing, rc);
+                  hasNew = true;
+                }
               }
             }
             if (hasNew) {
@@ -5319,8 +5394,12 @@ export class DataService {
                 if (rPhone) localMap.set(rPhone, rs);
                 hasNew = true;
               } else {
-                Object.assign(existing, rs);
-                hasNew = true;
+                const localTime = new Date((existing as any).updatedAt || (existing as any).createdAt || 0).getTime();
+                const remoteTime = new Date((rs as any).updatedAt || (rs as any).createdAt || 0).getTime();
+                if (remoteTime > localTime && remoteTime > 0) {
+                  Object.assign(existing, rs);
+                  hasNew = true;
+                }
               }
             }
             if (hasNew) {
@@ -5642,8 +5721,12 @@ export class DataService {
                 if (rName) localMap.set(`NAME_${rName}`, rItem);
                 hasNew = true;
               } else {
-                Object.assign(existing, rItem);
-                hasNew = true;
+                const localTime = new Date((existing as any).updatedAt || (existing as any).createdAt || 0).getTime();
+                const remoteTime = new Date((rItem as any).updatedAt || (rItem as any).createdAt || 0).getTime();
+                if (remoteTime > localTime && remoteTime > 0) {
+                  Object.assign(existing, rItem);
+                  hasNew = true;
+                }
               }
             }
             if (hasNew) {
@@ -6096,6 +6179,10 @@ export class DataService {
 
   public static getLocalAccounts(): Account[] {
     return localDataStore.getAccounts();
+  }
+
+  public static getLocalUnits(): UnitDefinition[] {
+    return localDataStore.getUnits();
   }
 
   // Units
@@ -7097,8 +7184,12 @@ export class DataService {
               if (rPhone) localMap.set(rPhone, rc);
               changed = true;
             } else {
-              Object.assign(existing, rc);
-              changed = true;
+              const localTime = new Date((existing as any).updatedAt || (existing as any).createdAt || 0).getTime();
+              const remoteTime = new Date((rc as any).updatedAt || (rc as any).createdAt || 0).getTime();
+              if (remoteTime > localTime && remoteTime > 0) {
+                Object.assign(existing, rc);
+                changed = true;
+              }
             }
           }
           if (changed) {
@@ -7129,8 +7220,12 @@ export class DataService {
               if (rPhone) localMap.set(rPhone, rs);
               changed = true;
             } else {
-              Object.assign(existing, rs);
-              changed = true;
+              const localTime = new Date((existing as any).updatedAt || (existing as any).createdAt || 0).getTime();
+              const remoteTime = new Date((rs as any).updatedAt || (rs as any).createdAt || 0).getTime();
+              if (remoteTime > localTime && remoteTime > 0) {
+                Object.assign(existing, rs);
+                changed = true;
+              }
             }
           }
           if (changed) {
@@ -7165,8 +7260,12 @@ export class DataService {
               if (rName) localMap.set(`NAME_${rName}`, ri);
               changed = true;
             } else {
-              Object.assign(existing, ri);
-              changed = true;
+              const localTime = new Date((existing as any).updatedAt || (existing as any).createdAt || 0).getTime();
+              const remoteTime = new Date((ri as any).updatedAt || (ri as any).createdAt || 0).getTime();
+              if (remoteTime > localTime && remoteTime > 0) {
+                Object.assign(existing, ri);
+                changed = true;
+              }
             }
           }
           if (changed) {

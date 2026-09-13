@@ -53,6 +53,7 @@ import { CompanyOnboardingWizard } from './components/CompanyOnboardingWizard.ts
 import { CompanyProvider, useCompany } from './contexts/CompanyContext.tsx';
 import { ALWALEED_CANONICAL_UUID } from './services/supabaseClient.ts';
 import { DataService } from './services/dataService.ts';
+import { OperationsCenter } from './services/operationsCenter.ts';
 import { DataSyncService } from './services/dataSyncService.ts';
 import { ThemeService, ThemeColor, ThemeMode } from './services/themeService.ts';
 import {
@@ -439,6 +440,17 @@ export function AppContent() {
       }
     } catch {}
 
+    const handleErpDataChanged = () => {
+      setCustomers(DataService.getLocalCustomers());
+      setSuppliers(DataService.getLocalSuppliers());
+      setInventory(DataService.getLocalInventory());
+      setInvoices(DataService.getLocalInvoices());
+      setVouchers(DataService.getLocalVouchers());
+      setJournals(DataService.getLocalJournals());
+      setAccounts(DataService.getLocalAccounts());
+    };
+    window.addEventListener('ERP_DATA_CHANGED', handleErpDataChanged);
+
     const interval = setInterval(() => {
       refreshAllData(true);
     }, 10000);
@@ -446,6 +458,7 @@ export function AppContent() {
     return () => {
       window.removeEventListener('focus', handleSync);
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('ERP_DATA_CHANGED', handleErpDataChanged);
       if (bc) bc.close();
       clearInterval(interval);
     };
@@ -478,39 +491,57 @@ export function AppContent() {
   };
 
   const handleUpdateAccount = async (id: string, accData: Partial<Account>) => {
-    await DataService.updateAccount(id, accData);
-    await refreshAllData();
+    await OperationsCenter.executeAccountUpdate(id, accData);
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleDeleteAccount = async (id: string) => {
-    await DataService.deleteAccount(id);
-    await refreshAllData();
+    await OperationsCenter.executeAccountDelete(id);
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleCreateJournal = async (journalData: any) => {
-    await DataService.createJournal(journalData);
-    await refreshAllData();
+    await OperationsCenter.executeJournalCreate(journalData);
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleUpdateJournal = async (id: string, journalData: any) => {
-    await DataService.updateJournal(id, journalData);
-    await refreshAllData();
+    await OperationsCenter.executeJournalUpdate(id, journalData);
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleDeleteJournal = async (id: string) => {
     setJournals((prev) => prev.filter((j) => j.id !== id));
-    await DataService.deleteJournal(id);
-    await refreshAllData(true);
+    await OperationsCenter.executeJournalDelete(id);
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleReverseJournal = async (id: string, reason: string) => {
-    await DataService.reverseJournal(id, reason);
-    await refreshAllData();
+    await OperationsCenter.executeJournalReverse(id, reason);
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleCreateInvoice = async (invoiceData: any) => {
-    const newInvoice = await DataService.createInvoice(invoiceData);
-    setInvoices((prev) => [newInvoice, ...prev.filter((i) => i.id !== newInvoice.id)]);
+    const newInvoice = await OperationsCenter.executeInvoiceCreate(invoiceData);
+    setInvoices(DataService.getLocalInvoices());
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
     setSuppliers(DataService.getLocalSuppliers());
@@ -520,7 +551,7 @@ export function AppContent() {
   };
 
   const handleUpdateInvoice = async (id: string, invoiceData: any) => {
-    await DataService.updateInvoice(id, invoiceData);
+    await OperationsCenter.executeInvoiceUpdate(id, invoiceData);
     setInvoices(DataService.getLocalInvoices());
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
@@ -530,19 +561,27 @@ export function AppContent() {
   };
 
   const handlePostInvoice = async (id: string) => {
-    await DataService.postInvoice(id);
+    await OperationsCenter.executeInvoicePost(id);
     setInvoices(DataService.getLocalInvoices());
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
+    setInventory(DataService.getLocalInventory());
     refreshAllData(true);
   };
 
   const handleDeleteInvoice = async (id: string) => {
-    await DataService.deleteInvoice(id);
+    await OperationsCenter.executeInvoiceDelete(id);
     setInvoices(DataService.getLocalInvoices());
+    setJournals(DataService.getLocalJournals());
+    setInventory(DataService.getLocalInventory());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
     refreshAllData(true);
   };
 
   const handleCancelInvoice = async (id: string, reason?: string) => {
-    await DataService.cancelInvoice(id, reason);
+    await OperationsCenter.executeInvoiceCancel(id, reason);
     setInvoices(DataService.getLocalInvoices());
     setJournals(DataService.getLocalJournals());
     setInventory(DataService.getLocalInventory());
@@ -554,21 +593,24 @@ export function AppContent() {
   // Units Handlers
   const handleCreateUnit = async (data: any) => {
     await DataService.createUnit(data);
-    await refreshAllData();
+    setUnits(DataService.getLocalUnits());
+    refreshAllData(true);
   };
 
   const handleUpdateUnit = async (id: string, data: any) => {
     await DataService.updateUnit(id, data);
-    await refreshAllData();
+    setUnits(DataService.getLocalUnits());
+    refreshAllData(true);
   };
 
   const handleDeleteUnit = async (id: string) => {
     await DataService.deleteUnit(id);
-    await refreshAllData();
+    setUnits(DataService.getLocalUnits());
+    refreshAllData(true);
   };
 
   const handleCreateVoucher = async (voucherData: any) => {
-    await DataService.createVoucher(voucherData);
+    await OperationsCenter.executeVoucherCreate(voucherData);
     setVouchers(DataService.getLocalVouchers());
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
@@ -578,7 +620,7 @@ export function AppContent() {
   };
 
   const handleUpdateVoucher = async (id: string, voucherData: any) => {
-    await DataService.updateVoucher(id, voucherData);
+    await OperationsCenter.executeVoucherUpdate(id, voucherData);
     setVouchers(DataService.getLocalVouchers());
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
@@ -588,7 +630,7 @@ export function AppContent() {
   };
 
   const handleCancelVoucher = async (id: string, reason: string) => {
-    await DataService.cancelVoucher(id, reason);
+    await OperationsCenter.executeVoucherCancel(id, reason);
     setVouchers(DataService.getLocalVouchers());
     setJournals(DataService.getLocalJournals());
     setCustomers(DataService.getLocalCustomers());
@@ -598,55 +640,82 @@ export function AppContent() {
   };
 
   const handleDeleteVoucher = async (id: string) => {
-    await DataService.deleteVoucher(id);
+    await OperationsCenter.executeVoucherDelete(id);
     setVouchers(DataService.getLocalVouchers());
+    setJournals(DataService.getLocalJournals());
+    setCustomers(DataService.getLocalCustomers());
+    setSuppliers(DataService.getLocalSuppliers());
     setAccounts(DataService.getLocalAccounts());
     refreshAllData(true);
   };
 
   const handleCreateCustomer = async (data: any) => {
-    await DataService.createCustomer(data);
-    await refreshAllData();
+    await OperationsCenter.executeCustomerCreate(data);
+    setCustomers(DataService.getLocalCustomers());
+    setJournals(DataService.getLocalJournals());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleUpdateCustomer = async (id: string, data: any) => {
-    await DataService.updateCustomer(id, data);
-    await refreshAllData();
+    await OperationsCenter.executeCustomerUpdate(id, data);
+    setCustomers(DataService.getLocalCustomers());
+    setJournals(DataService.getLocalJournals());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleDeleteCustomer = async (id: string) => {
-    await DataService.deleteCustomer(id);
-    await refreshAllData();
+    await OperationsCenter.executeCustomerDelete(id);
+    setCustomers(DataService.getLocalCustomers());
+    setJournals(DataService.getLocalJournals());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleCreateSupplier = async (data: any) => {
-    await DataService.createSupplier(data);
-    await refreshAllData();
+    await OperationsCenter.executeSupplierCreate(data);
+    setSuppliers(DataService.getLocalSuppliers());
+    setJournals(DataService.getLocalJournals());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleUpdateSupplier = async (id: string, data: any) => {
-    await DataService.updateSupplier(id, data);
-    await refreshAllData();
+    await OperationsCenter.executeSupplierUpdate(id, data);
+    setSuppliers(DataService.getLocalSuppliers());
+    setJournals(DataService.getLocalJournals());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleDeleteSupplier = async (id: string) => {
-    await DataService.deleteSupplier(id);
-    await refreshAllData();
+    await OperationsCenter.executeSupplierDelete(id);
+    setSuppliers(DataService.getLocalSuppliers());
+    setJournals(DataService.getLocalJournals());
+    setAccounts(DataService.getLocalAccounts());
+    refreshAllData(true);
   };
 
   const handleCreateInventoryItem = async (data: any) => {
-    await DataService.createInventoryItem(data);
-    await refreshAllData();
+    await OperationsCenter.executeInventoryCreate(data);
+    setInventory(DataService.getLocalInventory());
+    setJournals(DataService.getLocalJournals());
+    refreshAllData(true);
   };
 
   const handleUpdateInventoryItem = async (id: string, data: any) => {
-    await DataService.updateInventoryItem(id, data);
-    await refreshAllData();
+    await OperationsCenter.executeInventoryUpdate(id, data);
+    setInventory(DataService.getLocalInventory());
+    setJournals(DataService.getLocalJournals());
+    refreshAllData(true);
   };
 
   const handleDeleteInventoryItem = async (id: string) => {
-    await DataService.deleteInventoryItem(id);
-    await refreshAllData();
+    await OperationsCenter.executeInventoryDelete(id);
+    setInventory(DataService.getLocalInventory());
+    setJournals(DataService.getLocalJournals());
+    refreshAllData(true);
   };
 
   const handleResetSeed = async () => {

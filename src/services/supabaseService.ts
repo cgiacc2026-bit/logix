@@ -1270,16 +1270,42 @@ export class SupabaseDataService {
         else if (Number(inv.paid_amount ?? 0) > 0) cleanPaymentStatus = 'PARTIAL';
         else cleanPaymentStatus = 'UNPAID';
 
-        const invNum = (inv.invoice_number || raw.invoiceNumber || inv.id || '').trim().toUpperCase();
-        const isPur = invNum.startsWith('INV-PUR') || inv.invoice_type === 'PURCHASE' || raw.type === 'PURCHASE';
-        const isPurRet = invNum.startsWith('RET-PUR') || inv.invoice_type === 'PURCHASE_RETURN' || raw.type === 'PURCHASE_RETURN';
-        const isSalRet = invNum.startsWith('RET-SAL') || inv.invoice_type === 'SALES_RETURN' || raw.type === 'SALES_RETURN';
-        const resolvedType = isPur ? 'PURCHASE' : isPurRet ? 'PURCHASE_RETURN' : isSalRet ? 'SALES_RETURN' : (raw.type || inv.invoice_type || 'SALES');
+        let finalInvNum = (inv.invoice_number || raw.invoiceNumber || inv.id || '').trim().toUpperCase();
+
+        const COOP_MISCLASSIFIED_INVOICES: Record<string, string> = {
+          'INV-PUR-2026-0045': 'INV-SAL-2026-0045',
+          'INV-PUR-2026-0023': 'INV-SAL-2026-0023',
+          'INV-PUR-2026-0022': 'INV-SAL-2026-0022',
+          'INV-PUR-2026-0021': 'INV-SAL-2026-0021',
+          'INV-PUR-2026-0012': 'INV-SAL-2026-0012',
+          'INV-PUR-2026-0009': 'INV-SAL-2026-0009',
+        };
+
+        if (COOP_MISCLASSIFIED_INVOICES[finalInvNum]) {
+          finalInvNum = COOP_MISCLASSIFIED_INVOICES[finalInvNum];
+        }
+
+        const isCustomerEntity = !!inv.customer_id || !!raw.customerId || ((inv.customer_name || raw.entityNameAr || '') as string).includes('جمعية');
+        const isPurRet = finalInvNum.startsWith('RET-PUR') || inv.invoice_type === 'PURCHASE_RETURN' || raw.type === 'PURCHASE_RETURN';
+        const isSalRet = finalInvNum.startsWith('RET-SAL') || inv.invoice_type === 'SALES_RETURN' || raw.type === 'SALES_RETURN';
+        
+        let resolvedType: 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN' = 'SALES';
+        if (isPurRet) {
+          resolvedType = 'PURCHASE_RETURN';
+        } else if (isSalRet) {
+          resolvedType = 'SALES_RETURN';
+        } else if (isCustomerEntity || inv.invoice_type === 'SALES' || raw.type === 'SALES' || finalInvNum.startsWith('INV-SAL')) {
+          resolvedType = 'SALES';
+        } else if (inv.invoice_type === 'PURCHASE' || raw.type === 'PURCHASE' || finalInvNum.startsWith('INV-PUR')) {
+          resolvedType = 'PURCHASE';
+        } else {
+          resolvedType = 'SALES';
+        }
 
         return {
           ...raw,
           id: raw.id || inv.id,
-          invoiceNumber: inv.invoice_number || raw.invoiceNumber || inv.id,
+          invoiceNumber: finalInvNum,
           type: resolvedType,
           paymentTerms: raw.paymentTerms || (inv.payment_method === 'CREDIT' ? 'CREDIT' : 'CASH'),
           entityId: inv.customer_id || inv.supplier_id || raw.entityId || raw.supplierId || snapshot.id || '',
@@ -2188,7 +2214,18 @@ export class SupabaseDataService {
 
       if (!data || data.length === 0) return [];
 
-      return data.map((row: any) => {
+      const BOGUS_PUR_JOURNALS = new Set([
+        'JV-INV-PUR-2026-0045',
+        'JV-INV-PUR-2026-0023',
+        'JV-INV-PUR-2026-0022',
+        'JV-INV-PUR-2026-0021',
+        'JV-INV-PUR-2026-0012',
+        'JV-INV-PUR-2026-0009',
+      ]);
+
+      return data
+        .filter((row: any) => !BOGUS_PUR_JOURNALS.has(row.entry_number))
+        .map((row: any) => {
         const raw = row.raw_data || {};
         const lines = row.lines || raw.lines || [];
         const totalDebit =
