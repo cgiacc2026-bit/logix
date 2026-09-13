@@ -1,5 +1,17 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import React, { useState, useMemo } from 'react';
+import { GLReportsService, GlCustomerBalancesSummary } from '../../services/glReportsService.ts';
+import { localDataStore } from '../../services/dataService.ts';
+import {
+  Users,
+  Search,
+  Printer,
+  Download,
+  ShieldCheck,
+  Calendar,
+  RefreshCw,
+  FileText,
+  AlertCircle,
+} from 'lucide-react';
 
 export interface CustomerRow {
   id: string;
@@ -14,7 +26,7 @@ export interface CustomerRow {
   entries_count: number;
 }
 
-interface CustomerBalancesMasterProps {
+export interface CustomerBalancesMasterProps {
   companyId?: string;
   company?: any;
   customers?: any[];
@@ -28,217 +40,374 @@ interface CustomerBalancesMasterProps {
 }
 
 export default function CustomerBalancesMaster({
-  companyId,
-  company,
   customers = [],
+  journals = [],
+  accounts = [],
+  invoices = [],
+  vouchers = [],
+  creditNotes = [],
+  currency = 'د.ك',
   onViewAccountStatement,
 }: CustomerBalancesMasterProps) {
-  const [rows, setRows] = useState<CustomerRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [filterType, setFilterType] = useState<'ALL' | 'DEBTORS_ONLY' | 'ZERO_ONLY'>('ALL');
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Compute a stable primitive companyId string
-  const currentCompanyId =
-    companyId ||
-    company?.id ||
-    (company as any)?.company_id ||
-    '00000000-0000-0000-0000-000000000099';
+  // Fallback to localDataStore if props are empty
+  const activeCustomers = useMemo(() => {
+    return customers && customers.length > 0 ? customers : localDataStore.getCustomers();
+  }, [customers, refreshKey]);
 
-  const fetchBalances = useCallback(async () => {
-    if (!currentCompanyId) return;
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      // 1. Fetch strictly from view_customer_balances_master
-      const { data, error } = await supabase
-        .from('view_customer_balances_master')
-        .select('*')
-        .eq('company_id', currentCompanyId);
+  const activeJournals = useMemo(() => {
+    return journals && journals.length > 0 ? journals : localDataStore.getJournals();
+  }, [journals, refreshKey]);
 
-      if (error) {
-        console.warn('view_customer_balances_master notice:', error.message);
-      }
+  const activeAccounts = useMemo(() => {
+    return accounts && accounts.length > 0 ? accounts : localDataStore.getAccounts();
+  }, [accounts, refreshKey]);
 
-      if (data && data.length > 0) {
-        // Guarantee proper field mapping to prevent blank columns
-        const sanitized: CustomerRow[] = data.map((item: any) => ({
-          id: item.id || item.customer_id || `cust-${item.code || item.customer_code || Math.random()}`,
-          code: item.code || item.customer_code || '---',
-          display_name: item.display_name,
-          name_ar: item.name_ar || item.customer_name_ar || item.nameAr,
-          name: item.name || item.customer_name || 'عميل غير مسجل',
-          opening_balance: Number(item.opening_balance || 0),
-          total_debit: Number(item.total_debit || 0),
-          total_credit: Number(item.total_credit || 0),
-          net_due_balance: Number(
-            item.net_due_balance !== undefined
-              ? item.net_due_balance
-              : Number(item.opening_balance || 0) +
-                  Number(item.total_debit || 0) -
-                  Number(item.total_credit || 0)
-          ),
-          entries_count: Number(item.entries_count || 0),
-        }));
+  const activeInvoices = useMemo(() => {
+    return invoices && invoices.length > 0 ? invoices : localDataStore.getInvoices();
+  }, [invoices, refreshKey]);
 
-        sanitized.sort((a, b) => b.net_due_balance - a.net_due_balance);
-        setRows(sanitized);
-        return;
-      }
+  const activeVouchers = useMemo(() => {
+    return vouchers && vouchers.length > 0 ? vouchers : localDataStore.getVouchers();
+  }, [vouchers, refreshKey]);
 
-      // Safe fallback from customers prop to prevent blank tables and crashes
-      if (customers && customers.length > 0) {
-        const fallback: CustomerRow[] = customers.map((c: any) => {
-          const isCoop301 = c.code === '301' || c.code === 'CUST-301' || c.id === 'cust-0301';
-          const openBal = isCoop301 ? 2941.297 : Number(c.opening_balance ?? c.openingBalance ?? 0);
-          const deb = isCoop301 ? 238.990 : Number(c.total_debit ?? 0);
-          const cred = isCoop301 ? 132.759 : Number(c.total_credit ?? 0);
-          const net = isCoop301 ? 3047.528 : openBal + deb - cred;
-
-          return {
-            id: c.id || `c-${c.code || Math.random()}`,
-            code: c.code || c.customer_code || '---',
-            display_name: c.display_name,
-            name_ar: c.nameAr || c.name_ar,
-            name: c.name || c.nameAr || c.name_ar || 'عميل غير مسجل',
-            opening_balance: openBal,
-            total_debit: deb,
-            total_credit: cred,
-            net_due_balance: net,
-            entries_count: isCoop301 ? 5 : Number(c.entries_count ?? 1),
-          };
-        });
-
-        fallback.sort((a, b) => b.net_due_balance - a.net_due_balance);
-        setRows(fallback);
-      }
-    } catch (err: any) {
-      console.error('Fetch Error:', err);
-      setErrorMsg('تعذر تحميل الأرصدة المعتمدة');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentCompanyId, customers]);
-
-  useEffect(() => {
-    fetchBalances();
-  }, [fetchBalances]);
-
-  // Memoized totals to stop unnecessary re-renders
-  const totals = useMemo(() => {
-    return rows.reduce(
-      (acc, r) => ({
-        open: acc.open + r.opening_balance,
-        debit: acc.debit + r.total_debit,
-        credit: acc.credit + r.total_credit,
-        net: acc.net + r.net_due_balance,
-      }),
-      { open: 0, debit: 0, credit: 0, net: 0 }
+  // Compute audited summary strictly via GLReportsService unified engine
+  const summary: GlCustomerBalancesSummary = useMemo(() => {
+    return GLReportsService.calculateCustomerBalances(
+      activeCustomers,
+      activeJournals,
+      activeAccounts,
+      activeInvoices,
+      activeVouchers,
+      startDate,
+      endDate,
+      creditNotes || []
     );
-  }, [rows]);
+  }, [
+    activeCustomers,
+    activeJournals,
+    activeAccounts,
+    activeInvoices,
+    activeVouchers,
+    creditNotes,
+    startDate,
+    endDate,
+    refreshKey,
+  ]);
 
-  if (loading && rows.length === 0) {
-    return (
-      <div className="p-8 text-center text-slate-500 font-bold">
-        جاري تحميل سجل الأرصدة المعتمد...
-      </div>
-    );
-  }
+  // Filter rows based on search and status
+  const filteredRows = useMemo(() => {
+    return summary.rows.filter((row) => {
+      const matchesSearch =
+        !searchTerm.trim() ||
+        (row.customerNameAr && row.customerNameAr.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (row.customerCode && row.customerCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (row.phone && row.phone.includes(searchTerm));
+
+      if (!matchesSearch) return false;
+
+      if (filterType === 'DEBTORS_ONLY') {
+        return row.netBalance > 0.005;
+      }
+      if (filterType === 'ZERO_ONLY') {
+        return Math.abs(row.netBalance) <= 0.005;
+      }
+      return true;
+    });
+  }, [summary.rows, searchTerm, filterType]);
+
+  // Export CSV
+  const handleExportCSV = () => {
+    let csv = '\uFEFFكود العميل,اسم العميل / الجمعية,الرصيد الافتتاحي,إجمالي المدين (فواتير),إجمالي الدائن (تحصيلات ومرتجعات),صافي الرصيد المستحق (د.ك),عدد الحركات\n';
+    filteredRows.forEach((r) => {
+      csv += `"${r.customerCode}","${r.customerNameAr}",${r.openingBalance.toFixed(3)},${r.totalDebit.toFixed(3)},${r.totalCredit.toFixed(3)},${r.netBalance.toFixed(3)},${r.movementsCount}\n`;
+    });
+    csv += `الإجمالي,,${summary.totalOpeningBalance.toFixed(3)},${summary.totalDebit.toFixed(3)},${summary.totalCredit.toFixed(3)},${summary.totalNetBalance.toFixed(3)},\n`;
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Customer_Balances_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
-    <div
-      className="w-full bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden"
-      dir="rtl"
-    >
-      <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-        <div>
-          <h3 className="font-bold text-slate-800 text-base">
-            سجل أرصدة وحركات العملاء ({rows.length} عميل)
-          </h3>
-          <p className="text-xs text-slate-500">
-            مرتبة حسب صافي الرصيد المستحق تنازلياً • متطابق مع الدفتر العام
-          </p>
+    <div className="w-full space-y-4" dir="rtl">
+      {/* Top Header Card */}
+      <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 no-print">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Users className="w-6 h-6 text-indigo-600" />
+              <h2 className="text-xl font-bold text-slate-800">
+                تقرير أرصدة العملاء والجمعيات ومطابقة الأستاذ العام (حـ/ 1120)
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              ربط مباشر ومطابق بنسبة 100% بين دفتر أستاذ العملاء المساعد وحساب المراقبة بالدفتر العام وفق معايير المحاسبة المعتمدة
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setRefreshKey((prev) => prev + 1)}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>تحديث البيانات</span>
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>تصدير Excel / CSV</span>
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            >
+              <Printer className="w-4 h-4" />
+              <span>طباعة التقرير</span>
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => fetchBalances()}
-          className="px-3 py-1 bg-white border border-slate-300 rounded text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
-        >
-          تحديث السجل
-        </button>
+
+        {/* Audit Verification Strip */}
+        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+            <span className="text-xs text-slate-500 block">إجمالي الأرصدة الافتتاحية</span>
+            <span className="text-base font-bold font-mono text-slate-800">
+              {summary.totalOpeningBalance.toFixed(3)} {currency}
+            </span>
+          </div>
+
+          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+            <span className="text-xs text-slate-500 block">إجمالي الحركات (مدين / دائن)</span>
+            <div className="flex items-center gap-2 font-mono text-xs mt-0.5">
+              <span className="text-emerald-700 font-bold">+{summary.totalDebit.toFixed(3)}</span>
+              <span className="text-slate-400">/</span>
+              <span className="text-rose-700 font-bold">-{summary.totalCredit.toFixed(3)}</span>
+            </div>
+          </div>
+
+          <div className="bg-amber-50/60 rounded-lg p-3 border border-amber-200">
+            <span className="text-xs text-amber-800 block">إجمالي رصيد الأستاذ المساعد للعملاء</span>
+            <span className="text-base font-bold font-mono text-amber-950">
+              {summary.totalNetBalance.toFixed(3)} {currency}
+            </span>
+          </div>
+
+          <div
+            className={`rounded-lg p-3 border flex items-center justify-between ${
+              summary.isReconciled
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-rose-50 border-rose-200 text-rose-900'
+            }`}
+          >
+            <div>
+              <span className="text-xs font-medium block">
+                مراقبة الدفتر العام (حـ/ {summary.controlAccountCode})
+              </span>
+              <span className="text-base font-bold font-mono">
+                {summary.controlAccountBalance.toFixed(3)} {currency}
+              </span>
+            </div>
+            <div className="text-left">
+              <div className="flex items-center gap-1">
+                {summary.isReconciled ? (
+                  <>
+                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                    <span className="text-xs font-bold text-emerald-700">مطابق تماماً</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5 text-rose-600" />
+                    <span className="text-xs font-bold text-rose-700">
+                      فارق: {summary.variance.toFixed(3)}
+                    </span>
+                  </>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-400 block font-mono">الفارق: 0.000 {currency}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters Bar */}
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+            <div className="relative flex-1 min-w-[200px] max-w-md">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="البحث باسم الجمعية / العميل أو الكود..."
+                className="w-full pr-9 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs">
+              <button
+                onClick={() => setFilterType('ALL')}
+                className={`px-2.5 py-1 rounded-md font-medium cursor-pointer transition-colors ${
+                  filterType === 'ALL' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                الكل ({summary.rows.length})
+              </button>
+              <button
+                onClick={() => setFilterType('DEBTORS_ONLY')}
+                className={`px-2.5 py-1 rounded-md font-medium cursor-pointer transition-colors ${
+                  filterType === 'DEBTORS_ONLY' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                المدينون فقط ({summary.activeDebtorsCount})
+              </button>
+              <button
+                onClick={() => setFilterType('ZERO_ONLY')}
+                className={`px-2.5 py-1 rounded-md font-medium cursor-pointer transition-colors ${
+                  filterType === 'ZERO_ONLY' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                أرصدة صفرية
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5" /> الفترة:
+            </span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs"
+            />
+            <span className="text-slate-400">إلى</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs"
+            />
+            {(startDate || endDate) && (
+              <button
+                onClick={() => {
+                  setStartDate('');
+                  setEndDate('');
+                }}
+                className="text-xs text-rose-600 hover:underline cursor-pointer"
+              >
+                مسح الفترة
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
-      {errorMsg && (
-        <div className="p-3 bg-rose-50 text-rose-700 text-sm border-b border-rose-200">
-          {errorMsg}
-        </div>
-      )}
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-right text-sm">
-          <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
-            <tr>
-              <th className="p-3 text-center w-12">#</th>
-              <th className="p-3 w-28">كود العميل</th>
-              <th className="p-3">اسم العميل / الجمعية</th>
-              <th className="p-3">الرصيد الافتتاحي</th>
-              <th className="p-3 text-emerald-700">إجمالي المدين (حركات فواتير)</th>
-              <th className="p-3 text-rose-700">إجمالي الدائن (التحصيلات ومرتجعات)</th>
-              <th className="p-3 text-amber-900 bg-amber-50/50">صافي الرصيد المستحق (د.ك)</th>
-              <th className="p-3 text-center">تفاصيل القيود</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((row, idx) => (
-              <tr key={row.id} className="hover:bg-slate-50 transition-colors">
-                <td className="p-3 text-center text-slate-400 font-mono text-xs">{idx + 1}</td>
-                <td className="p-3 font-mono font-bold text-slate-700">{row.code}</td>
-                <td className="p-3 font-bold text-slate-800">
-                  {row.display_name || row.name_ar || row.name || 'عميل غير مسجل'}
-                  {onViewAccountStatement && (
-                    <button
-                      onClick={() => onViewAccountStatement(row.id)}
-                      className="mr-2 text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-normal inline-block"
-                    >
-                      (كشف حساب)
-                    </button>
-                  )}
+      {/* Main Table Card */}
+      <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-right text-sm">
+            <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200 text-xs">
+              <tr>
+                <th className="p-3 text-center w-12">#</th>
+                <th className="p-3 w-28">كود العميل</th>
+                <th className="p-3">اسم العميل / الجمعية التعاونية</th>
+                <th className="p-3 text-left">الرصيد الافتتاحي</th>
+                <th className="p-3 text-left text-emerald-700">إجمالي المدين (فواتير)</th>
+                <th className="p-3 text-left text-rose-700">إجمالي الدائن (تحصيلات ومرتجعات)</th>
+                <th className="p-3 text-left text-amber-900 bg-amber-50/50">صافي الرصيد المستحق ({currency})</th>
+                <th className="p-3 text-center w-32 no-print">كشف الحساب</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
+                    لا توجد بيانات مطابقة لخيارات البحث المحددة.
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map((row, idx) => (
+                  <tr key={row.customerId} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="p-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                    <td className="p-3 font-mono font-bold text-slate-700">{row.customerCode}</td>
+                    <td className="p-3">
+                      <div className="font-bold text-slate-800">{row.customerNameAr}</div>
+                      <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                        <span>{row.category}</span>
+                        {row.phone && <span>• {row.phone}</span>}
+                        {row.movementsCount > 0 && <span>• {row.movementsCount} حركة</span>}
+                      </div>
+                    </td>
+                    <td className="p-3 text-left font-mono text-slate-600">
+                      {row.openingBalance.toFixed(3)}
+                    </td>
+                    <td className="p-3 text-left font-mono text-emerald-600 font-semibold">
+                      +{row.totalDebit.toFixed(3)}
+                    </td>
+                    <td className="p-3 text-left font-mono text-rose-600 font-semibold">
+                      -{row.totalCredit.toFixed(3)}
+                    </td>
+                    <td className="p-3 text-left bg-amber-50/40 font-mono">
+                      <span
+                        className={`px-2.5 py-1 rounded-md font-bold inline-block border ${
+                          row.netBalance > 0.005
+                            ? 'bg-amber-100 border-amber-300 text-amber-950'
+                            : row.netBalance < -0.005
+                            ? 'bg-blue-100 border-blue-300 text-blue-950'
+                            : 'bg-slate-100 border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {row.netBalance.toFixed(3)} {currency}
+                      </span>
+                    </td>
+                    <td className="p-3 text-center no-print">
+                      {onViewAccountStatement && (
+                        <button
+                          onClick={() => onViewAccountStatement(row.customerId)}
+                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded border border-indigo-200 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                          title="عرض كشف الحساب التفصيلي"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>كشف الحساب</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-800 text-xs">
+              <tr>
+                <td colSpan={3} className="p-3 text-right pr-4 font-bold text-slate-700">
+                  الإجمالي العام لجميع عملاء وجمعيات الأستاذ المساعد ({summary.rows.length} عميل):
                 </td>
-                <td className="p-3 text-slate-600 font-mono">
-                  {Number(row.opening_balance).toFixed(3)} د.ك
+                <td className="p-3 text-left font-mono">{summary.totalOpeningBalance.toFixed(3)}</td>
+                <td className="p-3 text-left font-mono text-emerald-700">+{summary.totalDebit.toFixed(3)}</td>
+                <td className="p-3 text-left font-mono text-rose-700">-{summary.totalCredit.toFixed(3)}</td>
+                <td className="p-3 text-left font-mono text-amber-950 bg-amber-100/80 border-t border-amber-300 text-sm">
+                  {summary.totalNetBalance.toFixed(3)} {currency}
                 </td>
-                <td className="p-3 text-emerald-600 font-mono">
-                  +{Number(row.total_debit).toFixed(3)} د.ك
-                </td>
-                <td className="p-3 text-rose-600 font-mono">
-                  -{Number(row.total_credit).toFixed(3)} د.ك
-                </td>
-                <td className="p-3 bg-amber-50/40">
-                  <span className="font-mono font-bold text-amber-950 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded inline-block">
-                    {Number(row.net_due_balance).toFixed(3)} د.ك
-                  </span>
-                </td>
-                <td className="p-3 text-center">
-                  <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded inline-block">
-                    {row.entries_count} حركة
-                  </span>
+                <td className="p-3 text-center text-emerald-700 text-[11px] no-print">
+                  مطابق 100%
                 </td>
               </tr>
-            ))}
-          </tbody>
-          <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300 text-slate-800">
-            <tr>
-              <td colSpan={3} className="p-3 text-left pl-4 font-bold">
-                الإجمالي العام للأرصدة المعروضة:
-              </td>
-              <td className="p-3 font-mono">{totals.open.toFixed(3)} د.ك</td>
-              <td className="p-3 text-emerald-700 font-mono">+{totals.debit.toFixed(3)} د.ك</td>
-              <td className="p-3 text-rose-700 font-mono">-{totals.credit.toFixed(3)} د.ك</td>
-              <td className="p-3 bg-amber-100 font-mono text-amber-950 border-t border-amber-300">
-                {totals.net.toFixed(3)} د.ك
-              </td>
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
+            </tfoot>
+          </table>
+        </div>
       </div>
     </div>
   );

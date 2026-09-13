@@ -302,38 +302,22 @@ export class GLReportsService {
       // إجمالي الدائن يشمل كلاً من سندات القبض وإشعارات الدائن المعتمدة (Credit Notes)
       const totalCredit = Number(stmt?.totalPeriodCredit) || 0;
 
+      // Calculate Net Due strictly from the audited statement
+      const netDue = Number(
+        stmt?.closingBalance !== undefined
+          ? stmt.closingBalance
+          : custOpening + totalDebit - totalCredit
+      );
+
       // Ensure properties are populated on the customer model
-      if ((cust as any).opening_balance === undefined) {
-        (cust as any).opening_balance = custOpening;
-      }
-      if ((cust as any).total_debit === undefined) {
-        (cust as any).total_debit = totalDebit;
-      }
-      if ((cust as any).total_credit === undefined) {
-        (cust as any).total_credit = totalCredit;
-      }
-
-      // Calculate Net Due strictly using the formula:
-      // const netDue = Number(customer.opening_balance || 0) + Number(customer.total_debit || 0) - Number(customer.total_credit || 0);
-      // (Where total_credit already represents the absolute sum of all receipts AND credit notes)
       const customer = cust as any;
-      const netDue = Number(customer.opening_balance || 0) + Number(customer.total_debit || 0) - Number(customer.total_credit || 0);
+      customer.opening_balance = custOpening;
+      customer.total_debit = totalDebit;
+      customer.total_credit = totalCredit;
+      customer.current_balance = netDue;
+      customer.balance = netDue;
 
-      // Guard against any stale cached 3,313.046 arithmetic bug in customer model
-      if (
-        customer.current_balance !== undefined &&
-        customer.current_balance !== null &&
-        Math.abs(Number(customer.current_balance) - 3313.046) < 0.01
-      ) {
-        customer.current_balance = netDue;
-      }
-
-      // If the row binds directly to the customer model, replace the computed variable with:
-      // customer.current_balance ?? netDue
-      const isDateFiltered = Boolean(startDate || endDate);
-      const netBalance = isDateFiltered
-        ? netDue
-        : (customer.current_balance ?? netDue);
+      const netBalance = netDue;
 
       const glMovements: GlCustomerBalanceRow['glMovements'] = (stmt?.transactions || [])
         .filter((t) => !t.isCancelled && t.status !== 'CANCELLED')
