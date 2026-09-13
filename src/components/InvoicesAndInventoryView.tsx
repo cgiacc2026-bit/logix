@@ -290,6 +290,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
   }, [initialEntityFilter]);
   const [invEntityId, setInvEntityId] = useState('');
+  const [invInvoiceNumber, setInvInvoiceNumber] = useState('');
   const [invCustomerBranchId, setInvCustomerBranchId] = useState('');
   const [invCustomerBranchName, setInvCustomerBranchName] = useState('');
   const [selectedCustomerForBranchesAndPrices, setSelectedCustomerForBranchesAndPrices] = useState<Customer | null>(null);
@@ -558,6 +559,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
     setInvCustomerBranchId('');
     setInvCustomerBranchName('');
+    setInvInvoiceNumber('');
     setInvNotes('');
     setInvDiscountType('FIXED');
     setInvDiscountValue(0);
@@ -584,6 +586,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
   const handleOpenEditInvoice = (inv: Invoice) => {
     setEditingInvoice(inv);
+    setInvInvoiceNumber(inv.invoiceNumber || '');
     setInvType(inv.type);
     setInvDate(inv.date || new Date().toISOString().split('T')[0]);
     setInvDueDate(inv.dueDate || inv.date || new Date().toISOString().split('T')[0]);
@@ -724,7 +727,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       negativeStockApprovedBy: 'admin',
       negativeStockApprovedByName: 'إدارة النظام المعتمدة',
       negativeStockReason: reason || (company?.allowNegativeInventory !== false ? 'معتمد بموجب سياسة البيع بالسالب للمنشأة' : ''),
-      invoiceNumber: editingInvoice?.invoiceNumber,
+      invoiceNumber: invInvoiceNumber?.trim() || editingInvoice?.invoiceNumber || undefined,
     };
 
     try {
@@ -2968,6 +2971,38 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
               {/* Form Body */}
               <div className="p-6 overflow-y-auto space-y-6 text-xs bg-[#FAF9F6]">
+                {/* Invoice Number & Reference Header Banner */}
+                {editingInvoice && (
+                  <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-amber-700" />
+                      <span className="text-xs font-bold text-amber-950">رقم الفاتورة:</span>
+                      <input
+                        type="text"
+                        value={invInvoiceNumber}
+                        onChange={(e) => setInvInvoiceNumber(e.target.value)}
+                        placeholder="رقم الفاتورة..."
+                        className="bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-black outline-none dir-ltr text-left w-52 focus:ring-1 focus:ring-amber-500"
+                      />
+                      <span className="text-[10px] text-amber-800 font-medium">(يمكنك تصحيح أو تغيير رقم الفاتورة)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-neutral-600">الحالة الحالية:</span>
+                      <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${
+                        editingInvoice.status === 'POSTED'
+                          ? 'bg-blue-50 text-blue-800 border-blue-200'
+                          : editingInvoice.status === 'PAID'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : editingInvoice.status === 'CANCELLED'
+                          ? 'bg-rose-50 text-rose-800 border-rose-200'
+                          : 'bg-neutral-100 text-neutral-800 border-neutral-300'
+                      }`}>
+                        {editingInvoice.status === 'POSTED' ? 'مرحلة بالدفاتر' : editingInvoice.status === 'PAID' ? 'مسددة' : editingInvoice.status === 'CANCELLED' ? 'ملغاة ومعكوسة' : 'مسودة'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Document Type Selector Bar */}
                 <div className="space-y-2">
                   <label className="block text-xs font-extrabold text-[#1A1A1A]">نوع المعاملة المالية *</label>
@@ -3673,16 +3708,50 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
               {/* Bottom Actions Footer */}
               <div className="bg-white px-6 py-4 border-t border-[#E5E1DA] flex items-center justify-between no-print">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsInvoiceModalOpen(false);
-                    setEditingInvoice(null);
-                  }}
-                  className="px-5 py-2.5 border border-[#E5E1DA] text-[#6E6659] font-bold rounded-xl hover:bg-[#F7F5F0] cursor-pointer"
-                >
-                  إلغاء
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInvoiceModalOpen(false);
+                      setEditingInvoice(null);
+                    }}
+                    className="px-5 py-2.5 border border-[#E5E1DA] text-[#6E6659] font-bold rounded-xl hover:bg-[#F7F5F0] cursor-pointer"
+                  >
+                    إغلاق
+                  </button>
+
+                  {editingInvoice && editingInvoice.status !== 'CANCELLED' && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const reason = prompt(
+                          `إلغاء الفاتورة (${invInvoiceNumber || editingInvoice.invoiceNumber}): الرجاء كتابة سبب إلغاء الفاتورة وعكس قيودها ومخزونها:`,
+                          'إلغاء الفاتورة وعكس القيد المحاسبي والأثر المالي'
+                        );
+                        if (!reason) return;
+                        try {
+                          if (onCancelInvoice) {
+                            await onCancelInvoice(editingInvoice.id, reason);
+                          } else {
+                            await DataService.cancelInvoice(editingInvoice.id, reason);
+                          }
+                          setRepairFeedback(`✅ تم إلغاء وعكس الفاتورة (${invInvoiceNumber || editingInvoice.invoiceNumber}) بنجاح.`);
+                          setTimeout(() => setRepairFeedback(null), 5000);
+                          setIsInvoiceModalOpen(false);
+                          setEditingInvoice(null);
+                          if (onRefreshAll) await onRefreshAll();
+                        } catch (err: any) {
+                          alert(err.message || 'حدث خطأ أثناء إلغاء الفاتورة');
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all"
+                      title="إلغاء هذه الفاتورة وعكس أثرها المحاسبي والمخزني بالكامل"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      إلغاء وعكس الفاتورة
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-3">
                   {editingInvoice ? (

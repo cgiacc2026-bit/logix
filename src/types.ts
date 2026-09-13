@@ -335,26 +335,30 @@ export type InvoiceType = 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETU
 export type InvoiceStatus = 'DRAFT' | 'POSTED' | 'PAID' | 'PARTIALLY_PAID' | 'CANCELLED';
 
 export interface InvoiceLine {
-  id: string;
-  itemId: string;
-  itemSku: string;
+  id?: string;
+  itemId?: string;
+  itemSku?: string;
   barcode?: string;
-  itemNameAr: string;
-  unit: string; // e.g. "حبة" or "كرتون"
-  unitsPerPack: number; // الشد (عدد الحبات بالعبوة / الكرتون)
+  name?: string;
+  itemNameAr?: string;
+  itemNameEn?: string;
+  unit?: string; // e.g. "حبة" or "كرتون"
+  unitsPerPack?: number; // الشد (عدد الحبات بالعبوة / الكرتون)
   quantity: number; // إجمالي عدد الوحدات الأساسية
   packQuantity?: number; // عدد الكراتين/الشدات المباعة إن كان البيع بالشد
   unitPrice: number;
-  subtotal: number;
+  subtotal?: number;
   discountType?: 'PERCENT' | 'FIXED';
   discountValue?: number;
   discountAmount?: number;
-  vatRate: number; // e.g. 0 for 0%
-  vatAmount: number;
+  discountPercent?: number;
+  vatRate?: number; // e.g. 0 for 0%
+  vatAmount?: number;
   total: number;
   warehouseId?: string;
   warehouseName?: string;
   notes?: string;
+  invoiceId?: string;
 }
 
 export interface Invoice {
@@ -365,14 +369,15 @@ export interface Invoice {
   entityId: string; // Customer or Supplier ID
   entityNameAr: string;
   date: string;
-  dueDate: string;
+  dueDate?: string;
   status: InvoiceStatus;
   lines: InvoiceLine[];
+  items?: InvoiceLine[] | any[];
   subtotal: number;
   vatTotal: number;
   discountType?: 'PERCENT' | 'FIXED';
   discountValue?: number;
-  discountTotal: number;
+  discountTotal?: number;
   grandTotal: number;
   paidAmount: number;
   dueAmount: number;
@@ -410,7 +415,7 @@ export interface Invoice {
   deleted_at?: string;
   deleted_by?: string;
   deletion_reason?: string;
-  createdAt: string;
+  createdAt?: string;
   updatedAt?: string;
 }
 
