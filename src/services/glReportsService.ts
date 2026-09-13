@@ -144,9 +144,12 @@ export class GLReportsService {
       accounts.find((a) => a.code === '1120') ||
       accounts.find(
         (a) =>
-          a.nameAr.includes('العملاء') ||
-          a.nameAr.includes('المدينون') ||
-          a.nameAr.includes('ذمم مدينة') ||
+          (a.nameAr && a.nameAr.includes('العملاء')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('العملاء')) ||
+          (a.nameAr && a.nameAr.includes('المدينون')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('المدينون')) ||
+          (a.nameAr && a.nameAr.includes('ذمم مدينة')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('ذمم مدينة')) ||
           a.code?.startsWith('112')
       )
     );
@@ -160,8 +163,10 @@ export class GLReportsService {
       accounts.find((a) => a.code === '1130') ||
       accounts.find(
         (a) =>
-          a.nameAr.includes('مخزون') ||
-          a.nameAr.includes('بضائع') ||
+          (a.nameAr && a.nameAr.includes('مخزون')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('مخزون')) ||
+          (a.nameAr && a.nameAr.includes('بضائع')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('بضائع')) ||
           a.code?.startsWith('113')
       )
     );
@@ -175,8 +180,10 @@ export class GLReportsService {
       accounts.find((a) => a.code === '5100') ||
       accounts.find(
         (a) =>
-          a.nameAr.includes('تكلفة البضاعة') ||
-          a.nameAr.includes('تكلفة المبيعات') ||
+          (a.nameAr && a.nameAr.includes('تكلفة البضاعة')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('تكلفة البضاعة')) ||
+          (a.nameAr && a.nameAr.includes('تكلفة المبيعات')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('تكلفة المبيعات')) ||
           a.code?.startsWith('510')
       )
     );
@@ -190,8 +197,10 @@ export class GLReportsService {
       accounts.find((a) => a.code === '4100') ||
       accounts.find(
         (a) =>
-          a.nameAr.includes('إيرادات مبيعات') ||
-          a.nameAr.includes('المبيعات') ||
+          (a.nameAr && a.nameAr.includes('إيرادات مبيعات')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('إيرادات مبيعات')) ||
+          (a.nameAr && a.nameAr.includes('المبيعات')) ||
+          ((a as any).name_ar && (a as any).name_ar.includes('المبيعات')) ||
           a.code?.startsWith('410')
       )
     );
