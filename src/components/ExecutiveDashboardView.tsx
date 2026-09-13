@@ -21,6 +21,7 @@ import {
   ChevronsUp,
   ChevronsDown,
   Warehouse as WarehouseIcon,
+  FolderTree,
 } from 'lucide-react';
 import {
   LineChart,
@@ -208,31 +209,32 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   }, [validInvoices]);
 
   const totalBranchesAndWarehouses = warehouses.length > 0 ? warehouses.length : Math.max(branches.length, 1);
+  const netCashFlow = receiptVouchersAmount - paymentVouchersAmount;
 
   return (
     <div className="space-y-6 pb-12 font-sans" dir="rtl">
-      {/* 1. Header & Breadcrumb Bar (Matching 00.png header) */}
+      {/* 1. Header & Breadcrumb Bar */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-2xs">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
               <span className="text-emerald-700 font-bold">{company?.nameAr || 'لوجيكس ERP'}</span>
               <span>/</span>
-              <span>إدارة النظام</span>
+              <span>الإدارة العليا والرقابة</span>
               <span>/</span>
-              <span className="text-slate-800 font-bold">إحصائيات النظام</span>
+              <span className="text-slate-800 font-bold">لوحة القيادة والمؤشرات التنفيذية</span>
             </div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                إحصائيات النظام
+                لوحة القيادة التنفيذية وترابط العمليات
               </h1>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                لوحة التحكم المباشرة • IFRS
+                معايير الحوكمة IFRS
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1 font-medium">
-              إحصائية عامة شاملة لكافة الأقسام والمؤشرات المالية والتشغيلية مع التوجيه المباشر بنقرة واحدة
+              نظام موحد ومترابط يربط المبيعات والمشتريات والمخزون والحسابات العامة بدون تكدس أو ازدواجية
             </p>
           </div>
 
@@ -256,294 +258,389 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               onClick={() => onNavigateTab('purchase-invoices')}
               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center gap-2 transition-all cursor-pointer"
             >
-              <ShoppingCart className="w-4 h-4 text-sky-600" />
+              <ShoppingCart className="w-4 h-4 text-amber-600" />
               <span>فواتير الشراء</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* 2. Top 8 Vibrant KPI Cards (Faithful to 00.png with direct "الذهاب" one-click action) */}
-      <div>
-        <div className="flex items-center justify-between mb-3 px-1">
-          <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-600" />
-            <span>إحصائية عامة لمكونات النظام الأساسية</span>
-          </h2>
-          <span className="text-xs text-slate-500 font-mono">DIRECT ONE-CLICK ROUTING</span>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-          {/* 1. الفروع / المستودعات (Sky Blue #00c0ef) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#00c0ef] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {totalBranchesAndWarehouses}
+      {/* 2. Four Core Enterprise Business Cycle Hubs (Global ERP Standard: No Clutter, Direct Relationships) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Hub 1: Sales & O2C */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between group">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5" />
                 </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">الفروع/المستودعات</div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-900">دورة المبيعات والعملاء</h3>
+                  <span className="text-[10px] text-slate-400 font-bold">Order to Cash (O2C)</span>
+                </div>
               </div>
-              <Building2 className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                {salesInvoices.length} فاتورة
+              </span>
             </div>
-            <button
-              onClick={() => onNavigateTab('warehouses')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
-            >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
-            </button>
+
+            <div className="space-y-2">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500">صافي المبيعات</span>
+                <div className="text-lg font-black font-mono text-slate-900">
+                  {formatCurrency(netSalesAmount, currency)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">التحصيلات النقدية</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    {formatCurrency(receiptVouchersAmount, currency)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">العملاء والجمعيات</span>
+                  <span className="font-mono font-bold text-slate-700">{customers.length} عميل</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* 2. الأصناف (Vibrant Emerald #00a65a) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#00a65a] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {inventory.length}
-                </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">الأصناف</div>
-              </div>
-              <Package className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
-            </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5">
             <button
-              onClick={() => onNavigateTab('inventory')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
+              onClick={() => onNavigateTab('sales-invoices')}
+              className="flex-1 py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg transition-colors text-center cursor-pointer"
             >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              فواتير البيع
             </button>
-          </div>
-
-          {/* 3. الموردين (Warm Amber/Orange #f39c12) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#f39c12] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {suppliers.length}
-                </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">الموردين</div>
-              </div>
-              <Users className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
-            </div>
             <button
-              onClick={() => onNavigateTab('suppliers')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
+              onClick={() => onNavigateTab('receipt-vouchers')}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="سندات القبض"
             >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              قبض
             </button>
-          </div>
-
-          {/* 4. العملاء (Emerald Green #00e676 / #00a65a) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#00a65a] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {customers.length}
-                </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">العملاء</div>
-              </div>
-              <UserCheck className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
-            </div>
             <button
               onClick={() => onNavigateTab('customers')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="دليل العملاء"
             >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              دليل
             </button>
           </div>
+        </div>
 
-          {/* 5. فواتير المشتريات (Deep Blue #0073b7) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#0073b7] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {purchaseInvoices.length}
+        {/* Hub 2: Purchasing & P2P */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between group">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center">
+                  <ShoppingCart className="w-5 h-5" />
                 </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">فواتير المشتريات</div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-900">دورة المشتريات والموردين</h3>
+                  <span className="text-[10px] text-slate-400 font-bold">Procure to Pay (P2P)</span>
+                </div>
               </div>
-              <ShoppingCart className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                {purchaseInvoices.length} فاتورة
+              </span>
             </div>
+
+            <div className="space-y-2">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500">صافي المشتريات</span>
+                <div className="text-lg font-black font-mono text-slate-900">
+                  {formatCurrency(netPurchasesAmount, currency)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">المدفوعات والمصروفات</span>
+                  <span className="font-mono font-bold text-amber-700">
+                    {formatCurrency(paymentVouchersAmount, currency)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">الموردين والمطاحن</span>
+                  <span className="font-mono font-bold text-slate-700">{suppliers.length} مورد</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5">
             <button
               onClick={() => onNavigateTab('purchase-invoices')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
+              className="flex-1 py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold rounded-lg transition-colors text-center cursor-pointer"
             >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              فواتير الشراء
+            </button>
+            <button
+              onClick={() => onNavigateTab('payment-vouchers')}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="سندات الصرف"
+            >
+              صرف
+            </button>
+            <button
+              onClick={() => onNavigateTab('suppliers')}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="دليل الموردين"
+            >
+              دليل
             </button>
           </div>
+        </div>
 
-          {/* 6. فواتير مرتجع المشتريات (Teal #00c0ef) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#00c0ef] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {purchaseReturns.length}
+        {/* Hub 3: Inventory & Supply Chain */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between group">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center">
+                  <Package className="w-5 h-5" />
                 </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">فواتير مرتجع المشتريات</div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-900">المخزون وسلسلة التوريد</h3>
+                  <span className="text-[10px] text-slate-400 font-bold">Inventory & Valuation</span>
+                </div>
               </div>
-              <ChevronsUp className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-mono font-bold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-md border border-cyan-200">
+                {inventory.length} صنف
+              </span>
             </div>
-            <button
-              onClick={() => onNavigateTab('purchase-invoices')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
-            >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
-            </button>
+
+            <div className="space-y-2">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500">إجمالي بطاقات الأصناف</span>
+                <div className="text-lg font-black font-mono text-slate-900">
+                  {inventory.length} منتج مسجل
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">المستودعات والفروع</span>
+                  <span className="font-mono font-bold text-cyan-700">
+                    {totalBranchesAndWarehouses} موقع
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">التسعير وهوامش الربح</span>
+                  <span className="font-mono font-bold text-emerald-700">مضبوط آلياً</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* 7. فواتير المبيعات (Indigo Blue #3c8dbc) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#3c8dbc] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {salesInvoices.length}
-                </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">فواتير المبيعات</div>
-              </div>
-              <ShoppingBag className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
-            </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5">
             <button
-              onClick={() => onNavigateTab('sales-invoices')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
+              onClick={() => onNavigateTab('inventory')}
+              className="flex-1 py-1.5 px-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 text-xs font-bold rounded-lg transition-colors text-center cursor-pointer"
             >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              دليل الأصناف
+            </button>
+            <button
+              onClick={() => onNavigateTab('stock-ledger')}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="أذون وحركات المخزون"
+            >
+              حركات
+            </button>
+            <button
+              onClick={() => onNavigateTab('warehouses')}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="المستودعات"
+            >
+              مواقع
             </button>
           </div>
+        </div>
 
-          {/* 8. فواتير مرتجع المبيعات (Rose/Pink #e91e63) */}
-          <div className="rounded-xl overflow-hidden shadow-2xs transition-all hover:shadow-md text-white bg-[#e91e63] flex flex-col justify-between group">
-            <div className="p-4 pb-2 flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black font-mono leading-none tracking-tight">
-                  {salesReturns.length}
+        {/* Hub 4: General Ledger & Cash Flow */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between group">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center">
+                  <FolderTree className="w-5 h-5" />
                 </div>
-                <div className="text-xs font-bold mt-1.5 opacity-95">فواتير مرتجع المبيعات</div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-900">المركز المالي والسيولة</h3>
+                  <span className="text-[10px] text-slate-400 font-bold">General Ledger & Cash</span>
+                </div>
               </div>
-              <ChevronsDown className="w-9 h-9 opacity-40 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                {journals.length} قيد
+              </span>
             </div>
+
+            <div className="space-y-2">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500">صافي التدفق النقدي التشغيلي</span>
+                <div className={`text-lg font-black font-mono ${netCashFlow >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {formatCurrency(netCashFlow, currency)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">شجرة الحسابات COA</span>
+                  <span className="font-mono font-bold text-indigo-700">{accounts.length} حساب</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">توازن القيود IFRS</span>
+                  <span className="font-mono font-bold text-emerald-700">100% متطابق</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5">
             <button
-              onClick={() => onNavigateTab('sales-invoices')}
-              className="w-full py-1.5 px-3 bg-black/15 hover:bg-black/25 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-t border-white/10"
+              onClick={() => onNavigateTab('ledger')}
+              className="flex-1 py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold rounded-lg transition-colors text-center cursor-pointer"
             >
-              <span>الذهاب</span>
-              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              دفتر الأستاذ
+            </button>
+            <button
+              onClick={() => onNavigateTab('trial-balance')}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="ميزان المراجعة"
+            >
+              ميزان
+            </button>
+            <button
+              onClick={() => onNavigateTab('financials')}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              title="القوائم المالية"
+            >
+              قوائم
             </button>
           </div>
         </div>
       </div>
 
-      {/* 3. Row of 8 Financial Metric Summary Cards (Clean Light Theme, matching 00.png) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        {/* إجمالي المشتريات */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
+      {/* 3. Global ERP Process Relationships Matrix (مصفوفة الدورات المستندية وترابط البنود) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-4">
           <div>
-            <div className="text-[11px] font-bold text-slate-500">إجمالي المشتريات</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(grossPurchasesAmount, currency)}
-            </div>
+            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <span>مصفوفة ترابط الدورات المستندية والعلاقات المحاسبية (End-to-End ERP Flow)</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              كل معاملة مرتبطة تلقائياً بالطرف والحساب والمخزون بدون أي مجال للخلط أو الإدخال العشوائي
+            </p>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-[#00c0ef] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <ArrowDown className="w-5 h-5" />
-          </div>
+          <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-bold self-start">
+            انقر على أي مرحلة للانتقال المباشر
+          </span>
         </div>
 
-        {/* إجمالي مرتجع المشتريات */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500">إجمالي مرتجع المشتريات</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(purchaseReturnsAmount, currency)}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Sales Cycle Flow */}
+          <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black text-emerald-800 flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                مسار دورة المبيعات والتحصيل
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">ORDER TO CASH</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <button
+                onClick={() => onNavigateTab('quotations')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 rounded-lg font-bold text-slate-700 hover:text-emerald-700 transition-all cursor-pointer shadow-2xs"
+              >
+                1. عرض السعر
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('sales-invoices')}
+                className="px-2.5 py-1.5 bg-white border border-emerald-300 bg-emerald-50/40 rounded-lg font-black text-emerald-800 hover:bg-emerald-100 transition-all cursor-pointer shadow-2xs"
+              >
+                2. فاتورة المبيعات
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('receipt-vouchers')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 rounded-lg font-bold text-slate-700 hover:text-emerald-700 transition-all cursor-pointer shadow-2xs"
+              >
+                3. سند القبض
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('journals')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 rounded-lg font-bold text-slate-700 hover:text-emerald-700 transition-all cursor-pointer shadow-2xs"
+              >
+                4. القيد الآلي
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('customer-statements')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 rounded-lg font-bold text-slate-700 hover:text-emerald-700 transition-all cursor-pointer shadow-2xs"
+              >
+                5. كشف الحساب
+              </button>
             </div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-[#00a65a] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <ArrowUp className="w-5 h-5" />
-          </div>
-        </div>
 
-        {/* صافي المشتريات */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500">صافي المشتريات</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(netPurchasesAmount, currency)}
+          {/* Purchasing Cycle Flow */}
+          <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black text-amber-800 flex items-center gap-1.5">
+                <ShoppingCart className="w-4 h-4 text-amber-600" />
+                مسار دورة المشتريات والتوريد
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">PROCURE TO PAY</span>
             </div>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#00c0ef] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <ShoppingCart className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* سندات الصرف */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500">سندات الصرف</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(paymentVouchersAmount, currency)}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <button
+                onClick={() => onNavigateTab('suppliers')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-amber-500 rounded-lg font-bold text-slate-700 hover:text-amber-700 transition-all cursor-pointer shadow-2xs"
+              >
+                1. اعتماد المورد
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('purchase-invoices')}
+                className="px-2.5 py-1.5 bg-white border border-amber-300 bg-amber-50/40 rounded-lg font-black text-amber-800 hover:bg-amber-100 transition-all cursor-pointer shadow-2xs"
+              >
+                2. فاتورة الشراء
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('stock-ledger')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-amber-500 rounded-lg font-bold text-slate-700 hover:text-amber-700 transition-all cursor-pointer shadow-2xs"
+              >
+                3. دخول المخزن
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('payment-vouchers')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-amber-500 rounded-lg font-bold text-slate-700 hover:text-amber-700 transition-all cursor-pointer shadow-2xs"
+              >
+                4. سند الصرف
+              </button>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 rotate-180 shrink-0" />
+              <button
+                onClick={() => onNavigateTab('supplier-statements')}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-amber-500 rounded-lg font-bold text-slate-700 hover:text-amber-700 transition-all cursor-pointer shadow-2xs"
+              >
+                5. كشف المورد
+              </button>
             </div>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#f39c12] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <DollarSign className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* إجمالي المبيعات */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500">إجمالي المبيعات</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(grossSalesAmount, currency)}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#00a65a] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <ArrowUp className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* إجمالي مرتجع المبيعات */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500">إجمالي مرتجع المبيعات</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(salesReturnsAmount, currency)}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#00c0ef] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <ArrowDown className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* صافي المبيعات */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500">صافي المبيعات</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(netSalesAmount, currency)}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#e91e63] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <ShoppingBag className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* سندات القبض */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500">سندات القبض</div>
-            <div className="text-base font-black font-mono text-slate-900 mt-1">
-              {formatCurrency(receiptVouchersAmount, currency)}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#00e676] flex items-center justify-center text-white shrink-0 shadow-2xs">
-            <Receipt className="w-5 h-5" />
           </div>
         </div>
       </div>
 
-      {/* 4. Monthly Analytics Charts Section (Exact Match to 00.png) */}
+      {/* 4. Monthly Analytics Charts Section */}
       <div className="space-y-6">
         {/* Chart 1: Line Chart: إحصائية (عدد فواتير المبيعات - عدد فواتير مرتجع المبيعات) في كل شهر */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">

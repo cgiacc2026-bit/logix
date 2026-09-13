@@ -611,8 +611,14 @@ export const OnboardingBannerWidget: React.FC<OnboardingBannerWidgetProps> = ({
 
   const progressPercent = Math.round((state.completedSteps.length / ONBOARDING_STEPS.length) * 100);
 
-  // If user dismissed completely or 100% completed and minimized, we don't force it
-  if (state.isDismissed && isMinimized) return null;
+  const handleDismiss = () => {
+    const newState = { ...state, isDismissed: true };
+    saveOnboardingState(companyId, newState);
+    setState(newState);
+  };
+
+  // If user dismissed completely or 100% completed, do not crowd the dashboard
+  if (state.isDismissed || progressPercent >= 100) return null;
 
   const nextStep = ONBOARDING_STEPS.find((s) => !state.completedSteps.includes(s.id)) || ONBOARDING_STEPS[0];
   const NextIcon = nextStep.icon;
@@ -620,23 +626,23 @@ export const OnboardingBannerWidget: React.FC<OnboardingBannerWidgetProps> = ({
   return (
     <div
       id="onboarding-banner-widget"
-      className="mb-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl shadow-md border border-blue-700/40 p-4 transition-all"
+      className="mb-4 bg-slate-900 text-white rounded-2xl shadow-sm border border-slate-800 p-3 sm:p-4 transition-all"
       dir="rtl"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 flex items-center justify-center shrink-0">
             <Compass className="w-5 h-5 text-cyan-400 animate-pulse" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm font-bold text-white">إرشاد تهيئة المنشأة خطوة بخطوة</h3>
+              <h3 className="text-xs sm:text-sm font-bold text-white">إرشاد تهيئة المنشأة خطوة بخطوة</h3>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
                 {progressPercent}% مكتمل ({state.completedSteps.length} من {ONBOARDING_STEPS.length})
               </span>
             </div>
             {!isMinimized && (
-              <p className="text-xs text-slate-300 mt-0.5 truncate max-w-xl">
+              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xl">
                 الخطوة المقترحة حالياً:{' '}
                 <strong className="text-cyan-300">
                   خطوة {nextStep.stepNumber}: {nextStep.title}
@@ -661,9 +667,9 @@ export const OnboardingBannerWidget: React.FC<OnboardingBannerWidgetProps> = ({
           <button
             type="button"
             onClick={onOpenFullGuide}
-            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1 transition-all border border-white/20 cursor-pointer"
+            className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1 transition-all border border-white/20 cursor-pointer"
           >
-            <span>فتح الدليل الكامل</span>
+            <span>الدليل</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
 
@@ -674,6 +680,15 @@ export const OnboardingBannerWidget: React.FC<OnboardingBannerWidgetProps> = ({
             title={isMinimized ? 'توسيع شريط التهيئة' : 'تصغير شريط التهيئة'}
           >
             {isMinimized ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="p-1.5 rounded-xl bg-white/10 hover:bg-rose-900/50 hover:text-rose-300 text-slate-400 transition-all cursor-pointer"
+            title="إخفاء شريط التهيئة وعدم إظهاره مجدداً"
+          >
+            <span className="text-xs font-bold px-1">✕</span>
           </button>
         </div>
       </div>

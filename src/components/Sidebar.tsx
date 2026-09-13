@@ -50,7 +50,7 @@ interface SidebarProps {
   onSaveCompany?: (updated: CompanyProfile) => Promise<void> | void;
 }
 
-type AccordionSectionKey = 'operations' | 'masterData' | 'reportsHub' | 'settings';
+type AccordionSectionKey = 'sales' | 'purchases' | 'inventory' | 'finance' | 'reportsHub' | 'settings';
 
 interface SubMenuItem {
   id: TabType;
@@ -105,54 +105,66 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const activeCompanyName = liveCompany?.nameAr || companyContext?.currentCompany?.nameAr || company?.nameAr || 'نظام لوجيكس السحابي';
 
-  // Scientific accounting mapping: Operations vs Master Data vs Reports vs Settings
+  // Global ERP standard: Business Cycle modular mapping
   const getSectionForTab = (tab: TabType): AccordionSectionKey | null => {
     if (
       [
         'sales-invoices',
-        'purchase-invoices',
-        'receipt-vouchers',
-        'payment-vouchers',
-        'journals',
         'quotations',
         'pos',
-        'stock-ledger',
+        'receipt-vouchers',
+        'customers',
+        'sales-reps',
+        'customer-statements',
         'invoices',
-        'vouchers',
       ].includes(tab)
     ) {
-      return 'operations';
+      return 'sales';
+    }
+    if (
+      [
+        'purchase-invoices',
+        'payment-vouchers',
+        'suppliers',
+        'supplier-statements',
+      ].includes(tab)
+    ) {
+      return 'purchases';
+    }
+    if (
+      [
+        'inventory',
+        'stock-ledger',
+        'warehouses',
+        'units',
+        'production',
+      ].includes(tab)
+    ) {
+      return 'inventory';
     }
     if (
       [
         'accounts',
-        'customers',
-        'suppliers',
-        'inventory',
-        'warehouses',
-        'branches',
-        'units',
-        'production',
-        'sales-reps',
-        'entities',
+        'journals',
+        'ledger',
+        'trial-balance',
+        'financials',
       ].includes(tab)
     ) {
-      return 'masterData';
+      return 'finance';
+    }
+    if (['reports', 'statements'].includes(tab)) {
+      return 'reportsHub';
     }
     if (
       [
-        'reports',
-        'trial-balance',
-        'ledger',
-        'financials',
-        'customer-statements',
-        'supplier-statements',
-        'statements',
+        'company',
+        'branches',
+        'users',
+        'backup-restore',
+        'system-reset',
       ].includes(tab)
     ) {
-      return 'reportsHub';
-    }
-    if (['company', 'users', 'backup-restore', 'system-reset'].includes(tab)) {
       return 'settings';
     }
     return null;
@@ -160,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // State: single active accordion section
   const [openSection, setOpenSection] = useState<AccordionSectionKey | null>(() => {
-    return getSectionForTab(activeTab) || 'operations';
+    return getSectionForTab(activeTab) || 'sales';
   });
 
   // Automatically expand the section that contains the current activeTab
@@ -181,15 +193,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  // 4 Core Enterprise Accounting Pillars (Based on Accounting Software Studies)
+  // 6 Core Enterprise Business Cycles (Standard Global ERP Architecture)
   const sections: AccordionSection[] = useMemo(
     () => [
       {
-        key: 'operations',
+        key: 'sales',
         number: '1',
-        title: 'الإدخالات والعمليات اليومية',
-        icon: FileSpreadsheet,
-        accentColor: 'text-teal-400',
+        title: 'المبيعات والعملاء (Sales & O2C)',
+        icon: ShoppingBag,
+        accentColor: 'text-emerald-400',
         operationalItems: [
           {
             id: 'sales-invoices',
@@ -198,23 +210,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             badge: unpaidCount > 0 ? unpaidCount : undefined,
           },
           {
-            id: 'purchase-invoices',
-            label: 'فواتير ومردودات الشراء',
-            icon: ShoppingCart,
-          },
-          {
-            id: 'receipt-vouchers',
-            label: 'سندات القبض والتحصيل',
-            icon: ArrowDownLeft,
-          },
-          {
-            id: 'payment-vouchers',
-            label: 'سندات الصرف وسداد الموردين',
-            icon: ArrowUpRight,
-          },
-          {
-            id: 'journals',
-            label: 'القيود اليومية المتوازنة',
+            id: 'quotations',
+            label: 'عروض الأسعار للعملاء',
             icon: FileText,
           },
           {
@@ -223,29 +220,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             icon: Store,
           },
           {
-            id: 'quotations',
-            label: 'عروض الأسعار للعملاء',
-            icon: FileText,
-          },
-          {
-            id: 'stock-ledger',
-            label: 'أذون الحركات وتحويلات المخزون',
-            icon: Layers,
-          },
-        ],
-        reportItems: [],
-      },
-      {
-        key: 'masterData',
-        number: '2',
-        title: 'البيانات الأساسية والتعريفات',
-        icon: FolderTree,
-        accentColor: 'text-blue-400',
-        operationalItems: [
-          {
-            id: 'accounts',
-            label: 'دليل وشجرة الحسابات (COA)',
-            icon: FolderTree,
+            id: 'receipt-vouchers',
+            label: 'سندات القبض والتحصيل',
+            icon: ArrowDownLeft,
           },
           {
             id: 'customers',
@@ -253,14 +230,64 @@ export const Sidebar: React.FC<SidebarProps> = ({
             icon: Users2,
           },
           {
+            id: 'sales-reps',
+            label: 'مناديب المبيعات والعمولات',
+            icon: UserCheck,
+          },
+          {
+            id: 'customer-statements',
+            label: 'كشوف حسابات العملاء',
+            icon: Users,
+          },
+        ],
+        reportItems: [],
+      },
+      {
+        key: 'purchases',
+        number: '2',
+        title: 'المشتريات والموردين (Procure-to-Pay)',
+        icon: ShoppingCart,
+        accentColor: 'text-amber-400',
+        operationalItems: [
+          {
+            id: 'purchase-invoices',
+            label: 'فواتير ومردودات الشراء',
+            icon: ShoppingCart,
+          },
+          {
+            id: 'payment-vouchers',
+            label: 'سندات الصرف وسداد الموردين',
+            icon: ArrowUpRight,
+          },
+          {
             id: 'suppliers',
             label: 'سجلات الموردين والمطاحن',
             icon: Building2,
           },
           {
+            id: 'supplier-statements',
+            label: 'كشوف حسابات الموردين',
+            icon: Building2,
+          },
+        ],
+        reportItems: [],
+      },
+      {
+        key: 'inventory',
+        number: '3',
+        title: 'المخزون وسلسلة الإمداد (Inventory)',
+        icon: Layers,
+        accentColor: 'text-cyan-400',
+        operationalItems: [
+          {
             id: 'inventory',
             label: 'دليل الأصناف والباركود',
             icon: Package,
+          },
+          {
+            id: 'stock-ledger',
+            label: 'أذون وحركات وتكلفة المخزون',
+            icon: Layers,
           },
           {
             id: 'warehouses',
@@ -279,21 +306,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
           },
           {
             id: 'production',
-            label: 'قسم التصنيع والتشغيل',
+            label: 'قسم التصنيع وأوامر التشغيل',
             icon: Factory,
           },
+        ],
+        reportItems: [],
+      },
+      {
+        key: 'finance',
+        number: '4',
+        title: 'المحاسبة والمالية (General Ledger)',
+        icon: FolderTree,
+        accentColor: 'text-indigo-400',
+        operationalItems: [
           {
-            id: 'sales-reps',
-            label: 'مناديب المبيعات والعمولات',
-            icon: UserCheck,
+            id: 'accounts',
+            label: 'دليل وشجرة الحسابات (COA)',
+            icon: FolderTree,
+          },
+          {
+            id: 'journals',
+            label: 'القيود اليومية المتوازنة',
+            icon: FileText,
+          },
+          {
+            id: 'ledger',
+            label: 'دفتر الأستاذ العام (GL)',
+            icon: BookOpen,
+          },
+          {
+            id: 'trial-balance',
+            label: 'ميزان المراجعة بالمجاميع والأرصدة',
+            icon: Scale,
+          },
+          {
+            id: 'financials',
+            label: 'القوائم المالية وقائمة الدخل',
+            icon: LineChart,
           },
         ],
         reportItems: [],
       },
       {
         key: 'reportsHub',
-        number: '3',
-        title: 'مركز التقارير والقوائم المالية',
+        number: '5',
+        title: 'مركز التقارير والذكاء المالي',
         icon: FileBarChart,
         accentColor: 'text-emerald-400',
         operationalItems: [
@@ -301,7 +358,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             id: 'reports',
             label: '⚡ التقارير المجمعة بنقرة واحدة',
             icon: Sparkles,
-            badge: 'فوري',
+            badge: 'شامل',
           },
           {
             id: 'customer-statements',
@@ -315,17 +372,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           },
           {
             id: 'trial-balance',
-            label: 'ميزان المراجعة بالمجاميع والأرصدة',
+            label: 'ميزان المراجعة النهائي',
             icon: Scale,
           },
           {
             id: 'ledger',
-            label: 'دفتر الأستاذ العام (GL)',
+            label: 'دفتر الأستاذ العام',
             icon: BookOpen,
           },
           {
             id: 'financials',
-            label: 'القوائم المالية الختامية وقائمة الدخل',
+            label: 'الأرباح والخسائر والمركز المالي',
             icon: LineChart,
           },
         ],
@@ -333,10 +390,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       },
       {
         key: 'settings',
-        number: '4',
-        title: 'الإدارة وضبط المنشأة',
+        number: '6',
+        title: 'الإدارة وضبط المنشأة (System Governance)',
         icon: ShieldCheck,
-        accentColor: 'text-indigo-400',
+        accentColor: 'text-slate-400',
         operationalItems: [
           {
             id: 'company',
@@ -628,7 +685,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {section.key === 'operations' && unpaidCount > 0 && (
+                  {section.key === 'sales' && unpaidCount > 0 && (
                     <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[10px] font-mono font-black rounded-full leading-none">
                       {unpaidCount}
                     </span>
