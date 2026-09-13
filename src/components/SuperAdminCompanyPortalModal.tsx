@@ -230,6 +230,16 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
         setNewCompanyName('');
         setNewOwnerEmail('');
         await fetchCompanies();
+        
+        // Immediately set the newly created company as active session and trigger refresh
+        const newCompanyId = res.data.id;
+        setCurrentCompanyId(newCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('companyChanged', { detail: { companyId: newCompanyId } }));
+        }
+        if (onSwitchCompany) {
+          onSwitchCompany(newCompanyId);
+        }
       } else {
         setActionMessage({
           type: 'error',

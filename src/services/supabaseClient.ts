@@ -238,9 +238,13 @@ export function getCurrentCompanyId(): string {
   if (typeof window === 'undefined') return ALWALEED_CANONICAL_UUID;
   const saved = localStorage.getItem(STORAGE_KEYS.COMPANY_ID) || localStorage.getItem('activeCompanyId');
   if (!saved || !saved.trim() || saved.trim() === 'default' || saved.trim() === 'default_tenant') {
-    return ALWALEED_CANONICAL_UUID;
+    throw new Error('لا توجد شركة نشطة في الجلسة. يجب تسجيل الدخول أو اختيار شركة قبل تنفيذ أي عملية.');
   }
-  return resolveToSupabaseCompanyUUID(saved) || ALWALEED_CANONICAL_UUID;
+  const resolved = resolveToSupabaseCompanyUUID(saved);
+  if (!resolved) {
+    throw new Error('معرّف الشركة في الجلسة غير صالح.');
+  }
+  return resolved;
 }
 
 /**

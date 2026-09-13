@@ -52,7 +52,7 @@ import { LoginView } from './components/LoginView.tsx';
 import { CompanyOnboardingWizard } from './components/CompanyOnboardingWizard.tsx';
 import { CompanyProvider, useCompany } from './contexts/CompanyContext.tsx';
 import { ALWALEED_CANONICAL_UUID } from './services/supabaseClient.ts';
-import { DataService } from './services/dataService.ts';
+import { DataService, localDataStore } from './services/dataService.ts';
 import { OperationsCenter } from './services/operationsCenter.ts';
 import { DataSyncService } from './services/dataSyncService.ts';
 import { ThemeService, ThemeColor, ThemeMode } from './services/themeService.ts';
@@ -657,7 +657,8 @@ export function AppContent() {
   };
 
   const handleCreateCustomer = async (data: any) => {
-    await OperationsCenter.executeCustomerCreate(data);
+    const compId = activeCompany?.id || localDataStore.getEffectiveCompanyId();
+    await OperationsCenter.executeCustomerCreate(data, compId);
     setCustomers(DataService.getLocalCustomers());
     setJournals(DataService.getLocalJournals());
     setAccounts(DataService.getLocalAccounts());
@@ -705,7 +706,8 @@ export function AppContent() {
   };
 
   const handleCreateInventoryItem = async (data: any) => {
-    await OperationsCenter.executeInventoryCreate(data);
+    const compId = activeCompany?.id || localDataStore.getEffectiveCompanyId();
+    await OperationsCenter.executeInventoryCreate(data, compId);
     setInventory(DataService.getLocalInventory());
     setJournals(DataService.getLocalJournals());
     refreshAllData(true);

@@ -371,26 +371,30 @@ class LocalDataStore {
   public getEffectiveCompanyId(): string {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem('supabase_company_id');
-      if (saved && saved.trim() && saved.trim() !== 'default') {
+      if (saved && saved.trim() && saved.trim() !== 'default' && saved.trim() !== 'default_tenant') {
         const res = resolveToSupabaseCompanyUUID(saved.trim());
         if (res) return res;
       }
       const active = window.localStorage.getItem('activeCompanyId');
-      if (active && active.trim() && active.trim() !== 'default') {
+      if (active && active.trim() && active.trim() !== 'default' && active.trim() !== 'default_tenant') {
         const res = resolveToSupabaseCompanyUUID(active.trim());
         if (res) return res;
       }
     }
-    return ALWALEED_CANONICAL_UUID;
+    throw new Error('لا توجد شركة نشطة في الجلسة. يجب تسجيل الدخول أو اختيار شركة قبل تنفيذ أي عملية.');
   }
 
   public isAlWaleedActive(): boolean {
-    const compId = this.getEffectiveCompanyId();
-    if (!compId) return false;
-    return (
-      compId === '20000000-0000-0000-0000-000000000001' ||
-      compId === 'company-alwaleed-client-003'
-    );
+    try {
+      const compId = this.getEffectiveCompanyId();
+      if (!compId) return false;
+      return (
+        compId === '20000000-0000-0000-0000-000000000001' ||
+        compId === 'company-alwaleed-client-003'
+      );
+    } catch {
+      return false;
+    }
   }
 
   public getKey(baseKey: string, specificCompanyId?: string): string {
@@ -5184,10 +5188,17 @@ export class DataService {
     return await fetchRemote();
   }
 
-  public static async createCustomer(data: any): Promise<Customer> {
+  public static async createCustomer(data: any, explicitCompanyId?: string): Promise<Customer> {
+    const activeCompanyId = explicitCompanyId || data?.companyId || data?.company_id || undefined;
+    const compId = activeCompanyId || localDataStore.getEffectiveCompanyId();
+    if (!compId) {
+      throw new Error('تعذر تحديد الشركة الحالية — لا يمكن إنشاء السجل.');
+    }
     const list = localDataStore.getCustomers();
     const newCust: Customer = {
       id: 'cust-' + Math.random().toString(36).substr(2, 9),
+      companyId: compId,
+      company_id: compId,
       code: data.code || `CUST-${String(list.length + 1).padStart(3, '0')}`,
       nameAr: data.nameAr || 'عميل جديد',
       nameEn: data.nameEn || '',
@@ -5209,10 +5220,9 @@ export class DataService {
     localDataStore.removeTombstone('customers', newCust.id);
     list.push(newCust);
     localDataStore.saveCustomers(list);
-    const compId = localDataStore.getEffectiveCompanyId() || 'default';
     cacheService.setCustomers(compId, list);
     try {
-      await SupabaseDataService.saveCustomer(newCust);
+      await SupabaseDataService.saveCustomer(newCust, compId);
     } catch (e) {
       console.warn('Supabase saveCustomer notice:', e);
     }
@@ -5838,10 +5848,17 @@ export class DataService {
     return await fetchRemote();
   }
 
-  public static async createInventoryItem(data: any): Promise<InventoryItem> {
+  public static async createInventoryItem(data: any, explicitCompanyId?: string): Promise<InventoryItem> {
+    const activeCompanyId = explicitCompanyId || data?.companyId || data?.company_id || undefined;
+    const compId = activeCompanyId || localDataStore.getEffectiveCompanyId();
+    if (!compId) {
+      throw new Error('تعذر تحديد الشركة الحالية — لا يمكن إنشاء السجل.');
+    }
     const list = localDataStore.getInventory();
     const newItem: InventoryItem = {
       id: 'inv-' + Math.random().toString(36).substr(2, 9),
+      companyId: compId,
+      company_id: compId,
       sku: data.sku || `${Date.now()}`,
       barcode: data.barcode,
       nameAr: data.nameAr || 'صنف جديد',
@@ -5859,10 +5876,9 @@ export class DataService {
     localDataStore.removeTombstone('inventory', newItem.id);
     list.push(newItem);
     localDataStore.saveInventory(list);
-    const compId = localDataStore.getEffectiveCompanyId() || 'default';
     cacheService.setItems(compId, list);
     try {
-      await SupabaseDataService.saveItem(newItem);
+      await SupabaseDataService.saveItem(newItem, compId);
     } catch (e) {
       console.warn('Supabase saveItem notice:', e);
     }

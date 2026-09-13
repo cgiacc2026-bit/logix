@@ -56,13 +56,16 @@ export class OperationsCenter {
     }
   }
 
-  public static async executeCustomerCreate(data: Partial<Customer>): Promise<Customer> {
+  public static async executeCustomerCreate(data: Partial<Customer>, explicitCompanyId?: string): Promise<Customer> {
     try {
+      const activeCompanyId = explicitCompanyId || (data as any)?.companyId || (data as any)?.company_id;
       const created = await DataService.createCustomer({
         ...data,
+        companyId: activeCompanyId,
+        company_id: activeCompanyId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }, activeCompanyId);
       this.notifyChange('CUSTOMER', 'CREATE', created.id, created);
       return created;
     } catch (err: any) {
@@ -269,13 +272,16 @@ export class OperationsCenter {
     }
   }
 
-  public static async executeInventoryCreate(data: Partial<InventoryItem>): Promise<InventoryItem> {
+  public static async executeInventoryCreate(data: Partial<InventoryItem>, explicitCompanyId?: string): Promise<InventoryItem> {
     try {
+      const activeCompanyId = explicitCompanyId || (data as any)?.companyId || (data as any)?.company_id;
       const created = await DataService.createInventoryItem({
         ...data,
+        companyId: activeCompanyId,
+        company_id: activeCompanyId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }, activeCompanyId);
       this.notifyChange('INVENTORY', 'CREATE', created.id, created);
       return created;
     } catch (err: any) {

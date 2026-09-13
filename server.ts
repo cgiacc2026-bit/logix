@@ -738,17 +738,37 @@ async function startServer() {
   });
 
   // 5. Sales, Purchases, Inventory, Vouchers
+  const getReqCompanyId = (req: any): string => {
+    const fromHeader = req.headers?.['x-company-id'];
+    const fromQuery = req.query?.company_id || req.query?.companyId;
+    const fromBody = req.body?.companyId || req.body?.company_id;
+    const val = (fromHeader || fromQuery || fromBody) as string;
+    return val ? String(val).trim() : '';
+  };
+
   app.get('/api/customers', (req, res) => {
-    res.json(db.getCustomers());
+    const compId = getReqCompanyId(req);
+    if (!compId) {
+      return res.status(400).json({ error: 'معرّف الشركة مطلوب لعرض العملاء (Tenant isolation required)' });
+    }
+    const filtered = db.getCustomers().filter((c: any) => c.companyId === compId || c.company_id === compId);
+    res.json(filtered);
   });
 
   app.post('/api/customers', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإنشاء العميل (Tenant isolation required)' });
+      }
       const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, branches, priceListId, priceListName, customPrices, defaultDiscountRate } = req.body;
-      const customCode = code || `${101 + db.getCustomers().length}`;
+      const compCustomers = db.getCustomers().filter((c: any) => c.companyId === compId || c.company_id === compId);
+      const customCode = code || `${101 + compCustomers.length}`;
       const initialOpening = Number(openingBalance) || 0;
       const customer = {
         id: 'cust-' + Math.random().toString(36).substr(2, 9),
+        companyId: compId,
+        company_id: compId,
         code: customCode,
         nameAr,
         nameEn: nameEn || nameAr,
@@ -776,10 +796,14 @@ async function startServer() {
 
   app.put('/api/customers/:id', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لتعديل العميل (Tenant isolation required)' });
+      }
       const { id } = req.params;
       const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, balance, branches, priceListId, priceListName, customPrices, defaultDiscountRate } = req.body;
-      const customer = db.getCustomers().find((c) => c.id === id);
-      if (!customer) return res.status(404).json({ error: 'العميل غير موجود' });
+      const customer = db.getCustomers().find((c: any) => c.id === id && (c.companyId === compId || c.company_id === compId));
+      if (!customer) return res.status(404).json({ error: 'العميل غير موجود في هذه الشركة' });
 
       const updatedOpening = openingBalance !== undefined ? Number(openingBalance) : customer.openingBalance;
       
@@ -868,7 +892,13 @@ async function startServer() {
 
   app.delete('/api/customers/:id', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لحذف العميل (Tenant isolation required)' });
+      }
       const { id } = req.params;
+      const customer = db.getCustomers().find((c: any) => c.id === id && (c.companyId === compId || c.company_id === compId));
+      if (!customer) return res.status(404).json({ error: 'العميل غير موجود في هذه الشركة' });
       const success = db.deleteCustomer(id);
       if (!success) return res.status(404).json({ error: 'العميل غير موجود' });
       res.json({ success: true });
@@ -880,9 +910,13 @@ async function startServer() {
   // Customer Detailed Statement
   app.get('/api/customers/:id/statement', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لكشف حساب العميل (Tenant isolation required)' });
+      }
       const { id } = req.params;
-      const customer = db.getCustomers().find((c) => c.id === id);
-      if (!customer) return res.status(404).json({ error: 'العميل غير موجود' });
+      const customer = db.getCustomers().find((c: any) => c.id === id && (c.companyId === compId || c.company_id === compId));
+      if (!customer) return res.status(404).json({ error: 'العميل غير موجود في هذه الشركة' });
 
       const invoices = db.getInvoices().filter((i) => i.entityId === id && i.status !== 'CANCELLED');
       const vouchers = db.getVouchers().filter((v) => v.entityId === id);
@@ -1353,14 +1387,25 @@ async function startServer() {
   });
 
   app.get('/api/inventory', (req, res) => {
-    res.json(db.getInventory());
+    const compId = getReqCompanyId(req);
+    if (!compId) {
+      return res.status(400).json({ error: 'معرّف الشركة مطلوب لعرض المخزون (Tenant isolation required)' });
+    }
+    const filtered = db.getInventory().filter((i: any) => i.companyId === compId || i.company_id === compId);
+    res.json(filtered);
   });
 
   app.post('/api/inventory', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإنشاء صنف مخزني (Tenant isolation required)' });
+      }
       const { sku, barcode, nameAr, nameEn, category, unit, unitsPerPack, packUnit, purchasePrice, salePrice, quantityOnHand, minQuantityAlert } = req.body;
       const item = {
         id: 'item-' + Math.random().toString(36).substr(2, 9),
+        companyId: compId,
+        company_id: compId,
         sku: sku || `SKU-${Date.now().toString().slice(-4)}`,
         barcode: barcode || '',
         nameAr,
@@ -1384,8 +1429,14 @@ async function startServer() {
 
   app.put('/api/inventory/:id', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لتعديل الصنف (Tenant isolation required)' });
+      }
       const { id } = req.params;
-      db.updateInventoryItem(id, req.body);
+      const existing = db.getInventory().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
+      if (!existing) return res.status(404).json({ error: 'الصنف غير موجود في هذه الشركة' });
+      db.updateInventoryItem(id, { ...req.body, companyId: compId, company_id: compId });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1394,7 +1445,13 @@ async function startServer() {
 
   app.delete('/api/inventory/:id', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لحذف الصنف (Tenant isolation required)' });
+      }
       const { id } = req.params;
+      const existing = db.getInventory().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
+      if (!existing) return res.status(404).json({ error: 'الصنف غير موجود في هذه الشركة' });
       const success = db.deleteInventoryItem(id);
       if (!success) return res.status(404).json({ error: 'الصنف غير موجود' });
       res.json({ success: true });
@@ -1404,24 +1461,28 @@ async function startServer() {
   });
 
   app.get('/api/invoices', (req, res) => {
-    const companyId = ((req.query.company_id || req.headers['x-company-id']) as string)?.trim();
-    let invoices = db.getInvoices();
-    if (companyId) {
-      invoices = invoices.filter((inv: any) => !inv.companyId || inv.companyId === companyId);
+    const compId = getReqCompanyId(req);
+    if (!compId) {
+      return res.status(400).json({ error: 'معرّف الشركة مطلوب لعرض الفواتير (Tenant isolation required)' });
     }
+    const invoices = db.getInvoices().filter((inv: any) => inv.companyId === compId || inv.company_id === compId);
     res.json(invoices.sort((a, b) => b.date.localeCompare(a.date)));
   });
 
   app.post('/api/invoices', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإنشاء فاتورة (Tenant isolation required)' });
+      }
       const { type, entityId, lines, notes, date, dueDate, discountType, discountValue } = req.body;
 
       const entity =
         type === 'SALES' || type === 'SALES_RETURN'
-          ? db.getCustomers().find((c) => c.id === entityId)
-          : db.getSuppliers().find((s) => s.id === entityId);
+          ? db.getCustomers().find((c: any) => c.id === entityId && (c.companyId === compId || c.company_id === compId))
+          : db.getSuppliers().find((s: any) => s.id === entityId && (s.companyId === compId || s.company_id === compId));
 
-      if (!entity) return res.status(400).json({ error: 'العميل أو المورد غير موجود' });
+      if (!entity) return res.status(400).json({ error: 'العميل أو المورد غير موجود في هذه الشركة' });
 
       let subtotal = 0;
       let lineDiscountsSum = 0;
@@ -1485,6 +1546,8 @@ async function startServer() {
 
       const invoice: Invoice = {
         id: req.body.id || ('inv-' + Math.random().toString(36).substr(2, 9)),
+        companyId: compId,
+        company_id: compId,
         invoiceNumber,
         type: type || 'SALES',
         entityId,
@@ -1538,8 +1601,14 @@ async function startServer() {
 
   app.put('/api/invoices/:id', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لتعديل الفاتورة (Tenant isolation required)' });
+      }
       const { id } = req.params;
-      const updated = AccountingEngine.updateInvoice(id, req.body);
+      const existing = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
+      if (!existing) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
+      const updated = AccountingEngine.updateInvoice(id, { ...req.body, companyId: compId, company_id: compId });
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1548,9 +1617,13 @@ async function startServer() {
 
   app.delete('/api/invoices/:id', async (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لحذف الفاتورة (Tenant isolation required)' });
+      }
       const { id } = req.params;
-      const inv = db.getInvoices().find((i) => i.id === id);
-      if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+      const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
+      if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
 
       // Clean Hard Purge: Revert postings from accounts/inventory and physically purge from DB
       if (inv.status === 'POSTED' || inv.status === 'PAID') {
@@ -1594,7 +1667,13 @@ async function startServer() {
 
   app.post('/api/invoices/:id/revert', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لعكس الفاتورة (Tenant isolation required)' });
+      }
       const { id } = req.params;
+      const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
+      if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
       const { reason } = req.body || {};
       const result = AccountingEngine.revertInvoicePosting(id, reason || 'إلغاء وعكس الفاتورة محاسبياً بدقة IFRS');
       res.json({ success: true, ...result });
@@ -1605,7 +1684,13 @@ async function startServer() {
 
   app.post('/api/invoices/:id/cancel', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإلغاء الفاتورة (Tenant isolation required)' });
+      }
       const { id } = req.params;
+      const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
+      if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
       const { reason } = req.body || {};
       const result = AccountingEngine.revertInvoicePosting(id, reason || 'إلغاء الفاتورة بطلب المستخدم');
       res.json(result.invoice);
@@ -1616,7 +1701,13 @@ async function startServer() {
 
   app.post('/api/invoices/:id/post', (req, res) => {
     try {
+      const compId = getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة مطلوب لترحيل الفاتورة (Tenant isolation required)' });
+      }
       const { id } = req.params;
+      const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
+      if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
       const updated = AccountingEngine.postInvoice(id);
       res.json(updated);
     } catch (err: any) {
