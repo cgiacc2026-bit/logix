@@ -295,11 +295,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             icon: Warehouse,
           },
           {
-            id: 'branches',
-            label: 'إدارة الفروع ومحطات البيع',
-            icon: Store,
-          },
-          {
             id: 'units',
             label: 'وحدات القياس والشد',
             icon: Ruler,
@@ -356,34 +351,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         operationalItems: [
           {
             id: 'reports',
-            label: '⚡ التقارير المجمعة بنقرة واحدة',
+            label: '⚡ مركز التقارير التنفيذية والمجمعة',
             icon: Sparkles,
             badge: 'شامل',
           },
           {
-            id: 'customer-statements',
-            label: 'كشوف حسابات العملاء والجمعيات',
-            icon: Users,
-          },
-          {
-            id: 'supplier-statements',
-            label: 'كشوف حسابات الموردين',
-            icon: Building2,
-          },
-          {
-            id: 'trial-balance',
-            label: 'ميزان المراجعة النهائي',
-            icon: Scale,
-          },
-          {
-            id: 'ledger',
-            label: 'دفتر الأستاذ العام',
-            icon: BookOpen,
-          },
-          {
-            id: 'financials',
-            label: 'الأرباح والخسائر والمركز المالي',
-            icon: LineChart,
+            id: 'stock-ledger',
+            label: 'تقارير حركة وجرد المخزون',
+            icon: Layers,
           },
         ],
         reportItems: [],
@@ -399,6 +374,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             id: 'company',
             label: 'إعدادات المنشأة والعملة والضريبة',
             icon: Settings,
+          },
+          {
+            id: 'branches',
+            label: 'الفروع ومراكز التكلفة والبيع',
+            icon: Store,
           },
           {
             id: 'users',
