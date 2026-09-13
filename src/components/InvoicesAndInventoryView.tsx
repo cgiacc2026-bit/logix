@@ -113,6 +113,7 @@ interface InvoicesProps {
   initialVoucherFilter?: 'ALL' | 'RECEIPT' | 'PAYMENT';
   hideSubTabBar?: boolean;
   customViewTitle?: string;
+  onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
 }
 
 export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
@@ -159,6 +160,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   initialVoucherFilter,
   hideSubTabBar = false,
   customViewTitle,
+  onOpenDocumentCycle,
 }) => {
   const allSalesReps = useMemo(() => {
     return salesReps && salesReps.length > 0 ? salesReps : DataService.getSalesReps();
@@ -1854,7 +1856,21 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                             className="w-4 h-4 rounded text-[#B8860B] focus:ring-[#B8860B] border-[#E5E1DA] cursor-pointer accent-[#B8860B]"
                           />
                         </td>
-                        <td className="py-3 px-4 font-mono font-bold text-[#B8860B]">{inv.invoiceNumber}</td>
+                        <td className="py-3 px-4 font-mono font-bold text-[#B8860B]">
+                          {onOpenDocumentCycle ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenDocumentCycle({ type: 'INVOICE', id: inv.id })}
+                              className="hover:underline cursor-pointer text-[#B8860B] flex items-center gap-1"
+                              title="انقر لعرض دورة المستند والقيد المحاسبي"
+                            >
+                              <span>{inv.invoiceNumber}</span>
+                              <Layers className="w-3 h-3 text-purple-600 opacity-80" />
+                            </button>
+                          ) : (
+                            inv.invoiceNumber
+                          )}
+                        </td>
                         <td className="py-3 px-4 font-bold">
                           <div className="flex flex-col gap-1">
                             {inv.type === 'SALES' && (
@@ -1943,6 +1959,18 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                         </td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center gap-2">
+                            {onOpenDocumentCycle && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenDocumentCycle({ type: 'INVOICE', id: inv.id })}
+                                className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                title="استعراض دورة المستند وترابط الفاتورة مع القيد وسندات السداد وحسابات الدليل"
+                              >
+                                <Layers className="w-3.5 h-3.5 text-purple-600" />
+                                <span>الدورة 🔗</span>
+                              </button>
+                            )}
+
                             <button
                               onClick={() => setPrintDoc({ type: 'INVOICE', data: inv })}
                               className="px-2.5 py-1 bg-[#1A1A1A] hover:bg-black text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer shadow-xs"

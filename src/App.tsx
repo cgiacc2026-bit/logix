@@ -42,6 +42,7 @@ import { UnifiedBackupRestoreHub } from './components/UnifiedBackupRestoreHub.ts
 import { BranchesManagementView } from './components/BranchesManagementView.tsx';
 import { WarehousesManagementView } from './components/WarehousesManagementView.tsx';
 import { DedicatedReportsWorkspace, ReportWorkspaceTab } from './components/DedicatedReportsWorkspace.tsx';
+import { DocumentCycleModal, DocumentCycleTarget } from './components/DocumentCycleModal.tsx';
 import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
@@ -254,6 +255,13 @@ export function AppContent() {
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [selectedPrintInvoice, setSelectedPrintInvoice] = useState<Invoice | null>(null);
   const [selectedStatementEntity, setSelectedStatementEntity] = useState<{ id: string; type: 'CUSTOMER' | 'SUPPLIER' } | null>(null);
+  const [cycleTargetDoc, setCycleTargetDoc] = useState<DocumentCycleTarget | null>(null);
+  const [isCycleModalOpen, setIsCycleModalOpen] = useState(false);
+
+  const handleOpenDocumentCycle = (target: DocumentCycleTarget) => {
+    setCycleTargetDoc(target);
+    setIsCycleModalOpen(true);
+  };
 
   // Authentication and Session State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -349,6 +357,7 @@ export function AppContent() {
     }
     try {
       await reloadCompany();
+      await DataService.reconcileDocumentCycles();
       const compData = await DataService.getCompany();
       const jData = await DataService.getJournals();
       const accsData = await DataService.getAccounts();
@@ -768,6 +777,7 @@ export function AppContent() {
                 journals={journals}
                 warehouses={warehouses}
                 onNavigateTab={(tab) => navigateToTab(tab as any)}
+                onOpenDocumentCycle={handleOpenDocumentCycle}
               />
             </div>
           )}
@@ -793,6 +803,7 @@ export function AppContent() {
               }
               onViewInvoice={(inv) => setSelectedPrintInvoice(inv)}
               onNavigateTab={(tab) => navigateToTab(tab as any)}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
             />
           )}
 
@@ -817,6 +828,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="فواتير ومرتجعات المبيعات"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -861,6 +873,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="فواتير ومردودات الشراء"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -905,6 +918,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="سندات القبض والتحصيل"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -949,6 +963,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="سندات الصرف وسداد الموردين"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -1006,6 +1021,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="سجلات ودليل العملاء والجمعيات"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -1050,6 +1066,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="سجلات ودليل الموردين والمطاحن"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -1094,6 +1111,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="دليل وسجلات العملاء والموردين"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -1137,6 +1155,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="دليل الأصناف وكارت الصنف"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -1180,6 +1199,7 @@ export function AppContent() {
               hideSubTabBar={true}
               customViewTitle="وحدات القياس والشد (Units)"
               onRefreshAll={refreshAllData}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onPostInvoice={handlePostInvoice}
@@ -1268,9 +1288,10 @@ export function AppContent() {
               onUpdateAccount={handleUpdateAccount}
               onDeleteAccount={handleDeleteAccount}
               onSelectAccountLedger={(accId) => {
-                setSelectedStatementEntity({ id: accId, type: 'CUSTOMER' });
+                setSelectedLedgerAccountId(accId);
                 navigateToTab('ledger' as any);
               }}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
             />
           )}
 
@@ -1286,6 +1307,18 @@ export function AppContent() {
               onDeleteJournal={handleDeleteJournal}
               onReverseJournal={handleReverseJournal}
               companyName={activeCompany?.nameAr}
+              onOpenDocumentCycle={handleOpenDocumentCycle}
+              onNavigateToAccount={(accId) => {
+                setSelectedLedgerAccountId(accId);
+                navigateToTab('ledger' as any);
+              }}
+              onNavigateToLedger={(accId) => {
+                setSelectedLedgerAccountId(accId);
+                navigateToTab('ledger' as any);
+              }}
+              onNavigateToStatement={(entityId, type) => {
+                setSelectedStatementEntity({ id: entityId, type });
+              }}
             />
           )}
 
@@ -1352,6 +1385,54 @@ export function AppContent() {
           onClose={() => setSelectedPrintInvoice(null)}
         />
       )}
+
+      {/* Document Lifecycle & Traceability Modal */}
+      <DocumentCycleModal
+        isOpen={isCycleModalOpen}
+        onClose={() => {
+          setIsCycleModalOpen(false);
+          setCycleTargetDoc(null);
+        }}
+        targetDoc={cycleTargetDoc}
+        invoices={invoices}
+        journals={journals}
+        vouchers={vouchers}
+        quotations={quotations}
+        accounts={accounts}
+        customers={customers}
+        suppliers={suppliers}
+        currency={currency}
+        onNavigateToInvoice={(invId) => {
+          setIsCycleModalOpen(false);
+          navigateToTab('sales-invoices');
+        }}
+        onNavigateToJournal={(jId) => {
+          setIsCycleModalOpen(false);
+          navigateToTab('journals');
+        }}
+        onNavigateToVoucher={(vId) => {
+          setIsCycleModalOpen(false);
+          navigateToTab('receipt-vouchers');
+        }}
+        onNavigateToAccount={(accId) => {
+          setIsCycleModalOpen(false);
+          navigateToTab('accounts');
+        }}
+        onNavigateToLedger={(accId) => {
+          setIsCycleModalOpen(false);
+          setSelectedLedgerAccountId(accId);
+          navigateToTab('ledger');
+        }}
+        onNavigateToStatement={(entityId, type) => {
+          setIsCycleModalOpen(false);
+          setSelectedStatementEntity({ id: entityId, type });
+          navigateToTab(type === 'CUSTOMER' ? 'customer-statements' : 'supplier-statements');
+        }}
+        onPrintInvoice={(inv) => {
+          setIsCycleModalOpen(false);
+          setSelectedPrintInvoice(inv);
+        }}
+      />
 
       {/* Entity Account Statement Modal */}
       {selectedStatementEntity && (

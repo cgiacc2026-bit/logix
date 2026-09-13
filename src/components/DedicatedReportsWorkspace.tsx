@@ -64,6 +64,7 @@ interface DedicatedReportsWorkspaceProps {
   onViewAccountStatement?: (entityId: string, entityType: 'CUSTOMER' | 'SUPPLIER') => void;
   onViewInvoice?: (inv: Invoice) => void;
   onNavigateTab?: (tab: string) => void;
+  onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
 }
 
 export const DedicatedReportsWorkspace: React.FC<DedicatedReportsWorkspaceProps> = ({
@@ -83,6 +84,7 @@ export const DedicatedReportsWorkspace: React.FC<DedicatedReportsWorkspaceProps>
   onViewAccountStatement,
   onViewInvoice,
   onNavigateTab,
+  onOpenDocumentCycle,
 }) => {
   const [activeReportTab, setActiveReportTab] = useState<ReportWorkspaceTab>(initialSubTab);
 
@@ -260,6 +262,7 @@ export const DedicatedReportsWorkspace: React.FC<DedicatedReportsWorkspaceProps>
               journals={journals}
               currency={currency}
               selectedAccountId=""
+              onOpenDocumentCycle={onOpenDocumentCycle}
             />
           </div>
         )}

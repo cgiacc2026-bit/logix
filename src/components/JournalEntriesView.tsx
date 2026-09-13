@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Account, JournalEntry, JournalLine, Customer, Supplier } from '../types.js';
+import { Account, JournalEntry, JournalLine, Customer, Supplier, Invoice, PaymentVoucher } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { formatKWD, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
 import {
@@ -20,6 +20,11 @@ import {
   Building2,
   Link,
   Search,
+  Layers,
+  BookOpen,
+  FolderTree,
+  ExternalLink,
+  Receipt,
 } from 'lucide-react';
 
 import { localDataStore } from '../services/dataService';
@@ -29,6 +34,8 @@ interface JournalEntriesProps {
   accounts: Account[];
   customers?: Customer[];
   suppliers?: Supplier[];
+  invoices?: Invoice[];
+  vouchers?: PaymentVoucher[];
   currency: string;
   onCreateJournal: (journalData: any) => Promise<void>;
   onUpdateJournal?: (id: string, journalData: any) => Promise<void>;
@@ -36,6 +43,10 @@ interface JournalEntriesProps {
   onRebuildOpeningJournal?: () => Promise<void>;
   onReverseJournal: (id: string, reason: string) => Promise<void>;
   companyName?: string;
+  onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
+  onNavigateToAccount?: (accountId: string) => void;
+  onNavigateToLedger?: (accountId: string) => void;
+  onNavigateToStatement?: (entityId: string, entityType: 'CUSTOMER' | 'SUPPLIER') => void;
 }
 
 interface FormLineState {
@@ -53,6 +64,8 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
   accounts,
   customers = [],
   suppliers = [],
+  invoices = [],
+  vouchers = [],
   currency,
   onCreateJournal,
   onUpdateJournal,
@@ -60,6 +73,10 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
   onRebuildOpeningJournal,
   onReverseJournal,
   companyName: propCompanyName,
+  onOpenDocumentCycle,
+  onNavigateToAccount,
+  onNavigateToLedger,
+  onNavigateToStatement,
 }) => {
   const activeProfile = useMemo(() => localDataStore.getCompany(), []);
   const companyName = propCompanyName || activeProfile?.nameAr || 'المنشأة';
@@ -457,10 +474,49 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                       <p className="text-[11px] text-[#8C8273] mt-0.5">
                         التاريخ: {j.date} {j.reference && `• المرجع: ${j.reference}`}
                       </p>
+
+                      {/* Document Linkages Badges & Actions */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        {j.sourceModule && (
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-300 rounded text-[10px] font-mono font-bold">
+                            {j.sourceModule === 'SALES_INVOICE'
+                              ? 'فاتورة مبيعات'
+                              : j.sourceModule === 'PURCHASE_INVOICE'
+                              ? 'فاتورة مشتريات'
+                              : j.sourceModule === 'RECEIPT'
+                              ? 'سند قبض'
+                              : j.sourceModule === 'PAYMENT'
+                              ? 'سند صرف'
+                              : j.sourceModule}
+                          </span>
+                        )}
+                        {onOpenDocumentCycle && (j.reference?.startsWith('INV-') || j.entryNumber.startsWith('JV-INV-')) && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenDocumentCycle({ type: 'INVOICE', id: j.reference || j.entryNumber.replace('JV-', '') })}
+                            className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            title="عرض الفاتورة الأصلية"
+                          >
+                            <FileText className="w-2.5 h-2.5 text-blue-600" />
+                            <span>الفاتورة الأصلية ({j.reference || j.entryNumber.replace('JV-', '')})</span>
+                          </button>
+                        )}
+                        {onOpenDocumentCycle && (j.reference?.startsWith('RCV-') || j.reference?.startsWith('PAY-')) && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenDocumentCycle({ type: 'VOUCHER', id: j.reference })}
+                            className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            title="عرض السند الأصلي"
+                          >
+                            <Receipt className="w-2.5 h-2.5 text-amber-700" />
+                            <span>السند الأصلي ({j.reference})</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${
                         j.status === 'POSTED'
@@ -470,6 +526,18 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                     >
                       {j.status === 'POSTED' ? 'مرحّل' : 'ملغى / معكوس'}
                     </span>
+
+                    {/* Cycle Linkage Button */}
+                    {onOpenDocumentCycle && (
+                      <button
+                        onClick={() => onOpenDocumentCycle({ type: 'JOURNAL', id: j.id })}
+                        className="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-md text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                        title="استعراض دورة المستند والقيد المحاسبي وترابط الدليل والأستاذ"
+                      >
+                        <Layers className="w-3.5 h-3.5 text-purple-600" />
+                        <span>دورة المستند 🔗</span>
+                      </button>
+                    )}
 
                     {/* Edit Journal Button */}
                     <button
@@ -537,20 +605,52 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                     <tbody className="divide-y divide-[#E5E1DA]">
                       {j.lines.map((l) => (
                         <tr key={l.id} className="hover:bg-[#FDFCFB]">
-                          <td className="py-2 px-3 font-mono font-bold text-[#B8860B]">{l.accountCode}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-[#B8860B]">
+                            <div className="flex items-center gap-1.5">
+                              <span>{l.accountCode}</span>
+                              {onNavigateToAccount && (
+                                <button
+                                  type="button"
+                                  onClick={() => onNavigateToAccount(l.accountId)}
+                                  className="p-1 hover:bg-amber-100 rounded text-[#B8860B] transition-colors cursor-pointer"
+                                  title="فتح الحساب في دليل الحسابات"
+                                >
+                                  <FolderTree className="w-3 h-3" />
+                                </button>
+                              )}
+                              {onNavigateToLedger && (
+                                <button
+                                  type="button"
+                                  onClick={() => onNavigateToLedger(l.accountId)}
+                                  className="p-1 hover:bg-blue-100 rounded text-blue-700 transition-colors cursor-pointer"
+                                  title="عرض كشف الحساب في دفتر الأستاذ العام"
+                                >
+                                  <BookOpen className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                           <td className="py-2 px-3 font-serif font-bold text-[#1A1A1A]">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span>{l.accountNameAr}</span>
                               {l.entityNameAr && (
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (onNavigateToStatement && l.entityId) {
+                                      onNavigateToStatement(l.entityId, l.entityType === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER');
+                                    }
+                                  }}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
                                     l.entityType === 'SUPPLIER'
-                                      ? 'bg-amber-50 text-amber-900 border-amber-300'
-                                      : 'bg-blue-50 text-blue-900 border-blue-200'
+                                      ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                                      : 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-200'
                                   }`}
+                                  title="انقر لفتح كشف حساب هذا الطرف"
                                 >
-                                  {l.entityType === 'SUPPLIER' ? 'مورد' : 'عميل'}: {l.entityNameAr}
-                                </span>
+                                  <span>{l.entityType === 'SUPPLIER' ? 'مورد' : 'عميل'}: {l.entityNameAr}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                </button>
                               )}
                             </div>
                           </td>

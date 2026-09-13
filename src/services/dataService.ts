@@ -9,6 +9,7 @@ import {
   Supplier,
   InventoryItem,
   JournalEntry,
+  JournalLine,
   Invoice,
   PaymentVoucher,
   CompanyProfile,
@@ -2774,6 +2775,41 @@ export class DataService {
     newInvoice.journalEntryId = jEntry.id;
     localDataStore.removeTombstone('invoices', newInvoice.id);
     localDataStore.removeTombstone('journals', jEntry.id);
+
+    // Auto-create Payment/Receipt Voucher for paid amount to complete the document cycle
+    if (paidAmount > 0) {
+      const vouchers = localDataStore.getVouchers();
+      const isReceipt = isSales;
+      const vchNum = `${isReceipt ? 'RCV' : 'PAY'}-2026-${String(vouchers.length + 1).padStart(4, '0')}`;
+      const autoVoucher: PaymentVoucher = {
+        id: 'vch-' + Math.random().toString(36).substr(2, 9),
+        voucherNumber: vchNum,
+        type: isReceipt ? 'RECEIPT' : 'PAYMENT',
+        date: newInvoice.date,
+        amount: paidAmount,
+        paymentMethod: data.paymentMethod === 'BANK' ? 'BANK' : 'CASH',
+        bankAccountId: resolved.cash.id,
+        entityType: isSales ? 'CUSTOMER' : 'SUPPLIER',
+        entityId: newInvoice.entityId || '',
+        entityNameAr,
+        invoiceId: newInvoice.id,
+        salesRepId: newInvoice.salesRepId,
+        salesRepName: newInvoice.salesRepName,
+        reference: newInvoice.invoiceNumber,
+        notes: `سداد ${newInvoice.paymentTerms === 'CASH' ? 'نقدي كامل' : 'دفعة مسددة'} لفاتورة ${isSales ? 'مبيعات' : 'مشتريات'} رقم (${newInvoice.invoiceNumber})`,
+        journalEntryId: jEntry.id,
+        status: 'POSTED',
+        createdAt: new Date().toISOString(),
+      };
+      vouchers.unshift(autoVoucher);
+      localDataStore.saveVouchers(vouchers);
+      (newInvoice as any).voucherId = autoVoucher.id;
+      if (isSupabaseConfigured) {
+        SupabaseDataService.saveVoucher(autoVoucher).catch((vErr) => {
+          console.warn('[DataService] Direct saveVoucher notice:', vErr);
+        });
+      }
+    }
     
     // Immediate Synchronous Supabase Persistence for zero-lag consistency
     if (isSupabaseConfigured) {
@@ -2829,6 +2865,182 @@ export class DataService {
     }
     await safeApiFetch(`/api/invoices/${id}/post`, { method: 'POST' });
     return inv;
+  }
+
+  /**
+   * Reconciles and links document cycles: Invoices <-> Journals <-> Vouchers <-> Accounts
+   * Ensures complete traceability for enterprise audit and cycle transparency
+   */
+  public static reconcileDocumentCycles(): { linkedInvoices: number; linkedVouchers: number; generatedJournals: number } {
+    const invoices = localDataStore.getInvoices();
+    const journals = localDataStore.getJournals();
+    const vouchers = localDataStore.getVouchers();
+    let linkedInvoices = 0;
+    let linkedVouchers = 0;
+    let generatedJournals = 0;
+
+    const resolved = this.getResolvedAccounts();
+
+    for (const inv of invoices) {
+      // 1. Link or generate journal entry if missing
+      let j = journals.find(
+        (entry) => entry.id === inv.journalEntryId ||
+                   entry.sourceId === inv.id ||
+                   entry.reference === inv.invoiceNumber ||
+                   entry.entryNumber === `JV-${inv.invoiceNumber}`
+      );
+
+      if (!j && inv.status !== 'CANCELLED') {
+        const isSales = inv.type === 'SALES';
+        const isPurchase = inv.type === 'PURCHASE';
+        const entityNameAr = inv.entityNameAr || '';
+        const paid = Number(inv.paidAmount) || 0;
+        const due = Number(inv.dueAmount) || 0;
+
+        const jLines: JournalLine[] = [];
+        let lineIdx = 1;
+
+        if (isSales) {
+          if (paid > 0) {
+            jLines.push({
+              id: `jl-${lineIdx++}`,
+              accountId: resolved.cash.id,
+              accountCode: resolved.cash.code,
+              accountNameAr: resolved.cash.nameAr,
+              debit: paid,
+              credit: 0,
+              memo: `تحصيل نقدي فاتورة مبيعات ${inv.invoiceNumber}`,
+            });
+          }
+          if (due > 0) {
+            jLines.push({
+              id: `jl-${lineIdx++}`,
+              accountId: resolved.receivable.id,
+              accountCode: resolved.receivable.code,
+              accountNameAr: resolved.receivable.nameAr,
+              debit: due,
+              credit: 0,
+              memo: `مستحق آجل على العميل ${entityNameAr}`,
+              entityType: 'CUSTOMER',
+              entityId: inv.entityId,
+              entityNameAr,
+            });
+          }
+          jLines.push({
+            id: `jl-${lineIdx++}`,
+            accountId: resolved.sales.id,
+            accountCode: resolved.sales.code,
+            accountNameAr: resolved.sales.nameAr,
+            debit: 0,
+            credit: inv.grandTotal,
+            memo: `إيراد مبيعات فاتورة رقم ${inv.invoiceNumber}`,
+          });
+        } else if (isPurchase) {
+          jLines.push({
+            id: `jl-${lineIdx++}`,
+            accountId: resolved.inventory.id,
+            accountCode: resolved.inventory.code,
+            accountNameAr: resolved.inventory.nameAr,
+            debit: inv.grandTotal,
+            credit: 0,
+            memo: `إثبات مشتريات بضاعة فاتورة رقم ${inv.invoiceNumber}`,
+          });
+          if (paid > 0) {
+            jLines.push({
+              id: `jl-${lineIdx++}`,
+              accountId: resolved.cash.id,
+              accountCode: resolved.cash.code,
+              accountNameAr: resolved.cash.nameAr,
+              debit: 0,
+              credit: paid,
+              memo: `سداد نقدي فاتورة مشتريات ${inv.invoiceNumber}`,
+            });
+          }
+          if (due > 0) {
+            jLines.push({
+              id: `jl-${lineIdx++}`,
+              accountId: resolved.payable.id,
+              accountCode: resolved.payable.code,
+              accountNameAr: resolved.payable.nameAr,
+              debit: 0,
+              credit: due,
+              memo: `مستحق للمورد ${entityNameAr}`,
+              entityType: 'SUPPLIER',
+              entityId: inv.entityId,
+              entityNameAr,
+            });
+          }
+        }
+
+        if (jLines.length > 0) {
+          const totalDeb = jLines.reduce((s, l) => s + (l.debit || 0), 0);
+          const totalCred = jLines.reduce((s, l) => s + (l.credit || 0), 0);
+          j = {
+            id: 'jv-' + Math.random().toString(36).substr(2, 9),
+            entryNumber: `JV-${inv.invoiceNumber}`,
+            date: inv.date,
+            reference: inv.invoiceNumber,
+            description: `قيد ترحيل آلي لفاتورة ${isSales ? 'مبيعات' : 'مشتريات'} رقم (${inv.invoiceNumber}) - ${entityNameAr}`,
+            status: 'POSTED',
+            lines: jLines,
+            totalDebit: totalDeb,
+            totalCredit: totalCred,
+            createdAt: inv.createdAt || new Date().toISOString(),
+            postedAt: new Date().toISOString(),
+            isAutoGenerated: true,
+            sourceModule: isSales ? 'SALES_INVOICE' : 'PURCHASE_INVOICE',
+            sourceId: inv.id,
+          };
+          journals.unshift(j);
+          generatedJournals++;
+        }
+      }
+
+      if (j && inv.journalEntryId !== j.id) {
+        inv.journalEntryId = j.id;
+        linkedInvoices++;
+      }
+
+      // 2. Link or create voucher if invoice is paid/partially-paid
+      if (Number(inv.paidAmount) > 0 && inv.status !== 'CANCELLED') {
+        let vch = vouchers.find((v) => v.invoiceId === inv.id || v.reference === inv.invoiceNumber);
+        if (!vch) {
+          const isReceipt = inv.type === 'SALES' || inv.type === 'SALES_RETURN';
+          const vchNum = `${isReceipt ? 'RCV' : 'PAY'}-2026-${String(vouchers.length + 1).padStart(4, '0')}`;
+          vch = {
+            id: 'vch-' + Math.random().toString(36).substr(2, 9),
+            voucherNumber: vchNum,
+            type: isReceipt ? 'RECEIPT' : 'PAYMENT',
+            date: inv.date,
+            amount: Number(inv.paidAmount),
+            paymentMethod: inv.paymentMethod === 'BANK' ? 'BANK' : 'CASH',
+            bankAccountId: resolved.cash.id,
+            entityType: isReceipt ? 'CUSTOMER' : 'SUPPLIER',
+            entityId: inv.entityId || '',
+            entityNameAr: inv.entityNameAr || '',
+            invoiceId: inv.id,
+            salesRepId: inv.salesRepId,
+            salesRepName: inv.salesRepName,
+            reference: inv.invoiceNumber,
+            notes: `سداد ${inv.paymentTerms === 'CASH' ? 'نقدي كامل' : 'دفعة مقدمة'} لفاتورة ${isReceipt ? 'مبيعات' : 'مشتريات'} رقم (${inv.invoiceNumber})`,
+            journalEntryId: j?.id,
+            status: 'POSTED',
+            createdAt: inv.createdAt || new Date().toISOString(),
+          };
+          vouchers.unshift(vch);
+          linkedVouchers++;
+        }
+        if (vch && (inv as any).voucherId !== vch.id) {
+          (inv as any).voucherId = vch.id;
+        }
+      }
+    }
+
+    localDataStore.saveInvoices(invoices);
+    localDataStore.saveJournals(journals);
+    localDataStore.saveVouchers(vouchers);
+
+    return { linkedInvoices, linkedVouchers, generatedJournals };
   }
 
   public static async recordPosShiftClosingGL(session: any): Promise<JournalEntry | null> {

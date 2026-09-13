@@ -64,6 +64,7 @@ interface ExecutiveDashboardViewProps {
   branches?: Branch[];
   onNavigateTab: (tab: TabType) => void;
   onOpenReport?: (reportType: string) => void;
+  onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
 }
 
 export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
@@ -80,6 +81,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   branches = [],
   onNavigateTab,
   onOpenReport,
+  onOpenDocumentCycle,
 }) => {
   // 1. Filter out CANCELLED or VOID invoices for true financial figures
   const validInvoices = useMemo(() => {
@@ -538,9 +540,22 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               كل معاملة مرتبطة تلقائياً بالطرف والحساب والمخزون بدون أي مجال للخلط أو الإدخال العشوائي
             </p>
           </div>
-          <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-bold self-start">
-            انقر على أي مرحلة للانتقال المباشر
-          </span>
+          <div className="flex items-center gap-2 self-start flex-wrap">
+            {onOpenDocumentCycle && invoices.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onOpenDocumentCycle({ type: 'INVOICE', id: invoices[0].id })}
+                className="text-[11px] font-bold text-purple-800 bg-purple-50 hover:bg-purple-100 px-3 py-1 rounded-lg border border-purple-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="استعراض شجرة ترابط الفواتير مع القيود والسندات والدليل"
+              >
+                <Layers className="w-3.5 h-3.5 text-purple-600" />
+                <span>مستكشف الدورة المستندية المترابطة 🔗</span>
+              </button>
+            )}
+            <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-bold">
+              انقر على أي مرحلة للانتقال المباشر
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -41,6 +41,7 @@ interface ChartOfAccountsProps {
   onUpdateAccount?: (id: string, accData: Partial<Account>) => Promise<void>;
   onDeleteAccount?: (id: string) => Promise<void>;
   onSelectAccountLedger: (accountId: string) => void;
+  onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
 }
 
 interface AccountMovementDetail {
@@ -65,6 +66,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   onUpdateAccount,
   onDeleteAccount,
   onSelectAccountLedger,
+  onOpenDocumentCycle,
 }) => {
   const companyContext = useCompany();
   const currentCompany = companyContext?.currentCompany;
@@ -718,7 +720,23 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                       <tr key={idx} className="hover:bg-[#FAF9F6] transition-colors">
                         <td className="p-3 font-mono text-[#6E6659] whitespace-nowrap">{move.date}</td>
                         <td className="p-3 font-mono font-bold text-[#B8860B] whitespace-nowrap">
-                          {move.journalNumber}
+                          <div className="flex items-center gap-1.5">
+                            <span>{move.journalNumber}</span>
+                            {onOpenDocumentCycle && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInspectedAccount(null);
+                                  onOpenDocumentCycle({ type: 'JOURNAL', id: move.journalId });
+                                }}
+                                className="px-1.5 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                title="استعراض ترابط هذا القيد مع الفاتورة والدورة المستندية"
+                              >
+                                <Layers className="w-2.5 h-2.5 text-purple-600" />
+                                <span>الدورة</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                         {!inspectedAccount.isLeaf && (
                           <td className="p-3 font-semibold text-slate-800 whitespace-nowrap">
@@ -753,18 +771,36 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
             </div>
 
             {/* Footer buttons */}
-            <div className="flex items-center justify-between pt-2 shrink-0 border-t border-[#E5E1DA]">
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectAccountLedger(inspectedAccount.id);
-                  setInspectedAccount(null);
-                }}
-                className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer"
-              >
-                <BookOpen className="w-4 h-4 text-[#D4AF37]" />
-                <span>فتح تقرير الأستاذ العام الكامل للحساب</span>
-              </button>
+            <div className="flex items-center justify-between pt-2 shrink-0 border-t border-[#E5E1DA] flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectAccountLedger(inspectedAccount.id);
+                    setInspectedAccount(null);
+                  }}
+                  className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow-xs"
+                >
+                  <BookOpen className="w-4 h-4 text-[#D4AF37]" />
+                  <span>فتح تقرير الأستاذ العام الكامل للحساب</span>
+                </button>
+
+                {onOpenDocumentCycle && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const accId = inspectedAccount.id;
+                      setInspectedAccount(null);
+                      onOpenDocumentCycle({ type: 'ACCOUNT', id: accId });
+                    }}
+                    className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+                    title="استعراض ترابط الحساب بكافة الفواتير والسندات والدورة المحاسبية"
+                  >
+                    <Layers className="w-4 h-4 text-purple-600" />
+                    <span>الدورة المستندية للحساب</span>
+                  </button>
+                )}
+              </div>
 
               <button
                 type="button"

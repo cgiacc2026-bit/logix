@@ -11,6 +11,7 @@ interface GeneralLedgerProps {
   accounts: Account[];
   currency: string;
   selectedAccountId?: string;
+  onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
 }
 
 const formatKWD3 = (val: number | string | null | undefined): string => {
@@ -24,6 +25,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
   currency,
   selectedAccountId,
   journals,
+  onOpenDocumentCycle,
 }) => {
   // Resolve initial account: prioritize selectedAccountId, or account 1120, or first account
   const initialAccountId = useMemo(() => {
@@ -471,6 +473,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                 <th className="py-2.5 px-4 w-32 text-left text-emerald-800">الطرف المدين (+)</th>
                 <th className="py-2.5 px-4 w-32 text-left text-rose-800">الطرف الدائن (-)</th>
                 <th className="py-2.5 px-4 w-36 text-left text-[#1A1A1A]">الرصيد التراكمي</th>
+                <th className="py-2.5 px-3 w-28 text-center">الدورة والمستند</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E1DA]">
@@ -487,11 +490,14 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                 <td className="py-2.5 px-4 text-left font-mono font-bold text-[#1A1A1A]">
                   {formatKWD3(activeReport.openingBalance)}
                 </td>
+                <td className="py-2.5 px-3 text-center text-neutral-400 font-mono text-[10px]">
+                  افتتاحي
+                </td>
               </tr>
 
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#8C8273] font-serif italic">
+                  <td colSpan={8} className="py-12 text-center text-[#8C8273] font-serif italic">
                     <div className="flex items-center justify-center gap-2">
                       <RefreshCw className="w-4 h-4 text-[#B8860B] animate-spin" />
                       <span>جاري تحديث كشف الحساب من القيود المحاسبية...</span>
@@ -500,7 +506,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                 </tr>
               ) : displayedMovements.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#8C8273] font-serif italic">
+                  <td colSpan={8} className="py-12 text-center text-[#8C8273] font-serif italic">
                     {searchQuery
                       ? 'لا توجد حركات مطابقة لمعيار البحث المحدد في كشف الحساب.'
                       : 'لا توجد حركات مرحّلة إضافية على هذا الحساب خلال الفترة المحددة.'}
@@ -510,7 +516,17 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                 displayedMovements.map((m) => (
                   <tr key={m.id} className="hover:bg-[#FDFCFB] transition-colors">
                     <td className="py-2.5 px-4 font-mono font-bold text-[#B8860B] whitespace-nowrap">
-                      {m.entryNumber}
+                      <button
+                        onClick={() => {
+                          if (onOpenDocumentCycle) {
+                            onOpenDocumentCycle({ type: 'JOURNAL', id: m.journalEntryId || m.entryNumber });
+                          }
+                        }}
+                        className="hover:underline cursor-pointer text-[#B8860B]"
+                        title="انقر لفتح دورة المستند والقيد"
+                      >
+                        {m.entryNumber}
+                      </button>
                     </td>
                     <td className="py-2.5 px-4 font-mono text-[#6E6659] whitespace-nowrap">
                       {m.date}
@@ -529,6 +545,26 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                     </td>
                     <td className="py-2.5 px-4 text-left font-mono font-bold text-[#1A1A1A] bg-[#FAF9F5] whitespace-nowrap">
                       {formatKWD3(m.cumulative_balance ?? m.runningBalance)}
+                    </td>
+                    <td className="py-2 px-3 text-center whitespace-nowrap">
+                      {onOpenDocumentCycle && (
+                        <button
+                          onClick={() => {
+                            if (m.reference?.startsWith('INV-')) {
+                              onOpenDocumentCycle({ type: 'INVOICE', id: m.reference });
+                            } else if (m.reference?.startsWith('RCV-') || m.reference?.startsWith('PAY-')) {
+                              onOpenDocumentCycle({ type: 'VOUCHER', id: m.reference });
+                            } else {
+                              onOpenDocumentCycle({ type: 'JOURNAL', id: m.journalEntryId || m.entryNumber });
+                            }
+                          }}
+                          className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                          title="استعراض دورة المستند والقيد المحاسبي"
+                        >
+                          <Layers className="w-3 h-3 text-purple-600" />
+                          <span>الدورة</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
