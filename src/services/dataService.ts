@@ -3189,10 +3189,18 @@ export class DataService {
         c4640.openingBalanceDate = '2026-07-31';
       }
 
-      // 3. Cancel REV-JV-2026-0037
+      // 3. Cancel REV-JV-2026-0037 and ensure adjustment journal JV-2026-0037 is dated 2026-08-30 and POSTED
       const revJournal = journals.find((j) => j.entryNumber === 'REV-JV-2026-0037');
       if (revJournal && revJournal.status === 'POSTED') {
         revJournal.status = 'CANCELLED';
+      }
+      const adjJournal = journals.find((j) => j.entryNumber === 'JV-2026-0037' || j.id === 'jv-7cgx6qwmc' || j.reference === '304');
+      if (adjJournal) {
+        adjJournal.date = '2026-08-30';
+        adjJournal.status = 'POSTED';
+        if (!adjJournal.description.includes('قيد تسوية')) {
+          adjJournal.description = 'قيد تسوية - ' + adjJournal.description;
+        }
       }
 
       // 4. Correct jv-4wiug1bhe
@@ -5117,7 +5125,7 @@ export class DataService {
       city: data.city,
       balance: Number(data.openingBalance) || Number(data.balance) || 0,
       openingBalance: Number(data.openingBalance) || 0,
-      openingBalanceDate: data.openingBalanceDate || '2026-07-01',
+      openingBalanceDate: data.openingBalanceDate || '2026-07-31',
       isActive: true,
       branches: data.branches || [],
       priceListId: data.priceListId || 'standard',
@@ -5208,7 +5216,7 @@ export class DataService {
       ...list[idx],
       ...data,
       openingBalance: newOpening,
-      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-07-01'),
+      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-07-31'),
       balance: updatedBalance,
       currentBalance: updatedBalance,
     };
@@ -5444,7 +5452,7 @@ export class DataService {
       city: data.city,
       balance: Number(data.openingBalance) || Number(data.balance) || 0,
       openingBalance: Number(data.openingBalance) || 0,
-      openingBalanceDate: data.openingBalanceDate || '2026-07-01',
+      openingBalanceDate: data.openingBalanceDate || '2026-07-31',
       isActive: true,
     };
     localDataStore.removeTombstone('suppliers', newSupp.id);
@@ -5530,7 +5538,7 @@ export class DataService {
       ...list[idx],
       ...data,
       openingBalance: newOpening,
-      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-07-01'),
+      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-07-31'),
       balance: updatedBalance,
       currentBalance: updatedBalance,
     };
@@ -6958,14 +6966,14 @@ export class DataService {
       generalRepAdded = true;
     }
 
-    // 3. Ensure Opening Balances dated 2026-08-01 exist (STRICTLY for authentic Al-Waleed tenant only - zero leak to new tenants)
+    // 3. Ensure Opening Balances dated 2026-07-31 exist (STRICTLY for authentic Al-Waleed tenant only - zero leak to new tenants)
     if (localDataStore.isAlWaleedActive()) {
       const accounts = await this.getAccounts();
       const journals = await this.getJournals();
       const customers = localDataStore.getCustomers();
 
       const hasOpeningJournal = journals.some(
-        (j) => j.date === '2026-08-01' && (j.description?.includes('رصيد') || j.description?.includes('افتتاحي'))
+        (j) => (j.date === '2026-07-31' || j.date === '2026-08-01') && (j.description?.includes('رصيد') || j.description?.includes('افتتاحي'))
       );
       const acc1120 = accounts.find((a) => a.code === '1120');
       const acc3100 = accounts.find((a) => a.code === '3100');
@@ -7000,7 +7008,7 @@ export class DataService {
             updatedCustomers[existingIdx] = {
               ...updatedCustomers[existingIdx],
               openingBalance: coop.balance,
-              openingBalanceDate: '2026-08-01',
+              openingBalanceDate: '2026-07-31',
               balance: updatedCustomers[existingIdx].balance || coop.balance,
             };
           } else {
@@ -7014,7 +7022,7 @@ export class DataService {
               governorate: coop.city,
               address: coop.city,
               openingBalance: coop.balance,
-              openingBalanceDate: '2026-08-01',
+              openingBalanceDate: '2026-07-31',
               balance: coop.balance,
               isActive: true,
             } as Customer);
@@ -7025,19 +7033,19 @@ export class DataService {
           await SupabaseDataService.saveCustomers(updatedCustomers).catch((err) => notifyCloudSyncError("CloudSync", err));
         }
 
-        // Add Opening Journal Entry for 2026-08-01 if not already present
+        // Add Opening Journal Entry for 2026-07-31 if not already present
         if (!hasOpeningJournal) {
           const totalAmount = Number(totalCoopBalance.toFixed(3));
           const newJournal: JournalEntry = {
-            id: 'jv-ob-2026-08-01',
+            id: 'jv-ob-2026-07-31',
             entryNumber: 'JV-2026-0001',
-            date: '2026-08-01',
-            reference: 'OB-2026-08-01',
-            description: 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-08-01',
+            date: '2026-07-31',
+            reference: 'OB-2026-07-31',
+            description: 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-07-31',
             status: 'POSTED',
             totalDebit: totalAmount,
             totalCredit: totalAmount,
-            createdAt: '2026-08-01T00:00:00.000Z',
+            createdAt: '2026-07-31T00:00:00.000Z',
             sourceModule: 'OPENING',
             lines: [
               {
@@ -7045,7 +7053,7 @@ export class DataService {
                 accountId: acc1120?.id || 'acc-1120',
                 accountCode: '1120',
                 accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
-                memo: 'إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية بتاريخ 2026-08-01',
+                memo: 'إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية بتاريخ 2026-07-31',
                 debit: totalAmount,
                 credit: 0,
               },
@@ -7054,7 +7062,7 @@ export class DataService {
                 accountId: acc3100?.id || 'acc-3100',
                 accountCode: '3100',
                 accountNameAr: 'رأس المال المكتتب به / الأرصدة الافتتاحية',
-                memo: 'مقابل الأرصدة الافتتاحية المدينة بتاريخ 2026-08-01',
+                memo: 'مقابل الأرصدة الافتتاحية المدينة بتاريخ 2026-07-31',
                 debit: 0,
                 credit: totalAmount,
               },
@@ -8292,7 +8300,58 @@ export class DataService {
       }
     });
 
-    if (updatedInvoices > 0 || updatedVouchers > 0) {
+    // ضمان توافق تواريخ الأرصدة الافتتاحية (31/07/2026) وتاريخ قيد التسوية (30/08/2026)
+    let customersChanged = false;
+    customers.forEach((c) => {
+      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-07-31') {
+        c.openingBalanceDate = '2026-07-31';
+        customersChanged = true;
+      }
+    });
+    if (customersChanged) {
+      localDataStore.saveCustomers(customers);
+    }
+
+    // تحديث قيود اليومية: الأرصدة الافتتاحية 31/07/2026 وقيد التسوية 30/08/2026
+    const journals = localDataStore.getJournals();
+    let journalsChanged = false;
+    journals.forEach((j) => {
+      // قيد الأرصدة الافتتاحية
+      if (
+        (j.reference === 'OB-2026-08-01' || j.id === 'jv-ob-2026-08-01' || j.id === 'jv-ob-2026-07-31' || j.entryNumber === 'JV-2026-0001') &&
+        (j.description?.includes('افتتاحي') || j.sourceModule === 'OPENING')
+      ) {
+        if (j.date !== '2026-07-31') {
+          j.date = '2026-07-31';
+          j.reference = 'OB-2026-07-31';
+          j.description = 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-07-31';
+          journalsChanged = true;
+        }
+      }
+      // قيد التسوية اشعار مدين فرق مهرجان
+      if (j.entryNumber === 'JV-2026-0037' || j.id === 'jv-7cgx6qwmc' || j.reference === '304') {
+        if (j.date !== '2026-08-30' || j.status !== 'POSTED') {
+          j.date = '2026-08-30';
+          j.status = 'POSTED';
+          if (!j.description?.startsWith('قيد تسوية')) {
+            j.description = 'قيد تسوية - ' + (j.description || 'اشعارمدين فرق مهرجان');
+          }
+          journalsChanged = true;
+        }
+      }
+      // إلغاء قيد العكس السابق حتى يسري قيد التسوية
+      if (j.entryNumber === 'REV-JV-2026-0037') {
+        if (j.status !== 'CANCELLED') {
+          j.status = 'CANCELLED';
+          journalsChanged = true;
+        }
+      }
+    });
+    if (journalsChanged) {
+      localDataStore.saveJournals(journals);
+    }
+
+    if (updatedInvoices > 0 || updatedVouchers > 0 || customersChanged || journalsChanged) {
       localDataStore.saveInvoices(invoices);
       localDataStore.saveVouchers(vouchers);
       if (typeof window !== 'undefined') {

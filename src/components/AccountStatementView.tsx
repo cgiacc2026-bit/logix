@@ -833,7 +833,7 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
                 <tr className="bg-[#FBF9F4] font-bold text-[#0F172A] border-b border-[#E2E8F0] print:bg-white print:text-black print:border-black">
                   <td className="py-3.5 px-3 text-center border-r border-[#E2E8F0] text-[#B8860B] font-mono print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">0</td>
                   <td className="py-3.5 px-3 border-r border-[#E2E8F0] font-mono text-[#64748B] whitespace-nowrap print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px] print:whitespace-normal">
-                    {statementResult.startDate}
+                    {statementResult.openingBalanceDate || statementResult.startDate}
                   </td>
                   <td className="py-3.5 px-3 border-r border-[#E2E8F0] font-mono text-[#64748B] whitespace-nowrap print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px] print:whitespace-normal">
                     OPEN-BAL
@@ -846,7 +846,7 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
                     </span>
                   </td>
                   <td className="py-3.5 px-4 border-r border-[#E2E8F0] text-[#475569] font-medium print:py-1.5 print:px-1.5 print:border print:border-black print:text-black print:text-[10px]">
-                    الرصيد الافتتاحي المنقول من قبل تاريخ {statementResult.startDate}
+                    الرصيد الافتتاحي المنقول بتاريخ {statementResult.openingBalanceDate || statementResult.startDate}
                   </td>
                   <td className="py-3.5 px-3 border-r border-[#E2E8F0] text-left font-mono font-bold text-[#15803D] whitespace-nowrap print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px] print:whitespace-normal">
                     {statementResult.openingBalance > 0 && statementResult.openingBalanceType === 'DEBIT'

@@ -2843,10 +2843,10 @@ export const ALWALEED_MILL_PRESET_BACKUP: CompanyBackupEnvelope = {
         "id": "jv-7cgx6qwmc",
         "companyId": "20000000-0000-0000-0000-000000000001",
         "entryNumber": "JV-2026-0037",
-        "date": "2026-08-31",
+        "date": "2026-08-30",
         "reference": "304",
-        "description": "اشعارمدين فرق مهرجان من 24-7-2026 الي 1/8/2026",
-        "status": "CANCELLED",
+        "description": "قيد تسوية - اشعارمدين فرق مهرجان من 24-7-2026 الي 1/8/2026",
+        "status": "POSTED",
         "lines": [
           {
             "id": "jl-m4rzrqt7u",
