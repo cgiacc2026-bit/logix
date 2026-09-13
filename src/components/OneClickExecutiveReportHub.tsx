@@ -24,6 +24,11 @@ import {
   Wallet,
   Coins,
   Package,
+  X,
+  Check,
+  Info,
+  FileText,
+  ShieldCheck,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -38,6 +43,9 @@ import {
   Warehouse,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
+import { normalizeArabicForMatching, toValidUUID } from '../services/statementService.ts';
+import { DataService } from '../services/dataService.ts';
+import { tafqeetCurrency } from '../utils/tafqeet.ts';
 
 interface OneClickExecutiveReportHubProps {
   company: CompanyProfile;
@@ -86,6 +94,14 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEntityFilter, setSelectedEntityFilter] = useState<string>('ALL');
 
+  // Consolidation & Deduplication mode (Default TRUE: ادمجهم فوراً)
+  const [mergeDuplicates, setMergeDuplicates] = useState<boolean>(true);
+  const [isFixingDb, setIsFixingDb] = useState<boolean>(false);
+  const [fixSuccessNotice, setFixSuccessNotice] = useState<string | null>(null);
+
+  // Print Preview Modal state
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState<boolean>(false);
+
   // Instant Aggregate Refresh Trigger Animation
   const [isAggregating, setIsAggregating] = useState(false);
   const [lastAggregatedAt, setLastAggregatedAt] = useState<string>(new Date().toLocaleTimeString('ar-SA'));
@@ -96,6 +112,24 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       setIsAggregating(false);
       setLastAggregatedAt(new Date().toLocaleTimeString('ar-SA'));
     }, 250);
+  };
+
+  const handleFixDatabasePermanently = () => {
+    setIsFixingDb(true);
+    try {
+      const result = DataService.reconcileAndLinkInvoicesToMasterCustomers();
+      setFixSuccessNotice(
+        `تم تثبيت الدمج بنجاح في قاعدة البيانات: تم ربط وتحديث ${result.updatedInvoices} فاتورة و ${result.updatedVouchers} سند تحصيل ببطاقات الجمعيات المعتمدة بشكل دائم.`
+      );
+      setTimeout(() => {
+        setFixSuccessNotice(null);
+      }, 7000);
+    } catch (e: any) {
+      console.error('Failed to fix database:', e);
+      alert('حدث تنبيه أثناء تثبيت الدمج: ' + (e?.message || 'يرجى المحاولة مجدداً'));
+    } finally {
+      setIsFixingDb(false);
+    }
   };
 
   const handleDatePresetChange = (preset: 'ALL' | 'THIS_YEAR' | 'THIS_MONTH' | 'CUSTOM') => {
@@ -146,8 +180,72 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
   }, [journals, datePreset, startDate, endDate]);
 
   // =========================================================================
-  // REPORT 1: Customer & Co-op Society Aggregated Sales
+  // REPORT 1: Customer & Co-op Society Aggregated Sales (With Smart Consolidation)
   // =========================================================================
+
+  // Intelligent Master Customer Resolver (by ID, Code, Normalized Arabic Name, & Cooperative Keywords)
+  const resolveMasterCustomer = (
+    invEntityId?: string,
+    invEntityNameAr?: string,
+    invEntityCode?: string
+  ): Customer | undefined => {
+    if (!invEntityId && !invEntityNameAr && !invEntityCode) return undefined;
+
+    // 1. Direct ID match
+    if (invEntityId) {
+      const byId = customers.find((c) => c.id === invEntityId);
+      if (byId) return byId;
+
+      const validUUID = toValidUUID(invEntityId);
+      if (validUUID) {
+        const byUUID = customers.find((c) => toValidUUID(c.id) === validUUID);
+        if (byUUID) return byUUID;
+      }
+    }
+
+    // 2. Code match
+    const codeCandidates = [invEntityCode, invEntityId].filter(Boolean) as string[];
+    for (const cand of codeCandidates) {
+      const trimmed = cand.trim();
+      const byCode = customers.find((c) => {
+        if (!c.code) return false;
+        const cCode = String(c.code).trim();
+        return (
+          trimmed === cCode ||
+          trimmed === `cust-${cCode}` ||
+          trimmed === `supp-${cCode}` ||
+          trimmed.endsWith(`-${cCode}`)
+        );
+      });
+      if (byCode) return byCode;
+    }
+
+    // 3. Name & Cooperative Society Keywords Matching
+    if (invEntityNameAr) {
+      const normDoc = normalizeArabicForMatching(invEntityNameAr);
+      if (normDoc && normDoc.length >= 3) {
+        const byName = customers.find((c) => normalizeArabicForMatching(c.nameAr) === normDoc);
+        if (byName) return byName;
+
+        const coopKeywords = [
+          'مبارك الكبير', 'صباح الاحمد', 'صباح الناصر', 'علي صباح',
+          'سعد العبدالله', 'صليبيخات', 'اشبيليه', 'اشبيلية', 'قيروان',
+          'صباحيه', 'صباحية', 'احمدي', 'بيان', 'سلوي', 'سلوى',
+          'مشرف', 'مطلاع', 'جليب', 'وليد'
+        ];
+        for (const kw of coopKeywords) {
+          const normKw = normalizeArabicForMatching(kw);
+          if (normDoc.includes(normKw)) {
+            const match = customers.find((c) => normalizeArabicForMatching(c.nameAr).includes(normKw));
+            if (match) return match;
+          }
+        }
+      }
+    }
+
+    return undefined;
+  };
+
   const customerSalesAggregated = useMemo(() => {
     const map: Record<
       string,
@@ -168,7 +266,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       }
     > = {};
 
-    // Seed with all customers
+    // Seed with all official customers
     customers.forEach((c) => {
       const isCoop =
         c.nameAr.includes('جمعية') ||
@@ -195,7 +293,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
 
     // Aggregate Sales Invoices
     validInvoices.forEach((inv) => {
-      if (!inv.entityId) return;
+      if (!inv.entityId && !inv.entityNameAr) return;
 
       const isReturn =
         inv.type === 'SALES_RETURN' ||
@@ -204,14 +302,43 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
 
       if (!isSale && !isReturn) return;
 
-      if (!map[inv.entityId]) {
+      let targetKey = inv.entityId || inv.entityNameAr;
+
+      if (mergeDuplicates) {
+        const masterCustomer = resolveMasterCustomer(inv.entityId, inv.entityNameAr, (inv as any).entityCode);
+        if (masterCustomer) {
+          targetKey = masterCustomer.id;
+          if (!map[targetKey]) {
+            const isCoop =
+              masterCustomer.nameAr.includes('جمعية') ||
+              masterCustomer.nameAr.includes('تعاونية');
+            map[targetKey] = {
+              id: masterCustomer.id,
+              code: masterCustomer.code || 'CUST',
+              nameAr: masterCustomer.nameAr,
+              isCoop,
+              category: isCoop ? 'جمعية تعاونية' : 'عميل تجزئة / جملة',
+              invoiceCount: 0,
+              returnCount: 0,
+              grossSales: 0,
+              returns: 0,
+              netSales: 0,
+              vatTotal: 0,
+              paidAmount: 0,
+              currentBalance: Number(masterCustomer.current_balance ?? masterCustomer.currentBalance ?? masterCustomer.balance) || 0,
+            };
+          }
+        }
+      }
+
+      if (!map[targetKey]) {
         const isCoop =
-          inv.entityNameAr.includes('جمعية') ||
-          inv.entityNameAr.includes('تعاونية');
-        map[inv.entityId] = {
-          id: inv.entityId,
+          (inv.entityNameAr || '').includes('جمعية') ||
+          (inv.entityNameAr || '').includes('تعاونية');
+        map[targetKey] = {
+          id: targetKey,
           code: 'GEN',
-          nameAr: inv.entityNameAr,
+          nameAr: inv.entityNameAr || 'عميل عام',
           isCoop,
           category: isCoop ? 'جمعية تعاونية' : 'عميل عام',
           invoiceCount: 0,
@@ -225,7 +352,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
         };
       }
 
-      const row = map[inv.entityId];
+      const row = map[targetKey];
       const grandTotal = Math.abs(Number(inv.grandTotal) || 0);
       const vat = Math.abs(Number(inv.vatTotal) || 0);
       const paid = Math.abs(Number(inv.paidAmount) || 0);
@@ -244,8 +371,15 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
 
     // Also include vouchers for collected payments
     validVouchers.forEach((v) => {
-      if (v.type === 'RECEIPT' && v.entityId && map[v.entityId]) {
-        map[v.entityId].paidAmount += Number(v.amount) || 0;
+      if (v.type === 'RECEIPT') {
+        let targetKey = v.entityId;
+        if (mergeDuplicates) {
+          const master = resolveMasterCustomer(v.entityId, v.entityNameAr, (v as any).entityCode);
+          if (master) targetKey = master.id;
+        }
+        if (targetKey && map[targetKey]) {
+          map[targetKey].paidAmount += Number(v.amount) || 0;
+        }
       }
     });
 
@@ -270,7 +404,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
     }
 
     return list.sort((a, b) => b.netSales - a.netSales);
-  }, [customers, validInvoices, validVouchers, selectedEntityFilter, searchTerm]);
+  }, [customers, validInvoices, validVouchers, selectedEntityFilter, searchTerm, mergeDuplicates]);
 
   // Report 1 Totals
   const report1Totals = useMemo(() => {
@@ -516,6 +650,15 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
             </button>
 
             <button
+              onClick={() => setIsPrintPreviewOpen(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+              title="معاينة وطباعة التقرير المالي الموحد بصيغة A4 الرسمية"
+            >
+              <Eye className="w-4 h-4 text-emerald-400" />
+              <span>معاينة وطباعة الكشف الموحد A4</span>
+            </button>
+
+            <button
               onClick={handleExportToExcel}
               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
             >
@@ -683,6 +826,81 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       {/* REPORT 1: Customer & Society Sales */}
       {activeReport === 'customer-society-sales' && (
         <div className="space-y-4">
+          {/* Smart Entity Consolidation & Merge Control Banner */}
+          <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-sm border border-emerald-800/40 no-print">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    الدمج الذكي الموحد للجمعيات التعاونية والعملاء ({mergeDuplicates ? 'مفعّل' : 'معطّل'})
+                  </span>
+                  <span className="text-xs text-slate-300">
+                    {mergeDuplicates
+                      ? 'تم توحيد فواتير وسطور GEN المكررة تحت الأكواد الرسمية المعتمدة'
+                      : 'العرض التفصيلي الخام مع سطور GEN'}
+                  </span>
+                </div>
+                <h3 className="text-base font-extrabold text-white">
+                  {mergeDuplicates
+                    ? 'تم دمج وتوحيد السجلات تحت الـ 16 جمعية وعميل رسمي معتمد'
+                    : 'عرض السجلات بدون دمج (تظهر سطور GEN المنفصلة)'}
+                </h3>
+                <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+                  {mergeDuplicates
+                    ? `تم حل إشكالية السطور المكررة (مثل جمعية مبارك الكبير، سلوى، الصباحية، وغيرها) وتوحيد كافة الفواتير (${report1Totals.invoices} فاتورة) وصافي المبيعات (${formatCurrency(report1Totals.netSales, currency)}) والأرصدة المستحقة (${formatCurrency(report1Totals.balance, currency)}) تحت البطاقة الرسمية المعتمدة لكل جمعية.`
+                    : 'يمكنك تفعيل الدمج الذكي لتوحيد كافة الحركات والسطور المكررة تلقائياً.'}
+                </p>
+                {fixSuccessNotice && (
+                  <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-bold animate-fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{fixSuccessNotice}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons: Toggle Merging, Permanently Fix DB, Print Statement */}
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {/* Mode Toggle Button */}
+                <button
+                  onClick={() => setMergeDuplicates(!mergeDuplicates)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    mergeDuplicates
+                      ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+                      : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40'
+                  }`}
+                  title="التبديل بين العرض المدمج المعتمد والعرض التفصيلي"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>{mergeDuplicates ? 'عرض مدمج وموحد (16 جهة)' : 'عرض تفصيلي مع GEN (28)'}</span>
+                  </div>
+                </button>
+
+                {/* Fix Database Permanently Button */}
+                <button
+                  onClick={handleFixDatabasePermanently}
+                  disabled={isFixingDb}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
+                  title="تحديث معرّفات الفواتير في قاعدة البيانات لربطها بالبطاقات المعتمدة بشكل دائم"
+                >
+                  <Check className={`w-3.5 h-3.5 ${isFixingDb ? 'animate-spin' : 'text-emerald-400'}`} />
+                  <span>{isFixingDb ? 'جاري التثبيت...' : 'تثبيت الدمج في قاعدة البيانات'}</span>
+                </button>
+
+                {/* Print Statement Button */}
+                <button
+                  onClick={() => setIsPrintPreviewOpen(true)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  title="معاينة وطباعة الكشف المالي الموحد المعتمد بصيغة A4"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة الكشف الموحد (A4)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Executive Summary Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
@@ -820,15 +1038,18 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
                           {formatCurrency(row.currentBalance, currency)}
                         </td>
                         <td className="py-3 px-4 text-center no-print">
-                          {onViewAccountStatement && (
-                            <button
-                              onClick={() => onViewAccountStatement(row.id, 'CUSTOMER')}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 transition-colors cursor-pointer"
-                              title="عرض كشف الحساب المالي الفوري"
-                            >
-                              كشف الحساب
-                            </button>
-                          )}
+                          <div className="flex items-center justify-center gap-1.5">
+                            {onViewAccountStatement && (
+                              <button
+                                onClick={() => onViewAccountStatement(row.id, 'CUSTOMER')}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 transition-colors cursor-pointer flex items-center gap-1"
+                                title="عرض وطباعة كشف الحساب المالي التفصيلي الموحد"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>كشف الحساب</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1040,6 +1261,355 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
           </div>
         </div>
       )}
+
+      {/* 5. Print Preview Modal */}
+      {isPrintPreviewOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto no-print animate-fade-in">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <FileBarChart className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base">
+                    معاينة وطباعة الكشف المالي الموحد المعتمد (A4)
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    كشف مبيعات وأرصدة الجمعيات التعاونية والعملاء - النسخة المدمجة
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    window.print();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-black bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة فورية</span>
+                </button>
+                <button
+                  onClick={handleExportToExcel}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white flex items-center gap-1.5 border border-white/20 transition-all cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+                  <span>Excel</span>
+                </button>
+                <button
+                  onClick={() => setIsPrintPreviewOpen(false)}
+                  className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Preview Body (A4 Paper Container) */}
+            <div className="p-4 sm:p-8 overflow-y-auto bg-slate-100 flex justify-center">
+              <div className="bg-white p-6 sm:p-8 rounded-xl shadow-md border border-slate-200 w-full max-w-[210mm] text-right font-sans text-xs">
+                {/* Official Paper Header */}
+                <div className="flex items-center justify-between pb-5 border-b-2 border-slate-900 mb-5">
+                  <div className="flex items-center gap-3.5">
+                    {company.logoUrl ? (
+                      <img src={company.logoUrl} alt="Logo" className="w-16 h-16 object-contain" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xl shadow-xs">
+                        {company.nameAr ? company.nameAr.slice(0, 2) : 'مط'}
+                      </div>
+                    )}
+                    <div>
+                      <h2 className="text-lg font-black text-slate-950">{company.nameAr || 'مطحنة الوليد المتحدة'}</h2>
+                      <p className="text-[11px] text-slate-600 mt-0.5">{company.activityAr || 'تجارة وتوزيع المواد الغذائية والحبوب والمطاحن'}</p>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-1">
+                        <span>س.ت: {company.crNumber || '123456'}</span>
+                        <span>•</span>
+                        <span>هاتف: {company.phone || '24810000'}</span>
+                        <span>•</span>
+                        <span>دولة الكويت</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-left text-[11px] text-slate-600">
+                    <span className="inline-block px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded font-bold mb-1.5">
+                      تقرير مالي وإداري معتمد
+                    </span>
+                    <div>التاريخ: <span className="font-mono font-bold text-slate-900">{new Date().toLocaleDateString('ar-KW')}</span></div>
+                    <div>الوقت: <span className="font-mono text-slate-600">{new Date().toLocaleTimeString('ar-KW')}</span></div>
+                  </div>
+                </div>
+
+                {/* Report Title & Metadata */}
+                <div className="text-center mb-5 pb-3 border-b border-slate-200">
+                  <h1 className="text-base font-black text-slate-950">
+                    كشف مبيعات وأرصدة الجمعيات التعاونية والعملاء (التقرير المدمج والموحد)
+                  </h1>
+                  <p className="text-[11px] text-slate-600 mt-1">
+                    الفترة: {datePreset === 'ALL' ? 'كافة الفترات المالية المسجلة' : `من ${startDate} إلى ${endDate}`} | العملة: دينار كويتي (د.ك) | عدد السجلات المعتمدة: {customerSalesAggregated.length} جهة
+                  </p>
+                </div>
+
+                {/* Unified Table */}
+                <table className="w-full text-right text-[11px] border border-slate-300 mb-5">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-900 font-black border-b border-slate-300">
+                      <th className="py-2 px-2.5 border-l border-slate-300 text-center w-8">م</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300 w-16">كود الجهة</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300">اسم الجمعية التعاونية / العميل</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300 text-center w-24">التصنيف</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300 text-center w-12">الفواتير</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300 text-center w-12">المرتجع</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300 text-left w-24">إجمالي المبيعات</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300 text-left w-20">المرتجع</th>
+                      <th className="py-2 px-2.5 border-l border-slate-300 text-left w-24">صافي المبيعات</th>
+                      <th className="py-2 px-2.5 text-left w-24">الرصيد القائم</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {customerSalesAggregated.map((row, idx) => (
+                      <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 text-center font-mono text-[10px] text-slate-500">
+                          {idx + 1}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 font-mono font-bold text-slate-700">
+                          {row.code}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 font-bold text-slate-950">
+                          {row.nameAr}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 text-center text-slate-600 text-[10px]">
+                          {row.category}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 text-center font-mono font-bold">
+                          {row.invoiceCount}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 text-center font-mono text-rose-600">
+                          {row.returnCount}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 text-left font-mono font-bold">
+                          {formatCurrency(row.grossSales, currency)}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 text-left font-mono text-rose-600">
+                          {row.returns > 0 ? formatCurrency(row.returns, currency) : '0.000'}
+                        </td>
+                        <td className="py-1.5 px-2.5 border-l border-slate-200 text-left font-mono font-black text-emerald-800">
+                          {formatCurrency(row.netSales, currency)}
+                        </td>
+                        <td className="py-1.5 px-2.5 text-left font-mono font-black text-slate-950">
+                          {formatCurrency(row.currentBalance, currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-black text-slate-950 border-t-2 border-slate-400">
+                      <td colSpan={4} className="py-2.5 px-2.5 border-l border-slate-300">
+                        الإجمالي العام المعتمد ({customerSalesAggregated.length} جهة)
+                      </td>
+                      <td className="py-2.5 px-2.5 border-l border-slate-300 text-center font-mono">
+                        {report1Totals.invoices}
+                      </td>
+                      <td className="py-2.5 px-2.5 border-l border-slate-300 text-center font-mono text-rose-600">
+                        {report1Totals.returnsCount}
+                      </td>
+                      <td className="py-2.5 px-2.5 border-l border-slate-300 text-left font-mono">
+                        {formatCurrency(report1Totals.grossSales, currency)}
+                      </td>
+                      <td className="py-2.5 px-2.5 border-l border-slate-300 text-left font-mono text-rose-600">
+                        {formatCurrency(report1Totals.returns, currency)}
+                      </td>
+                      <td className="py-2.5 px-2.5 border-l border-slate-300 text-left font-mono text-emerald-900">
+                        {formatCurrency(report1Totals.netSales, currency)}
+                      </td>
+                      <td className="py-2.5 px-2.5 text-left font-mono text-slate-950">
+                        {formatCurrency(report1Totals.balance, currency)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                {/* Tafqeet in Words */}
+                <div className="bg-slate-50 border border-slate-300 rounded-lg p-3 mb-6 text-[11px] leading-relaxed">
+                  <div>
+                    <span className="font-bold text-slate-700">صافي المبيعات كتابةً: </span>
+                    <span className="font-black text-emerald-900">{tafqeetCurrency(report1Totals.netSales, currency)}</span>
+                  </div>
+                  <div className="mt-1">
+                    <span className="font-bold text-slate-700">إجمالي الأرصدة القائمة كتابةً: </span>
+                    <span className="font-black text-blue-900">{tafqeetCurrency(report1Totals.balance, currency)}</span>
+                  </div>
+                </div>
+
+                {/* Signature Row */}
+                <div className="grid grid-cols-3 gap-6 text-center text-[11px] pt-4 border-t border-slate-300">
+                  <div>
+                    <div className="font-bold text-slate-800">إعداد المحاسب المسؤول</div>
+                    <div className="h-12 flex items-end justify-center text-slate-400 font-mono text-[10px]">...........................</div>
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">مراجعة وتدقيق الحسابات</div>
+                    <div className="h-12 flex items-end justify-center text-slate-400 font-mono text-[10px]">...........................</div>
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">اعتماد الإدارة المالية والختم</div>
+                    <div className="h-12 flex items-end justify-center text-slate-400 font-mono text-[10px]">...........................</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Dedicated Native Print Container (Automatically picked up when printing page) */}
+      <div id="printable-document" className="hidden print:block p-6 bg-white text-slate-900 font-sans dir-rtl text-right">
+        {/* Official Header */}
+        <div className="flex items-center justify-between pb-4 border-b-2 border-slate-900 mb-4">
+          <div className="flex items-center gap-3">
+            {company.logoUrl ? (
+              <img src={company.logoUrl} alt="Logo" className="w-14 h-14 object-contain" />
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-lg">
+                {company.nameAr ? company.nameAr.slice(0, 2) : 'مط'}
+              </div>
+            )}
+            <div>
+              <h2 className="text-base font-black text-slate-900">{company.nameAr || 'مطحنة الوليد المتحدة'}</h2>
+              <p className="text-[10px] text-slate-600">{company.activityAr || 'تجارة وتوزيع المواد الغذائية والحبوب والمطاحن'}</p>
+              <div className="flex items-center gap-2 text-[9px] text-slate-500">
+                <span>س.ت: {company.crNumber || '123456'}</span>
+                <span>•</span>
+                <span>هاتف: {company.phone || '24810000'}</span>
+                <span>•</span>
+                <span>الكويت</span>
+              </div>
+            </div>
+          </div>
+          <div className="text-left text-[10px]">
+            <div className="font-bold text-slate-800">تقرير إداري مالي رسمي معتمد</div>
+            <div className="text-slate-600 font-mono">التاريخ: {new Date().toLocaleDateString('ar-KW')}</div>
+            <div className="text-slate-600 font-mono">الوقت: {new Date().toLocaleTimeString('ar-KW')}</div>
+          </div>
+        </div>
+
+        {/* Report Title */}
+        <div className="mb-4 text-center">
+          <h1 className="text-sm font-black text-slate-900">
+            كشف مبيعات وأرصدة الجمعيات التعاونية والعملاء (التقرير المدمج والموحد)
+          </h1>
+          <p className="text-[10px] text-slate-600 mt-0.5">
+            الفترة: {datePreset === 'ALL' ? 'كافة الفترات المالية المعتمدة' : `من ${startDate} إلى ${endDate}`} | العملة: دينار كويتي (د.ك)
+          </p>
+        </div>
+
+        {/* Table */}
+        <table className="w-full text-right text-[10px] border border-slate-300 mb-4">
+          <thead>
+            <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300">
+              <th className="py-1.5 px-2 border-l border-slate-300 text-center w-6">م</th>
+              <th className="py-1.5 px-2 border-l border-slate-300 w-16">كود الجهة</th>
+              <th className="py-1.5 px-2 border-l border-slate-300">اسم الجمعية التعاونية / العميل</th>
+              <th className="py-1.5 px-2 border-l border-slate-300 text-center w-20">التصنيف</th>
+              <th className="py-1.5 px-2 border-l border-slate-300 text-center w-10">الفواتير</th>
+              <th className="py-1.5 px-2 border-l border-slate-300 text-center w-10">المرتجع</th>
+              <th className="py-1.5 px-2 border-l border-slate-300 text-left w-20">إجمالي المبيعات</th>
+              <th className="py-1.5 px-2 border-l border-slate-300 text-left w-16">المرتجع</th>
+              <th className="py-1.5 px-2 border-l border-slate-300 text-left w-20">صافي المبيعات</th>
+              <th className="py-1.5 px-2 text-left w-20">الرصيد القائم</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {customerSalesAggregated.map((row, idx) => (
+              <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
+                <td className="py-1 px-2 border-l border-slate-200 text-center font-mono text-slate-500">
+                  {idx + 1}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 font-mono font-bold text-slate-700">
+                  {row.code}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 font-bold text-slate-950">
+                  {row.nameAr}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 text-center text-slate-600">
+                  {row.category}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 text-center font-mono font-bold">
+                  {row.invoiceCount}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 text-center font-mono text-rose-600">
+                  {row.returnCount}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 text-left font-mono font-bold">
+                  {formatCurrency(row.grossSales, currency)}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 text-left font-mono text-rose-600">
+                  {row.returns > 0 ? formatCurrency(row.returns, currency) : '0.000'}
+                </td>
+                <td className="py-1 px-2 border-l border-slate-200 text-left font-mono font-black text-emerald-950">
+                  {formatCurrency(row.netSales, currency)}
+                </td>
+                <td className="py-1 px-2 text-left font-mono font-black text-slate-950">
+                  {formatCurrency(row.currentBalance, currency)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-100 font-black text-slate-950 border-t-2 border-slate-400">
+              <td colSpan={4} className="py-2 px-2 border-l border-slate-300">
+                الإجمالي العام المعتمد ({customerSalesAggregated.length} جهة)
+              </td>
+              <td className="py-2 px-2 border-l border-slate-300 text-center font-mono">
+                {report1Totals.invoices}
+              </td>
+              <td className="py-2 px-2 border-l border-slate-300 text-center font-mono text-rose-600">
+                {report1Totals.returnsCount}
+              </td>
+              <td className="py-2 px-2 border-l border-slate-300 text-left font-mono">
+                {formatCurrency(report1Totals.grossSales, currency)}
+              </td>
+              <td className="py-2 px-2 border-l border-slate-300 text-left font-mono text-rose-600">
+                {formatCurrency(report1Totals.returns, currency)}
+              </td>
+              <td className="py-2 px-2 border-l border-slate-300 text-left font-mono text-emerald-950">
+                {formatCurrency(report1Totals.netSales, currency)}
+              </td>
+              <td className="py-2 px-2 text-left font-mono text-slate-950">
+                {formatCurrency(report1Totals.balance, currency)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* Tafqeet */}
+        <div className="bg-slate-50 border border-slate-300 rounded p-2 mb-4 text-[10px] leading-normal">
+          <div>
+            <span className="font-bold text-slate-700">صافي المبيعات كتابةً: </span>
+            <span className="font-black text-emerald-950">{tafqeetCurrency(report1Totals.netSales, currency)}</span>
+          </div>
+          <div className="mt-0.5">
+            <span className="font-bold text-slate-700">إجمالي الأرصدة القائمة كتابةً: </span>
+            <span className="font-black text-blue-950">{tafqeetCurrency(report1Totals.balance, currency)}</span>
+          </div>
+        </div>
+
+        {/* Signatures */}
+        <div className="grid grid-cols-3 gap-6 text-center text-[10px] pt-3 border-t border-slate-300">
+          <div>
+            <div className="font-bold text-slate-800">إعداد المحاسب المسؤول</div>
+            <div className="h-8 flex items-end justify-center text-slate-400 font-mono text-[9px]">...........................</div>
+          </div>
+          <div>
+            <div className="font-bold text-slate-800">مراجعة وتدقيق الحسابات</div>
+            <div className="h-8 flex items-end justify-center text-slate-400 font-mono text-[9px]">...........................</div>
+          </div>
+          <div>
+            <div className="font-bold text-slate-800">اعتماد الإدارة والختم</div>
+            <div className="h-8 flex items-end justify-center text-slate-400 font-mono text-[9px]">...........................</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

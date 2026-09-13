@@ -98,6 +98,16 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [fontScale, setFontScale] = useState<'NORMAL' | 'LARGE' | 'XLARGE'>('NORMAL');
 
+  // مزامنة الكيان المختار ونوعه عند تمريرهما من الخارج (مثل النقر على كشف الحساب من التقارير)
+  useEffect(() => {
+    if (initialEntityId) {
+      setSelectedEntityId(initialEntityId);
+    }
+    if (initialEntityType) {
+      setEntityType(initialEntityType);
+    }
+  }, [initialEntityId, initialEntityType]);
+
   // تحديث الكيان عند تغيير نوع الكيان (عميل / مورد)
   useEffect(() => {
     if (entityType === 'CUSTOMER') {

@@ -8204,4 +8204,106 @@ export class DataService {
       message: `تم توحيد الربط البرمجي وتعبئة الروابط المحاسبية والمخزنية بنجاح تام وفق سياسة ZERO DATA LOSS: تم فحص ${invoices.length} فاتورة، وتوليد/ربط ${journalsGenerated} قيد متوازن، وربط ${warehouseStocksLinked} رصيد مستودعي دون أي مسح أو حذف.`,
     };
   }
+
+  /**
+   * دمج وربط فواتير وسندات القبض بالكيانات المعتمدة وحل إشكالية سطور GEN المكررة
+   */
+  public static reconcileAndLinkInvoicesToMasterCustomers(): {
+    updatedInvoices: number;
+    updatedVouchers: number;
+    mergedCustomers: string[];
+  } {
+    const customers = localDataStore.getCustomers();
+    const invoices = localDataStore.getInvoices();
+    const vouchers = localDataStore.getVouchers();
+
+    const normalizeAr = (str?: string): string => {
+      if (!str) return '';
+      return str
+        .trim()
+        .toLowerCase()
+        .replace(/[\u064B-\u065F\u0670]/g, '')
+        .replace(/[إأآا]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/ى/g, 'ي')
+        .replace(/[\s\-_]+/g, ' ');
+    };
+
+    const coopKeywords = [
+      'مبارك الكبير', 'صباح الاحمد', 'صباح الناصر', 'علي صباح',
+      'سعد العبدالله', 'صليبيخات', 'اشبيليه', 'قيروان',
+      'صباحيه', 'احمدي', 'بيان', 'سلوي', 'مشرف', 'مطلاع', 'جليب', 'وليد'
+    ];
+
+    const resolveCust = (entityId?: string, entityNameAr?: string, entityCode?: string): Customer | undefined => {
+      if (entityId) {
+        const byId = customers.find((c) => c.id === entityId);
+        if (byId) return byId;
+      }
+      if (entityCode || entityId) {
+        const targetCode = String(entityCode || entityId).trim();
+        const byCode = customers.find((c) => {
+          if (!c.code) return false;
+          const code = String(c.code).trim();
+          return targetCode === code || targetCode === `cust-${code}` || targetCode.endsWith(`-${code}`);
+        });
+        if (byCode) return byCode;
+      }
+      if (entityNameAr) {
+        const norm = normalizeAr(entityNameAr);
+        if (norm) {
+          const byExactNorm = customers.find((c) => normalizeAr(c.nameAr) === norm);
+          if (byExactNorm) return byExactNorm;
+
+          for (const kw of coopKeywords) {
+            if (norm.includes(kw)) {
+              const match = customers.find((c) => normalizeAr(c.nameAr).includes(kw));
+              if (match) return match;
+            }
+          }
+        }
+      }
+      return undefined;
+    };
+
+    let updatedInvoices = 0;
+    let updatedVouchers = 0;
+    const mergedCustomerSet = new Set<string>();
+
+    invoices.forEach((inv) => {
+      const matched = resolveCust(inv.entityId, inv.entityNameAr, (inv as any).entityCode);
+      if (matched && (inv.entityId !== matched.id || inv.entityNameAr !== matched.nameAr)) {
+        inv.entityId = matched.id;
+        inv.entityNameAr = matched.nameAr;
+        (inv as any).entityCode = matched.code;
+        updatedInvoices++;
+        mergedCustomerSet.add(matched.nameAr);
+      }
+    });
+
+    vouchers.forEach((v) => {
+      const matched = resolveCust(v.entityId, v.entityNameAr, (v as any).entityCode);
+      if (matched && (v.entityId !== matched.id || v.entityNameAr !== matched.nameAr)) {
+        v.entityId = matched.id;
+        v.entityNameAr = matched.nameAr;
+        (v as any).entityCode = matched.code;
+        updatedVouchers++;
+        mergedCustomerSet.add(matched.nameAr);
+      }
+    });
+
+    if (updatedInvoices > 0 || updatedVouchers > 0) {
+      localDataStore.saveInvoices(invoices);
+      localDataStore.saveVouchers(vouchers);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ERP_DATA_CHANGED'));
+      }
+    }
+
+    return {
+      updatedInvoices,
+      updatedVouchers,
+      mergedCustomers: Array.from(mergedCustomerSet),
+    };
+  }
 }

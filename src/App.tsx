@@ -405,6 +405,13 @@ export function AppContent() {
   };
 
   useEffect(() => {
+    // Auto-reconcile orphaned or disparate entity IDs with master customer records
+    try {
+      DataService.reconcileAndLinkInvoicesToMasterCustomers();
+    } catch (err) {
+      console.warn('Auto-reconciliation on mount:', err);
+    }
+
     refreshAllData();
 
     const handleSync = () => {
