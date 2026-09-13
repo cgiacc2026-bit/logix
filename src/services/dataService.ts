@@ -966,6 +966,16 @@ class LocalDataStore {
     if (tombstones.size > 0) {
       filtered = list.filter((c) => !tombstones.has(c.id));
     }
+    let hasCustDateFix = false;
+    filtered.forEach((c) => {
+      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-07-31') {
+        c.openingBalanceDate = '2026-07-31';
+        hasCustDateFix = true;
+      }
+    });
+    if (hasCustDateFix) {
+      this.saveCustomers(this.deduplicateCustomers(filtered));
+    }
     if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.customers)) {
       const presetCustomers = ALWALEED_MILL_PRESET_BACKUP.data.customers;
       if (filtered.length < presetCustomers.length) {
@@ -1328,12 +1338,75 @@ class LocalDataStore {
       this.saveJournals([]);
       return [];
     }
-    if (tombstones.size > 0) {
-      const filtered = list.filter((j) => !tombstones.has(j.id));
-      const deduped = this.deduplicateJournals(filtered);
-      if (filtered.length !== list.length || deduped.length !== filtered.length) {
-        this.saveJournals(deduped);
+    let filtered = tombstones.size > 0 ? list.filter((j) => !tombstones.has(j.id)) : list;
+    let hasJournalFix = false;
+    filtered.forEach((j) => {
+      // قيد تسوية JV-SETTLE-2026-09-10
+      if (
+        j.entryNumber === 'JV-SETTLE-2026-09-10' ||
+        j.reference === 'JV-SETTLE-2026-09-10' ||
+        j.id === 'JV-SETTLE-2026-09-10' ||
+        (j.entryNumber?.includes('SETTLE') && j.date === '2026-09-10')
+      ) {
+        if (j.date !== '2026-08-13' || j.status !== 'POSTED') {
+          j.date = '2026-08-13';
+          j.status = 'POSTED';
+          hasJournalFix = true;
+        }
+        // إعادة توجيه الطرف الثاني إلى حساب الأرصدة الافتتاحية والفروقات 3100
+        if (Array.isArray(j.lines) && j.lines.length >= 2) {
+          const secondLine = j.lines[1];
+          if (secondLine && secondLine.accountCode !== '3100') {
+            secondLine.accountId = 'bf25f8f9-9775-4fc5-8ff6-187c9b5306e5';
+            secondLine.accountCode = '3100';
+            secondLine.accountNameAr = 'رأس المال المكتتب به / الأرصدة الافتتاحية';
+            secondLine.memo = 'تسوية فروقات الأرصدة الافتتاحية';
+            hasJournalFix = true;
+          }
+        }
       }
+      // قيد تسوية اشعار مدين فرق مهرجان
+      if (
+        j.entryNumber === 'JV-2026-0037' ||
+        j.reference === '304' ||
+        j.id === 'jv-7cgx6qwmc' ||
+        j.id === 'ac244fe8-843c-42dd-9368-29c5f12d4f9f' ||
+        j.description?.includes('فرق مهرجان')
+      ) {
+        if (j.date !== '2026-08-30' || j.status !== 'POSTED' || !j.description?.startsWith('قيد تسوية')) {
+          j.date = '2026-08-30';
+          j.status = 'POSTED';
+          if (!j.description?.startsWith('قيد تسوية')) {
+            j.description = 'قيد تسوية - ' + (j.description || 'اشعارمدين فرق مهرجان من 24-7-2026 الي 1/8/2026');
+          }
+          hasJournalFix = true;
+        }
+      }
+      // إلغاء قيد العكس السابق
+      if (j.entryNumber === 'REV-JV-2026-0037' || j.reference === 'JV-2026-0037' || j.id === 'aaa4423d-6b92-429c-83ba-f1cf75cd5a52') {
+        if (j.status !== 'CANCELLED') {
+          j.status = 'CANCELLED';
+          hasJournalFix = true;
+        }
+      }
+      // قيد الأرصدة الافتتاحية
+      if (
+        j.entryNumber === 'JV-2026-0001' ||
+        j.reference?.startsWith('OB-') ||
+        j.id === 'jv-ob-2026-07-31' ||
+        j.id === 'jv-ob-2026-08-01' ||
+        j.description?.includes('افتتاحي')
+      ) {
+        if (j.date !== '2026-07-31' || j.reference !== 'OB-2026-07-31') {
+          j.date = '2026-07-31';
+          j.reference = 'OB-2026-07-31';
+          hasJournalFix = true;
+        }
+      }
+    });
+    if (hasJournalFix || tombstones.size > 0) {
+      const deduped = this.deduplicateJournals(filtered);
+      this.saveJournals(deduped);
       return deduped;
     }
     return this.deduplicateJournals(list);
@@ -8326,6 +8399,29 @@ export class DataService {
           j.reference = 'OB-2026-07-31';
           j.description = 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-07-31';
           journalsChanged = true;
+        }
+      }
+      // قيد التسوية JV-SETTLE-2026-09-10
+      if (
+        j.entryNumber === 'JV-SETTLE-2026-09-10' ||
+        j.reference === 'JV-SETTLE-2026-09-10' ||
+        j.id === 'JV-SETTLE-2026-09-10' ||
+        (j.entryNumber?.includes('SETTLE') && j.date === '2026-09-10')
+      ) {
+        if (j.date !== '2026-08-13' || j.status !== 'POSTED') {
+          j.date = '2026-08-13';
+          j.status = 'POSTED';
+          journalsChanged = true;
+        }
+        if (Array.isArray(j.lines) && j.lines.length >= 2) {
+          const secondLine = j.lines[1];
+          if (secondLine && secondLine.accountCode !== '3100') {
+            secondLine.accountId = 'bf25f8f9-9775-4fc5-8ff6-187c9b5306e5';
+            secondLine.accountCode = '3100';
+            secondLine.accountNameAr = 'رأس المال المكتتب به / الأرصدة الافتتاحية';
+            secondLine.memo = 'تسوية فروقات الأرصدة الافتتاحية';
+            journalsChanged = true;
+          }
         }
       }
       // قيد التسوية اشعار مدين فرق مهرجان
