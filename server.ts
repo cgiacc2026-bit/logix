@@ -30,6 +30,304 @@ const SUPABASE_KEY =
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ----------------------- TENANT AUTHORIZATION & JWT ENGINE -----------------------
+interface TokenUserPayload {
+  userId: string;
+  name?: string;
+  username: string;
+  email: string;
+  role: string;
+  companyId: string;
+  isPlatformAdmin: boolean;
+  allowedCompanyIds?: string[];
+  iat?: number;
+  exp?: number;
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || 'logix-erp-super-secret-jwt-key-2026-multi-tenant-auth';
+
+function base64UrlEncode(str: string): string {
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function base64UrlDecode(str: string): string {
+  let output = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (output.length % 4) {
+    output += '=';
+  }
+  return Buffer.from(output, 'base64').toString('utf-8');
+}
+
+function signJwt(payload: TokenUserPayload, expiresInSeconds = 7 * 24 * 3600): string {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload = {
+    ...payload,
+    iat: now,
+    exp: now + expiresInSeconds,
+  };
+  const headerEncoded = base64UrlEncode(JSON.stringify(header));
+  const payloadEncoded = base64UrlEncode(JSON.stringify(fullPayload));
+  const signature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`${headerEncoded}.${payloadEncoded}`)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `${headerEncoded}.${payloadEncoded}.${signature}`;
+}
+
+function verifyJwt(token: string): TokenUserPayload | null {
+  try {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [headerEncoded, payloadEncoded, signatureProvided] = parts;
+    const expectedSignature = crypto
+      .createHmac('sha256', JWT_SECRET)
+      .update(`${headerEncoded}.${payloadEncoded}`)
+      .digest('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+    if (
+      signatureProvided.length !== expectedSignature.length ||
+      !crypto.timingSafeEqual(Buffer.from(signatureProvided), Buffer.from(expectedSignature))
+    ) {
+      return null;
+    }
+    const payload = JSON.parse(base64UrlDecode(payloadEncoded)) as TokenUserPayload;
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null; // Expired
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// Active in-memory session registry (token -> TokenUserPayload)
+const activeSessions = new Map<string, TokenUserPayload>();
+
+const ALWALEED_CANONICAL_UUID = '20000000-0000-0000-0000-000000000001';
+const DEMO_CANONICAL_UUID = '00000000-0000-0000-0000-000000000099';
+const SYSTEM_CANONICAL_UUID = '10000000-0000-0000-0000-000000000001';
+
+function normalizeCompanyUUID(companyId: string | null | undefined): string {
+  if (!companyId) return '';
+  const clean = companyId.trim();
+  if (
+    clean === ALWALEED_CANONICAL_UUID ||
+    clean === 'company-alwaleed-client-003' ||
+    clean.toLowerCase().includes('alwaleed') ||
+    clean === '450912'
+  ) {
+    return ALWALEED_CANONICAL_UUID;
+  }
+  if (
+    clean === DEMO_CANONICAL_UUID ||
+    clean === 'company-demo-clients-002' ||
+    clean.toLowerCase().includes('demo')
+  ) {
+    return DEMO_CANONICAL_UUID;
+  }
+  if (
+    clean === SYSTEM_CANONICAL_UUID ||
+    clean === 'company-logix-official-001' ||
+    clean === 'logix'
+  ) {
+    return SYSTEM_CANONICAL_UUID;
+  }
+  return clean;
+}
+
+const getReqCompanyId = (req: any): string => {
+  const fromHeader = req.headers?.['x-company-id'];
+  const fromQuery = req.query?.company_id || req.query?.companyId;
+  const fromBody = req.body?.companyId || req.body?.company_id;
+  const val = (fromHeader || fromQuery || fromBody) as string;
+  return val ? String(val).trim() : '';
+};
+
+function extractTokenFromRequest(req: express.Request): string | null {
+  const authHeader = req.headers['authorization'];
+  if (authHeader) {
+    const parts = authHeader.split(' ');
+    if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
+      return parts[1].trim();
+    }
+    return authHeader.trim();
+  }
+  const xAuth = (req.headers['x-auth-token'] || req.headers['x-session-token']) as string;
+  if (xAuth) return xAuth.trim();
+  if (req.query?.token) return String(req.query.token).trim();
+  return null;
+}
+
+async function getUserAllowedCompaniesFromDB(user: TokenUserPayload): Promise<string[]> {
+  const allowed = new Set<string>();
+
+  // If user is super admin or platform admin, grant full multi-tenant access to all companies
+  if (user.isPlatformAdmin || user.role === 'SUPER_ADMIN' || user.email?.toLowerCase() === 'cgiacc2026@gmail.com') {
+    return ['*'];
+  }
+
+  // 1. Primary company attached to the user/token
+  if (user.companyId) {
+    allowed.add(user.companyId);
+    const norm = normalizeCompanyUUID(user.companyId);
+    if (norm) allowed.add(norm);
+  }
+
+  // 2. Query Supabase database for companies where owner_email matches user email
+  if (user.email && user.email.trim()) {
+    try {
+      const { data: ownedCompanies } = await supabaseAdmin
+        .from('companies')
+        .select('id, owner_email')
+        .ilike('owner_email', user.email.trim());
+
+      if (ownedCompanies && Array.isArray(ownedCompanies)) {
+        ownedCompanies.forEach((c: any) => {
+          if (c.id) {
+            allowed.add(c.id);
+            const norm = normalizeCompanyUUID(c.id);
+            if (norm) allowed.add(norm);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Error fetching owned companies from Supabase:', e);
+    }
+  }
+
+  // 3. Query company_users if present
+  try {
+    const { data: userCompRows } = await supabaseAdmin
+      .from('company_users')
+      .select('company_id')
+      .or(`user_id.eq.${user.userId},email.eq.${user.email}`);
+
+    if (userCompRows && Array.isArray(userCompRows)) {
+      userCompRows.forEach((r: any) => {
+        if (r.company_id) {
+          allowed.add(r.company_id);
+          const norm = normalizeCompanyUUID(r.company_id);
+          if (norm) allowed.add(norm);
+        }
+      });
+    }
+  } catch {
+    // optional table
+  }
+
+  // 4. Also check local db users
+  try {
+    const localUsers = db.getUsers();
+    const localUser = localUsers.find(
+      (u: any) => u.id === user.userId || (user.email && u.email === user.email) || u.username === user.username
+    );
+    if (localUser && (localUser as any).companyId) {
+      allowed.add((localUser as any).companyId);
+      const norm = normalizeCompanyUUID((localUser as any).companyId);
+      if (norm) allowed.add(norm);
+    }
+    if (localUser && Array.isArray((localUser as any).allowedCompanies)) {
+      (localUser as any).allowedCompanies.forEach((cid: string) => {
+        allowed.add(cid);
+        const norm = normalizeCompanyUUID(cid);
+        if (norm) allowed.add(norm);
+      });
+    }
+  } catch {
+    // local db check
+  }
+
+  return Array.from(allowed);
+}
+
+// Critical Security Middleware: Authenticate user from Token/Session & Authorize company access
+const requireCompanyAccess = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    const compId = getReqCompanyId(req);
+    if (!compId) {
+      return res.status(400).json({ error: 'معرّف الشركة مطلوب (Tenant isolation required)' });
+    }
+
+    const token = extractTokenFromRequest(req);
+    if (!token) {
+      return res.status(401).json({
+        error: 'غير مصرح: يجب تزويد رمز مصادقة صالح (Authentication token required)',
+        code: 'UNAUTHORIZED_MISSING_TOKEN',
+      });
+    }
+
+    let userPayload = activeSessions.get(token) || verifyJwt(token);
+    if (!userPayload) {
+      // Check legacy session token format session_<companyId>_<timestamp>
+      if (token.startsWith('session_')) {
+        const parts = token.split('_');
+        const tokenCompId = parts[1];
+        if (tokenCompId) {
+          userPayload = {
+            userId: `user-${tokenCompId.slice(0, 8)}`,
+            username: 'session_user',
+            email: '',
+            role: 'ADMIN',
+            companyId: tokenCompId,
+            isPlatformAdmin: false,
+          };
+        }
+      }
+    }
+
+    if (!userPayload) {
+      return res.status(401).json({
+        error: 'غير مصرح: رمز المصادقة غير صالح أو منتهي الصلاحية (Invalid or expired authentication token)',
+        code: 'UNAUTHORIZED_INVALID_TOKEN',
+      });
+    }
+
+    // Attach user to req
+    (req as any).user = userPayload;
+
+    // Fetch allowed companies from database
+    const allowedCompanyIds = await getUserAllowedCompaniesFromDB(userPayload);
+
+    // Normalize target company ID
+    const normalizedCompId = normalizeCompanyUUID(compId);
+    const isAllowed =
+      allowedCompanyIds.includes('*') ||
+      allowedCompanyIds.some((allowedId) => {
+        const normAllowed = normalizeCompanyUUID(allowedId);
+        return (
+          allowedId === compId ||
+          allowedId === normalizedCompId ||
+          normAllowed === compId ||
+          normAllowed === normalizedCompId
+        );
+      });
+
+    if (!isAllowed) {
+      return res.status(403).json({
+        error: `غير مصرح (403 Forbidden): المستخدم الحالي (${userPayload.username || userPayload.email || userPayload.userId}) غير مصرح له بالوصول إلى بيانات هذه الشركة (${compId})`,
+        code: 'FORBIDDEN_COMPANY_ACCESS',
+      });
+    }
+
+    (req as any).authorizedCompanyId = normalizedCompId;
+    next();
+  } catch (err: any) {
+    console.error('requireCompanyAccess middleware error:', err);
+    res.status(500).json({ error: 'حدث خطأ أثناء التحقق من صلاحية الوصول للشركة' });
+  }
+};
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -56,6 +354,19 @@ async function startServer() {
       // Check SuperAdmin Master Shortcut
       if (cleanLower === 'cgiacc2026' || cleanLower === 'cgiacc2026@gmail.com') {
         if (cleanPin === '1234') {
+          const superAdminPayload: TokenUserPayload = {
+            userId: 'user-super-admin',
+            name: 'المشرف العام (CGI Admin)',
+            username: 'cgiacc2026',
+            email: 'cgiacc2026@gmail.com',
+            role: 'SUPER_ADMIN',
+            companyId: '10000000-0000-0000-0000-000000000001',
+            isPlatformAdmin: true,
+            allowedCompanyIds: ['*'],
+          };
+          const token = signJwt(superAdminPayload);
+          activeSessions.set(token, superAdminPayload);
+
           return res.json({
             success: true,
             company: {
@@ -75,7 +386,8 @@ async function startServer() {
               roleTitleAr: 'المشرف العام والمالك',
               isActive: true,
               isPlatformAdmin: true,
-            }
+            },
+            token,
           });
         } else {
           return res.status(401).json({ success: false, message: 'رمز PIN المشرف العام غير صحيح' });
@@ -218,11 +530,26 @@ async function startServer() {
         isPlatformAdmin: foundCompany.type === 'system',
       };
 
+      const userPayload: TokenUserPayload = {
+        userId: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        companyId: foundCompany.id,
+        isPlatformAdmin: user.isPlatformAdmin,
+        allowedCompanyIds: [foundCompany.id],
+      };
+      const token = signJwt(userPayload);
+      activeSessions.set(token, userPayload);
+      // Also register legacy format key so both work seamlessly
+      activeSessions.set(`session_${foundCompany.id}`, userPayload);
+
       return res.json({
         success: true,
         company: safeCompany,
         user,
-        token: `session_${foundCompany.id}_${Date.now()}`,
+        token,
       });
     } catch (error: any) {
       console.error('Login error in API:', error);
@@ -738,29 +1065,15 @@ async function startServer() {
   });
 
   // 5. Sales, Purchases, Inventory, Vouchers
-  const getReqCompanyId = (req: any): string => {
-    const fromHeader = req.headers?.['x-company-id'];
-    const fromQuery = req.query?.company_id || req.query?.companyId;
-    const fromBody = req.body?.companyId || req.body?.company_id;
-    const val = (fromHeader || fromQuery || fromBody) as string;
-    return val ? String(val).trim() : '';
-  };
-
-  app.get('/api/customers', (req, res) => {
-    const compId = getReqCompanyId(req);
-    if (!compId) {
-      return res.status(400).json({ error: 'معرّف الشركة مطلوب لعرض العملاء (Tenant isolation required)' });
-    }
+  app.get('/api/customers', requireCompanyAccess, (req, res) => {
+    const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
     const filtered = db.getCustomers().filter((c: any) => c.companyId === compId || c.company_id === compId);
     res.json(filtered);
   });
 
-  app.post('/api/customers', (req, res) => {
+  app.post('/api/customers', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإنشاء العميل (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, branches, priceListId, priceListName, customPrices, defaultDiscountRate } = req.body;
       const compCustomers = db.getCustomers().filter((c: any) => c.companyId === compId || c.company_id === compId);
       const customCode = code || `${101 + compCustomers.length}`;
@@ -794,12 +1107,9 @@ async function startServer() {
     }
   });
 
-  app.put('/api/customers/:id', (req, res) => {
+  app.put('/api/customers/:id', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لتعديل العميل (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, balance, branches, priceListId, priceListName, customPrices, defaultDiscountRate } = req.body;
       const customer = db.getCustomers().find((c: any) => c.id === id && (c.companyId === compId || c.company_id === compId));
@@ -890,12 +1200,9 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/customers/:id', (req, res) => {
+  app.delete('/api/customers/:id', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لحذف العميل (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const customer = db.getCustomers().find((c: any) => c.id === id && (c.companyId === compId || c.company_id === compId));
       if (!customer) return res.status(404).json({ error: 'العميل غير موجود في هذه الشركة' });
@@ -908,12 +1215,9 @@ async function startServer() {
   });
 
   // Customer Detailed Statement
-  app.get('/api/customers/:id/statement', (req, res) => {
+  app.get('/api/customers/:id/statement', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لكشف حساب العميل (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const customer = db.getCustomers().find((c: any) => c.id === id && (c.companyId === compId || c.company_id === compId));
       if (!customer) return res.status(404).json({ error: 'العميل غير موجود في هذه الشركة' });
@@ -1386,21 +1690,15 @@ async function startServer() {
     }
   });
 
-  app.get('/api/inventory', (req, res) => {
-    const compId = getReqCompanyId(req);
-    if (!compId) {
-      return res.status(400).json({ error: 'معرّف الشركة مطلوب لعرض المخزون (Tenant isolation required)' });
-    }
+  app.get('/api/inventory', requireCompanyAccess, (req, res) => {
+    const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
     const filtered = db.getInventory().filter((i: any) => i.companyId === compId || i.company_id === compId);
     res.json(filtered);
   });
 
-  app.post('/api/inventory', (req, res) => {
+  app.post('/api/inventory', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإنشاء صنف مخزني (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { sku, barcode, nameAr, nameEn, category, unit, unitsPerPack, packUnit, purchasePrice, salePrice, quantityOnHand, minQuantityAlert } = req.body;
       const item = {
         id: 'item-' + Math.random().toString(36).substr(2, 9),
@@ -1427,12 +1725,9 @@ async function startServer() {
     }
   });
 
-  app.put('/api/inventory/:id', (req, res) => {
+  app.put('/api/inventory/:id', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لتعديل الصنف (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const existing = db.getInventory().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
       if (!existing) return res.status(404).json({ error: 'الصنف غير موجود في هذه الشركة' });
@@ -1443,12 +1738,9 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/inventory/:id', (req, res) => {
+  app.delete('/api/inventory/:id', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لحذف الصنف (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const existing = db.getInventory().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
       if (!existing) return res.status(404).json({ error: 'الصنف غير موجود في هذه الشركة' });
@@ -1460,21 +1752,15 @@ async function startServer() {
     }
   });
 
-  app.get('/api/invoices', (req, res) => {
-    const compId = getReqCompanyId(req);
-    if (!compId) {
-      return res.status(400).json({ error: 'معرّف الشركة مطلوب لعرض الفواتير (Tenant isolation required)' });
-    }
+  app.get('/api/invoices', requireCompanyAccess, (req, res) => {
+    const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
     const invoices = db.getInvoices().filter((inv: any) => inv.companyId === compId || inv.company_id === compId);
     res.json(invoices.sort((a, b) => b.date.localeCompare(a.date)));
   });
 
-  app.post('/api/invoices', (req, res) => {
+  app.post('/api/invoices', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإنشاء فاتورة (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { type, entityId, lines, notes, date, dueDate, discountType, discountValue } = req.body;
 
       const entity =
@@ -1599,12 +1885,9 @@ async function startServer() {
     }
   });
 
-  app.put('/api/invoices/:id', (req, res) => {
+  app.put('/api/invoices/:id', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لتعديل الفاتورة (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const existing = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
       if (!existing) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
@@ -1615,12 +1898,9 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/invoices/:id', async (req, res) => {
+  app.delete('/api/invoices/:id', requireCompanyAccess, async (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لحذف الفاتورة (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
       if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
@@ -1665,12 +1945,9 @@ async function startServer() {
     }
   });
 
-  app.post('/api/invoices/:id/revert', (req, res) => {
+  app.post('/api/invoices/:id/revert', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لعكس الفاتورة (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
       if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
@@ -1682,12 +1959,9 @@ async function startServer() {
     }
   });
 
-  app.post('/api/invoices/:id/cancel', (req, res) => {
+  app.post('/api/invoices/:id/cancel', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لإلغاء الفاتورة (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
       if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
@@ -1699,12 +1973,9 @@ async function startServer() {
     }
   });
 
-  app.post('/api/invoices/:id/post', (req, res) => {
+  app.post('/api/invoices/:id/post', requireCompanyAccess, (req, res) => {
     try {
-      const compId = getReqCompanyId(req);
-      if (!compId) {
-        return res.status(400).json({ error: 'معرّف الشركة مطلوب لترحيل الفاتورة (Tenant isolation required)' });
-      }
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
       const inv = db.getInvoices().find((i: any) => i.id === id && (i.companyId === compId || i.company_id === compId));
       if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة في هذه الشركة' });
@@ -2092,7 +2363,7 @@ async function startServer() {
   });
 
   // Batch Pricing Updater
-  app.post('/api/inventory/batch-pricing', (req, res) => {
+  app.post('/api/inventory/batch-pricing', requireCompanyAccess, (req, res) => {
     try {
       const { itemIds, category, mode, targetField, value, roundTo } = req.body;
       if (!mode || !targetField || value === undefined) {

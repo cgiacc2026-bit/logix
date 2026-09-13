@@ -629,6 +629,10 @@ export async function loginCompany(
         if (result.success && result.company) {
           setCurrentCompanyId(result.company.id);
           localStorage.setItem(STORAGE_KEYS.COMPANY_INFO, JSON.stringify(result.company));
+          if (result.token) {
+            localStorage.setItem('auth_token', result.token);
+            localStorage.setItem('session_token', result.token);
+          }
           if (result.user) {
             localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(result.user));
           }

@@ -830,6 +830,63 @@
       "governorate": "القيروان",
       "currentBalance": 739.525,
       "openingBalanceDate": "2026-07-31"
+    },
+    {
+      "id": "cust-6gg0omjh9",
+      "companyId": "56d50f7b-8a3a-4efa-bc69-8b516a339e90",
+      "company_id": "56d50f7b-8a3a-4efa-bc69-8b516a339e90",
+      "code": "101",
+      "nameAr": "مؤسسة أفق الخليج (عميل النورس)",
+      "nameEn": "مؤسسة أفق الخليج (عميل النورس)",
+      "phone": "+965 22334455",
+      "governorate": "",
+      "city": "الكويت",
+      "balance": 0,
+      "openingBalance": 0,
+      "openingBalanceDate": "2026-07-01",
+      "branches": [],
+      "priceListId": "standard",
+      "priceListName": "",
+      "customPrices": [],
+      "defaultDiscountRate": 0
+    },
+    {
+      "id": "cust-0ig7k3i25",
+      "companyId": "e3fb8f84-51dc-43e7-a490-6d45ec479688",
+      "company_id": "e3fb8f84-51dc-43e7-a490-6d45ec479688",
+      "code": "101",
+      "nameAr": "مؤسسة أفق الخليج (عميل النورس)",
+      "nameEn": "مؤسسة أفق الخليج (عميل النورس)",
+      "phone": "+965 22334455",
+      "governorate": "",
+      "city": "الكويت",
+      "balance": 0,
+      "openingBalance": 0,
+      "openingBalanceDate": "2026-07-01",
+      "branches": [],
+      "priceListId": "standard",
+      "priceListName": "",
+      "customPrices": [],
+      "defaultDiscountRate": 0
+    },
+    {
+      "id": "cust-oi7y6kb3i",
+      "companyId": "3f4f6e68-03ed-4c4b-8c13-2e1e1dbe8f21",
+      "company_id": "3f4f6e68-03ed-4c4b-8c13-2e1e1dbe8f21",
+      "code": "101",
+      "nameAr": "مؤسسة أفق الخليج (عميل النورس)",
+      "nameEn": "مؤسسة أفق الخليج (عميل النورس)",
+      "phone": "+965 22334455",
+      "governorate": "",
+      "city": "الكويت",
+      "balance": 0,
+      "openingBalance": 0,
+      "openingBalanceDate": "2026-07-01",
+      "branches": [],
+      "priceListId": "standard",
+      "priceListName": "",
+      "customPrices": [],
+      "defaultDiscountRate": 0
     }
   ],
   "suppliers": [
@@ -6834,6 +6891,11 @@
   ],
   "productionOrders": [],
   "tombstones": {
-    "journals": []
+    "journals": [
+      "jv-2026-0001",
+      "jv-2026-0002",
+      "jv-2026-0003",
+      "jv-2026-0004"
+    ]
   }
 }

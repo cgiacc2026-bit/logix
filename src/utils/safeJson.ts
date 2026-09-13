@@ -65,6 +65,16 @@ export async function safeApiFetch<T>(
           ...(opts.headers || {}),
         };
       }
+      const token =
+        window.localStorage.getItem('auth_token') ||
+        window.localStorage.getItem('session_token') ||
+        window.localStorage.getItem('jwt_token');
+      if (token) {
+        opts.headers = {
+          authorization: `Bearer ${token}`,
+          ...(opts.headers || {}),
+        };
+      }
     }
     const res = await fetch(url, opts);
     if (!res.ok) {
