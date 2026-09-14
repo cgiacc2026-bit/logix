@@ -1494,6 +1494,29 @@ export class SupabaseDataService {
       notes: it.notes || '',
     }));
 
+    // Resolve price list ID
+    let resolvedPriceListId = inv.priceListId || (inv as any).price_list_id || null;
+    if (resolvedPriceListId === 'standard' || (!resolvedPriceListId && (inv as any).priceListName?.includes('القياسية'))) {
+      resolvedPriceListId = `pl-${companyId.slice(0, 8)}`;
+    }
+    // If not provided in payload, inherit customer assigned master price list
+    if (!resolvedPriceListId && customerIdCandidate) {
+      try {
+        const { data: custRow } = await supabase
+          .from('customers')
+          .select('master_price_list_id, raw_data')
+          .eq('id', customerIdCandidate)
+          .maybeSingle();
+        if (custRow?.master_price_list_id) {
+          resolvedPriceListId = custRow.master_price_list_id;
+        } else if (custRow?.raw_data?.priceListId && custRow.raw_data.priceListId !== 'standard') {
+          resolvedPriceListId = custRow.raw_data.priceListId;
+        }
+      } catch (plLookupErr) {
+        console.warn('[Supabase saveInvoice] Notice looking up customer price list:', plLookupErr);
+      }
+    }
+
     const invoicePayload: any = {
       id: invUuid,
       company_id: companyId,
@@ -1515,7 +1538,7 @@ export class SupabaseDataService {
       warehouse_id: effectiveWarehouseId,
       customer_branch_id: inv.customerBranchId || (inv as any).customer_branch_id || null,
       customer_branch_name: inv.customerBranchName || (inv as any).customer_branch_name || null,
-      price_list_id: inv.priceListId && inv.priceListId !== 'standard' ? inv.priceListId : null,
+      price_list_id: resolvedPriceListId,
       price_list_applied: inv.priceListApplied || (inv as any).price_list_applied || null,
       items: formattedItems,
       customer_snapshot: customerSnapshot,
