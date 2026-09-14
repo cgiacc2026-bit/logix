@@ -2068,7 +2068,7 @@ export const ALWALEED_MILL_PRESET_BACKUP: CompanyBackupEnvelope = {
             "accountId": "acc-1120",
             "accountCode": "1120",
             "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)",
-            "debit": 20999.506,
+            "debit": 20999.53,
             "credit": 0,
             "memo": "إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية"
           },
@@ -2078,12 +2078,12 @@ export const ALWALEED_MILL_PRESET_BACKUP: CompanyBackupEnvelope = {
             "accountCode": "3100",
             "accountNameAr": "رأس المال المكتتب به / الأرصدة الافتتاحية",
             "debit": 0,
-            "credit": 20999.506,
+            "credit": 20999.53,
             "memo": "مقابل الأرصدة الافتتاحية المدينة للعملاء"
           }
         ],
-        "totalDebit": 20999.506,
-        "totalCredit": 20999.506,
+        "totalDebit": 20999.53,
+        "totalCredit": 20999.53,
         "createdAt": "2026-07-31T00:00:00.000Z",
         "postedAt": "2026-07-31T00:00:00.000Z",
         "sourceModule": "OPENING",

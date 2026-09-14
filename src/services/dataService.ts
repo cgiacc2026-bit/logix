@@ -2941,10 +2941,34 @@ export class DataService {
       }
       if (paidAmount > 0 && dueAmount > 0) {
         jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.cash.id, accountCode: resolved.cash.code, accountNameAr: resolved.cash.nameAr, debit: 0, credit: paidAmount, memo: `رد نقدي مسدد للعميل - مرتجع مبيعات ${invoiceNumber}` });
-        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.receivable.id, accountCode: resolved.receivable.code, accountNameAr: resolved.receivable.nameAr, debit: 0, credit: dueAmount, memo: `تخفيض حساب العميل الآجل ${entityNameAr}` });
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: resolved.receivable.id,
+          accountCode: resolved.receivable.code,
+          accountNameAr: resolved.receivable.nameAr,
+          debit: 0,
+          credit: dueAmount,
+          memo: `تخفيض حساب العميل الآجل ${entityNameAr}`,
+          entityType: 'CUSTOMER' as const,
+          entityId: newInvoice.entityId || data.entityId,
+          entityNameAr: entityNameAr,
+        });
       } else {
         const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
-        jLines.push({ id: `jl-${jLines.length + 1}`, accountId: paymentAcc.id, accountCode: paymentAcc.code, accountNameAr: paymentAcc.nameAr, debit: 0, credit: grandTotal, memo: `تخفيض رصيد حساب العميل ${entityNameAr}` });
+        jLines.push({
+          id: `jl-${jLines.length + 1}`,
+          accountId: paymentAcc.id,
+          accountCode: paymentAcc.code,
+          accountNameAr: paymentAcc.nameAr,
+          debit: 0,
+          credit: grandTotal,
+          memo: `تخفيض رصيد حساب العميل ${entityNameAr}`,
+          ...(paymentAcc.code === resolved.receivable.code ? {
+            entityType: 'CUSTOMER' as const,
+            entityId: newInvoice.entityId || data.entityId,
+            entityNameAr: entityNameAr,
+          } : {}),
+        });
       }
       // IAS-2 Sales Return: Returned items restore to inventory at their sold unit cost
       const totalCost = lines.reduce((sum: number, line: any) => {
@@ -3275,6 +3299,7 @@ export class DataService {
 
     if (localDataStore.isAlWaleedActive()) {
       // 1. Ensure opening balance journal JV-2026-0001 (dated 2026-07-31)
+      const openingCustomersSum = 20999.53;
       let obJournal = journals.find((j) => j.entryNumber === 'JV-2026-0001' || j.reference === 'OB-2026-07-31');
       if (!obJournal) {
         obJournal = {
@@ -3285,8 +3310,8 @@ export class DataService {
           reference: 'OB-2026-07-31',
           description: 'الأرصدة الافتتاحية للجمعيات التعاونية وحسابات العملاء بتاريخ 2026-07-31',
           status: 'POSTED',
-          totalDebit: 20999.506,
-          totalCredit: 20999.506,
+          totalDebit: openingCustomersSum,
+          totalCredit: openingCustomersSum,
           createdAt: '2026-07-31T00:00:00.000Z',
           postedAt: '2026-07-31T00:00:00.000Z',
           sourceModule: 'OPENING',
@@ -3297,7 +3322,7 @@ export class DataService {
               accountId: resolved.receivable.id,
               accountCode: resolved.receivable.code,
               accountNameAr: resolved.receivable.nameAr,
-              debit: 20999.506,
+              debit: openingCustomersSum,
               credit: 0,
               memo: 'إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية',
             },
@@ -3307,7 +3332,7 @@ export class DataService {
               accountCode: '3100',
               accountNameAr: 'رأس المال المكتتب به / الأرصدة الافتتاحية',
               debit: 0,
-              credit: 20999.506,
+              credit: openingCustomersSum,
               memo: 'مقابل الأرصدة الافتتاحية المدينة للعملاء',
             },
           ],
@@ -3317,11 +3342,11 @@ export class DataService {
       } else {
         if (obJournal.status !== 'POSTED') obJournal.status = 'POSTED';
         if (obJournal.date !== '2026-07-31') obJournal.date = '2026-07-31';
-        if (Math.abs(Number(obJournal.totalDebit) - 20999.506) > 0.01) {
-          obJournal.totalDebit = 20999.506;
-          obJournal.totalCredit = 20999.506;
-          if (obJournal.lines?.[0]) obJournal.lines[0].debit = 20999.506;
-          if (obJournal.lines?.[1]) obJournal.lines[1].credit = 20999.506;
+        if (Math.abs(Number(obJournal.totalDebit) - openingCustomersSum) > 0.01) {
+          obJournal.totalDebit = openingCustomersSum;
+          obJournal.totalCredit = openingCustomersSum;
+          if (obJournal.lines?.[0]) obJournal.lines[0].debit = openingCustomersSum;
+          if (obJournal.lines?.[1]) obJournal.lines[1].credit = openingCustomersSum;
         }
       }
 
