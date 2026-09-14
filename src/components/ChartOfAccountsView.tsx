@@ -91,6 +91,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   const [newNameAr, setNewNameAr] = useState('');
   const [newNameEn, setNewNameEn] = useState('');
   const [newCategory, setNewCategory] = useState<AccountCategory>('ASSET');
+  const [newNature, setNewNature] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
   const [newParentId, setNewParentId] = useState<string>('');
   const [newDescription, setNewDescription] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -201,12 +202,16 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
     if (parent) {
       setNewParentId(parent.id);
       setNewCategory(parent.category);
+      const catUpper = (parent.category || '').toUpperCase();
+      const parentNat: 'DEBIT' | 'CREDIT' = parent.normalBalance || (parent as any).nature || ((catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT');
+      setNewNature(parentNat);
       const siblings = accounts.filter((a) => a.parentId === parent.id);
       const nextNum = siblings.length + 1;
       setNewCode(`${parent.code}${nextNum}`);
     } else {
       setNewParentId('');
       setNewCategory('ASSET');
+      setNewNature('DEBIT');
       setNewCode('');
     }
     setNewNameAr('');
@@ -222,6 +227,9 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
     setNewNameAr(acc.nameAr);
     setNewNameEn(acc.nameEn || '');
     setNewCategory(acc.category);
+    const catUpper = (acc.category || '').toUpperCase();
+    const ifrsDef: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
+    setNewNature(acc.normalBalance || (acc as any).nature || ifrsDef);
     setNewParentId(acc.parentId || '');
     setNewDescription(acc.description || '');
     setIsModalOpen(true);
@@ -253,6 +261,8 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
         nameAr: newNameAr.trim(),
         nameEn: newNameEn.trim() || newNameAr.trim(),
         category: newCategory,
+        normalBalance: newNature,
+        nature: newNature,
         parentId: newParentId || null,
         description: newDescription.trim(),
       };
@@ -509,22 +519,34 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                     </div>
                   </div>
 
-                  {/* Category Badge & Leaf/Parent Indicator */}
+                  {/* Category Badge, Accounting Nature & Leaf/Parent Indicator */}
                   <div className="col-span-3 sm:col-span-2 text-center flex flex-col items-center gap-1">
-                    <span
-                      className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${getCategoryBadgeClass(
-                        acc.category
-                      )}`}
-                    >
-                      {getCategoryLabelAr(acc.category)}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${getCategoryBadgeClass(
+                          acc.category
+                        )}`}
+                      >
+                        {getCategoryLabelAr(acc.category)}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 text-[9px] font-black rounded border ${
+                          (acc.normalBalance || (acc as any).nature) === 'DEBIT'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : 'bg-purple-50 text-purple-800 border-purple-200'
+                        }`}
+                        title="الطبيعة المحاسبية القياسية للحساب وفق معايير IFRS"
+                      >
+                        {(acc.normalBalance || (acc as any).nature) === 'DEBIT' ? 'مدين' : 'دائن'}
+                      </span>
+                    </div>
                     {acc.isLeaf ? (
                       <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        حساب تحليلي / طرفي
+                        طرفي
                       </span>
                     ) : (
                       <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-50 text-amber-900 border border-amber-300">
-                        حساب رئيسي / تجميعي ({acc.leafCount})
+                        رئيسي ({acc.leafCount})
                       </span>
                     )}
                   </div>
@@ -532,12 +554,16 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                   {/* Movements Debit / Credit */}
                   <div className="hidden sm:flex sm:col-span-2 flex-col text-left font-mono text-[11px]">
                     <div className="text-emerald-800 flex items-center justify-end gap-1">
-                      <span>+{formatKWD(debitMove)}</span>
-                      <span className="text-[9px] text-[#8C8273]">مدين</span>
+                      <span>{formatKWD(debitMove)}</span>
+                      <span className="text-[9px] text-[#8C8273]">
+                        {(acc.normalBalance || (acc as any).nature) === 'DEBIT' ? 'مدين (+)' : 'مدين (-)'}
+                      </span>
                     </div>
                     <div className="text-rose-800 flex items-center justify-end gap-1">
-                      <span>-{formatKWD(creditMove)}</span>
-                      <span className="text-[9px] text-[#8C8273]">دائن</span>
+                      <span>{formatKWD(creditMove)}</span>
+                      <span className="text-[9px] text-[#8C8273]">
+                        {(acc.normalBalance || (acc as any).nature) === 'DEBIT' ? 'دائن (-)' : 'دائن (+)'}
+                      </span>
                     </div>
                   </div>
 
@@ -860,7 +886,13 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                   </label>
                   <select
                     value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value as AccountCategory)}
+                    onChange={(e) => {
+                      const cat = e.target.value as AccountCategory;
+                      setNewCategory(cat);
+                      const catUpper = cat.toUpperCase();
+                      const ifrsNat = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
+                      setNewNature(ifrsNat);
+                    }}
                     className="w-full bg-[#FDFCFB] border border-[#E5E1DA] rounded-xl px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#1A1A1A]"
                   >
                     <option value="ASSET">الأصول (Assets)</option>
@@ -870,6 +902,28 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                     <option value="EXPENSE">المصروفات (Expenses)</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Accounting Nature Banner/Selection */}
+              <div className="p-3 bg-[#FAF8F5] border border-[#E5E1DA] rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="block text-xs font-bold text-[#1A1A1A]">
+                    الطبيعة المحاسبية القياسية (IFRS Normal Balance / Nature):
+                  </span>
+                  <span className="text-[11px] text-[#6E6659]">
+                    {newNature === 'DEBIT'
+                      ? 'مدين (DEBIT) • الرصيد = مجموع المدين − مجموع الدائن'
+                      : 'دائن (CREDIT) • الرصيد = مجموع الدائن − مجموع المدين'}
+                  </span>
+                </div>
+                <select
+                  value={newNature}
+                  onChange={(e) => setNewNature(e.target.value as 'DEBIT' | 'CREDIT')}
+                  className="bg-white border border-[#E5E1DA] rounded-lg px-2.5 py-1 text-xs font-bold text-[#1A1A1A] focus:outline-none focus:border-[#B8860B]"
+                >
+                  <option value="DEBIT">مدين (DEBIT)</option>
+                  <option value="CREDIT">دائن (CREDIT)</option>
+                </select>
               </div>
 
               <div>

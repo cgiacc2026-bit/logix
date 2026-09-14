@@ -295,7 +295,16 @@ class DatabaseStore {
     return this.data.company;
   }
   public getAccounts(): Account[] {
-    return this.data.accounts;
+    return (this.data.accounts || []).map((acc) => {
+      const cat = (acc.category || '').toUpperCase();
+      const ifrsNature: 'DEBIT' | 'CREDIT' = (cat === 'ASSET' || cat === 'EXPENSE' || cat === 'COGS') ? 'DEBIT' : 'CREDIT';
+      const norm = acc.normalBalance || (acc as any).nature || ifrsNature;
+      return {
+        ...acc,
+        normalBalance: norm,
+        nature: norm,
+      };
+    });
   }
 
   public getCustomers(): Customer[] {
@@ -340,14 +349,31 @@ class DatabaseStore {
 
   // Mutations
   public addAccount(account: Account) {
-    this.data.accounts.push(account);
+    const cat = (account.category || '').toUpperCase();
+    const ifrsNature: 'DEBIT' | 'CREDIT' = (cat === 'ASSET' || cat === 'EXPENSE' || cat === 'COGS') ? 'DEBIT' : 'CREDIT';
+    const norm = account.normalBalance || (account as any).nature || ifrsNature;
+    const cleanAccount: Account = {
+      ...account,
+      normalBalance: norm,
+      nature: norm,
+    };
+    this.data.accounts.push(cleanAccount);
     this.save();
   }
 
   public updateAccount(id: string, updated: Partial<Account>) {
     const idx = this.data.accounts.findIndex((a) => a.id === id);
     if (idx !== -1) {
-      this.data.accounts[idx] = { ...this.data.accounts[idx], ...updated };
+      const existing = this.data.accounts[idx];
+      const merged = { ...existing, ...updated };
+      const cat = (merged.category || '').toUpperCase();
+      const ifrsNature: 'DEBIT' | 'CREDIT' = (cat === 'ASSET' || cat === 'EXPENSE' || cat === 'COGS') ? 'DEBIT' : 'CREDIT';
+      const norm = updated.normalBalance || (updated as any).nature || existing.normalBalance || (existing as any).nature || ifrsNature;
+      this.data.accounts[idx] = {
+        ...merged,
+        normalBalance: norm,
+        nature: norm,
+      };
       this.save();
     }
   }

@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { TrialBalanceReport } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { formatKWD, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
-import { Scale, CheckCircle2, AlertTriangle, Printer, Download, ShieldCheck, X, RefreshCw, Filter } from 'lucide-react';
+import { Scale, CheckCircle2, AlertTriangle, Printer, Download, ShieldCheck, X, RefreshCw, Filter, FileSpreadsheet } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
+import * as XLSX from 'xlsx';
 
 interface TrialBalanceProps {
   currency: string;
@@ -48,13 +49,48 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
     fetchTrialBalance();
   }, [asOfDate]);
 
+  const handleExportExcel = () => {
+    if (!report) return;
+    const wb = XLSX.utils.book_new();
+    const rows = displayedItems.map((item) => {
+      const isDebitNat = (item.account.normalBalance || (item.account as any).nature) === 'DEBIT';
+      return {
+        'كود الحساب': item.account.code,
+        'اسم الحساب المحاسبي': item.account.nameAr,
+        'طبيعة الحساب (Normal Balance)': isDebitNat ? 'مدين (DEBIT)' : 'دائن (CREDIT)',
+        'نوع الحساب': (item.account as any).isLeaf ? 'طرفي' : 'تجميعي',
+        'حركة الفترة - مدين': item.movementDebit,
+        'حركة الفترة - دائن': item.movementCredit,
+        'الرصيد النهائي - مدين': item.endingBalanceDebit,
+        'الرصيد النهائي - دائن': item.endingBalanceCredit,
+      };
+    });
+    // Summary row
+    rows.push({
+      'كود الحساب': 'الإجمالي',
+      'اسم الحساب المحاسبي': 'إجمالي ميزان المراجعة المعتمد',
+      'طبيعة الحساب (Normal Balance)': report.isBalanced ? 'متوازن 100%' : 'غير متوازن',
+      'نوع الحساب': '',
+      'حركة الفترة - مدين': report.totalMovementDebit,
+      'حركة الفترة - دائن': report.totalMovementCredit,
+      'الرصيد النهائي - مدين': report.totalEndingDebit,
+      'الرصيد النهائي - دائن': report.totalEndingCredit,
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'ميزان المراجعة');
+    XLSX.writeFile(wb, `Trial_Balance_${asOfDate}.xlsx`);
+  };
+
   const handleExportCSV = () => {
     if (!report) return;
-    let csv = 'كود الحساب,اسم الحساب,حركة مدين,حركة دائن,رصيد مدين,رصيد دائن\n';
-    report.items.forEach((item) => {
-      csv += `"${item.account.code}","${item.account.nameAr}",${item.movementDebit},${item.movementCredit},${item.endingBalanceDebit},${item.endingBalanceCredit}\n`;
+    let csv = '\uFEFFكود الحساب,اسم الحساب,طبيعة الحساب,نوع الحساب,حركة مدين,حركة دائن,رصيد مدين,رصيد دائن\n';
+    displayedItems.forEach((item) => {
+      const isDebitNat = (item.account.normalBalance || (item.account as any).nature) === 'DEBIT';
+      const natStr = isDebitNat ? 'مدين (DEBIT)' : 'دائن (CREDIT)';
+      const leafStr = (item.account as any).isLeaf ? 'طرفي' : 'تجميعي';
+      csv += `"${item.account.code}","${item.account.nameAr}","${natStr}","${leafStr}",${item.movementDebit},${item.movementCredit},${item.endingBalanceDebit},${item.endingBalanceCredit}\n`;
     });
-    csv += `الإجمالي,,${report.totalMovementDebit},${report.totalMovementCredit},${report.totalEndingDebit},${report.totalEndingCredit}\n`;
+    csv += `الإجمالي,,${report.isBalanced ? 'متوازن' : 'غير متوازن'},,${report.totalMovementDebit},${report.totalMovementCredit},${report.totalEndingDebit},${report.totalEndingCredit}\n`;
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -75,7 +111,7 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
             <Scale className="w-5 h-5 text-[#B8860B]" /> ميزان المراجعة بالمجاميع والأرصدة (Trial Balance)
           </h2>
           <p className="text-xs text-[#8C8273] mt-1 font-serif italic">
-            تقرير التوازن المحاسبي الشامل لجميع الحسابات للتأكد من انطباق قاعدة القيد المزدوج قبل إعداد القوائم المالية الختامية.
+            تقرير التوازن المحاسبي الشامل لجميع الحسابات وفق الطبيعة المحاسبية (Normal Balance) للتأكد من انطباق قاعدة القيد المزدوج.
           </p>
         </div>
 
@@ -87,6 +123,14 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
           >
             <ShieldCheck className="w-4 h-4 text-emerald-200" />
             <span>الفحص والتدقيق الذاتي (Self-Audit)</span>
+          </button>
+          <button
+            onClick={handleExportExcel}
+            className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
+            title="تصدير ميزان المراجعة إلى ملف Excel بصيغة xlsx"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>تصدير Excel (.xlsx)</span>
           </button>
           <button
             onClick={handleExportCSV}
@@ -204,44 +248,54 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E1DA]">
-                {displayedItems.map((item) => (
-                  <tr key={item.account.id} className="hover:bg-[#FDFCFB] transition-colors">
-                    <td className="py-2.5 px-3 font-mono font-bold text-[#B8860B]">
-                      {item.account.code}
-                    </td>
-                    <td className="py-2.5 px-3 font-serif font-bold text-[#1A1A1A]">
-                      <div className="flex items-center gap-2">
-                        <span>{item.account.nameAr}</span>
-                        {item.account.isLeaf ? (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            طرفي
+                {displayedItems.map((item) => {
+                  const isDebitNat = (item.account.normalBalance || (item.account as any).nature) === 'DEBIT';
+                  return (
+                    <tr key={item.account.id} className="hover:bg-[#FDFCFB] transition-colors">
+                      <td className="py-2.5 px-3 font-mono font-bold text-[#B8860B]">
+                        {item.account.code}
+                      </td>
+                      <td className="py-2.5 px-3 font-serif font-bold text-[#1A1A1A]">
+                        <div className="flex items-center gap-2">
+                          <span>{item.account.nameAr}</span>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-black border ${
+                            isDebitNat
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : 'bg-purple-50 text-purple-800 border-purple-200'
+                          }`}>
+                            {isDebitNat ? 'طبيعة: مدين' : 'طبيعة: دائن'}
                           </span>
-                        ) : (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-300">
-                            تجميعي
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[#6E6659]">
-                      {item.movementDebit > 0 ? formatKWD(item.movementDebit) : '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[#6E6659]">
-                      {item.movementCredit > 0 ? formatKWD(item.movementCredit) : '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono font-bold text-[#2D6A4F]">
-                      {item.endingBalanceDebit > 0 ? formatKWD(item.endingBalanceDebit) : '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono font-bold text-[#9E2A2B]">
-                      {item.endingBalanceCredit > 0 ? formatKWD(item.endingBalanceCredit) : '-'}
-                    </td>
-                  </tr>
-                ))}
+                          {item.account.isLeaf ? (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              طرفي
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-300">
+                              تجميعي
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-mono text-[#6E6659]">
+                        {item.movementDebit > 0 ? formatKWD(item.movementDebit) : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-mono text-[#6E6659]">
+                        {item.movementCredit > 0 ? formatKWD(item.movementCredit) : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-mono font-bold text-[#2D6A4F]">
+                        {item.endingBalanceDebit > 0 ? formatKWD(item.endingBalanceDebit) : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-mono font-bold text-[#9E2A2B]">
+                        {item.endingBalanceCredit > 0 ? formatKWD(item.endingBalanceCredit) : '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {/* Total Summary Row */}
                 <tr className="bg-[#F7F5F0] font-serif font-bold text-xs border-t-2 border-[#E5E1DA] text-[#1A1A1A]">
                   <td colSpan={2} className="py-3.5 px-4 text-left">
-                    الإجمالي الكلي لميزان المراجعة (حسابات طرفية فقط لمنع الازدواجية):
+                    الإجمالي الكلي لميزان المراجعة (حسابات طرفية معتمدة لمنع الازدواجية):
                   </td>
                   <td className="py-3.5 px-3 text-center font-mono text-[#2D6A4F]">
                     {formatKWD(report.totalMovementDebit)}
@@ -254,6 +308,24 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({ currency }) => {
                   </td>
                   <td className="py-3.5 px-3 text-center font-mono text-[#9E2A2B] bg-[#FDF0F0]">
                     {formatKWD(report.totalEndingCredit)}
+                  </td>
+                </tr>
+                {/* Balance Equality Confirmation Row */}
+                <tr className="bg-stone-50 text-[11px] text-[#6E6659] border-t border-[#E5E1DA]">
+                  <td colSpan={4} className="py-2 px-4">
+                    <span className="font-semibold text-[#1A1A1A]">حالة التوازن المحاسبي:</span>{' '}
+                    {report.isBalanced ? (
+                      <span className="text-emerald-700 font-bold">
+                        متطابق تماماً (إجمالي المدين = إجمالي الدائن) • الفرق: {formatKWD(Math.abs(report.totalEndingDebit - report.totalEndingCredit))}
+                      </span>
+                    ) : (
+                      <span className="text-rose-700 font-bold">
+                        يوجد فرق: {formatKWD(Math.abs(report.totalEndingDebit - report.totalEndingCredit))}
+                      </span>
+                    )}
+                  </td>
+                  <td colSpan={2} className="py-2 px-4 text-left font-mono">
+                    {report.isBalanced ? '✓ Balanced (Zero Variance)' : '⚠ Variance Detected'}
                   </td>
                 </tr>
               </tbody>

@@ -495,15 +495,35 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
     // Sort chronologically
     rows.sort((a, b) => a.date.localeCompare(b.date));
 
-    // Calculate Running Balance
-    let balance = 0;
-    rows.forEach((r) => {
-      balance += r.debit - r.credit;
-      r.runningBalance = balance;
-    });
+    // Calculate Running Balance based on account accounting nature (DEBIT vs CREDIT)
+    if (selectedAccountId !== 'ALL') {
+      const targetAcc = accounts.find((a) => a.id === selectedAccountId || a.code === selectedAccountId);
+      const isCredit = (targetAcc?.normalBalance || targetAcc?.nature) === 'CREDIT';
+      let balance = 0;
+      rows.forEach((r) => {
+        if (isCredit) {
+          balance += (r.credit - r.debit);
+        } else {
+          balance += (r.debit - r.credit);
+        }
+        r.runningBalance = balance;
+      });
+    } else {
+      // Per-account running balance for unified multi-account view
+      const accBalanceMap = new Map<string, number>();
+      rows.forEach((r) => {
+        const acc = accounts.find((a) => a.code === r.accountCode || a.nameAr === r.accountNameAr);
+        const isCredit = (acc?.normalBalance || acc?.nature) === 'CREDIT';
+        const key = r.accountCode || r.accountNameAr || 'UNKNOWN';
+        const prev = accBalanceMap.get(key) || 0;
+        const next = isCredit ? prev + (r.credit - r.debit) : prev + (r.debit - r.credit);
+        accBalanceMap.set(key, next);
+        r.runningBalance = next;
+      });
+    }
 
     return rows;
-  }, [validJournals, selectedAccountId, searchTerm]);
+  }, [validJournals, selectedAccountId, searchTerm, accounts]);
 
   const report2Totals = useMemo(() => {
     return unifiedStatementRows.reduce(

@@ -14,6 +14,8 @@ export interface Account {
   parentId: string | null; // Null for top-level accounts
   level: number; // 1 for root (الأصول), 2 for sub (الأصول المتداولة), 3 for detail (البنك)
   normalBalance: NormalBalance;
+  nature?: NormalBalance; // IFRS Accounting Nature (DEBIT / CREDIT)
+  normal_balance?: NormalBalance; // Database column alias
   isSystem: boolean; // Cannot delete core system accounts
   isActive: boolean;
   type?: 'ROOT' | 'HEADER' | 'DETAIL';

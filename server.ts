@@ -684,13 +684,15 @@ async function startServer() {
       }
 
       let level = 1;
-      let computedNormalBalance = normalBalance || 'DEBIT';
+      const catUpper = (category || 'ASSET').toUpperCase();
+      const ifrsDefaultNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
+      let computedNormalBalance: 'DEBIT' | 'CREDIT' = normalBalance || req.body.nature || ifrsDefaultNature;
 
       if (parentId) {
         const parent = db.getAccounts().find((a) => a.id === parentId);
         if (parent) {
           level = parent.level + 1;
-          computedNormalBalance = parent.normalBalance;
+          computedNormalBalance = parent.normalBalance || parent.nature || ifrsDefaultNature;
         }
       }
 
@@ -703,6 +705,7 @@ async function startServer() {
         parentId: parentId || null,
         level,
         normalBalance: computedNormalBalance,
+        nature: computedNormalBalance,
         isSystem: false,
         isActive: true,
         description,
@@ -718,8 +721,21 @@ async function startServer() {
   app.put('/api/accounts/:id', (req, res) => {
     try {
       const { id } = req.params;
-      const { code, nameAr, nameEn, category, parentId, description, isActive } = req.body;
-      db.updateAccount(id, { code, nameAr, nameEn, category, parentId, description, isActive });
+      const { code, nameAr, nameEn, category, parentId, description, isActive, normalBalance, nature } = req.body;
+      const catUpper = (category || 'ASSET').toUpperCase();
+      const ifrsDefaultNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
+      const resolvedNature = normalBalance || nature || ifrsDefaultNature;
+      db.updateAccount(id, {
+        code,
+        nameAr,
+        nameEn,
+        category,
+        parentId,
+        description,
+        isActive,
+        normalBalance: resolvedNature,
+        nature: resolvedNature,
+      });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Account, GeneralLedgerReport } from '../types.js';
 import { getCategoryBadgeClass, getCategoryLabelAr } from '../utils/formatters.ts';
 import { isAccountLeaf } from '../utils/accountingTreeEngine.ts';
-import { BookOpen, Printer, Search, Layers, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { BookOpen, Printer, Search, Layers, RefreshCw, FileSpreadsheet, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
 import { supabase, isSupabaseConfigured, getCurrentCompanyId, resolveToSupabaseCompanyUUID } from '../services/supabaseClient.ts';
+import * as XLSX from 'xlsx';
 
 interface GeneralLedgerProps {
   journals?: any[];
@@ -43,9 +44,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [report, setReport] = useState<GeneralLedgerReport | null>(null);
+  const [allReports, setAllReports] = useState<GeneralLedgerReport[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
   const selectedAccount = useMemo(() => {
+    if (currentAccountId === 'ALL') return null;
     return accounts.find((a) => a.id === currentAccountId || a.code === currentAccountId) || null;
   }, [accounts, currentAccountId]);
 
@@ -70,6 +73,15 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
     if (!accId) return;
     setLoading(true);
     try {
+      if (accId === 'ALL') {
+        const allLedgers = await DataService.getAllLedgers(fromDate, toDate);
+        setAllReports(allLedgers);
+        setReport(null);
+        setLoading(false);
+        return;
+      }
+
+      setAllReports([]);
       const rawCompId = getCurrentCompanyId();
       const companyId = resolveToSupabaseCompanyUUID(rawCompId);
 
@@ -200,6 +212,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
             let totalDeb = 0;
             let totalCred = 0;
             const filteredMovements: any[] = [];
+            const isDebitNature = (targetAccount.normalBalance || (targetAccount as any).nature) === 'DEBIT';
 
             lines.forEach((line: any) => {
               const je = Array.isArray(line.journal_entries) ? line.journal_entries[0] : line.journal_entries;
@@ -208,7 +221,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
               const c = Number(line.credit) || 0;
 
               if (lineDate < fromDate) {
-                if (targetAccount.normalBalance === 'DEBIT') {
+                if (isDebitNature) {
                   openingBal += (d - c);
                 } else {
                   openingBal += (c - d);
@@ -235,7 +248,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
 
             let currentRunning = openingBal;
             const finalMovements = filteredMovements.map((m) => {
-              if (targetAccount.normalBalance === 'DEBIT') {
+              if (isDebitNature) {
                 currentRunning += (m.debit - m.credit);
               } else {
                 currentRunning += (m.credit - m.debit);
@@ -307,6 +320,142 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
     );
   }, [report, searchQuery]);
 
+  // Filtered reports when ALL accounts mode is active
+  const filteredAllReports = useMemo(() => {
+    if (!searchQuery.trim()) return allReports;
+    const q = searchQuery.toLowerCase().trim();
+    return allReports.filter((r) =>
+      r.account.code.toLowerCase().includes(q) ||
+      r.account.nameAr.toLowerCase().includes(q) ||
+      r.movements.some((m) =>
+        (m.entryNumber && m.entryNumber.toLowerCase().includes(q)) ||
+        (m.description && m.description.toLowerCase().includes(q)) ||
+        (m.reference && m.reference.toLowerCase().includes(q))
+      )
+    );
+  }, [allReports, searchQuery]);
+
+  // Summary KPIs across all accounts
+  const allAccountsSummary = useMemo(() => {
+    if (currentAccountId !== 'ALL') return null;
+    let totalDebit = 0;
+    let totalCredit = 0;
+    let totalMovements = 0;
+    allReports.forEach((r) => {
+      totalDebit += r.totalDebit;
+      totalCredit += r.totalCredit;
+      totalMovements += r.movements.length;
+    });
+    return {
+      totalDebit,
+      totalCredit,
+      totalMovements,
+      isBalanced: Math.abs(totalDebit - totalCredit) < 0.001,
+      variance: Math.abs(totalDebit - totalCredit),
+    };
+  }, [currentAccountId, allReports]);
+
+  // Export handlers
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const rows: any[] = [];
+
+    const reportsToExport = currentAccountId === 'ALL'
+      ? (allReports.length > 0 ? allReports : [])
+      : (activeReport ? [activeReport] : []);
+
+    reportsToExport.forEach((rep) => {
+      const isDebitNat = (rep.account.normalBalance || (rep.account as any).nature) === 'DEBIT';
+      // Opening row
+      rows.push({
+        'كود الحساب': rep.account.code,
+        'اسم الحساب المحاسبي': rep.account.nameAr,
+        'طبيعة الحساب (Normal Balance)': isDebitNat ? 'مدين (DEBIT)' : 'دائن (CREDIT)',
+        'التصنيف': getCategoryLabelAr(rep.account.category),
+        'رقم القيد': '--',
+        'التاريخ': rep.startDate,
+        'رقم المرجع': '--',
+        'البيان والتفاصيل': 'الرصيد الافتتاحي السابق للفترة',
+        'الطرف المدين (د.ك)': 0,
+        'الطرف الدائن (د.ك)': 0,
+        'الرصيد التراكمي (د.ك)': rep.openingBalance,
+      });
+
+      rep.movements.forEach((m) => {
+        rows.push({
+          'كود الحساب': rep.account.code,
+          'اسم الحساب المحاسبي': rep.account.nameAr,
+          'طبيعة الحساب (Normal Balance)': isDebitNat ? 'مدين (DEBIT)' : 'دائن (CREDIT)',
+          'التصنيف': getCategoryLabelAr(rep.account.category),
+          'رقم القيد': m.entryNumber,
+          'التاريخ': m.date,
+          'رقم المرجع': m.reference || '',
+          'البيان والتفاصيل': m.description,
+          'الطرف المدين (د.ك)': m.debit,
+          'الطرف الدائن (د.ك)': m.credit,
+          'الرصيد التراكمي (د.ك)': m.cumulative_balance ?? m.runningBalance,
+        });
+      });
+
+      // Account Total Row
+      rows.push({
+        'كود الحساب': rep.account.code,
+        'اسم الحساب المحاسبي': `${rep.account.nameAr} - الإجمالي والرصيد الختامي`,
+        'طبيعة الحساب (Normal Balance)': isDebitNat ? 'مدين (DEBIT)' : 'دائن (CREDIT)',
+        'التصنيف': getCategoryLabelAr(rep.account.category),
+        'رقم القيد': 'ختامي',
+        'التاريخ': rep.endDate,
+        'رقم المرجع': '--',
+        'البيان والتفاصيل': `إجمالي المدين: ${formatKWD3(rep.totalDebit)} | إجمالي الدائن: ${formatKWD3(rep.totalCredit)}`,
+        'الطرف المدين (د.ك)': rep.totalDebit,
+        'الطرف الدائن (د.ك)': rep.totalCredit,
+        'الرصيد التراكمي (د.ك)': rep.closingBalance,
+      });
+      // Blank separator row
+      rows.push({});
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'دفتر الأستاذ العام');
+    const fileName = currentAccountId === 'ALL'
+      ? `General_Ledger_All_Accounts_${startDate}_to_${endDate}.xlsx`
+      : `General_Ledger_${activeReport.account.code}_${startDate}_to_${endDate}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
+  const handleExportCSV = () => {
+    let csv = '\uFEFFكود الحساب,اسم الحساب,طبيعة الحساب,التصنيف,رقم القيد,التاريخ,رقم المرجع,البيان,مدين,دائن,الرصيد التراكمي\n';
+    const reportsToExport = currentAccountId === 'ALL'
+      ? (allReports.length > 0 ? allReports : [])
+      : (activeReport ? [activeReport] : []);
+
+    reportsToExport.forEach((rep) => {
+      const isDebitNat = (rep.account.normalBalance || (rep.account as any).nature) === 'DEBIT';
+      const natStr = isDebitNat ? 'مدين' : 'دائن';
+      const catStr = getCategoryLabelAr(rep.account.category);
+
+      csv += `"${rep.account.code}","${rep.account.nameAr}","${natStr}","${catStr}","--","${rep.startDate}","--","الرصيد الافتتاحي",0,0,${rep.openingBalance}\n`;
+
+      rep.movements.forEach((m) => {
+        csv += `"${rep.account.code}","${rep.account.nameAr}","${natStr}","${catStr}","${m.entryNumber}","${m.date}","${m.reference || ''}","${(m.description || '').replace(/"/g, '""')}",${m.debit},${m.credit},${m.cumulative_balance ?? m.runningBalance}\n`;
+      });
+
+      csv += `"${rep.account.code}","${rep.account.nameAr} - الختامي","${natStr}","${catStr}","--","${rep.endDate}","--","إجمالي الحساب",${rep.totalDebit},${rep.totalCredit},${rep.closingBalance}\n\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const fileName = currentAccountId === 'ALL'
+      ? `General_Ledger_All_Accounts_${startDate}_to_${endDate}.csv`
+      : `General_Ledger_${activeReport.account.code}_${startDate}_to_${endDate}.csv`;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Safe active report
   const activeReport: GeneralLedgerReport = report || {
     account: selectedAccount || {
@@ -338,7 +487,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
       <div className="bg-white border border-[#E5E1DA] rounded-lg p-3 shadow-2xs no-print">
         <div className="flex flex-wrap items-center gap-3">
           {/* Account Selector */}
-          <div className="flex-1 min-w-[280px]">
+          <div className="flex-1 min-w-[300px]">
             <label className="block text-[11px] font-bold text-[#6E6659] mb-1">
               الحساب المحاسبي (Chart of Accounts)
             </label>
@@ -347,16 +496,22 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
               value={currentAccountId}
               onChange={(e) => {
                 const val = e.target.value;
-                const match = accounts.find((a) => a.id === val || a.code === val);
-                setCurrentAccountId(match ? match.id : val);
+                if (val === 'ALL') {
+                  setCurrentAccountId('ALL');
+                } else {
+                  const match = accounts.find((a) => a.id === val || a.code === val);
+                  setCurrentAccountId(match ? match.id : val);
+                }
               }}
               className="w-full bg-[#FDFCFB] border border-[#E5E1DA] rounded-md px-3 py-1.5 text-xs text-[#1A1A1A] font-bold focus:outline-none focus:border-[#B8860B]"
             >
+              <option value="ALL">★ كافة الحسابات (دفتر الأستاذ العام الشامل لجميع الحسابات)</option>
               {accounts.map((acc) => {
                 const leaf = isAccountLeaf(acc, accounts);
+                const isDebit = (acc.normalBalance || (acc as any).nature) === 'DEBIT';
                 return (
                   <option key={acc.id} value={acc.id}>
-                    {acc.code} - {acc.nameAr} [{leaf ? 'طرفي' : 'رئيسي'}]
+                    {acc.code} - {acc.nameAr} [{leaf ? 'طرفي' : 'رئيسي'} • {isDebit ? 'طبيعة: مدين' : 'طبيعة: دائن'}]
                   </option>
                 );
               })}
@@ -403,7 +558,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
             </div>
           </div>
 
-          {/* Actions: Refresh & Print */}
+          {/* Actions: Refresh, Excel, CSV & Print */}
           <div className="flex items-center gap-2 self-end pb-0.5">
             <button
               id="gl-refresh-btn"
@@ -416,196 +571,380 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
             </button>
 
             <button
+              id="gl-export-excel-btn"
+              onClick={handleExportExcel}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              title="تصدير دفتر الأستاذ إلى ملف Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>تصدير Excel</span>
+            </button>
+
+            <button
+              id="gl-export-csv-btn"
+              onClick={handleExportCSV}
+              className="px-3 py-1.5 bg-[#F2EFE9] hover:bg-[#E5E1DA] text-[#1A1A1A] border border-[#E5E1DA] rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              title="تصدير دفتر الأستاذ إلى ملف CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-[#B8860B]" />
+              <span>CSV</span>
+            </button>
+
+            <button
               id="gl-print-btn"
               onClick={() => window.print()}
-              className="px-3 py-1.5 bg-[#F2EFE9] hover:bg-[#E5E1DA] text-[#1A1A1A] border border-[#E5E1DA] rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              className="px-3 py-1.5 bg-[#1A1A1A] hover:bg-black text-white rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
             >
-              <Printer className="w-3.5 h-3.5 text-[#B8860B]" />
+              <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
               <span>طباعة كشف الحساب</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* 2. Main Ledger View (Allocates 80%+ vertical space to the actual transactions grid) */}
-      <div className="bg-white border border-[#E5E1DA] rounded-lg shadow-xs flex flex-col flex-1 min-h-[560px] overflow-hidden printable-card">
-        {/* Compact Account Header Strip */}
-        <div className="px-4 py-2.5 border-b border-[#E5E1DA] bg-[#FDFCFB] flex items-center justify-between flex-wrap gap-2 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-[#B8860B] bg-[#F2EFE9] px-2.5 py-0.5 rounded border border-[#E5E1DA]">
-              {activeReport.account.code}
-            </span>
-            <span className="font-serif font-bold text-[#1A1A1A] text-sm">{activeReport.account.nameAr}</span>
-            <span
-              className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getCategoryBadgeClass(
-                activeReport.account.category
-              )}`}
-            >
-              {getCategoryLabelAr(activeReport.account.category)}
-            </span>
-            <span className="text-[#8C8273]">
-              ({activeReport.account.normalBalance === 'DEBIT' ? 'طبيعة الحساب: مدين (Debit)' : 'طبيعة الحساب: دائن (Credit)'})
-            </span>
-            {!isSelectedLeaf && (
-              <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded">
-                <Layers className="w-3 h-3 text-amber-700" />
-                حساب تجميعي
-              </span>
-            )}
-          </div>
+      {/* When ALL accounts mode is selected */}
+      {currentAccountId === 'ALL' ? (
+        <div id="printable-statement" className="flex flex-col gap-4 flex-1">
+          {/* Summary Equality Bar */}
+          {allAccountsSummary && (
+            <div className="bg-white border border-[#E5E1DA] rounded-lg p-3 shadow-2xs flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <div className={`p-1.5 rounded ${allAccountsSummary.isBalanced ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                  {allAccountsSummary.isBalanced ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                </div>
+                <div>
+                  <div className="font-serif font-bold text-xs text-[#1A1A1A]">
+                    حالة توازن حركة دفتر الأستاذ العام (كافة الحسابات)
+                  </div>
+                  <div className="text-[11px] text-[#6E6659]">
+                    {allAccountsSummary.isBalanced
+                      ? 'معادلة ميزان دفتر الأستاذ متوازنة تماماً بنسبة 100% (إجمالي المدين = إجمالي الدائن)'
+                      : `يوجد فرق محاسبي قدره: ${formatKWD3(allAccountsSummary.variance)}`}
+                  </div>
+                </div>
+              </div>
 
-          <div className="text-[11px] text-[#8C8273]">
-            الفترة: <span className="font-mono text-[#1A1A1A]">{activeReport.startDate}</span> إلى <span className="font-mono text-[#1A1A1A]">{activeReport.endDate}</span>
-            {' • '}
-            عدد الحركات: <span className="font-bold text-[#1A1A1A]">{displayedMovements.length}</span>
-          </div>
-        </div>
+              <div className="flex items-center gap-4 text-xs font-mono">
+                <div className="bg-emerald-50 border border-emerald-200 px-3 py-1 rounded">
+                  <span className="text-emerald-800 font-bold">إجمالي المدين: </span>
+                  <span className="text-emerald-950 font-black">{formatKWD3(allAccountsSummary.totalDebit)}</span>
+                </div>
+                <div className="bg-rose-50 border border-rose-200 px-3 py-1 rounded">
+                  <span className="text-rose-800 font-bold">إجمالي الدائن: </span>
+                  <span className="text-rose-950 font-black">{formatKWD3(allAccountsSummary.totalCredit)}</span>
+                </div>
+                <div className="bg-stone-100 border border-stone-300 px-3 py-1 rounded text-stone-700">
+                  <span className="font-bold">إجمالي الحركات: </span>
+                  <span className="font-black">{allAccountsSummary.totalMovements}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
-        {/* Dense Transactions Table with Vertical & Horizontal Scroll */}
-        <div className="overflow-x-auto overflow-y-auto flex-1 max-h-[64vh]">
-          <table className="w-full text-right text-xs border-collapse">
-            <thead className="bg-[#F7F5F0] text-[#6E6659] font-serif font-bold border-b border-[#E5E1DA] sticky top-0 z-5">
-              <tr>
-                <th className="py-2.5 px-4 w-28">رقم القيد</th>
-                <th className="py-2.5 px-4 w-28">التاريخ</th>
-                <th className="py-2.5 px-4 w-28">رقم المرجع</th>
-                <th className="py-2.5 px-4 min-w-[220px]">البيان والتفاصيل</th>
-                <th className="py-2.5 px-4 w-32 text-left text-emerald-800">الطرف المدين (+)</th>
-                <th className="py-2.5 px-4 w-32 text-left text-rose-800">الطرف الدائن (-)</th>
-                <th className="py-2.5 px-4 w-36 text-left text-[#1A1A1A]">الرصيد التراكمي</th>
-                <th className="py-2.5 px-3 w-28 text-center">الدورة والمستند</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E5E1DA]">
-              {/* Opening Balance Row */}
-              <tr className="bg-[#FAF9F5] italic text-[#6E6659] font-semibold font-serif">
-                <td colSpan={3} className="py-2.5 px-4 text-neutral-400">
-                  --
-                </td>
-                <td className="py-2.5 px-4">
-                  الرصيد الافتتاحي السابق للفترة (Opening Balance)
-                </td>
-                <td className="py-2.5 px-4 text-left font-mono">-</td>
-                <td className="py-2.5 px-4 text-left font-mono">-</td>
-                <td className="py-2.5 px-4 text-left font-mono font-bold text-[#1A1A1A]">
-                  {formatKWD3(activeReport.openingBalance)}
-                </td>
-                <td className="py-2.5 px-3 text-center text-neutral-400 font-mono text-[10px]">
-                  افتتاحي
-                </td>
-              </tr>
-
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-[#8C8273] font-serif italic">
-                    <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="w-4 h-4 text-[#B8860B] animate-spin" />
-                      <span>جاري تحديث كشف الحساب من القيود المحاسبية...</span>
+          {/* List of Accounts */}
+          {loading ? (
+            <div className="bg-white border border-[#E5E1DA] rounded-lg p-12 text-center text-[#8C8273]">
+              <RefreshCw className="w-6 h-6 text-[#B8860B] animate-spin mx-auto mb-2" />
+              <p className="font-serif">جاري تحميل دفتر الأستاذ العام لكافة الحسابات وتدقيق توازنها...</p>
+            </div>
+          ) : filteredAllReports.length === 0 ? (
+            <div className="bg-white border border-[#E5E1DA] rounded-lg p-12 text-center text-[#8C8273] font-serif">
+              لا توجد حسابات أو حركات مطابقة لمعيار البحث.
+            </div>
+          ) : (
+            filteredAllReports.map((accRep) => {
+              const isDebitNat = (accRep.account.normalBalance || (accRep.account as any).nature) === 'DEBIT';
+              return (
+                <div key={accRep.account.id} className="bg-white border border-[#E5E1DA] rounded-lg shadow-xs overflow-hidden">
+                  {/* Account Header */}
+                  <div className="px-4 py-2.5 bg-[#FDFCFB] border-b border-[#E5E1DA] flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-[#B8860B] bg-[#F2EFE9] px-2.5 py-0.5 rounded border border-[#E5E1DA]">
+                        {accRep.account.code}
+                      </span>
+                      <span className="font-serif font-bold text-[#1A1A1A] text-sm">{accRep.account.nameAr}</span>
+                      <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getCategoryBadgeClass(accRep.account.category)}`}>
+                        {getCategoryLabelAr(accRep.account.category)}
+                      </span>
+                      <span className={`px-2 py-0.5 text-[10px] font-black rounded border ${
+                        isDebitNat ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-purple-50 text-purple-800 border-purple-200'
+                      }`}>
+                        {isDebitNat ? 'طبيعة: مدين (Debit)' : 'طبيعة: دائن (Credit)'}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-300">
+                        {accRep.account.isLeaf ? 'طرفي' : 'تجميعي'}
+                      </span>
                     </div>
-                  </td>
-                </tr>
-              ) : displayedMovements.length === 0 ? (
+
+                    <div className="text-[11px] text-[#8C8273] font-mono">
+                      حركات: <span className="font-bold text-[#1A1A1A]">{accRep.movements.length}</span>
+                      {' • '}
+                      رصيد ختامي: <span className="font-bold text-[#1A1A1A]">{formatKWD3(accRep.closingBalance)}</span>
+                    </div>
+                  </div>
+
+                  {/* Movements Table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right text-xs border-collapse">
+                      <thead className="bg-[#F7F5F0] text-[#6E6659] font-serif font-bold border-b border-[#E5E1DA]">
+                        <tr>
+                          <th className="py-2 px-3 w-28">رقم القيد</th>
+                          <th className="py-2 px-3 w-28">التاريخ</th>
+                          <th className="py-2 px-3 w-28">رقم المرجع</th>
+                          <th className="py-2 px-3 min-w-[200px]">البيان والتفاصيل</th>
+                          <th className="py-2 px-3 w-28 text-left text-emerald-800">مدين (+)</th>
+                          <th className="py-2 px-3 w-28 text-left text-rose-800">دائن (-)</th>
+                          <th className="py-2 px-3 w-32 text-left text-[#1A1A1A]">الرصيد التراكمي</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E5E1DA]">
+                        <tr className="bg-[#FAF9F5] italic text-[#6E6659]">
+                          <td colSpan={3} className="py-1.5 px-3 text-neutral-400">--</td>
+                          <td className="py-1.5 px-3">الرصيد الافتتاحي السابق للفترة</td>
+                          <td className="py-1.5 px-3 text-left font-mono">-</td>
+                          <td className="py-1.5 px-3 text-left font-mono">-</td>
+                          <td className="py-1.5 px-3 text-left font-mono font-bold text-[#1A1A1A]">
+                            {formatKWD3(accRep.openingBalance)}
+                          </td>
+                        </tr>
+                        {accRep.movements.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-4 text-center text-[#8C8273] italic">
+                              لا توجد حركات إضافية خلال الفترة المحددة
+                            </td>
+                          </tr>
+                        ) : (
+                          accRep.movements.map((m) => (
+                            <tr key={m.id} className="hover:bg-[#FDFCFB]">
+                              <td className="py-2 px-3 font-mono font-bold text-[#B8860B]">{m.entryNumber}</td>
+                              <td className="py-2 px-3 font-mono text-[#6E6659]">{m.date}</td>
+                              <td className="py-2 px-3 text-[#8C8273]">{m.reference || '-'}</td>
+                              <td className="py-2 px-3 font-serif text-[#1A1A1A]">{m.description}</td>
+                              <td className="py-2 px-3 text-left font-mono font-bold text-[#2D6A4F]">
+                                {m.debit > 0 ? formatKWD3(m.debit) : '-'}
+                              </td>
+                              <td className="py-2 px-3 text-left font-mono font-bold text-[#9E2A2B]">
+                                {m.credit > 0 ? formatKWD3(m.credit) : '-'}
+                              </td>
+                              <td className="py-2 px-3 text-left font-mono font-bold text-[#1A1A1A] bg-[#FAF9F5]">
+                                {formatKWD3(m.cumulative_balance ?? m.runningBalance)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                      {/* Subtotal Footer */}
+                      <tfoot className="bg-[#FAF9F5] font-bold text-xs border-t border-[#E5E1DA]">
+                        <tr>
+                          <td colSpan={4} className="py-2 px-3 text-left font-serif text-[#6E6659]">
+                            إجمالي الحركات والرصيد الختامي لحساب ({accRep.account.nameAr}):
+                          </td>
+                          <td className="py-2 px-3 text-left font-mono text-[#2D6A4F]">
+                            {formatKWD3(accRep.totalDebit)}
+                          </td>
+                          <td className="py-2 px-3 text-left font-mono text-[#9E2A2B]">
+                            {formatKWD3(accRep.totalCredit)}
+                          </td>
+                          <td className="py-2 px-3 text-left font-mono text-[#1A1A1A] bg-stone-100">
+                            {formatKWD3(accRep.closingBalance)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        /* 2. Single Account Ledger View */
+        <div id="printable-statement" className="bg-white border border-[#E5E1DA] rounded-lg shadow-xs flex flex-col flex-1 min-h-[560px] overflow-hidden printable-card">
+          {/* Compact Account Header Strip */}
+          <div className="px-4 py-2.5 border-b border-[#E5E1DA] bg-[#FDFCFB] flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-bold text-[#B8860B] bg-[#F2EFE9] px-2.5 py-0.5 rounded border border-[#E5E1DA]">
+                {activeReport.account.code}
+              </span>
+              <span className="font-serif font-bold text-[#1A1A1A] text-sm">{activeReport.account.nameAr}</span>
+              <span
+                className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getCategoryBadgeClass(
+                  activeReport.account.category
+                )}`}
+              >
+                {getCategoryLabelAr(activeReport.account.category)}
+              </span>
+              {(() => {
+                const isDebitNat = (activeReport.account.normalBalance || (activeReport.account as any).nature) === 'DEBIT';
+                return (
+                  <span className={`px-2 py-0.5 text-[10px] font-black rounded border ${
+                    isDebitNat ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-purple-50 text-purple-800 border-purple-200'
+                  }`}>
+                    {isDebitNat ? 'طبيعة الحساب: مدين (Debit)' : 'طبيعة الحساب: دائن (Credit)'}
+                  </span>
+                );
+              })()}
+              {!isSelectedLeaf && (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded">
+                  <Layers className="w-3 h-3 text-amber-700" />
+                  حساب تجميعي
+                </span>
+              )}
+            </div>
+
+            <div className="text-[11px] text-[#8C8273]">
+              الفترة: <span className="font-mono text-[#1A1A1A]">{activeReport.startDate}</span> إلى <span className="font-mono text-[#1A1A1A]">{activeReport.endDate}</span>
+              {' • '}
+              عدد الحركات: <span className="font-bold text-[#1A1A1A]">{displayedMovements.length}</span>
+            </div>
+          </div>
+
+          {/* Dense Transactions Table with Vertical & Horizontal Scroll */}
+          <div className="overflow-x-auto overflow-y-auto flex-1 max-h-[64vh]">
+            <table className="w-full text-right text-xs border-collapse">
+              <thead className="bg-[#F7F5F0] text-[#6E6659] font-serif font-bold border-b border-[#E5E1DA] sticky top-0 z-5">
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-[#8C8273] font-serif italic">
-                    {searchQuery
-                      ? 'لا توجد حركات مطابقة لمعيار البحث المحدد في كشف الحساب.'
-                      : 'لا توجد حركات مرحّلة إضافية على هذا الحساب خلال الفترة المحددة.'}
+                  <th className="py-2.5 px-4 w-28">رقم القيد</th>
+                  <th className="py-2.5 px-4 w-28">التاريخ</th>
+                  <th className="py-2.5 px-4 w-28">رقم المرجع</th>
+                  <th className="py-2.5 px-4 min-w-[220px]">البيان والتفاصيل</th>
+                  <th className="py-2.5 px-4 w-32 text-left text-emerald-800">الطرف المدين (+)</th>
+                  <th className="py-2.5 px-4 w-32 text-left text-rose-800">الطرف الدائن (-)</th>
+                  <th className="py-2.5 px-4 w-36 text-left text-[#1A1A1A]">الرصيد التراكمي</th>
+                  <th className="py-2.5 px-3 w-28 text-center">الدورة والمستند</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E5E1DA]">
+                {/* Opening Balance Row */}
+                <tr className="bg-[#FAF9F5] italic text-[#6E6659] font-semibold font-serif">
+                  <td colSpan={3} className="py-2.5 px-4 text-neutral-400">
+                    --
+                  </td>
+                  <td className="py-2.5 px-4">
+                    الرصيد الافتتاحي السابق للفترة (Opening Balance)
+                  </td>
+                  <td className="py-2.5 px-4 text-left font-mono">-</td>
+                  <td className="py-2.5 px-4 text-left font-mono">-</td>
+                  <td className="py-2.5 px-4 text-left font-mono font-bold text-[#1A1A1A]">
+                    {formatKWD3(activeReport.openingBalance)}
+                  </td>
+                  <td className="py-2.5 px-3 text-center text-neutral-400 font-mono text-[10px]">
+                    افتتاحي
                   </td>
                 </tr>
-              ) : (
-                displayedMovements.map((m) => (
-                  <tr key={m.id} className="hover:bg-[#FDFCFB] transition-colors">
-                    <td className="py-2.5 px-4 font-mono font-bold text-[#B8860B] whitespace-nowrap">
-                      <button
-                        onClick={() => {
-                          if (onOpenDocumentCycle) {
-                            onOpenDocumentCycle({ type: 'JOURNAL', id: m.journalEntryId || m.entryNumber });
-                          }
-                        }}
-                        className="hover:underline cursor-pointer text-[#B8860B]"
-                        title="انقر لفتح دورة المستند والقيد"
-                      >
-                        {m.entryNumber}
-                      </button>
+
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-[#8C8273] font-serif italic">
+                      <div className="flex items-center justify-center gap-2">
+                        <RefreshCw className="w-4 h-4 text-[#B8860B] animate-spin" />
+                        <span>جاري تحديث كشف الحساب من القيود المحاسبية...</span>
+                      </div>
                     </td>
-                    <td className="py-2.5 px-4 font-mono text-[#6E6659] whitespace-nowrap">
-                      {m.date}
+                  </tr>
+                ) : displayedMovements.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-[#8C8273] font-serif italic">
+                      {searchQuery
+                        ? 'لا توجد حركات مطابقة لمعيار البحث المحدد في كشف الحساب.'
+                        : 'لا توجد حركات مرحّلة إضافية على هذا الحساب خلال الفترة المحددة.'}
                     </td>
-                    <td className="py-2.5 px-4 text-[#8C8273] whitespace-nowrap">
-                      {m.reference || '-'}
-                    </td>
-                    <td className="py-2.5 px-4 font-serif text-[#1A1A1A]">
-                      {m.description}
-                    </td>
-                    <td className="py-2.5 px-4 text-left font-mono font-bold text-[#2D6A4F] whitespace-nowrap">
-                      {m.debit > 0 ? formatKWD3(m.debit) : '-'}
-                    </td>
-                    <td className="py-2.5 px-4 text-left font-mono font-bold text-[#9E2A2B] whitespace-nowrap">
-                      {m.credit > 0 ? formatKWD3(m.credit) : '-'}
-                    </td>
-                    <td className="py-2.5 px-4 text-left font-mono font-bold text-[#1A1A1A] bg-[#FAF9F5] whitespace-nowrap">
-                      {formatKWD3(m.cumulative_balance ?? m.runningBalance)}
-                    </td>
-                    <td className="py-2 px-3 text-center whitespace-nowrap">
-                      {onOpenDocumentCycle && (
+                  </tr>
+                ) : (
+                  displayedMovements.map((m) => (
+                    <tr key={m.id} className="hover:bg-[#FDFCFB] transition-colors">
+                      <td className="py-2.5 px-4 font-mono font-bold text-[#B8860B] whitespace-nowrap">
                         <button
                           onClick={() => {
-                            if (m.reference?.startsWith('INV-')) {
-                              onOpenDocumentCycle({ type: 'INVOICE', id: m.reference });
-                            } else if (m.reference?.startsWith('RCV-') || m.reference?.startsWith('PAY-')) {
-                              onOpenDocumentCycle({ type: 'VOUCHER', id: m.reference });
-                            } else {
+                            if (onOpenDocumentCycle) {
                               onOpenDocumentCycle({ type: 'JOURNAL', id: m.journalEntryId || m.entryNumber });
                             }
                           }}
-                          className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                          title="استعراض دورة المستند والقيد المحاسبي"
+                          className="hover:underline cursor-pointer text-[#B8860B]"
+                          title="انقر لفتح دورة المستند والقيد"
                         >
-                          <Layers className="w-3 h-3 text-purple-600" />
-                          <span>الدورة</span>
+                          {m.entryNumber}
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                      <td className="py-2.5 px-4 font-mono text-[#6E6659] whitespace-nowrap">
+                        {m.date}
+                      </td>
+                      <td className="py-2.5 px-4 text-[#8C8273] whitespace-nowrap">
+                        {m.reference || '-'}
+                      </td>
+                      <td className="py-2.5 px-4 font-serif text-[#1A1A1A]">
+                        {m.description}
+                      </td>
+                      <td className="py-2.5 px-4 text-left font-mono font-bold text-[#2D6A4F] whitespace-nowrap">
+                        {m.debit > 0 ? formatKWD3(m.debit) : '-'}
+                      </td>
+                      <td className="py-2.5 px-4 text-left font-mono font-bold text-[#9E2A2B] whitespace-nowrap">
+                        {m.credit > 0 ? formatKWD3(m.credit) : '-'}
+                      </td>
+                      <td className="py-2.5 px-4 text-left font-mono font-bold text-[#1A1A1A] bg-[#FAF9F5] whitespace-nowrap">
+                        {formatKWD3(m.cumulative_balance ?? m.runningBalance)}
+                      </td>
+                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                        {onOpenDocumentCycle && (
+                          <button
+                            onClick={() => {
+                              if (m.reference?.startsWith('INV-')) {
+                                onOpenDocumentCycle({ type: 'INVOICE', id: m.reference });
+                              } else if (m.reference?.startsWith('RCV-') || m.reference?.startsWith('PAY-')) {
+                                onOpenDocumentCycle({ type: 'VOUCHER', id: m.reference });
+                              } else {
+                                onOpenDocumentCycle({ type: 'JOURNAL', id: m.journalEntryId || m.entryNumber });
+                              }
+                            }}
+                            className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            title="استعراض دورة المستند والقيد المحاسبي"
+                          >
+                            <Layers className="w-3 h-3 text-purple-600" />
+                            <span>الدورة</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        {/* 3. Sticky Financial Summary Strip at Bottom */}
-        <div className="sticky bottom-0 z-10 bg-[#FAF9F5] border-t-2 border-[#D8D2C6] px-4 py-2.5 shadow-md flex flex-wrap items-center justify-between gap-4 text-xs font-serif font-bold text-[#1A1A1A]">
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[#6E6659]">الرصيد الافتتاحي:</span>
-              <span className="font-mono text-xs sm:text-sm text-[#1A1A1A]">
-                {formatKWD3(activeReport.openingBalance)}
-              </span>
+          {/* 3. Sticky Financial Summary Strip at Bottom */}
+          <div className="sticky bottom-0 z-10 bg-[#FAF9F5] border-t-2 border-[#D8D2C6] px-4 py-2.5 shadow-md flex flex-wrap items-center justify-between gap-4 text-xs font-serif font-bold text-[#1A1A1A]">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#6E6659]">الرصيد الافتتاحي:</span>
+                <span className="font-mono text-xs sm:text-sm text-[#1A1A1A]">
+                  {formatKWD3(activeReport.openingBalance)}
+                </span>
+              </div>
+              <span className="text-[#D8D2C6] hidden sm:inline">|</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#2D6A4F]">إجمالي حركات المدين (+):</span>
+                <span className="font-mono text-xs sm:text-sm text-[#2D6A4F]">
+                  {formatKWD3(activeReport.totalDebit)}
+                </span>
+              </div>
+              <span className="text-[#D8D2C6] hidden sm:inline">|</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#9E2A2B]">إجمالي حركات الدائن (-):</span>
+                <span className="font-mono text-xs sm:text-sm text-[#9E2A2B]">
+                  {formatKWD3(activeReport.totalCredit)}
+                </span>
+              </div>
             </div>
-            <span className="text-[#D8D2C6] hidden sm:inline">|</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[#2D6A4F]">إجمالي حركات المدين (+):</span>
-              <span className="font-mono text-xs sm:text-sm text-[#2D6A4F]">
-                {formatKWD3(activeReport.totalDebit)}
-              </span>
-            </div>
-            <span className="text-[#D8D2C6] hidden sm:inline">|</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[#9E2A2B]">إجمالي حركات الدائن (-):</span>
-              <span className="font-mono text-xs sm:text-sm text-[#9E2A2B]">
-                {formatKWD3(activeReport.totalCredit)}
+
+            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-[#E5E1DA] shadow-2xs">
+              <span className="text-[#1A1A1A]">الرصيد الختامي:</span>
+              <span className="font-mono text-sm sm:text-base font-bold text-[#2D6A4F]">
+                {formatKWD3(activeReport.closingBalance)}
               </span>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-[#E5E1DA] shadow-2xs">
-            <span className="text-[#1A1A1A]">الرصيد الختامي:</span>
-            <span className="font-mono text-sm sm:text-base font-bold text-[#2D6A4F]">
-              {formatKWD3(activeReport.closingBalance)}
-            </span>
-          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

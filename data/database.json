@@ -122,7 +122,8 @@
       "description": "إجمالي أصول المنشأة",
       "totalDebitMovement": 17126.9198114,
       "totalCreditMovement": 7997.884,
-      "movementCount": 88
+      "movementCount": 88,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1100",
@@ -140,7 +141,8 @@
       "description": "",
       "totalDebitMovement": 17126.9198114,
       "totalCreditMovement": 7997.884,
-      "movementCount": 88
+      "movementCount": 88,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1110",
@@ -158,7 +160,8 @@
       "description": "",
       "totalDebitMovement": 7997.884,
       "totalCreditMovement": 0,
-      "movementCount": 9
+      "movementCount": 9,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1111",
@@ -176,7 +179,8 @@
       "description": "",
       "totalDebitMovement": 7997.884,
       "totalCreditMovement": 0,
-      "movementCount": 9
+      "movementCount": 9,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1112",
@@ -194,7 +198,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1113",
@@ -212,7 +217,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1120",
@@ -230,7 +236,8 @@
       "description": "",
       "totalDebitMovement": 8436.6245614,
       "totalCreditMovement": 7997.884,
-      "movementCount": 63
+      "movementCount": 63,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1130",
@@ -248,7 +255,8 @@
       "description": "",
       "totalDebitMovement": 692.41125,
       "totalCreditMovement": 0,
-      "movementCount": 16
+      "movementCount": 16,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1200",
@@ -266,7 +274,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1210",
@@ -284,7 +293,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-1220",
@@ -302,7 +312,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-2000",
@@ -320,7 +331,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 692.41125,
-      "movementCount": 16
+      "movementCount": 16,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-2100",
@@ -338,7 +350,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 692.41125,
-      "movementCount": 16
+      "movementCount": 16,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-2110",
@@ -356,7 +369,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 692.41125,
-      "movementCount": 16
+      "movementCount": 16,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-3000",
@@ -374,7 +388,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-3100",
@@ -392,7 +407,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-3200",
@@ -410,7 +426,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-4000",
@@ -428,7 +445,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 8356.6245614,
-      "movementCount": 53
+      "movementCount": 53,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-4100",
@@ -446,7 +464,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 8356.6245614,
-      "movementCount": 53
+      "movementCount": 53,
+      "nature": "CREDIT"
     },
     {
       "id": "acc-5000",
@@ -464,7 +483,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 80,
-      "movementCount": 1
+      "movementCount": 1,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-5100",
@@ -482,7 +502,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-5200",
@@ -500,7 +521,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 80,
-      "movementCount": 1
+      "movementCount": 1,
+      "nature": "DEBIT"
     },
     {
       "id": "acc-5210",
@@ -518,7 +540,8 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0
+      "movementCount": 0,
+      "nature": "DEBIT"
     }
   ],
   "customers": [

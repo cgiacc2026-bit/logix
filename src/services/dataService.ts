@@ -1943,13 +1943,17 @@ export class DataService {
 
   public static async createAccount(accData: Partial<Account>): Promise<Account> {
     const accounts = localDataStore.getAccounts();
+    const catUpper = (accData.category || 'ASSET').toUpperCase();
+    const ifrsNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
+    const norm = accData.normalBalance || (accData as any).nature || ifrsNature;
     const newAcc: Account = {
       id: 'acc-' + (accData.code || Math.random().toString(36).substr(2, 9)),
       code: accData.code || '1000',
       nameAr: accData.nameAr || 'حساب جديد',
       nameEn: accData.nameEn || '',
       category: accData.category || 'ASSET',
-      normalBalance: accData.normalBalance || (['ASSET', 'EXPENSE'].includes(accData.category || '') ? 'DEBIT' : 'CREDIT'),
+      normalBalance: norm,
+      nature: norm,
       level: accData.level || 4,
       parentId: accData.parentId || null,
       isSystem: false,
@@ -1967,7 +1971,7 @@ export class DataService {
     await safeApiFetch('/api/accounts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(accData),
+      body: JSON.stringify({ ...accData, normalBalance: norm, nature: norm }),
     });
     return newAcc;
   }
@@ -1977,7 +1981,16 @@ export class DataService {
     const accounts = localDataStore.getAccounts();
     const idx = accounts.findIndex((a) => a.id === id);
     if (idx === -1) return null;
-    accounts[idx] = { ...accounts[idx], ...accData };
+    const existing = accounts[idx];
+    const catUpper = (accData.category || existing.category || 'ASSET').toUpperCase();
+    const ifrsNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
+    const norm = accData.normalBalance || (accData as any).nature || existing.normalBalance || (existing as any).nature || ifrsNature;
+    accounts[idx] = {
+      ...existing,
+      ...accData,
+      normalBalance: norm,
+      nature: norm,
+    };
     localDataStore.saveAccounts(accounts);
     if (isSupabaseConfigured) {
       SupabaseDataService.saveAccounts(accounts).catch((err) =>
@@ -1987,7 +2000,7 @@ export class DataService {
     await safeApiFetch(`/api/accounts/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(accData),
+      body: JSON.stringify({ ...accData, normalBalance: norm, nature: norm }),
     });
     return accounts[idx];
   }
@@ -6562,18 +6575,8 @@ export class DataService {
     const accounts = localDataStore.getAccounts();
     const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= asOfDate);
 
-    const debitMap = new Map<string, number>();
-    const creditMap = new Map<string, number>();
-
-    journals.forEach((j) => {
-      j.lines.forEach((l) => {
-        const acc = accounts.find((a) => a.id === l.accountId || a.code === l.accountCode);
-        if (acc) {
-          debitMap.set(acc.id, (debitMap.get(acc.id) || 0) + (Number(l.debit) || 0));
-          creditMap.set(acc.id, (creditMap.get(acc.id) || 0) + (Number(l.credit) || 0));
-        }
-      });
-    });
+    const agg = aggregateChartOfAccountsTree(accounts, journals, true);
+    const enrichedMap = agg.accountMap;
 
     let totalMovementDebit = 0;
     let totalMovementCredit = 0;
@@ -6581,20 +6584,16 @@ export class DataService {
     let totalEndingCredit = 0;
 
     const items = accounts.map((acc) => {
-      const isLeaf = isAccountLeaf(acc, accounts);
-      const movDeb = debitMap.get(acc.id) || 0;
-      const movCred = creditMap.get(acc.id) || 0;
-
-      // Strict rule: Only leaf accounts accumulate into grand totals to prevent double-counting
-      if (isLeaf) {
-        totalMovementDebit += movDeb;
-        totalMovementCredit += movCred;
-      }
+      const enriched = enrichedMap.get(acc.id) || (acc as any);
+      const isLeaf = enriched.isLeaf ?? isAccountLeaf(acc, accounts);
+      const movDeb = enriched.totalDebitMovement || 0;
+      const movCred = enriched.totalCreditMovement || 0;
 
       let endDeb = 0;
       let endCred = 0;
 
-      if (acc.normalBalance === 'DEBIT') {
+      const isDebitNat = (acc.normalBalance || (acc as any).nature) === 'DEBIT';
+      if (isDebitNat) {
         const net = movDeb - movCred;
         if (net >= 0) endDeb = net;
         else endCred = -net;
@@ -6604,13 +6603,21 @@ export class DataService {
         else endDeb = -net;
       }
 
+      // Strict rule: Only leaf accounts accumulate into grand totals to prevent double-counting
       if (isLeaf) {
+        totalMovementDebit += movDeb;
+        totalMovementCredit += movCred;
         totalEndingDebit += endDeb;
         totalEndingCredit += endCred;
       }
 
       return {
-        account: { ...acc, isLeaf } as any,
+        account: {
+          ...acc,
+          isLeaf,
+          normalBalance: isDebitNat ? 'DEBIT' : 'CREDIT',
+          nature: isDebitNat ? 'DEBIT' : 'CREDIT',
+        } as any,
         openingBalanceDebit: 0,
         openingBalanceCredit: 0,
         movementDebit: movDeb,
@@ -6638,10 +6645,12 @@ export class DataService {
     const account = accounts.find((a) => a.id === accountId || a.code === accountId);
     if (!account) return null;
 
-    const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
-    let runningBalance = 0;
-    let totalDebit = 0;
-    let totalCredit = 0;
+    const start = startDate || '2000-01-01';
+    const end = endDate || '2099-12-31';
+
+    const catUpper = (account.category || '').toUpperCase();
+    const ifrsNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
+    const isDebitNature = (account.normalBalance || account.nature || ifrsNature) === 'DEBIT';
 
     const isLeaf = isAccountLeaf(account, accounts);
     const targetIds = new Set<string>();
@@ -6659,46 +6668,104 @@ export class DataService {
       });
     }
 
+    const allPostedJournals = localDataStore
+      .getJournals()
+      .filter((j) => j.status === 'POSTED' || j.status === 'REVERSED')
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    let openingBalance = 0;
+    let totalDebit = 0;
+    let totalCredit = 0;
     const movements: any[] = [];
 
-    journals.forEach((j) => {
-      j.lines.forEach((l) => {
-        const isMatch = targetIds.has(l.accountId) || accounts.some((a) => targetIds.has(a.id) && a.code === l.accountCode);
-        if (isMatch) {
-          const d = Number(l.debit) || 0;
-          const c = Number(l.credit) || 0;
-          totalDebit += d;
-          totalCredit += c;
-          if (account.normalBalance === 'DEBIT') {
-            runningBalance += d - c;
-          } else {
-            runningBalance += c - d;
+    // Accumulate opening balance prior to start date
+    for (const j of allPostedJournals) {
+      if (j.date < start) {
+        for (const l of j.lines || []) {
+          const isMatch = targetIds.has(l.accountId) || accounts.some((a) => targetIds.has(a.id) && a.code === l.accountCode);
+          if (isMatch) {
+            const d = Number(l.debit) || 0;
+            const c = Number(l.credit) || 0;
+            if (isDebitNature) {
+              openingBalance += (d - c);
+            } else {
+              openingBalance += (c - d);
+            }
           }
-          movements.push({
-            id: 'mov-' + Math.random().toString(36).substr(2, 9),
-            journalEntryId: j.id,
-            entryNumber: j.entryNumber,
-            date: j.date,
-            reference: j.reference,
-            description: l.memo || j.description,
-            debit: d,
-            credit: c,
-            runningBalance,
-          });
         }
-      });
+      } else if (j.date <= end) {
+        // Collect period movements
+        for (const l of j.lines || []) {
+          const isMatch = targetIds.has(l.accountId) || accounts.some((a) => targetIds.has(a.id) && a.code === l.accountCode);
+          if (isMatch) {
+            movements.push({
+              journalId: j.id,
+              journalEntryId: j.id,
+              entryNumber: j.entryNumber,
+              date: j.date,
+              reference: j.reference || '',
+              description: l.memo || j.description || 'حركة قيد',
+              debit: Number(l.debit) || 0,
+              credit: Number(l.credit) || 0,
+            });
+          }
+        }
+      }
+    }
+
+    // Sort movements chronologically
+    movements.sort((a, b) => a.date.localeCompare(b.date));
+
+    let currentRunning = openingBalance;
+    const mappedMovements = movements.map((m, idx) => {
+      totalDebit += m.debit;
+      totalCredit += m.credit;
+      if (isDebitNature) {
+        currentRunning += (m.debit - m.credit);
+      } else {
+        currentRunning += (m.credit - m.debit);
+      }
+      return {
+        id: `mov-${idx}-${m.journalId}`,
+        journalEntryId: m.journalEntryId,
+        entryNumber: m.entryNumber,
+        date: m.date,
+        reference: m.reference,
+        description: m.description,
+        debit: m.debit,
+        credit: m.credit,
+        runningBalance: currentRunning,
+      };
     });
 
     return {
-      account,
-      startDate: startDate || '2026-01-01',
-      endDate: endDate || new Date().toISOString().split('T')[0],
-      openingBalance: 0,
+      account: {
+        ...account,
+        normalBalance: isDebitNature ? 'DEBIT' : 'CREDIT',
+        nature: isDebitNature ? 'DEBIT' : 'CREDIT',
+      },
+      startDate: start,
+      endDate: end,
+      openingBalance,
       totalDebit,
       totalCredit,
-      closingBalance: runningBalance,
-      movements,
+      closingBalance: currentRunning,
+      movements: mappedMovements,
     };
+  }
+
+  public static async getAllLedgers(startDate?: string, endDate?: string): Promise<GeneralLedgerReport[]> {
+    const accounts = localDataStore.getAccounts();
+    const sortedAccounts = [...accounts].sort((a, b) => a.code.localeCompare(b.code));
+    const reports: GeneralLedgerReport[] = [];
+
+    for (const acc of sortedAccounts) {
+      const rep = await this.getLedger(acc.id, startDate, endDate);
+      if (rep) {
+        reports.push(rep);
+      }
+    }
+    return reports;
   }
 
   public static async getPnL(startDate: string, endDate: string): Promise<IncomeStatementReport> {
