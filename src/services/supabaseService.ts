@@ -300,6 +300,46 @@ export class SupabaseDataService {
   }
 
   /**
+   * 1.05 MASTER PRICE LISTS (قوائم الأسعار المعتمدة)
+   * Single Source of Truth: master_price_lists table
+   */
+  public static async getMasterPriceLists(targetCompanyId?: string): Promise<any[]> {
+    if (!isSupabaseConfigured) return [];
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('master_price_lists')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('Supabase getMasterPriceLists error:', error.message);
+        return [];
+      }
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        companyId: row.company_id,
+        code: row.code,
+        nameAr: row.name_ar,
+        nameEn: row.name_en || '',
+        currency: row.currency || 'KWD',
+        isDefault: Boolean(row.is_default),
+        defaultDiscountPercent: Number(row.default_discount_percent || 0),
+        isActive: Boolean(row.is_active),
+      }));
+    } catch (err: any) {
+      console.warn('Supabase getMasterPriceLists exception:', err?.message);
+      return [];
+    }
+  }
+
+  /**
    * 1.1 COMPANY ACCOUNTING SETTINGS (ربط الحسابات الافتراضية)
    * Single Source of Truth: company_accounting_settings table
    */
@@ -790,7 +830,10 @@ export class SupabaseDataService {
           openingBalanceDate: raw.openingBalanceDate || '2026-07-31',
           isActive: raw.isActive ?? row.is_active ?? true,
           branches: finalBranches,
+          priceListId: row.master_price_list_id || raw.priceListId || raw.price_list_id || '',
           priceListName: raw.priceListName || '',
+          defaultDiscountRate: Number(raw.defaultDiscountRate ?? 0),
+          customPrices: raw.customPrices || [],
           ...raw,
           id: row.id || raw.id,
           code: row.code || raw.code || row.id,
@@ -832,6 +875,7 @@ export class SupabaseDataService {
             current_balance: cust.balance || 0,
             opening_balance: Number(cust.openingBalance || 0),
             tax_number: cust.taxNumber || '',
+            master_price_list_id: cust.priceListId && cust.priceListId !== 'standard' ? cust.priceListId : null,
             raw_data: {
               ...cust,
               id: cust.id,
@@ -1495,6 +1539,12 @@ export class SupabaseDataService {
       updated_at: new Date().toISOString(),
     };
 
+    // Keep track of original values for audit logging in case of FK fallback
+    const originalPriceListId = invoicePayload.price_list_id;
+    const originalCustomerId = invoicePayload.customer_id;
+    let fallbackPriceListOccurred = false;
+    let fallbackCustomerOccurred = false;
+
     // 2. Prepare modern invoice_items table rows
     const invoiceItemRows = formattedItems.map((it, idx) => {
       // Always generate a guaranteed fresh UUID to eliminate invoice_items_pkey unique violations
@@ -1540,15 +1590,32 @@ export class SupabaseDataService {
       console.warn('[Supabase saveInvoice] Foreign key constraint candidate failed in invoices table, checking columns and retrying...', invErr.message);
       if (invErr.message.includes('price_list_id')) {
         invoicePayload.price_list_id = null;
+        fallbackPriceListOccurred = true;
       }
       if (invErr.message.includes('customer_id')) {
         invoicePayload.customer_id = null;
+        fallbackCustomerOccurred = true;
       }
       // If ambiguous, clear both non-essential foreign keys
       if (!invErr.message.includes('customer_id') && !invErr.message.includes('price_list_id')) {
         invoicePayload.price_list_id = null;
         invoicePayload.customer_id = null;
+        fallbackPriceListOccurred = Boolean(originalPriceListId);
+        fallbackCustomerOccurred = Boolean(originalCustomerId);
       }
+
+      if (invoicePayload.raw_data) {
+        if (fallbackPriceListOccurred) {
+          invoicePayload.raw_data.priceListFallbackApplied = true;
+          invoicePayload.raw_data.priceListFallbackReason = 'Foreign key constraint violation in invoices_price_list_id_fkey - reverted to standard catalog pricing';
+          invoicePayload.raw_data.originalPriceListId = originalPriceListId;
+        }
+        if (fallbackCustomerOccurred) {
+          invoicePayload.raw_data.customerFallbackApplied = true;
+          invoicePayload.raw_data.originalCustomerId = originalCustomerId;
+        }
+      }
+
       insertResult = await supabase
         .from('invoices')
         .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })
@@ -1556,6 +1623,46 @@ export class SupabaseDataService {
         .single();
       invErr = insertResult.error;
       insertedRow = insertResult.data;
+
+      // Register fallback action in audit_logs table
+      if (!invErr && insertedRow) {
+        try {
+          const auditOldData: Record<string, any> = {
+            event: 'FOREIGN_KEY_FALLBACK_APPLIED',
+            constraint_error: 'Handled 23503 foreign key violation',
+          };
+          const auditNewData: Record<string, any> = {
+            invoice_number: insertedRow.invoice_number,
+            fallback_applied: true,
+            timestamp: new Date().toISOString(),
+          };
+
+          if (fallbackPriceListOccurred) {
+            auditOldData.original_price_list_id = originalPriceListId;
+            auditNewData.price_list_id = null;
+            auditNewData.fallback_price_list = 'Standard catalog prices applied instead of missing/invalid price_list_id';
+          }
+          if (fallbackCustomerOccurred) {
+            auditOldData.original_customer_id = originalCustomerId;
+            auditNewData.customer_id = null;
+            auditNewData.customer_name = invoicePayload.customer_name;
+          }
+
+          await supabase.from('audit_logs').insert([
+            {
+              company_id: companyId,
+              table_name: 'invoices',
+              action: 'UPDATE',
+              record_id: insertedRow.id,
+              old_data: auditOldData,
+              new_data: auditNewData,
+            },
+          ]);
+          console.info('[Supabase saveInvoice] Logged fallback action to audit_logs for invoice:', insertedRow.invoice_number);
+        } catch (auditErr) {
+          console.warn('[Supabase saveInvoice] Notice writing fallback event to audit_logs:', auditErr);
+        }
+      }
     }
 
     // Retry 2: If unique constraint conflict, advance sequence and retry

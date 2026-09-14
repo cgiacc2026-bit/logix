@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Building2,
   Tag,
@@ -18,9 +18,11 @@ import {
   Info,
   ShieldCheck,
   Save,
+  Loader2,
 } from 'lucide-react';
-import { Customer, CustomerBranch, CustomerPriceListItem, InventoryItem } from '../types.js';
+import { Customer, CustomerBranch, CustomerPriceListItem, InventoryItem, MasterPriceList } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
+import { SupabaseDataService } from '../services/supabaseService.ts';
 
 interface CustomerBranchesAndPriceListModalProps {
   customer: Customer;
@@ -92,6 +94,40 @@ export const CustomerBranchesAndPriceListModal: React.FC<CustomerBranchesAndPric
       PRESET_PRICE_LISTS.find((p) => p.id === (customer.priceListId || 'standard'))?.nameAr ||
       'قائمة الأسعار القياسية'
   );
+  const [dbPriceLists, setDbPriceLists] = useState<MasterPriceList[]>([]);
+  const [isLoadingPriceLists, setIsLoadingPriceLists] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadPriceLists = async () => {
+      try {
+        setIsLoadingPriceLists(true);
+        const compId = customer.company_id || customer.companyId;
+        const lists = await SupabaseDataService.getMasterPriceLists(compId);
+        if (isMounted && lists && lists.length > 0) {
+          setDbPriceLists(lists);
+          // If customer has an exact UUID matching one of these, or if customer has 'standard', ensure name is sync
+          const matched = lists.find((l: any) => l.id === customer.priceListId) ||
+                          lists.find((l: any) => l.code === (customer.priceListId || '').toUpperCase()) ||
+                          lists.find((l: any) => (customer.priceListId === 'standard' || !customer.priceListId) && l.isDefault);
+          if (matched) {
+            setPriceListId(matched.id);
+            setPriceListName(matched.nameAr);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load master price lists in modal:', err);
+      } finally {
+        if (isMounted) setIsLoadingPriceLists(false);
+      }
+    };
+
+    loadPriceLists();
+    return () => {
+      isMounted = false;
+    };
+  }, [customer.company_id, customer.companyId, customer.priceListId]);
+
   const [defaultDiscountRate, setDefaultDiscountRate] = useState<number>(
     customer.defaultDiscountRate !== undefined ? customer.defaultDiscountRate : 0
   );
@@ -697,17 +733,31 @@ export const CustomerBranchesAndPriceListModal: React.FC<CustomerBranchesAndPric
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {PRESET_PRICE_LISTS.map((preset) => {
-                    const isSelected = priceListId === preset.id;
+                  {isLoadingPriceLists && (
+                    <div className="col-span-full py-4 text-center text-xs text-neutral-500 flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                      <span>جاري تحميل قوائم الأسعار المعتمدة من الخادم...</span>
+                    </div>
+                  )}
+
+                  {/* Render dynamic DB lists if present, otherwise fallback to PRESET_PRICE_LISTS */}
+                  {((dbPriceLists.length > 0 ? dbPriceLists : PRESET_PRICE_LISTS) as any[]).map((preset) => {
+                    const presetId = preset.id;
+                    const isSelected = priceListId === presetId || (priceListId === 'standard' && (preset.isDefault || preset.code === 'STANDARD'));
+                    const nameAr = preset.name_ar || preset.nameAr;
+                    const nameEn = preset.name_en || preset.nameEn;
+                    const defaultDisc = preset.default_discount_percent ?? preset.defaultDiscount ?? 0;
+                    const desc = preset.desc || (preset.isDefault ? 'السعر الأساسي المعتمد في دليل الأصناف دون خصومات مسبقة.' : `قائمة أسعار معتمدة بخصم مقترح ${defaultDisc}%`);
+
                     return (
                       <button
-                        key={preset.id}
+                        key={presetId}
                         type="button"
                         onClick={() => {
-                          setPriceListId(preset.id);
-                          setPriceListName(preset.nameAr);
-                          if (preset.defaultDiscount > 0 && defaultDiscountRate === 0) {
-                            setDefaultDiscountRate(preset.defaultDiscount);
+                          setPriceListId(presetId);
+                          setPriceListName(nameAr);
+                          if (defaultDisc > 0 && defaultDiscountRate === 0) {
+                            setDefaultDiscountRate(defaultDisc);
                           }
                         }}
                         className={`p-3.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
@@ -718,19 +768,19 @@ export const CustomerBranchesAndPriceListModal: React.FC<CustomerBranchesAndPric
                       >
                         <div>
                           <div className="font-extrabold text-xs flex items-center justify-between">
-                            <span>{preset.nameAr}</span>
+                            <span>{nameAr}</span>
                             {isSelected && <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />}
                           </div>
-                          <div className="font-mono text-[10px] text-neutral-400 mt-0.5">{preset.nameEn}</div>
+                          <div className="font-mono text-[10px] text-neutral-400 mt-0.5">{nameEn}</div>
                           <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">
-                            {preset.desc}
+                            {desc}
                           </p>
                         </div>
 
-                        {preset.defaultDiscount > 0 && (
+                        {defaultDisc > 0 && (
                           <div className="mt-2.5 pt-2 border-t border-dashed border-amber-200 dark:border-neutral-700 flex items-center justify-between text-[10px] font-bold text-amber-700 dark:text-amber-300">
                             <span>خصم قياسي مقترح:</span>
-                            <span>{preset.defaultDiscount}%</span>
+                            <span>{defaultDisc}%</span>
                           </div>
                         )}
                       </button>

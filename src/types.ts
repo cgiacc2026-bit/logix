@@ -414,6 +414,9 @@ export interface Invoice {
   changeDue?: number;
   paymentStatus?: 'PAID' | 'PARTIALLY_PAID' | 'UNPAID';
   paymentMethod?: 'CASH' | 'CARD' | 'CREDIT' | 'SPLIT' | string;
+  priceListFallbackApplied?: boolean;
+  priceListFallbackReason?: string;
+  originalPriceListId?: string;
   is_deleted?: boolean;
   deleted_at?: string;
   deleted_by?: string;
@@ -954,16 +957,27 @@ export interface MasterPriceListItem {
 
 export interface MasterPriceList {
   id: string;
+  company_id?: string;
+  companyId?: string;
   code: string;
+  name_ar?: string;
+  name_en?: string;
   nameAr: string;
   nameEn?: string;
   currency: string;
+  is_default?: boolean;
   isDefault?: boolean;
+  default_discount_percent?: number;
   defaultDiscountPercent?: number;
+  valid_from?: string;
+  valid_to?: string | null;
   validFrom?: string;
   validTo?: string;
+  is_active?: boolean;
   isActive: boolean;
   items?: MasterPriceListItem[];
+  created_at?: string;
+  updated_at?: string;
   createdAt?: string;
 }
 
