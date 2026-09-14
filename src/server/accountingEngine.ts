@@ -291,13 +291,52 @@ export class AccountingEngine {
     const movementMap = new Map<string, { debit: number; credit: number }>();
     accounts.forEach((acc) => movementMap.set(acc.id, { debit: 0, credit: 0 }));
 
+    // Identify leaf accounts
+    const leafSet = new Set<string>();
+    accounts.forEach((acc) => {
+      const hasChildren = accounts.some((child) => child.parentId === acc.id);
+      if (!hasChildren) {
+        leafSet.add(acc.id);
+      }
+    });
+
     for (const j of postedJournals) {
       if (j.date <= cutoff) {
         for (const line of j.lines) {
-          const entry = movementMap.get(line.accountId);
-          if (entry) {
-            entry.debit += Number(line.debit) || 0;
-            entry.credit += Number(line.credit) || 0;
+          const accId = line.accountId;
+          const d = Number(line.debit) || 0;
+          const c = Number(line.credit) || 0;
+
+          if (leafSet.has(accId)) {
+            const entry = movementMap.get(accId);
+            if (entry) {
+              entry.debit += d;
+              entry.credit += c;
+            }
+          } else {
+            // Line booked on parent account: map to primary leaf descendant
+            const accObj = accounts.find((a) => a.id === accId);
+            const leavesUnderParent = accounts.filter(
+              (other) =>
+                leafSet.has(other.id) &&
+                (other.parentId === accId ||
+                  (other.code && accObj?.code && other.code.startsWith(accObj.code) && other.code !== accObj.code))
+            );
+            if (leavesUnderParent.length > 0) {
+              leavesUnderParent.sort((x, y) => x.code.localeCompare(y.code));
+              const targetLeaf = leavesUnderParent[0];
+              const entry = movementMap.get(targetLeaf.id);
+              if (entry) {
+                entry.debit += d;
+                entry.credit += c;
+              }
+            } else {
+              const entry = movementMap.get(accId);
+              if (entry) {
+                entry.debit += d;
+                entry.credit += c;
+              }
+            }
           }
         }
       }
@@ -309,10 +348,8 @@ export class AccountingEngine {
     let totalEndingDebit = 0;
     let totalEndingCredit = 0;
 
-    // Process leaf accounts
-    const detailAccounts = accounts.filter(
-      (acc) => !accounts.some((child) => child.parentId === acc.id)
-    );
+    // Process detail accounts
+    const detailAccounts = accounts.filter((acc) => leafSet.has(acc.id));
 
     detailAccounts.forEach((acc) => {
       const { debit: mDebit, credit: mCredit } = movementMap.get(acc.id) || { debit: 0, credit: 0 };
