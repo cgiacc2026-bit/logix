@@ -777,6 +777,7 @@ export class AccountingEngine {
             memo: `فاتورة مبيعات رقم ${invoice.invoiceNumber} - العميل: ${invoice.entityNameAr}`,
             entityType: 'CUSTOMER' as const,
             entityId: invoice.entityId,
+            entityNameAr: invoice.entityNameAr,
           },
           // 2. Credit: Sales Revenue (صافي الإيراد بعد الخصومات وقبل الضريبة)
           {

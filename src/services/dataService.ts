@@ -1864,7 +1864,17 @@ export class DataService {
     return {
       cash: resolveAccount(mapping.cashAccountId, '1113', ['صندوق', 'خزينة', 'نقد']),
       bank: resolveAccount(mapping.bankAccountId, '1111', ['بنك', 'مصرف', 'bank']),
-      receivable: resolveAccount(mapping.receivableAccountId, '1120', ['عملاء', 'مدينون', 'ذمم مدينة', 'receivable']),
+      receivable: (() => {
+        const acc = resolveAccount(mapping.receivableAccountId, '1120', ['عملاء', 'مدينون', 'ذمم مدينة', 'receivable']);
+        if (acc && acc.nameAr && (acc.nameAr.includes('البنك') || acc.nameAr.includes('بنك'))) {
+          return {
+            ...acc,
+            nameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+            nameEn: 'Accounts Receivable (Coops)',
+          };
+        }
+        return acc;
+      })(),
       payable: resolveAccount(mapping.payableAccountId, '2110', ['موردين', 'دائنون', 'ذمم دائنة', 'payable']),
       inventory: resolveAccount(mapping.inventoryAccountId, '1130', ['مخزون', 'بضائع', 'inventory']),
       sales: resolveAccount(mapping.salesAccountId, '4100', ['مبيعات', 'إيراد', 'sales', 'revenue']),
@@ -2855,12 +2865,58 @@ export class DataService {
     
     if (isSales) {
       const netRevenue = Math.max(0, grandTotal - computedVatTotal);
-      if (paidAmount > 0 && dueAmount > 0) {
-        jLines.push({ id: 'jl-1', accountId: resolved.cash.id, accountCode: resolved.cash.code, accountNameAr: resolved.cash.nameAr, debit: paidAmount, credit: 0, memo: `دفعة نقدية مسددة - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}` });
-        jLines.push({ id: 'jl-2', accountId: resolved.receivable.id, accountCode: resolved.receivable.code, accountNameAr: resolved.receivable.nameAr, debit: dueAmount, credit: 0, memo: `المبلغ الآجل المستحق - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}` });
+      const isCredit = (newInvoice.paymentTerms === 'CREDIT') || (data.paymentTerms === 'CREDIT') || (dueAmount > 0) || (paidAmount === 0 && grandTotal > 0);
+
+      if (isCredit) {
+        if (paidAmount > 0 && dueAmount > 0) {
+          // Mixed payment: Cash portion + Credit portion
+          jLines.push({
+            id: 'jl-1',
+            accountId: resolved.cash.id,
+            accountCode: resolved.cash.code,
+            accountNameAr: resolved.cash.nameAr,
+            debit: paidAmount,
+            credit: 0,
+            memo: `دفعة نقدية مسددة - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+          });
+          jLines.push({
+            id: 'jl-2',
+            accountId: resolved.receivable.id,
+            accountCode: resolved.receivable.code,
+            accountNameAr: resolved.receivable.nameAr || 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+            debit: dueAmount,
+            credit: 0,
+            memo: `المبلغ الآجل المستحق - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+            entityType: 'CUSTOMER' as const,
+            entityId: newInvoice.entityId || data.entityId,
+            entityNameAr: entityNameAr,
+          });
+        } else {
+          // Pure Credit Sale: Debits Accounts Receivable (1120) with customer entity. Bank/Cash (111x) is NEVER debited upon credit invoice issuance.
+          jLines.push({
+            id: 'jl-1',
+            accountId: resolved.receivable.id,
+            accountCode: resolved.receivable.code,
+            accountNameAr: resolved.receivable.nameAr || 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+            debit: grandTotal,
+            credit: 0,
+            memo: `فاتورة مبيعات آجلة ${invoiceNumber} - ${entityNameAr}`,
+            entityType: 'CUSTOMER' as const,
+            entityId: newInvoice.entityId || data.entityId,
+            entityNameAr: entityNameAr,
+          });
+        }
       } else {
-        const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
-        jLines.push({ id: 'jl-1', accountId: paymentAcc.id, accountCode: paymentAcc.code, accountNameAr: paymentAcc.nameAr, debit: grandTotal, credit: 0, memo: `فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}` });
+        // Pure Cash Sale: Debits Cash/Treasury account
+        jLines.push({
+          id: 'jl-1',
+          accountId: resolved.cash.id,
+          accountCode: resolved.cash.code,
+          accountNameAr: resolved.cash.nameAr,
+          debit: grandTotal,
+          credit: 0,
+          memo: `فاتورة مبيعات نقدية ${invoiceNumber} - ${entityNameAr}`,
+        });
       }
       jLines.push({ id: `jl-${jLines.length + 1}`, accountId: resolved.sales.id, accountCode: resolved.sales.code, accountNameAr: resolved.sales.nameAr, debit: 0, credit: netRevenue, memo: `إيراد مبيعات فاتورة ${invoiceNumber}` });
       if (computedVatTotal > 0) {
@@ -3860,38 +3916,54 @@ export class DataService {
 
       if (isSales) {
         const netRevenue = Math.max(0, grandTotal - computedVatTotal);
-        if (paidAmount > 0 && dueAmount > 0) {
+        const isCredit = (paymentTerms === 'CREDIT') || (updatedInvoice.paymentTerms === 'CREDIT') || (dueAmount > 0) || (paidAmount === 0 && grandTotal > 0);
+
+        if (isCredit) {
+          if (paidAmount > 0 && dueAmount > 0) {
+            jLines.push({
+              id: 'jl-1',
+              accountId: resolved.cash.id,
+              accountCode: resolved.cash.code,
+              accountNameAr: resolved.cash.nameAr,
+              debit: paidAmount,
+              credit: 0,
+              memo: `دفعة نقدية مسددة - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+            });
+            jLines.push({
+              id: 'jl-2',
+              accountId: resolved.receivable.id,
+              accountCode: resolved.receivable.code,
+              accountNameAr: resolved.receivable.nameAr || 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+              debit: dueAmount,
+              credit: 0,
+              memo: `المبلغ الآجل المستحق - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
+              entityType: 'CUSTOMER' as const,
+              entityId: newEntityId,
+              entityNameAr: entityNameAr,
+            });
+          } else {
+            jLines.push({
+              id: 'jl-1',
+              accountId: resolved.receivable.id,
+              accountCode: resolved.receivable.code,
+              accountNameAr: resolved.receivable.nameAr || 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+              debit: grandTotal,
+              credit: 0,
+              memo: `فاتورة مبيعات آجلة ${invoiceNumber} - ${entityNameAr}`,
+              entityType: 'CUSTOMER' as const,
+              entityId: newEntityId,
+              entityNameAr: entityNameAr,
+            });
+          }
+        } else {
           jLines.push({
             id: 'jl-1',
             accountId: resolved.cash.id,
             accountCode: resolved.cash.code,
             accountNameAr: resolved.cash.nameAr,
-            debit: paidAmount,
-            credit: 0,
-            memo: `دفعة نقدية مسددة - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
-          });
-          jLines.push({
-            id: 'jl-2',
-            accountId: resolved.receivable.id,
-            accountCode: resolved.receivable.code,
-            accountNameAr: resolved.receivable.nameAr,
-            debit: dueAmount,
-            credit: 0,
-            memo: `المبلغ الآجل المستحق - فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
-            entityType: 'CUSTOMER' as const,
-            entityId: newEntityId,
-          });
-        } else {
-          const paymentAcc = paidAmount >= grandTotal ? resolved.cash : resolved.receivable;
-          jLines.push({
-            id: 'jl-1',
-            accountId: paymentAcc.id,
-            accountCode: paymentAcc.code,
-            accountNameAr: paymentAcc.nameAr,
             debit: grandTotal,
             credit: 0,
-            memo: `فاتورة مبيعات ${invoiceNumber} - ${entityNameAr}`,
-            ...(paymentAcc.id === resolved.receivable.id ? { entityType: 'CUSTOMER' as const, entityId: newEntityId } : {}),
+            memo: `فاتورة مبيعات نقدية ${invoiceNumber} - ${entityNameAr}`,
           });
         }
         jLines.push({

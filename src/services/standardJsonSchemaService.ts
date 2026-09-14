@@ -359,7 +359,8 @@ export function getSampleStandardBackup(companyInfo?: any): object {
     company: comp,
     accounts: [
       { code: "1110", nameAr: "الصندوق والخزينة الرئيسية", category: "ASSET", normalBalance: "DEBIT", level: 4, type: "DETAIL" },
-      { code: "1120", nameAr: "البنك والحسابات الجارية", category: "ASSET", normalBalance: "DEBIT", level: 4, type: "DETAIL" },
+      { code: "1111", nameAr: "البنك والحسابات الجارية", category: "ASSET", normalBalance: "DEBIT", level: 4, type: "DETAIL" },
+      { code: "1120", nameAr: "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)", category: "ASSET", normalBalance: "DEBIT", level: 4, type: "DETAIL" },
       { code: "1210", nameAr: "العملاء والمدينون التجاريون", category: "ASSET", normalBalance: "DEBIT", level: 4, type: "DETAIL" },
       { code: "1250", nameAr: "ضريبة القيمة المضافة المدخلات (استرداد)", category: "ASSET", normalBalance: "DEBIT", level: 4, type: "DETAIL" },
       { code: "1310", nameAr: "مخزون البضائع والمستودعات", category: "ASSET", normalBalance: "DEBIT", level: 4, type: "DETAIL" },
