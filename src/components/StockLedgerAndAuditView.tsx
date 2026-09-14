@@ -367,65 +367,76 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span>القيمة الدفترية (سعر التكلفة)</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+      {/* KPI Cards - Structured with Clear Visual Hierarchy */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: القيمة الدفترية (Neutral) */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span className="font-bold">القيمة الدفترية (سعر التكلفة)</span>
+            <DollarSign className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="text-lg font-black text-slate-900">
+          <div className="text-lg font-bold font-mono text-slate-800 mt-2">
             {formatCurrency(auditSummary.totalValuationAtCost, currency)}
           </div>
-          <div className="text-[11px] text-emerald-600 font-bold mt-1">
+          <div className="text-[11px] text-slate-400 font-semibold mt-1">
             إجمالي {auditSummary.totalUnitsInStock.toLocaleString()} وحدة مخزنة
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span>القيمة البيعية التقديرية</span>
-            <TrendingUp className="w-4 h-4 text-blue-600" />
+        {/* Card 2: القيمة البيعية التقديرية (Neutral) */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span className="font-bold">القيمة البيعية التقديرية</span>
+            <Package className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="text-lg font-black text-slate-900">
+          <div className="text-lg font-bold font-mono text-slate-800 mt-2">
             {formatCurrency(auditSummary.totalValuationAtSale, currency)}
           </div>
-          <div className="text-[11px] text-blue-600 font-bold mt-1">
-            هامش ربح متوقع: {auditSummary.expectedGrossMarginPct.toFixed(1)}%
+          <div className="text-[11px] text-slate-400 font-semibold mt-1">
+            بناءً على قائمة أسعار البيع الحالية
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span>الربح الإجمالي المتوقع</span>
-            <Package className="w-4 h-4 text-amber-600" />
+        {/* Card 3: HERO METRIC 1 - الربح الإجمالي المتوقع */}
+        <div className="bg-gradient-to-br from-emerald-50/70 via-teal-50/20 to-white border-2 border-emerald-500 rounded-xl p-4 shadow-xs ring-2 ring-emerald-500/10 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-emerald-950">الربح الإجمالي المتوقع</span>
+            <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[9px]">
+              هامش {auditSummary.expectedGrossMarginPct.toFixed(1)}%
+            </span>
           </div>
-          <div className="text-lg font-black text-slate-900">
+          <div className="text-xl font-black font-mono text-emerald-950 mt-1.5">
             {formatCurrency(auditSummary.expectedGrossProfit, currency)}
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            بناءً على أسعار البيع الحالية
+          <div className="text-[11px] text-emerald-700 font-bold mt-1">
+            العائد الربحي المتوقع عند تصريف المخزون
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span>حالة وسلامة الأصناف</span>
-            <AlertTriangle className="w-4 h-4 text-rose-500" />
+        {/* Card 4: HERO METRIC 2 - حالة وسلامة الأصناف */}
+        <div className="bg-gradient-to-br from-amber-50/80 via-white to-amber-50/30 border-2 border-amber-400 rounded-xl p-4 shadow-xs ring-2 ring-amber-400/15 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black text-amber-950">حالة وسلامة الأصناف</span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-[9px]">
+                فحص المخزون
+              </span>
+            </div>
+            <AlertTriangle className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+          <div className="flex items-center gap-1.5 mt-2">
+            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-black text-xs border border-emerald-200">
               {auditSummary.safeStockCount} آمن
             </span>
-            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-bold text-xs border border-amber-200">
+            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-black text-xs border border-amber-300">
               {auditSummary.lowStockCount} منخفض
             </span>
-            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-bold text-xs border border-rose-200">
+            <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-black text-xs border border-rose-200">
               {auditSummary.outOfStockCount} نفاد
             </span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            إجمالي {auditSummary.totalItemCount} صنف مسجل
+          <div className="text-[11px] text-slate-500 font-semibold mt-1">
+            إجمالي {auditSummary.totalItemCount} صنف مسجل بالمستودع
           </div>
         </div>
       </div>
@@ -767,46 +778,59 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
 
               return (
                 <div className="space-y-4">
-                  {/* Detailed Specs Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  {/* Detailed Specs Grid with Hierarchy */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {/* Item Basic Info */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                       <span className="text-[10px] text-slate-500 block font-bold">اسم الصنف:</span>
                       <span className="text-xs font-black text-slate-900 truncate block mt-0.5">{currentItem.nameAr}</span>
                       <span className="text-[10px] font-mono text-slate-400 block">{currentItem.sku}</span>
                     </div>
 
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    {/* Category & Unit */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                       <span className="text-[10px] text-slate-500 block font-bold">التصنيف والوحدة:</span>
                       <span className="text-xs font-bold text-slate-800 block mt-0.5">{currentItem.category || 'مواد غذائية'}</span>
                       <span className="text-[10px] text-slate-500 block">وحدة القياس: {currentItem.unit || 'حبة'}</span>
                     </div>
 
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    {/* Total In */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                       <span className="text-[10px] text-slate-500 block font-bold">إجمالي الوارد (+):</span>
                       <span className="text-xs font-black text-emerald-700 block mt-0.5">
                         +{totalIn.toLocaleString()} {currentItem.unit}
                       </span>
+                      <span className="text-[10px] text-slate-400">حركات الإضافة</span>
                     </div>
 
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    {/* Total Out */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                       <span className="text-[10px] text-slate-500 block font-bold">إجمالي المنصرف (-):</span>
                       <span className="text-xs font-black text-rose-700 block mt-0.5">
                         -{totalOut.toLocaleString()} {currentItem.unit}
                       </span>
+                      <span className="text-[10px] text-slate-400">فواتير الصرف</span>
                     </div>
 
-                    <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200">
-                      <span className="text-[10px] text-amber-800 block font-bold">الرصيد اللحظي بالمستودع:</span>
-                      <span className="text-sm font-black text-amber-900 block mt-0.5">
+                    {/* HERO METRIC: Current Stock Balance */}
+                    <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 p-3 rounded-xl border-2 border-amber-400 shadow-xs ring-2 ring-amber-400/15 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-900 block font-black">الرصيد الفعلي الحالي:</span>
+                        <span className="px-1 py-0.2 rounded bg-amber-500 text-slate-950 font-black text-[8px]">الرصيد</span>
+                      </div>
+                      <span className="text-base sm:text-lg font-black text-amber-950 font-mono block mt-0.5">
                         {runningBal.toLocaleString()} {currentItem.unit}
                       </span>
+                      <span className="text-[10px] text-amber-800/80 font-bold">بالمستودع الرئيسي</span>
                     </div>
 
-                    <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-200">
-                      <span className="text-[10px] text-indigo-800 block font-bold">إجمالي التقييم المالي:</span>
-                      <span className="text-xs font-black text-indigo-900 block mt-0.5">
+                    {/* Valuation Metric */}
+                    <div className="bg-gradient-to-br from-indigo-50/70 to-white p-3 rounded-xl border border-indigo-200 shadow-2xs flex flex-col justify-between">
+                      <span className="text-[10px] text-indigo-900 block font-bold">إجمالي التقييم المالي:</span>
+                      <span className="text-xs font-black text-indigo-950 font-mono block mt-0.5">
                         {formatCurrency(runningBal * (currentItem.purchasePrice || (currentItem as any).costPrice || 0), currency)}
                       </span>
+                      <span className="text-[10px] text-indigo-600/80">بسعر التكلفة المرجح</span>
                     </div>
                   </div>
 

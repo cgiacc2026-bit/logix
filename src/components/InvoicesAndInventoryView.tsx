@@ -2496,155 +2496,247 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   </p>
                 </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Category Filter */}
-              <select
-                value={selectedCategoryFilter}
-                onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className="bg-[#F7F5F0] border border-[#E5E1DA] px-3 py-2 rounded-lg text-xs font-bold text-[#1A1A1A] outline-none"
-              >
-                <option value="ALL">جميع التصنيفات ({inventory.length})</option>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
+                {/* Grouped Action Buttons: Primary, Secondary, and Consolidated Tools Menu */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Primary Action Button */}
+                  <button
+                    onClick={openAddItemModal}
+                    className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white text-xs font-black rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                  >
+                    <Plus className="w-4 h-4 text-[#D4AF37]" />
+                    <span>إضافة صنف جديد</span>
+                  </button>
 
-              {/* Search input */}
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 absolute right-3 top-2.5 text-[#8C8273]" />
-                <input
-                  type="text"
-                  value={inventorySearch}
-                  onChange={(e) => setInventorySearch(e.target.value)}
-                  placeholder="بحث بالاسم، الباركود، أو SKU..."
-                  className="w-full pr-9 pl-3 py-2 bg-[#F7F5F0] border border-[#E5E1DA] rounded-lg text-xs outline-none focus:ring-2 focus:ring-[#D4AF37]"
-                />
-              </div>
+                  {/* Secondary Action: Price Management */}
+                  <button
+                    onClick={() => setIsPriceModalOpen(true)}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-xl border border-[#E5E1DA] shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
+                    title="إدارة وتعديل أسعار البيع والتكلفة وهوامش الربح والتسعير الجماعي"
+                  >
+                    <TrendingUp className="w-4 h-4 text-emerald-600" />
+                    <span>إدارة الأسعار والتكلفة</span>
+                  </button>
 
-              <button
-                onClick={() => setIsPriceModalOpen(true)}
-                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-                title="إدارة وتعديل أسعار البيع والتكلفة وهوامش الربح والتسعير الجماعي"
-              >
-                <TrendingUp className="w-4 h-4 text-emerald-200" />
-                <span>إدارة أسعار البيع والتكلفة</span>
-              </button>
-
-              <button
-                onClick={handleDownloadBlankInventoryTemplate}
-                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all ring-1 ring-emerald-400"
-                title="تنزيل نموذج إكسل فارغ مهيأ بالأعمدة والتعليمات لتعبئة الأصناف ورفعها"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
-                <span>نموذج Excel فارغ للتعبئة</span>
-              </button>
-
-              <button
-                onClick={() => handleOpenImport('INVENTORY')}
-                className="px-3.5 py-2 bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-                title="استيراد بطاقات الأصناف مع الأسعار وأرصدة أول المدة"
-              >
-                <Upload className="w-4 h-4 text-cyan-200" />
-                <span>استيراد الأصناف + رصيد وتكلفة</span>
-              </button>
-
-              {/* Export Inventory Dropdown Menu */}
-              <div className="relative" ref={exportMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-                  title="تصدير قائمة المخزون الحالية إلى ملف Excel أو CSV"
-                >
-                  <Download className="w-4 h-4 text-amber-300" />
-                  <span>تصدير المخزون (Excel / CSV)</span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExportMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isExportMenuOpen && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-right animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
-                      خيارات تصدير القائمة المفلترة ({filteredInventory.length} صنف):
-                    </div>
+                  {/* Consolidated Tools, Import & Export Menu */}
+                  <div className="relative" ref={exportMenuRef}>
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        handleExportInventory('xlsx', false);
-                      }}
-                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                      onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                      className="px-3.5 py-2 bg-[#F7F5F0] hover:bg-[#EAE6DE] text-slate-700 text-xs font-bold rounded-xl border border-[#E5E1DA] shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
+                      title="المزيد من أدوات البيانات: استيراد الأصناف، تنزيل النموذج، وتصدير Excel/CSV"
                     >
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>تصدير المفلتر إلى Excel (.xlsx)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        handleExportInventory('csv', false);
-                      }}
-                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
-                    >
-                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>تصدير المفلتر إلى CSV (.csv)</span>
+                      <Download className="w-4 h-4 text-slate-600" />
+                      <span>أدوات واستيراد/تصدير</span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isExportMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
 
-                    <div className="my-1 border-t border-slate-100"></div>
-                    <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
-                      خيارات تصدير كامل المخزون ({scopedInventory.length} صنف):
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        handleExportInventory('xlsx', true);
-                      }}
-                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
-                    >
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
-                      <span className="font-semibold">تصدير كامل المخزون Excel (.xlsx)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        handleExportInventory('csv', true);
-                      }}
-                      className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
-                    >
-                      <FileText className="w-4 h-4 text-blue-700 shrink-0" />
-                      <span className="font-semibold">تصدير كامل المخزون CSV (.csv)</span>
-                    </button>
+                    {isExportMenuOpen && (
+                      <div className="absolute left-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-right animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
+                          عمليات الاستيراد والنماذج:
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExportMenuOpen(false);
+                            handleOpenImport('INVENTORY');
+                          }}
+                          className="w-full px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                        >
+                          <Upload className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>استيراد الأصناف + رصيد وتكلفة</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExportMenuOpen(false);
+                            handleDownloadBlankInventoryTemplate();
+                          }}
+                          className="w-full px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>تنزيل نموذج Excel فارغ للأصناف (.xlsx)</span>
+                        </button>
 
-                    <div className="my-1 border-t border-slate-100"></div>
-                    <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
-                      قوالب ونماذج الإدخال والتعبئة:
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        handleDownloadBlankInventoryTemplate();
-                      }}
-                      className="w-full px-3.5 py-2 text-xs text-emerald-800 hover:bg-emerald-50 flex items-center gap-2 transition-colors cursor-pointer text-right font-bold"
-                    >
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>تنزيل نموذج Excel فارغ للأصناف (.xlsx)</span>
-                    </button>
+                        <div className="my-1 border-t border-slate-100"></div>
+                        <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
+                          خيارات تصدير القائمة المفلترة ({filteredInventory.length} صنف):
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExportMenuOpen(false);
+                            handleExportInventory('xlsx', false);
+                          }}
+                          className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>تصدير المفلتر إلى Excel (.xlsx)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExportMenuOpen(false);
+                            handleExportInventory('csv', false);
+                          }}
+                          className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                        >
+                          <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>تصدير المفلتر إلى CSV (.csv)</span>
+                        </button>
+
+                        <div className="my-1 border-t border-slate-100"></div>
+                        <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
+                          خيارات تصدير كامل المخزون ({scopedInventory.length} صنف):
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExportMenuOpen(false);
+                            handleExportInventory('xlsx', true);
+                          }}
+                          className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
+                          <span className="font-semibold">تصدير كامل المخزون Excel (.xlsx)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExportMenuOpen(false);
+                            handleExportInventory('csv', true);
+                          }}
+                          className="w-full px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                        >
+                          <FileText className="w-4 h-4 text-blue-700 shrink-0" />
+                          <span className="font-semibold">تصدير كامل المخزون CSV (.csv)</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
-              <button
-                onClick={openAddItemModal}
-                className="px-4 py-2 bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-              >
-                <Plus className="w-4 h-4 text-[#D4AF37]" /> إضافة صنف جديد
-              </button>
-            </div>
-          </div>
+              {/* KPI Health Summary Row for Catalog */}
+              {(() => {
+                let lowCount = 0;
+                let outCount = 0;
+                let safeCount = 0;
+                let totalCost = 0;
+                let totalSale = 0;
+                for (const it of scopedInventory) {
+                  const qty = Number(it.quantityOnHand || 0);
+                  const min = Number(it.minQuantityAlert || 5);
+                  totalCost += qty * Number(it.purchasePrice || 0);
+                  totalSale += qty * Number(it.salePrice || 0);
+                  if (qty <= 0) outCount++;
+                  else if (qty <= min) lowCount++;
+                  else safeCount++;
+                }
+                const expProfit = totalSale - totalCost;
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Card 1: Health Alert (HERO METRIC 1) */}
+                    <div className="bg-gradient-to-br from-amber-50/80 via-white to-amber-50/30 border-2 border-amber-400 rounded-xl p-4 shadow-xs ring-2 ring-amber-400/15 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-black text-amber-950">حالة وسلامة الأصناف</span>
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-[9px]">
+                            فحص الرصيد
+                          </span>
+                        </div>
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-black text-xs border border-emerald-200">
+                          {safeCount} آمن
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-black text-xs border border-amber-300">
+                          {lowCount} منخفض
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-black text-xs border border-rose-200">
+                          {outCount} نفاد
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-semibold mt-1">
+                        إجمالي {scopedInventory.length} صنف مسجل
+                      </div>
+                    </div>
+
+                    {/* Card 2: Expected Profit (HERO METRIC 2) */}
+                    <div className="bg-gradient-to-br from-emerald-50/70 via-teal-50/20 to-white border-2 border-emerald-500 rounded-xl p-4 shadow-xs ring-2 ring-emerald-500/10 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-emerald-950">الربح المتوقع للمخزون</span>
+                        <TrendingUp className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div className="text-lg sm:text-xl font-black font-mono text-emerald-950 mt-1.5">
+                        {formatCurrency(expProfit, currency)}
+                      </div>
+                      <div className="text-[11px] text-emerald-700 font-bold mt-1">
+                        بناءً على أسعار البيع والتكلفة
+                      </div>
+                    </div>
+
+                    {/* Card 3: Total Cost Valuation */}
+                    <div className="bg-white border border-[#E5E1DA] rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-bold">القيمة الدفترية (التكلفة)</span>
+                        <Box className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <div className="text-base sm:text-lg font-bold font-mono text-slate-800 mt-2">
+                        {formatCurrency(totalCost, currency)}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-semibold mt-1">
+                        إجمالي تكلفة الشراء الحالية
+                      </div>
+                    </div>
+
+                    {/* Card 4: Total Sale Valuation */}
+                    <div className="bg-white border border-[#E5E1DA] rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-bold">القيمة البيعية التقديرية</span>
+                        <ShoppingBag className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <div className="text-base sm:text-lg font-bold font-mono text-slate-800 mt-2">
+                        {formatCurrency(totalSale, currency)}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-semibold mt-1">
+                        إجمالي القيمة بسعر البيع
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Filter and Search Bar: Clean Dedicated Row */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedCategoryFilter}
+                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                    className="bg-[#F7F5F0] border border-[#E5E1DA] px-3 py-2 rounded-lg text-xs font-bold text-[#1A1A1A] outline-none"
+                  >
+                    <option value="ALL">جميع التصنيفات ({inventory.length})</option>
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 absolute right-3 top-2.5 text-[#8C8273]" />
+                  <input
+                    type="text"
+                    value={inventorySearch}
+                    onChange={(e) => setInventorySearch(e.target.value)}
+                    placeholder="بحث بالاسم، الباركود، أو SKU..."
+                    className="w-full pr-9 pl-3 py-2 bg-[#F7F5F0] border border-[#E5E1DA] rounded-lg text-xs outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                  />
+                </div>
+              </div>
 
           {/* Table */}
           <div className="overflow-x-auto">

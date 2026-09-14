@@ -354,3 +354,4 @@ class BackgroundSyncService {
 }
 
 export const backgroundSync = BackgroundSyncService.getInstance();
+export { BackgroundSyncService };

@@ -58,17 +58,32 @@ export async function safeApiFetch<T>(
 
     const opts: RequestInit = { ...options };
     if (typeof window !== 'undefined') {
-      const activeCompanyId = window.localStorage.getItem('supabase_company_id');
+      let activeCompanyId = window.localStorage.getItem('supabase_company_id');
+      if (!activeCompanyId) {
+        activeCompanyId = window.localStorage.getItem('activeCompanyId') || window.localStorage.getItem('company_id');
+      }
+      if (!activeCompanyId) {
+        try {
+          const session = JSON.parse(window.localStorage.getItem('logix_auth_session') || '{}');
+          if (session?.companyId) activeCompanyId = session.companyId;
+        } catch {}
+      }
       if (activeCompanyId) {
         opts.headers = {
           'x-company-id': activeCompanyId,
           ...(opts.headers || {}),
         };
       }
-      const token =
+      let token =
         window.localStorage.getItem('auth_token') ||
         window.localStorage.getItem('session_token') ||
         window.localStorage.getItem('jwt_token');
+      if (!token) {
+        try {
+          const session = JSON.parse(window.localStorage.getItem('logix_auth_session') || '{}');
+          if (session?.token) token = session.token;
+        } catch {}
+      }
       if (token) {
         opts.headers = {
           authorization: `Bearer ${token}`,

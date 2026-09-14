@@ -29,6 +29,10 @@ import {
   Info,
   FileText,
   ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  TrendingUp,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -98,6 +102,8 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
   const [mergeDuplicates, setMergeDuplicates] = useState<boolean>(true);
   const [isFixingDb, setIsFixingDb] = useState<boolean>(false);
   const [fixSuccessNotice, setFixSuccessNotice] = useState<string | null>(null);
+  const [isConsolidationExpanded, setIsConsolidationExpanded] = useState<boolean>(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
 
   // Print Preview Modal state
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState<boolean>(false);
@@ -637,42 +643,69 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
             </p>
           </div>
 
-          {/* Action Buttons: Instant Aggregate, Print, Excel */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          {/* Action Buttons: Unified Toolbar with Hierarchy */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Primary Action */}
             <button
               onClick={handleTriggerAggregation}
               disabled={isAggregating}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-xs flex items-center gap-2 transition-all cursor-pointer"
               title="إعادة التجميع والفرز اللحظي لكافة السجلات"
             >
               <RefreshCw className={`w-4 h-4 ${isAggregating ? 'animate-spin' : ''}`} />
               <span>{isAggregating ? 'جاري التجميع...' : 'تجميع واستخراج فوري'}</span>
             </button>
 
+            {/* Secondary Action: Print Preview */}
             <button
               onClick={() => setIsPrintPreviewOpen(true)}
               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-xs flex items-center gap-2 transition-all cursor-pointer"
               title="معاينة وطباعة التقرير المالي الموحد بصيغة A4 الرسمية"
             >
               <Eye className="w-4 h-4 text-emerald-400" />
-              <span>معاينة وطباعة الكشف الموحد A4</span>
+              <span>معاينة وطباعة A4</span>
             </button>
 
-            <button
-              onClick={handleExportToExcel}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>تصدير Excel</span>
-            </button>
+            {/* Compact Export / Print Dropdown Menu */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="خيارات التصدير والطباعة الإضافية"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                <span>خيارات التصدير</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            <button
-              onClick={handlePrint}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-slate-600" />
-              <span>طباعة A4</span>
-            </button>
+              {isExportMenuOpen && (
+                <div className="absolute left-0 mt-1.5 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-30 text-right">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      handleExportToExcel();
+                    }}
+                    className="w-full px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span>تصدير Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      handlePrint();
+                    }}
+                    className="w-full px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer text-right"
+                  >
+                    <Printer className="w-4 h-4 text-slate-600" />
+                    <span>طباعة سريعة (A4)</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -825,46 +858,42 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
 
       {/* REPORT 1: Customer & Society Sales */}
       {activeReport === 'customer-society-sales' && (
-        <div className="space-y-4">
-          {/* Smart Entity Consolidation & Merge Control Banner */}
-          <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-sm border border-emerald-800/40 no-print">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    الدمج الذكي الموحد للجمعيات التعاونية والعملاء ({mergeDuplicates ? 'مفعّل' : 'معطّل'})
-                  </span>
-                  <span className="text-xs text-slate-300">
-                    {mergeDuplicates
-                      ? 'تم توحيد فواتير وسطور GEN المكررة تحت الأكواد الرسمية المعتمدة'
-                      : 'العرض التفصيلي الخام مع سطور GEN'}
-                  </span>
+        <div className="space-y-6">
+          {/* Smart Entity Consolidation & Merge Control Banner - Collapsible by default */}
+          <div className="bg-slate-900 text-white rounded-2xl shadow-xs border border-slate-800 overflow-hidden no-print transition-all">
+            {/* Collapsed Header Bar: Compact & Scannable */}
+            <div className="p-3 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
-                <h3 className="text-base font-extrabold text-white">
-                  {mergeDuplicates
-                    ? 'تم دمج وتوحيد السجلات تحت الـ 16 جمعية وعميل رسمي معتمد'
-                    : 'عرض السجلات بدون دمج (تظهر سطور GEN المنفصلة)'}
-                </h3>
-                <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
-                  {mergeDuplicates
-                    ? `تم حل إشكالية السطور المكررة (مثل جمعية مبارك الكبير، سلوى، الصباحية، وغيرها) وتوحيد كافة الفواتير (${report1Totals.invoices} فاتورة) وصافي المبيعات (${formatCurrency(report1Totals.netSales, currency)}) والأرصدة المستحقة (${formatCurrency(report1Totals.balance, currency)}) تحت البطاقة الرسمية المعتمدة لكل جمعية.`
-                    : 'يمكنك تفعيل الدمج الذكي لتوحيد كافة الحركات والسطور المكررة تلقائياً.'}
-                </p>
-                {fixSuccessNotice && (
-                  <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-bold animate-fade-in">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>{fixSuccessNotice}</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-white">
+                      التوحيد الذكي الموحد للجمعيات والعملاء
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                      mergeDuplicates
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    }`}>
+                      {mergeDuplicates ? 'مفعّل (16 جهة رسمية معتمدة)' : 'غير مفعّل (28 جهة خام)'}
+                    </span>
                   </div>
-                )}
+                  <div className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
+                    {mergeDuplicates
+                      ? 'تم توحيد فواتير وسطور GEN المكررة تلقائياً تحت الأكواد الرسمية المعتمدة'
+                      : 'العرض التفصيلي الخام لكافة السجلات بما فيها سطور GEN المنفصلة'}
+                  </div>
+                </div>
               </div>
 
-              {/* Action Buttons: Toggle Merging, Permanently Fix DB, Print Statement */}
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {/* Mode Toggle Button */}
+              {/* Quick Compact Controls + Toggle Details */}
+              <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setMergeDuplicates(!mergeDuplicates)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
                     mergeDuplicates
                       ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
                       : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40'
@@ -873,73 +902,122 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
                 >
                   <div className="flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5" />
-                    <span>{mergeDuplicates ? 'عرض مدمج وموحد (16 جهة)' : 'عرض تفصيلي مع GEN (28)'}</span>
+                    <span>{mergeDuplicates ? 'عرض مدمج (16)' : 'عرض خام (28)'}</span>
                   </div>
                 </button>
 
-                {/* Fix Database Permanently Button */}
                 <button
-                  onClick={handleFixDatabasePermanently}
-                  disabled={isFixingDb}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
-                  title="تحديث معرّفات الفواتير في قاعدة البيانات لربطها بالبطاقات المعتمدة بشكل دائم"
+                  type="button"
+                  onClick={() => setIsConsolidationExpanded(!isConsolidationExpanded)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/15 text-slate-200 border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
                 >
-                  <Check className={`w-3.5 h-3.5 ${isFixingDb ? 'animate-spin' : 'text-emerald-400'}`} />
-                  <span>{isFixingDb ? 'جاري التثبيت...' : 'تثبيت الدمج في قاعدة البيانات'}</span>
-                </button>
-
-                {/* Print Statement Button */}
-                <button
-                  onClick={() => setIsPrintPreviewOpen(true)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-                  title="معاينة وطباعة الكشف المالي الموحد المعتمد بصيغة A4"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة الكشف الموحد (A4)</span>
+                  <span>{isConsolidationExpanded ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isConsolidationExpanded ? 'rotate-180' : ''}`} />
                 </button>
               </div>
             </div>
+
+            {/* Expandable Secondary Details (Collapsed by default) */}
+            {isConsolidationExpanded && (
+              <div className="px-4 pb-4 pt-2 border-t border-slate-800/80 bg-slate-950/40 space-y-3">
+                <p className="text-xs text-slate-300 max-w-4xl leading-relaxed">
+                  {mergeDuplicates
+                    ? `تم حل إشكالية السطور المكررة (مثل جمعية مبارك الكبير، سلوى، الصباحية، وغيرها) وتوحيد كافة الفواتير (${report1Totals.invoices} فاتورة) وصافي المبيعات (${formatCurrency(report1Totals.netSales, currency)}) والأرصدة المستحقة (${formatCurrency(report1Totals.balance, currency)}) تحت البطاقة الرسمية المعتمدة لكل جمعية.`
+                    : 'يمكنك تفعيل الدمج الذكي لتوحيد كافة الحركات والسطور المكررة تلقائياً.'}
+                </p>
+
+                {fixSuccessNotice && (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{fixSuccessNotice}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleFixDatabasePermanently}
+                    disabled={isFixingDb}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                    title="تحديث معرّفات الفواتير في قاعدة البيانات لربطها بالبطاقات المعتمدة بشكل دائم"
+                  >
+                    <Check className={`w-3.5 h-3.5 ${isFixingDb ? 'animate-spin' : 'text-emerald-400'}`} />
+                    <span>{isFixingDb ? 'جاري التثبيت...' : 'تثبيت الدمج في قاعدة البيانات'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsPrintPreviewOpen(true)}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>طباعة الكشف الموحد (A4)</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Executive Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="text-xs font-bold text-slate-500">إجمالي المبيعات الصادرة</div>
-              <div className="text-base sm:text-lg font-black font-mono text-slate-900 mt-1">
+          {/* Executive Summary Cards: Balanced Row with Hero Metric */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: إجمالي المبيعات */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">إجمالي المبيعات الصادرة</span>
+                <ShoppingCart className="w-4 h-4 text-slate-400" />
+              </div>
+              <div className="text-base sm:text-lg font-bold font-mono text-slate-800 mt-2">
                 {formatCurrency(report1Totals.grossSales, currency)}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
-                {report1Totals.invoices} فاتورة بيع
+              <div className="text-[11px] text-slate-400 mt-1">
+                {report1Totals.invoices} فاتورة بيع معتمدة
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="text-xs font-bold text-slate-500">إجمالي المرتجعات</div>
-              <div className="text-base sm:text-lg font-black font-mono text-rose-600 mt-1">
+            {/* Card 2: إجمالي المرتجعات */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">إجمالي المرتجعات</span>
+                <RotateCcw className="w-4 h-4 text-rose-400" />
+              </div>
+              <div className="text-base sm:text-lg font-bold font-mono text-rose-600 mt-2">
                 {formatCurrency(report1Totals.returns, currency)}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
+              <div className="text-[11px] text-rose-500/80 mt-1">
                 {report1Totals.returnsCount} فاتورة مرتجع
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="text-xs font-bold text-slate-500">صافي المبيعات المعتمدة</div>
-              <div className="text-base sm:text-lg font-black font-mono text-emerald-700 mt-1">
+            {/* Card 3: HERO METRIC - صافي المبيعات المعتمدة */}
+            <div className="bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white border-2 border-emerald-500 rounded-xl p-4 shadow-xs flex flex-col justify-between relative ring-2 ring-emerald-500/10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-black text-emerald-950">صافي المبيعات المعتمدة</span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[9px]">
+                    الأهم
+                  </span>
+                </div>
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl sm:text-2xl font-black font-mono text-emerald-950 mt-1.5 tracking-tight">
                 {formatCurrency(report1Totals.netSales, currency)}
               </div>
-              <div className="text-[10px] text-emerald-600 font-bold mt-0.5">
-                (المبيعات - المرتجعات)
+              <div className="text-[11px] text-emerald-700 font-bold mt-1">
+                صافي الإيراد الفعلي بعد خصم المرتجعات
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="text-xs font-bold text-slate-500">إجمالي الأرصدة المستحقة</div>
-              <div className="text-base sm:text-lg font-black font-mono text-blue-700 mt-1">
+            {/* Card 4: إجمالي الأرصدة المستحقة */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">إجمالي الأرصدة المستحقة</span>
+                <Scale className="w-4 h-4 text-blue-500" />
+              </div>
+              <div className="text-base sm:text-lg font-bold font-mono text-blue-700 mt-2">
                 {formatCurrency(report1Totals.balance, currency)}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
-                أرصدة ذمم العملاء الحالية
+              <div className="text-[11px] text-slate-400 mt-1">
+                ذمم العملاء والجمعيات الحالية
               </div>
             </div>
           </div>
