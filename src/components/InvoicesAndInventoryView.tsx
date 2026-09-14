@@ -716,6 +716,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       receiverName: invReceiverName,
       customerBranchId: invCustomerBranchId || undefined,
       customerBranchName: invCustomerBranchName || undefined,
+      priceListId: activeCustomer?.priceListId || undefined,
       priceListApplied: activeCustomer?.priceListName || undefined,
       entityId: invEntityId,
       lines: processedLines,

@@ -391,6 +391,7 @@ export interface Invoice {
   receiverName?: string;
   customerBranchId?: string;
   customerBranchName?: string;
+  priceListId?: string;
   priceListApplied?: string;
   journalEntryId?: string;
   notes?: string;

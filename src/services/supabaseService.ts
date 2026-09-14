@@ -1471,7 +1471,7 @@ export class SupabaseDataService {
       warehouse_id: effectiveWarehouseId,
       customer_branch_id: inv.customerBranchId || (inv as any).customer_branch_id || null,
       customer_branch_name: inv.customerBranchName || (inv as any).customer_branch_name || null,
-      price_list_id: inv.priceListApplied || (inv as any).price_list_id || null,
+      price_list_id: inv.priceListId && inv.priceListId !== 'standard' ? inv.priceListId : null,
       price_list_applied: inv.priceListApplied || (inv as any).price_list_applied || null,
       items: formattedItems,
       customer_snapshot: customerSnapshot,
@@ -1535,10 +1535,20 @@ export class SupabaseDataService {
     let invErr = insertResult.error;
     let insertedRow = insertResult.data;
 
-    // Retry 1: If foreign key on customer_id failed, retry with customer_id set to null
+    // Retry 1: If foreign key on customer_id or price_list_id failed, retry with safe fallbacks
     if (invErr && (invErr.message.includes('foreign key') || invErr.message.includes('fkey') || invErr.code === '23503')) {
-      console.warn('[Supabase saveInvoice] Foreign key customer_id candidate failed in invoices table, retrying with null...');
-      invoicePayload.customer_id = null;
+      console.warn('[Supabase saveInvoice] Foreign key constraint candidate failed in invoices table, checking columns and retrying...', invErr.message);
+      if (invErr.message.includes('price_list_id')) {
+        invoicePayload.price_list_id = null;
+      }
+      if (invErr.message.includes('customer_id')) {
+        invoicePayload.customer_id = null;
+      }
+      // If ambiguous, clear both non-essential foreign keys
+      if (!invErr.message.includes('customer_id') && !invErr.message.includes('price_list_id')) {
+        invoicePayload.price_list_id = null;
+        invoicePayload.customer_id = null;
+      }
       insertResult = await supabase
         .from('invoices')
         .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })

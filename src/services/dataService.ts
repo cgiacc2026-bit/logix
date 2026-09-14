@@ -2760,6 +2760,7 @@ export class DataService {
       receiverName: data.receiverName || '',
       customerBranchId: data.customerBranchId || undefined,
       customerBranchName: data.customerBranchName || undefined,
+      priceListId: data.priceListId || (data as any).price_list_id || undefined,
       priceListApplied: data.priceListApplied || undefined,
       notes: data.notes,
       companyId: data.companyId || data.company_id || undefined,
