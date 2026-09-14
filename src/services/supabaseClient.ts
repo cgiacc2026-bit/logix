@@ -92,17 +92,18 @@ const fallbackMockClient = createClient(
 );
 
 export const getActiveSupabaseClient = (): SupabaseClient => {
-  const { url, key } = getSupabaseConfig();
+  const { url, key, secret } = getSupabaseConfig();
+  const effectiveKey = (typeof window === 'undefined' && secret) ? secret : key;
   const currentTenant = typeof window !== 'undefined' ? window.localStorage.getItem('activeCompanyId') || '' : '';
   
   if (checkIsSupabaseConfigured()) {
     // We must recreate the client if the tenant changes because global headers are immutable in JS client
-    if (!activeClientInstance || activeClientUrl !== url || activeClientKey !== key || (activeClientInstance as any)._tenantId !== currentTenant) {
+    if (!activeClientInstance || activeClientUrl !== url || activeClientKey !== effectiveKey || (activeClientInstance as any)._tenantId !== currentTenant) {
       try {
-        activeClientInstance = createClient(url, key, {
+        activeClientInstance = createClient(url, effectiveKey, {
           auth: {
-            persistSession: true,
-            autoRefreshToken: true,
+            persistSession: typeof window !== 'undefined',
+            autoRefreshToken: typeof window !== 'undefined',
           },
           global: {
             headers: {
@@ -112,7 +113,7 @@ export const getActiveSupabaseClient = (): SupabaseClient => {
         });
         (activeClientInstance as any)._tenantId = currentTenant;
         activeClientUrl = url;
-        activeClientKey = key;
+        activeClientKey = effectiveKey;
       } catch (err) {
         console.warn('Failed to initialize live Supabase client, falling back to local mode:', err);
       }

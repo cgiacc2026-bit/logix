@@ -824,25 +824,25 @@ export class SupabaseDataService {
         const finalBranches = custBranchesFromDb.length > 0 ? custBranchesFromDb : (raw.branches || []);
 
         return {
-          phone: row.phone || raw.phone || '',
-          address: row.address || raw.address || '',
-          city: row.city || raw.city || 'الكويت',
-          openingBalanceDate: raw.openingBalanceDate || '2026-07-31',
-          isActive: raw.isActive ?? row.is_active ?? true,
-          branches: finalBranches,
-          priceListId: row.master_price_list_id || raw.priceListId || raw.price_list_id || '',
-          priceListName: raw.priceListName || '',
-          defaultDiscountRate: Number(raw.defaultDiscountRate ?? 0),
-          customPrices: raw.customPrices || [],
           ...raw,
           id: row.id || raw.id,
           code: row.code || raw.code || row.id,
           nameAr: row.name_ar || row.name || raw.nameAr || '',
           nameEn: row.name_en || raw.nameEn || '',
+          phone: row.phone || raw.phone || '',
+          address: row.address || raw.address || '',
+          city: row.city || raw.city || 'الكويت',
           openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
+          openingBalanceDate: raw.openingBalanceDate || '2026-07-31',
+          isActive: raw.isActive ?? row.is_active ?? true,
           current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
           currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
           balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          branches: finalBranches,
+          priceListId: row.master_price_list_id || raw.priceListId || raw.price_list_id || '',
+          priceListName: raw.priceListName || '',
+          defaultDiscountRate: Number(raw.defaultDiscountRate ?? 0),
+          customPrices: raw.customPrices || [],
         };
       });
     } catch (err: any) {
@@ -892,21 +892,29 @@ export class SupabaseDataService {
 
       // Sync customer branches to customer_branches table if present
       if (cust.branches && Array.isArray(cust.branches) && cust.branches.length > 0) {
-        const branchRows = cust.branches.map((b) => ({
-          id: toValidUUID(b.id || `br-${cust.id}-${b.code}`),
-          company_id: companyId,
-          customer_id: custUuid,
-          code: b.code || 'BR-01',
-          name_ar: b.nameAr || 'فرع',
-          name_en: b.nameEn || '',
-          governorate: b.governorate || '',
-          city: b.city || '',
-          detailed_address: b.detailedAddress || b.address || '',
-          contact_person: b.contactPerson || '',
-          contact_phone: b.contactPhone || b.phone || '',
-          is_default: !!b.isDefault,
-          is_active: b.isActive !== false,
-        }));
+        const branchRows: any[] = [];
+        for (const b of cust.branches) {
+          const rawId = b.id || `br-${cust.id}-${b.code || '01'}`;
+          const uuidId = toValidUUID(rawId);
+          const baseBranch = {
+            company_id: companyId,
+            customer_id: custUuid,
+            code: b.code || 'BR-01',
+            name_ar: b.nameAr || 'فرع',
+            name_en: b.nameEn || '',
+            governorate: b.governorate || '',
+            city: b.city || '',
+            detailed_address: b.detailedAddress || b.address || '',
+            contact_person: b.contactPerson || '',
+            contact_phone: b.contactPhone || b.phone || '',
+            is_default: !!b.isDefault,
+            is_active: b.isActive !== false,
+          };
+          branchRows.push({ id: rawId, ...baseBranch });
+          if (uuidId && uuidId !== rawId) {
+            branchRows.push({ id: uuidId, ...baseBranch });
+          }
+        }
         try {
           await supabase.from('customer_branches').upsert(branchRows);
         } catch (e) {
@@ -1445,11 +1453,96 @@ export class SupabaseDataService {
     };
 
     // 1. Prepare modern invoices table payload
-    const effectiveWarehouseId = inv.warehouseId || (inv as any).warehouse_id || 'wh-main-01';
+    let rawWarehouseId = inv.warehouseId || (inv as any).warehouse_id || null;
     const effectiveWarehouseName = inv.warehouseName || (inv as any).warehouse_name || 'المستودع الرئيسي (الشويخ)';
     const effectiveSalesRepId = inv.salesRepId || (inv as any).rep_id || (inv as any).sales_rep_id || 'rep-01';
     const effectiveSalesPerson = inv.salesPerson || inv.salesRepName || 'المندوب العام';
     const effectiveSalesRepName = inv.salesRepName || inv.salesPerson || 'المندوب العام';
+
+    // Validate and resolve warehouse_id
+    let effectiveWarehouseId: string | null = rawWarehouseId;
+    if (effectiveWarehouseId) {
+      try {
+        const { data: whRow } = await supabase
+          .from('warehouses')
+          .select('id')
+          .eq('id', effectiveWarehouseId)
+          .maybeSingle();
+
+        if (!whRow) {
+          const { data: compWh } = await supabase
+            .from('warehouses')
+            .select('id')
+            .eq('company_id', companyId)
+            .order('is_default', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          effectiveWarehouseId = compWh?.id || 'wh-main-01';
+        }
+      } catch {
+        effectiveWarehouseId = 'wh-main-01';
+      }
+    } else {
+      try {
+        const { data: compWh } = await supabase
+          .from('warehouses')
+          .select('id')
+          .eq('company_id', companyId)
+          .order('is_default', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        effectiveWarehouseId = compWh?.id || 'wh-main-01';
+      } catch {
+        effectiveWarehouseId = 'wh-main-01';
+      }
+    }
+
+    // Validate and resolve customer_branch_id
+    let rawBranchId = (inv.customerBranchId || (inv as any).customer_branch_id || '').trim();
+    let effectiveCustomerBranchId: string | null = rawBranchId ? rawBranchId : null;
+    let effectiveCustomerBranchName = inv.customerBranchName || (inv as any).customer_branch_name || null;
+
+    if (effectiveCustomerBranchId) {
+      try {
+        const { data: brRow } = await supabase
+          .from('customer_branches')
+          .select('id, name_ar')
+          .eq('id', effectiveCustomerBranchId)
+          .maybeSingle();
+
+        if (!brRow) {
+          const uuidBranchId = toValidUUID(effectiveCustomerBranchId);
+          const { data: uuidBrRow } = await supabase
+            .from('customer_branches')
+            .select('id, name_ar')
+            .eq('id', uuidBranchId)
+            .maybeSingle();
+
+          if (uuidBrRow) {
+            effectiveCustomerBranchId = uuidBrRow.id;
+          } else if (customerIdCandidate) {
+            const newBrRow = {
+              id: effectiveCustomerBranchId,
+              company_id: companyId,
+              customer_id: customerIdCandidate,
+              code: `BR-${Date.now().toString().slice(-4)}`,
+              name_ar: effectiveCustomerBranchName || 'فرع العميل',
+              is_active: true,
+            };
+            const { error: brInsErr } = await supabase.from('customer_branches').upsert([newBrRow]);
+            if (brInsErr) {
+              console.warn('[Supabase saveInvoice] Auto-branch upsert notice:', brInsErr.message);
+              effectiveCustomerBranchId = null;
+            }
+          } else {
+            effectiveCustomerBranchId = null;
+          }
+        }
+      } catch (brErr) {
+        console.warn('[Supabase saveInvoice] Branch validation notice:', brErr);
+        effectiveCustomerBranchId = null;
+      }
+    }
 
     // Ensure valid and unique invoice_number
     let finalInvoiceNumber = (inv.invoiceNumber || '').trim();
@@ -1498,9 +1591,16 @@ export class SupabaseDataService {
     let resolvedPriceListId = inv.priceListId || (inv as any).price_list_id || null;
     if (resolvedPriceListId === 'standard' || (!resolvedPriceListId && (inv as any).priceListName?.includes('القياسية'))) {
       resolvedPriceListId = `pl-${companyId.slice(0, 8)}`;
+    } else if (resolvedPriceListId === 'coop' || (!resolvedPriceListId && (inv.entityNameAr?.includes('جمعية') || (inv as any).customerName?.includes('جمعية')))) {
+      resolvedPriceListId = `pl-coop-${companyId.slice(0, 8)}`;
+    } else if (resolvedPriceListId === 'wholesale') {
+      resolvedPriceListId = `pl-wholesale-${companyId.slice(0, 8)}`;
+    } else if (resolvedPriceListId === 'retail') {
+      resolvedPriceListId = `pl-retail-${companyId.slice(0, 8)}`;
     }
-    // If not provided in payload, inherit customer assigned master price list
-    if (!resolvedPriceListId && customerIdCandidate) {
+
+    // If not provided in payload or was standard default, inherit customer assigned master price list
+    if ((!resolvedPriceListId || resolvedPriceListId === `pl-${companyId.slice(0, 8)}`) && customerIdCandidate) {
       try {
         const { data: custRow } = await supabase
           .from('customers')
@@ -1514,6 +1614,39 @@ export class SupabaseDataService {
         }
       } catch (plLookupErr) {
         console.warn('[Supabase saveInvoice] Notice looking up customer price list:', plLookupErr);
+      }
+    }
+
+    // Default fallback if still null
+    if (!resolvedPriceListId) {
+      if (inv.entityNameAr?.includes('جمعية') || (inv as any).customerName?.includes('جمعية')) {
+        resolvedPriceListId = `pl-coop-${companyId.slice(0, 8)}`;
+      } else {
+        resolvedPriceListId = `pl-${companyId.slice(0, 8)}`;
+      }
+    }
+
+    // Validate that resolvedPriceListId exists in master_price_lists
+    if (resolvedPriceListId) {
+      try {
+        const { data: plRow } = await supabase
+          .from('master_price_lists')
+          .select('id')
+          .eq('id', resolvedPriceListId)
+          .maybeSingle();
+        if (!plRow) {
+          const standardId = `pl-${companyId.slice(0, 8)}`;
+          const { data: stdRow } = await supabase
+            .from('master_price_lists')
+            .select('id')
+            .eq('id', standardId)
+            .maybeSingle();
+          if (stdRow?.id) {
+            resolvedPriceListId = stdRow.id;
+          }
+        }
+      } catch (plValErr) {
+        console.warn('[Supabase saveInvoice] Price list validation notice:', plValErr);
       }
     }
 
@@ -1536,8 +1669,8 @@ export class SupabaseDataService {
       payment_method: inv.paymentTerms || 'CASH',
       invoice_type: inv.type || 'SALES',
       warehouse_id: effectiveWarehouseId,
-      customer_branch_id: inv.customerBranchId || (inv as any).customer_branch_id || null,
-      customer_branch_name: inv.customerBranchName || (inv as any).customer_branch_name || null,
+      customer_branch_id: effectiveCustomerBranchId,
+      customer_branch_name: effectiveCustomerBranchName,
       price_list_id: resolvedPriceListId,
       price_list_applied: inv.priceListApplied || (inv as any).price_list_applied || null,
       items: formattedItems,
@@ -1551,6 +1684,10 @@ export class SupabaseDataService {
         warehouseId: effectiveWarehouseId,
         warehouse_id: effectiveWarehouseId,
         warehouseName: effectiveWarehouseName,
+        customerBranchId: effectiveCustomerBranchId,
+        customer_branch_id: effectiveCustomerBranchId,
+        customerBranchName: effectiveCustomerBranchName,
+        priceListId: resolvedPriceListId,
         salesRepId: effectiveSalesRepId,
         rep_id: effectiveSalesRepId,
         sales_rep_id: effectiveSalesRepId,
@@ -1608,19 +1745,37 @@ export class SupabaseDataService {
     let invErr = insertResult.error;
     let insertedRow = insertResult.data;
 
-    // Retry 1: If foreign key on customer_id or price_list_id failed, retry with safe fallbacks
+    // Retry 1: If foreign key constraint failed on any column, apply surgical fallbacks and retry
     if (invErr && (invErr.message.includes('foreign key') || invErr.message.includes('fkey') || invErr.code === '23503')) {
-      console.warn('[Supabase saveInvoice] Foreign key constraint candidate failed in invoices table, checking columns and retrying...', invErr.message);
-      if (invErr.message.includes('price_list_id')) {
+      console.warn('[Supabase saveInvoice] Foreign key constraint candidate failed in invoices table, applying surgical fallbacks and retrying...', invErr.message);
+
+      if (invErr.message.includes('warehouse_id') || invErr.message.includes('invoices_warehouse_id_fkey')) {
+        invoicePayload.warehouse_id = null;
+      }
+      if (invErr.message.includes('customer_branch_id') || invErr.message.includes('invoices_customer_branch_id_fkey')) {
+        invoicePayload.customer_branch_id = null;
+      }
+      if (invErr.message.includes('price_list_id') || invErr.message.includes('invoices_price_list_id_fkey')) {
         invoicePayload.price_list_id = null;
         fallbackPriceListOccurred = true;
       }
-      if (invErr.message.includes('customer_id')) {
+      if (invErr.message.includes('customer_id') || invErr.message.includes('invoices_customer_id_fkey')) {
         invoicePayload.customer_id = null;
         fallbackCustomerOccurred = true;
       }
-      // If ambiguous, clear both non-essential foreign keys
-      if (!invErr.message.includes('customer_id') && !invErr.message.includes('price_list_id')) {
+      if (invErr.message.includes('cost_center_id') || invErr.message.includes('invoices_cost_center_id_fkey')) {
+        invoicePayload.cost_center_id = null;
+      }
+
+      // If ambiguous or unrecognized column, clear all optional relational foreign keys safely
+      if (!invErr.message.includes('customer_id') &&
+          !invErr.message.includes('price_list_id') &&
+          !invErr.message.includes('warehouse_id') &&
+          !invErr.message.includes('customer_branch_id') &&
+          !invErr.message.includes('cost_center_id')) {
+        invoicePayload.warehouse_id = null;
+        invoicePayload.customer_branch_id = null;
+        invoicePayload.cost_center_id = null;
         invoicePayload.price_list_id = null;
         invoicePayload.customer_id = null;
         fallbackPriceListOccurred = Boolean(originalPriceListId);
@@ -1646,6 +1801,24 @@ export class SupabaseDataService {
         .single();
       invErr = insertResult.error;
       insertedRow = insertResult.data;
+
+      // If FK STILL failed on another column, clear ALL optional FKs and retry once more
+      if (invErr && (invErr.message.includes('foreign key') || invErr.message.includes('fkey') || invErr.code === '23503')) {
+        console.warn('[Supabase saveInvoice] Second FK failure, clearing all optional foreign keys and final retry...', invErr.message);
+        invoicePayload.warehouse_id = null;
+        invoicePayload.customer_branch_id = null;
+        invoicePayload.cost_center_id = null;
+        invoicePayload.price_list_id = null;
+        invoicePayload.customer_id = null;
+
+        insertResult = await supabase
+          .from('invoices')
+          .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })
+          .select('id, invoice_number, company_id, created_at')
+          .single();
+        invErr = insertResult.error;
+        insertedRow = insertResult.data;
+      }
 
       // Register fallback action in audit_logs table
       if (!invErr && insertedRow) {
