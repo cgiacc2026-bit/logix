@@ -1587,6 +1587,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   : 'سجلات ودليل العملاء والجمعيات'
                 : subTab === 'inventory'
                 ? 'سجل الأصناف وكارت الصنف'
+                : subTab === 'offers'
+                ? 'عروض وباقات الأصناف الترويجية (Promotions & Bundles)'
                 : 'وحدات القياس والشد (Units)'
             )}
           </h2>
@@ -1599,6 +1601,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               ? 'إدارة دليل الموردين والمطاحن، الأرصدة الافتتاحية، وكشوف الحسابات المعتمدة.'
               : subTab === 'entities'
               ? 'إدارة بيانات العملاء والجمعيات، فروع التسليم، قوائم الأسعار، والأرصدة.'
+              : subTab === 'offers'
+              ? 'ربط الأصناف الرئيسية بباقات ترويجية مخفضة وخصم مباشر من رصيد الصنف الأساسي عند البيع دون مخزون وهمي.'
               : 'إدارة متكاملة لجميع الفواتير والمشتريات وتتبع حركة المخزون مع حاسبة الشد والوحدة والطباعة الفورية المعتمدة.'}
           </p>
         </div>
@@ -2511,6 +2515,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 <Layers className="w-4 h-4 text-[#D4AF37]" />
                 <span>فحص وتقييم المخزون ودفتر الأستاذ IFRS (ERPNext Mode)</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => handleSwitchSubTab('offers')}
+                className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
+              >
+                <Sparkles className="w-4 h-4 text-amber-600" />
+                <span>عروض وباقات الأصناف الترويجية (Promotions)</span>
+              </button>
             </div>
           </div>
 
@@ -2556,6 +2569,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   >
                     <TrendingUp className="w-4 h-4 text-emerald-600" />
                     <span>إدارة الأسعار والتكلفة</span>
+                  </button>
+
+                  {/* Offers & Promotions Action Button */}
+                  <button
+                    onClick={() => handleSwitchSubTab('offers')}
+                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-xl border border-amber-300 shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
+                    title="إدارة عروض وباقات الأصناف الترويجية وتحديد أسعار التوفير"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    <span>عروض الأصناف الترويجية</span>
                   </button>
 
                   {/* Consolidated Tools, Import & Export Menu */}
@@ -2879,6 +2902,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                             title="عرض كارت حركة الصنف وضبط الجودة والإطلاق"
                           >
                             <Layers className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchSubTab('offers')}
+                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-100/80 rounded-lg transition-all cursor-pointer"
+                            title="عرض وربط العروض الترويجية لهذا الصنف"
+                          >
+                            <Sparkles className="w-4 h-4" />
                           </button>
 
                           <button

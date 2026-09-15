@@ -117,6 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         'sales-reps',
         'customer-statements',
         'invoices',
+        'offers',
       ].includes(tab)
     ) {
       return 'sales';
@@ -137,6 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         'stock-ledger',
         'warehouses',
         'units',
+        'offers',
         'production',
       ].includes(tab)
     ) {
@@ -215,6 +217,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             icon: FileText,
           },
           {
+            id: 'offers',
+            label: 'عروض الأصناف والخصومات (الباقات)',
+            icon: Sparkles,
+          },
+          {
             id: 'pos',
             label: 'شاشة البيع السريعة (POS)',
             icon: Store,
@@ -283,6 +290,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             id: 'inventory',
             label: 'دليل الأصناف والباركود',
             icon: Package,
+          },
+          {
+            id: 'offers',
+            label: 'عروض وباقات الأصناف الترويجية',
+            icon: Sparkles,
           },
           {
             id: 'stock-ledger',

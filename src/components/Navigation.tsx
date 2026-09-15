@@ -24,6 +24,7 @@ export type TabType =
   | 'stock-ledger'
   | 'warehouses'
   | 'units'
+  | 'offers'
   | 'production'
   // 5. POS Module
   | 'pos'
