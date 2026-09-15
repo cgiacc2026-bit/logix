@@ -84,8 +84,8 @@ interface InvoicesProps {
   creditNotes?: CreditNote[];
   units?: UnitDefinition[];
   currency: string;
-  activeSubTab?: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers';
-  onSubTabChange?: (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers') => void;
+  activeSubTab?: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units';
+  onSubTabChange?: (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units') => void;
   onRefreshAll?: () => Promise<void> | void;
   onCreateInvoice: (data: any) => Promise<any>;
   onUpdateInvoice?: (id: string, data: any) => Promise<void>;
@@ -181,7 +181,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     return branchService.getActiveBranch(company?.id).id;
   });
 
-  const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers'>(
+  const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units'>(
     activeSubTab || 'invoices'
   );
   const [inventoryViewMode, setInventoryViewMode] = useState<'catalog' | 'audit_ledger'>('catalog');
@@ -193,7 +193,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
   }, [activeSubTab]);
 
-  const handleSwitchSubTab = (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers') => {
+  const handleSwitchSubTab = (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units') => {
     setSubTab(tab);
     if (onSubTabChange) {
       onSubTabChange(tab);
@@ -466,6 +466,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [itemSale, setItemSale] = useState(0);
   const [itemQty, setItemQty] = useState(10);
   const [itemMinAlert, setItemMinAlert] = useState(5);
+
+  // Item Promotional Offer State (Integrated in Item Card)
+  const [itemOfferEnabled, setItemOfferEnabled] = useState(false);
+  const [itemOfferQuantity, setItemOfferQuantity] = useState(2);
+  const [itemOfferPrice, setItemOfferPrice] = useState(0);
+  const [itemOfferBarcode, setItemOfferBarcode] = useState('');
 
   // Invoices line handlers
   const [isOfferPickerModalOpen, setIsOfferPickerModalOpen] = useState(false);
@@ -1046,6 +1052,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setItemSale(150);
     setItemQty(50);
     setItemMinAlert(5);
+    setItemOfferEnabled(false);
+    setItemOfferQuantity(2);
+    setItemOfferPrice(0);
+    setItemOfferBarcode('');
     setIsItemModalOpen(true);
   };
 
@@ -1062,6 +1072,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setItemSale(item.salePrice);
     setItemQty(item.quantityOnHand);
     setItemMinAlert(item.minQuantityAlert || 5);
+    setItemOfferEnabled(Boolean(item.offer_enabled ?? item.offerEnabled ?? false));
+    setItemOfferQuantity(Number(item.offer_quantity ?? item.offerQuantity ?? 2));
+    setItemOfferPrice(Number(item.offer_price ?? item.offerPrice ?? (item.salePrice ? Number((item.salePrice * 1.6).toFixed(3)) : 0)));
+    setItemOfferBarcode(item.offer_barcode || item.offerBarcode || '');
     setIsItemModalOpen(true);
   };
 
@@ -1081,6 +1095,14 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         salePrice: Number(itemSale) || 0,
         quantityOnHand: Number(itemQty) || 0,
         minQuantityAlert: Number(itemMinAlert) || 5,
+        offer_enabled: itemOfferEnabled,
+        offerEnabled: itemOfferEnabled,
+        offer_quantity: itemOfferEnabled ? (Number(itemOfferQuantity) || 2) : 2,
+        offerQuantity: itemOfferEnabled ? (Number(itemOfferQuantity) || 2) : 2,
+        offer_price: itemOfferEnabled ? (Number(itemOfferPrice) || 0) : 0,
+        offerPrice: itemOfferEnabled ? (Number(itemOfferPrice) || 0) : 0,
+        offer_barcode: itemOfferEnabled ? itemOfferBarcode.trim() : '',
+        offerBarcode: itemOfferEnabled ? itemOfferBarcode.trim() : '',
       };
 
       if (editingItem && onUpdateInventoryItem) {
@@ -1587,8 +1609,6 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   : 'سجلات ودليل العملاء والجمعيات'
                 : subTab === 'inventory'
                 ? 'سجل الأصناف وكارت الصنف'
-                : subTab === 'offers'
-                ? 'عروض وباقات الأصناف الترويجية (Promotions & Bundles)'
                 : 'وحدات القياس والشد (Units)'
             )}
           </h2>
@@ -1601,8 +1621,6 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               ? 'إدارة دليل الموردين والمطاحن، الأرصدة الافتتاحية، وكشوف الحسابات المعتمدة.'
               : subTab === 'entities'
               ? 'إدارة بيانات العملاء والجمعيات، فروع التسليم، قوائم الأسعار، والأرصدة.'
-              : subTab === 'offers'
-              ? 'ربط الأصناف الرئيسية بباقات ترويجية مخفضة وخصم مباشر من رصيد الصنف الأساسي عند البيع دون مخزون وهمي.'
               : 'إدارة متكاملة لجميع الفواتير والمشتريات وتتبع حركة المخزون مع حاسبة الشد والوحدة والطباعة الفورية المعتمدة.'}
           </p>
         </div>
@@ -1654,7 +1672,6 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             { id: 'entities', label: 'دليل العملاء والموردين', icon: Users },
             { id: 'inventory', label: 'دليل المنتجات والشد والمخزون', icon: Package },
             { id: 'units', label: 'وحدات القياس والشد (Units)', icon: Ruler },
-            { id: 'offers', label: 'عروض الأصناف الترويجية (Promotions)', icon: Sparkles },
           ].map((t) => (
             <button
               key={t.id}
@@ -2515,15 +2532,6 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                 <Layers className="w-4 h-4 text-[#D4AF37]" />
                 <span>فحص وتقييم المخزون ودفتر الأستاذ IFRS (ERPNext Mode)</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => handleSwitchSubTab('offers')}
-                className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
-              >
-                <Sparkles className="w-4 h-4 text-amber-600" />
-                <span>عروض وباقات الأصناف الترويجية (Promotions)</span>
-              </button>
             </div>
           </div>
 
@@ -2569,16 +2577,6 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   >
                     <TrendingUp className="w-4 h-4 text-emerald-600" />
                     <span>إدارة الأسعار والتكلفة</span>
-                  </button>
-
-                  {/* Offers & Promotions Action Button */}
-                  <button
-                    onClick={() => handleSwitchSubTab('offers')}
-                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-xl border border-amber-300 shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
-                    title="إدارة عروض وباقات الأصناف الترويجية وتحديد أسعار التوفير"
-                  >
-                    <Sparkles className="w-4 h-4 text-amber-600" />
-                    <span>عروض الأصناف الترويجية</span>
                   </button>
 
                   {/* Consolidated Tools, Import & Export Menu */}
@@ -2833,6 +2831,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                       <td className="py-3 px-4 font-bold text-[#1A1A1A]">
                         <div className="flex flex-wrap items-center gap-2">
                           <span>{item.nameAr}</span>
+                          {(item.offer_enabled || item.offerEnabled) && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs"
+                              title={`عرض ترويجي مفعل: ${item.offer_quantity || item.offerQuantity || 2} حبة بسعر ${(Number(item.offer_price || item.offerPrice || 0)).toFixed(3)} ${currency}${item.offer_barcode || item.offerBarcode ? ` - باركود العرض: ${item.offer_barcode || item.offerBarcode}` : ''}`}
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span>عرض: {item.offer_quantity || item.offerQuantity || 2} حبة بـ {(Number(item.offer_price || item.offerPrice || 0)).toFixed(3)} {currency}</span>
+                            </span>
+                          )}
                           {isLow && (
                             <span
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200 animate-pulse shadow-xs"
@@ -2906,9 +2913,13 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => handleSwitchSubTab('offers')}
-                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-100/80 rounded-lg transition-all cursor-pointer"
-                            title="عرض وربط العروض الترويجية لهذا الصنف"
+                            onClick={() => openEditItemModal(item)}
+                            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                              (item.offer_enabled || item.offerEnabled)
+                                ? 'text-amber-700 bg-amber-100 hover:bg-amber-200 border border-amber-300 shadow-2xs'
+                                : 'text-[#8C8273] hover:text-amber-700 hover:bg-amber-50'
+                            }`}
+                            title={(item.offer_enabled || item.offerEnabled) ? "تعديل العرض الترويجي والكمية والسعر (مفعل)" : "تعريف وتفعيل عرض ترويجي لهذا الصنف"}
                           >
                             <Sparkles className="w-4 h-4" />
                           </button>
@@ -3029,16 +3040,6 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             </table>
           </div>
         </div>
-      )}
-
-      {/* TAB 6: ITEM OFFERS & PROMOTIONS (Virtual Bundles) */}
-      {subTab === 'offers' && (
-        <ItemOffersManager
-          inventory={inventory}
-          currency={currency}
-          companyId={company?.id}
-          onRefreshAll={onRefreshAll}
-        />
       )}
 
       {/* Full Screen Invoice Creation & Posting Modal */}
@@ -4345,6 +4346,135 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 font-bold text-rose-600"
                   />
                 </div>
+              </div>
+
+              {/* Promotional Offer Configuration Section (Integrated in Item Card) */}
+              <div className="rounded-xl border border-amber-300/80 bg-amber-50/40 p-4 transition-all">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-950">إعدادات العرض الترويجي (كارت الصنف)</h4>
+                      <p className="text-[11px] text-amber-800/80">
+                        ربط بيع العرض وكمية السحب الفعلي بنفس رصيد هذا الصنف مباشرة
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={itemOfferEnabled}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setItemOfferEnabled(checked);
+                        if (checked && (!itemOfferPrice || itemOfferPrice === 0)) {
+                          // Default offer price: e.g. 2 items with ~20% discount
+                          const defaultQty = itemOfferQuantity || 2;
+                          const standardTotal = itemSale * defaultQty;
+                          setItemOfferPrice(Number((standardTotal * 0.85).toFixed(3)));
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-amber-600 border-amber-300 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-black text-amber-900">تفعيل بيع بعروض</span>
+                  </label>
+                </div>
+
+                {itemOfferEnabled && (
+                  <div className="mt-3 pt-3 border-t border-amber-200/80 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-amber-950 mb-1">
+                          كمية العرض (حبة) <span className="text-rose-600">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={itemOfferQuantity}
+                          onChange={(e) => setItemOfferQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                          className="w-full bg-white border border-amber-300 rounded-lg p-2.5 text-xs font-bold text-amber-950 focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                          placeholder="مثال: 2"
+                          required={itemOfferEnabled}
+                        />
+                        <span className="text-[10px] text-amber-800 block mt-1">
+                          الكمية التي تخصم من رصيد الصنف
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-amber-950 mb-1">
+                          سعر العرض الإجمالي ({currency}) <span className="text-rose-600">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          value={itemOfferPrice}
+                          onChange={(e) => setItemOfferPrice(Number(e.target.value) || 0)}
+                          className="w-full bg-white border border-amber-300 rounded-lg p-2.5 text-xs font-bold text-emerald-700 focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                          placeholder="0.000"
+                          required={itemOfferEnabled}
+                        />
+                        <span className="text-[10px] text-amber-800 block mt-1">
+                          سعر الحبة بالعرض: {(Number(itemOfferPrice) / (Number(itemOfferQuantity) || 1)).toFixed(3)} {currency}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-amber-950 mb-1">
+                          باركود العرض (اختياري)
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={itemOfferBarcode}
+                            onChange={(e) => setItemOfferBarcode(e.target.value)}
+                            className="w-full bg-white border border-amber-300 rounded-lg p-2.5 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                            placeholder="مثال: 2881016018689"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const randomOfferCode = `OFF-${Date.now().toString().slice(-6)}`;
+                              setItemOfferBarcode(randomOfferCode);
+                            }}
+                            className="px-2 py-1 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 rounded-lg text-[10px] font-bold shrink-0 transition-colors"
+                            title="توليد باركود تلقائي للعرض"
+                          >
+                            توليد
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-amber-800 block mt-1">
+                          للتعرف الفوري في الكاشير POS
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Summary comparison preview */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-amber-100/60 border border-amber-200 rounded-lg text-[11px] text-amber-950">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold">ملخص العرض:</span>
+                        <span>
+                          بيع <strong className="text-amber-900">{itemOfferQuantity} حبة</strong> بسعر إجمالي <strong className="text-emerald-800">{(Number(itemOfferPrice)).toFixed(3)} {currency}</strong>
+                        </span>
+                        {itemSale > 0 && (
+                          <span className="text-amber-800">
+                            (السعر الأصلي: {(itemSale * itemOfferQuantity).toFixed(3)} {currency})
+                          </span>
+                        )}
+                      </div>
+                      {itemSale * itemOfferQuantity > itemOfferPrice && (
+                        <span className="px-2 py-0.5 rounded-md font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          وفر للزبون: {((itemSale * itemOfferQuantity) - itemOfferPrice).toFixed(3)} {currency}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E1DA]">

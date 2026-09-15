@@ -331,6 +331,18 @@ export interface InventoryItem {
   deleted_at?: string;
   deleted_by?: string;
   deletion_reason?: string;
+
+  // Flattened Promotional Offer Fields (عروض الأصناف المباشرة داخل كارت الصنف)
+  offer_enabled?: boolean;
+  offerEnabled?: boolean;
+  offer_quantity?: number;
+  offerQuantity?: number;
+  offer_price?: number;
+  offerPrice?: number;
+  offer_barcode?: string;
+  offerBarcode?: string;
+  offer_title_ar?: string;
+  offerTitleAr?: string;
 }
 
 export interface ItemOffer {

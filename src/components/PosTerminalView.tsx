@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   InventoryItem,
   Customer,
@@ -135,6 +135,34 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   useEffect(() => {
     setItemOffers(DataService.getItemOffers(activeCompany.id));
   }, [inventory, activeCompany.id]);
+
+  // Integrated Offers: Items with offer_enabled on their cards + any persisted offers
+  const allItemOffers: ItemOffer[] = useMemo(() => {
+    const existing = itemOffers || [];
+    const directOffers: ItemOffer[] = inventory
+      .filter((item) => Boolean(item.offer_enabled ?? item.offerEnabled))
+      .map((item) => ({
+        id: `offer-${item.id}`,
+        company_id: activeCompany.id,
+        base_item_id: item.id,
+        title_ar: item.offer_title_ar || `عرض ${item.nameAr} (${item.offer_quantity || item.offerQuantity || 2} حبة)`,
+        barcode: item.offer_barcode || item.offerBarcode || '',
+        offer_quantity: Number(item.offer_quantity || item.offerQuantity || 2),
+        offer_price: Number(item.offer_price || item.offerPrice || 0),
+        original_price: (Number(item.offer_quantity || item.offerQuantity || 2)) * Number(item.salePrice || 0),
+        is_active: true,
+      }));
+
+    const map = new Map<string, ItemOffer>();
+    for (const off of existing) {
+      const baseId = off.base_item_id || off.baseItemId;
+      if (baseId) map.set(baseId, off);
+    }
+    for (const off of directOffers) {
+      map.set(off.base_item_id, off);
+    }
+    return Array.from(map.values());
+  }, [inventory, itemOffers, activeCompany.id]);
 
   // Customer & Sales Rep
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(() => {
@@ -353,7 +381,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
       const cleanTerm = searchTerm.trim().toLowerCase();
 
       // 1. First check if it matches an active item offer's barcode
-      const matchingOffer = itemOffers.find(
+      const matchingOffer = allItemOffers.find(
         (o) =>
           o.is_active !== false &&
           ((o.barcode && o.barcode.toLowerCase() === cleanTerm) ||
@@ -815,7 +843,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
               }`}
             >
               <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>عروض الأصناف ({itemOffers.filter((o) => o.is_active !== false).length})</span>
+              <span>عروض الأصناف ({allItemOffers.filter((o) => o.is_active !== false).length})</span>
             </button>
             {categories.map((cat) => (
               <button
@@ -836,7 +864,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
           <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
             {selectedCategory === 'OFFERS' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {itemOffers
+                {allItemOffers
                   .filter((o) => o.is_active !== false)
                   .filter((o) => {
                     if (!searchTerm.trim()) return true;
@@ -930,12 +958,12 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
                       </div>
                     );
                   })}
-                {itemOffers.filter((o) => o.is_active !== false).length === 0 && (
+                {allItemOffers.filter((o) => o.is_active !== false).length === 0 && (
                   <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400">
                     <Sparkles className="w-12 h-12 mb-3 opacity-20 text-amber-500" />
                     <p className="font-bold">لا توجد عروض ترويجية نشطة حالياً</p>
                     <p className="text-xs text-slate-400 mt-1">
-                      يمكنك تعريف عروض جديدة من تبويب عروض الأصناف الترويجية.
+                      يمكنك تفعيل العروض مباشرة من كارت الصنف في دليل الأصناف.
                     </p>
                   </div>
                 )}
@@ -945,7 +973,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
                 {filteredItems.map((item) => {
                   const available = (item.quantity ?? 0);
                   const isOutOfStock = available <= 0;
-                  const itemOffer = itemOffers.find(
+                  const itemOffer = allItemOffers.find(
                     (o) =>
                       o.is_active !== false &&
                       (o.base_item_id === item.id || (o.baseItemId && o.baseItemId === item.id))

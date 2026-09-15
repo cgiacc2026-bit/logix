@@ -382,6 +382,9 @@ export function AppContent() {
           DataService.getWarehouses(),
         ]);
 
+      await DataService.autoMigrateItemOffersToInventory(compData?.id);
+      const refreshedInventory = DataService.getLocalInventory();
+
       setKpis(kpisData);
       setAccounts(accsData || []);
       setJournals(jData || []);
@@ -389,7 +392,7 @@ export function AppContent() {
       setVouchers(vData || []);
       setCustomers(cData || []);
       setSuppliers(sData || []);
-      setInventory(iData || []);
+      setInventory(refreshedInventory.length > 0 ? refreshedInventory : (iData || []));
       setUnits(uData || []);
       setProductionOrders(prdData || []);
       setQuotations(quoData || []);
@@ -1283,50 +1286,6 @@ export function AppContent() {
               activeSubTab="units"
               hideSubTabBar={true}
               customViewTitle="وحدات القياس والشد (Units)"
-              onRefreshAll={refreshAllData}
-              onOpenDocumentCycle={handleOpenDocumentCycle}
-              onCreateInvoice={handleCreateInvoice}
-              onUpdateInvoice={handleUpdateInvoice}
-              onPostInvoice={handlePostInvoice}
-              onCancelInvoice={handleCancelInvoice}
-              onDeleteInvoice={handleDeleteInvoice}
-              onCreateVoucher={handleCreateVoucher}
-              onUpdateVoucher={handleUpdateVoucher}
-              onCancelVoucher={handleCancelVoucher}
-              onDeleteVoucher={handleDeleteVoucher}
-              onCreateCustomer={handleCreateCustomer}
-              onUpdateCustomer={handleUpdateCustomer}
-              onDeleteCustomer={handleDeleteCustomer}
-              onCreateSupplier={handleCreateSupplier}
-              onUpdateSupplier={handleUpdateSupplier}
-              onDeleteSupplier={handleDeleteSupplier}
-              onCreateInventoryItem={handleCreateInventoryItem}
-              onUpdateInventoryItem={handleUpdateInventoryItem}
-              onDeleteInventoryItem={handleDeleteInventoryItem}
-              onCreateUnit={handleCreateUnit}
-              onUpdateUnit={handleUpdateUnit}
-              onDeleteUnit={handleDeleteUnit}
-            />
-          )}
-
-          {activeTab === 'offers' && (
-            <InvoicesAndInventoryView
-              company={activeCompany!}
-              customers={customers}
-              suppliers={suppliers}
-              inventory={inventory}
-              invoices={invoices}
-              vouchers={vouchers}
-              accounts={accounts}
-              journals={journals}
-              creditNotes={creditNotes}
-              units={units}
-              currency={currency}
-              salesReps={salesReps}
-              warehouses={warehouses}
-              activeSubTab="offers"
-              hideSubTabBar={false}
-              customViewTitle="عروض وباقات الأصناف الترويجية (Promotions & Bundles)"
               onRefreshAll={refreshAllData}
               onOpenDocumentCycle={handleOpenDocumentCycle}
               onCreateInvoice={handleCreateInvoice}

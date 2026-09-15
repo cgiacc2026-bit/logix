@@ -572,6 +572,14 @@ export class SupabaseDataService {
           costPrice: Number(row.cost_price ?? raw.costPrice ?? raw.purchasePrice ?? 0),
           salePrice: Number(row.selling_price ?? row.sale_price ?? raw.salePrice ?? 0),
           isActive: raw.isActive ?? row.is_active ?? true,
+          offer_enabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
+          offer_quantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
+          offer_price: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
+          offer_barcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
+          offerEnabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
+          offerQuantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
+          offerPrice: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
+          offerBarcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
           ...raw,
           quantityOnHand: Number(row.current_balance ?? row.qty_on_hand ?? raw.quantityOnHand ?? 0),
         };
@@ -601,34 +609,62 @@ export class SupabaseDataService {
 
       const targetId = (existingRows && existingRows.length > 0) ? existingRows[0].id : itemUuid;
 
-      const { error } = await supabase
-        .from('items')
-        .upsert([
-          {
-            id: targetId,
-            company_id: companyId,
-            code: targetCode,
-            name: item.nameAr || (item as any).name || 'صنف',
-            item_name: item.nameAr || (item as any).name || 'صنف',
-            name_ar: item.nameAr,
-            name_en: item.nameEn || '',
-            category: item.category || 'عام',
-            unit: item.unit || 'حبة',
-            cost_price: item.purchasePrice || (item as any).costPrice || 0,
-            sale_price: item.salePrice || 0,
-            selling_price: item.salePrice || 0,
-            current_balance: item.quantityOnHand || 0,
-            qty_on_hand: item.quantityOnHand || 0,
-            min_limit: item.minQuantityAlert || 0,
-            raw_data: {
-              ...item,
-              id: item.id,
-              companyId,
-              quantityOnHand: item.quantityOnHand || 0,
-            },
-            created_at: new Date().toISOString(),
-          },
-        ]);
+      const hasOffer = Boolean(item.offer_enabled ?? item.offerEnabled);
+      const offerQty = Number(item.offer_quantity ?? item.offerQuantity ?? 2);
+      const offerPrice = Number(item.offer_price ?? item.offerPrice ?? 0);
+      const offerBarcode = item.offer_barcode || item.offerBarcode || '';
+
+      const record: any = {
+        id: targetId,
+        company_id: companyId,
+        code: targetCode,
+        name: item.nameAr || (item as any).name || 'صنف',
+        item_name: item.nameAr || (item as any).name || 'صنف',
+        name_ar: item.nameAr,
+        name_en: item.nameEn || '',
+        category: item.category || 'عام',
+        unit: item.unit || 'حبة',
+        cost_price: item.purchasePrice || (item as any).costPrice || 0,
+        sale_price: item.salePrice || 0,
+        selling_price: item.salePrice || 0,
+        current_balance: item.quantityOnHand || 0,
+        qty_on_hand: item.quantityOnHand || 0,
+        min_limit: item.minQuantityAlert || 0,
+        raw_data: {
+          ...item,
+          id: item.id,
+          companyId,
+          quantityOnHand: item.quantityOnHand || 0,
+          offer_enabled: hasOffer,
+          offerEnabled: hasOffer,
+          offer_quantity: offerQty,
+          offerQuantity: offerQty,
+          offer_price: offerPrice,
+          offerPrice: offerPrice,
+          offer_barcode: offerBarcode,
+          offerBarcode: offerBarcode,
+        },
+        created_at: new Date().toISOString(),
+      };
+
+      if (hasOffer) {
+        record.offer_enabled = true;
+        record.offer_quantity = offerQty;
+        record.offer_price = offerPrice;
+        record.offer_barcode = offerBarcode;
+      } else {
+        record.offer_enabled = false;
+      }
+
+      let { error } = await supabase.from('items').upsert([record]);
+      if (error && error.message && (error.message.includes('offer_') || error.message.includes('column'))) {
+        delete record.offer_enabled;
+        delete record.offer_quantity;
+        delete record.offer_price;
+        delete record.offer_barcode;
+        const retry = await supabase.from('items').upsert([record]);
+        error = retry.error;
+      }
 
       if (error) {
         console.warn('Supabase saveItem error:', error.message);
