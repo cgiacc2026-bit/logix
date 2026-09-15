@@ -69,6 +69,7 @@ import {
   Wrench,
   ArrowUpDown,
   X,
+  Link as LinkIcon,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -472,6 +473,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [itemOfferQuantity, setItemOfferQuantity] = useState(2);
   const [itemOfferPrice, setItemOfferPrice] = useState(0);
   const [itemOfferBarcode, setItemOfferBarcode] = useState('');
+
+  // Base Item Linkage State (ربط العرض بالصنف الأساسي لسحب المخزون)
+  const [itemBaseItemId, setItemBaseItemId] = useState<string>('');
+  const [itemBaseItemName, setItemBaseItemName] = useState<string>('');
+  const [isBaseItemSearchOpen, setIsBaseItemSearchOpen] = useState<boolean>(false);
+  const [baseItemSearchQuery, setBaseItemSearchQuery] = useState<string>('');
 
   // Invoices line handlers
   const [isOfferPickerModalOpen, setIsOfferPickerModalOpen] = useState(false);
@@ -1056,6 +1063,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setItemOfferQuantity(2);
     setItemOfferPrice(0);
     setItemOfferBarcode('');
+    setItemBaseItemId('');
+    setItemBaseItemName('');
+    setIsBaseItemSearchOpen(false);
+    setBaseItemSearchQuery('');
     setIsItemModalOpen(true);
   };
 
@@ -1076,6 +1087,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setItemOfferQuantity(Number(item.offer_quantity ?? item.offerQuantity ?? 2));
     setItemOfferPrice(Number(item.offer_price ?? item.offerPrice ?? (item.salePrice ? Number((item.salePrice * 1.6).toFixed(3)) : 0)));
     setItemOfferBarcode(item.offer_barcode || item.offerBarcode || '');
+    const linkedBaseId = item.base_item_id || item.baseItemId || '';
+    setItemBaseItemId(linkedBaseId);
+    const linkedBase = scopedInventory.find((i) => i.id === linkedBaseId);
+    setItemBaseItemName(linkedBase ? linkedBase.nameAr : (item.base_item_name || item.baseItemName || ''));
+    setIsBaseItemSearchOpen(false);
+    setBaseItemSearchQuery('');
     setIsItemModalOpen(true);
   };
 
@@ -1103,6 +1120,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         offerPrice: itemOfferEnabled ? (Number(itemOfferPrice) || 0) : 0,
         offer_barcode: itemOfferEnabled ? itemOfferBarcode.trim() : '',
         offerBarcode: itemOfferEnabled ? itemOfferBarcode.trim() : '',
+        base_item_id: itemBaseItemId || undefined,
+        baseItemId: itemBaseItemId || undefined,
+        base_item_name: itemBaseItemName || undefined,
+        baseItemName: itemBaseItemName || undefined,
       };
 
       if (editingItem && onUpdateInventoryItem) {
@@ -2840,6 +2861,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                               <span>عرض: {item.offer_quantity || item.offerQuantity || 2} حبة بـ {(Number(item.offer_price || item.offerPrice || 0)).toFixed(3)} {currency}</span>
                             </span>
                           )}
+                          {(item.base_item_id || item.baseItemId) && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-2xs"
+                              title={`سحب المخزون مرتبط بالصنف الأساسي: ${item.base_item_name || item.baseItemName || 'صنف رئيسي'}`}
+                            >
+                              <LinkIcon className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span>مرتبط بـ: {item.base_item_name || item.baseItemName || 'صنف رئيسي'}</span>
+                            </span>
+                          )}
                           {isLow && (
                             <span
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200 animate-pulse shadow-xs"
@@ -4385,6 +4415,195 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
                 {itemOfferEnabled && (
                   <div className="mt-3 pt-3 border-t border-amber-200/80 space-y-3">
+                    {/* Base Item Linkage / الربط بالصنف الأساسي */}
+                    <div className="bg-white/95 rounded-xl p-3 border border-amber-300 shadow-2xs space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-black text-amber-950">
+                          الربط بالصنف الأساسي (مصدر سحب المخزون) <span className="text-rose-600">*</span>
+                        </label>
+                        {itemBaseItemId && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200">
+                            مرتبط بصنف رئيسي
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setItemBaseItemId('');
+                            setItemBaseItemName('');
+                            setIsBaseItemSearchOpen(false);
+                          }}
+                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-right transition-all cursor-pointer ${
+                            !itemBaseItemId
+                              ? 'bg-amber-100/70 border-amber-400 text-amber-950 ring-1 ring-amber-400 font-bold'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 ${
+                            !itemBaseItemId ? 'border-amber-600 bg-amber-600' : 'border-slate-300'
+                          }`}>
+                            {!itemBaseItemId && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold">خصم المخزون من نفس هذا الصنف</div>
+                            <div className="text-[10px] text-slate-500 font-normal mt-0.5">
+                              هذا الصنف هو المنتج الأصلي نفسه وسيتم سحب الحبات مباشرة من رصيده
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsBaseItemSearchOpen(true);
+                          }}
+                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-right transition-all cursor-pointer ${
+                            itemBaseItemId
+                              ? 'bg-indigo-50/80 border-indigo-400 text-indigo-950 ring-1 ring-indigo-400 font-bold'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 ${
+                            itemBaseItemId ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'
+                          }`}>
+                            {itemBaseItemId && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold">ربط وسحب المخزون من صنف أساسي آخر</div>
+                            <div className="text-[10px] text-slate-500 font-normal mt-0.5">
+                              كارت عرض مخصص/باقة يراد سحب رصيدها من صنف مخزني رئيسي
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* When linked to another base item */}
+                      {itemBaseItemId ? (
+                        <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                              <LinkIcon className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                                <span>الصنف الأساسي المربوط:</span>
+                                <span className="text-indigo-800 font-bold underline">{itemBaseItemName || 'صنف رئيسي'}</span>
+                              </div>
+                              {(() => {
+                                const baseObj = scopedInventory.find((i) => i.id === itemBaseItemId);
+                                if (!baseObj) return null;
+                                return (
+                                  <div className="text-[10px] text-indigo-800/80 mt-0.5 flex flex-wrap gap-2">
+                                    <span>باركود: <strong className="font-mono">{baseObj.barcode || baseObj.sku}</strong></span>
+                                    <span>•</span>
+                                    <span>رصيد المخزون الفعلي المتاح: <strong className="text-emerald-700">{baseObj.quantityOnHand} {baseObj.unit || 'حبة'}</strong></span>
+                                    <span>•</span>
+                                    <span>سعر البيع الافتراضي: <strong>{Number(baseObj.salePrice || 0).toFixed(3)} {currency}</strong></span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setIsBaseItemSearchOpen(true)}
+                              className="px-2.5 py-1 bg-white hover:bg-indigo-100 border border-indigo-300 text-indigo-900 rounded-md text-[11px] font-bold transition-colors cursor-pointer"
+                            >
+                              تغيير الصنف
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setItemBaseItemId('');
+                                setItemBaseItemName('');
+                              }}
+                              className="p-1 hover:bg-rose-100 text-rose-600 rounded-md transition-colors cursor-pointer"
+                              title="إلغاء الربط والعودة لنفس الصنف"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {/* Dropdown Selector for Base Item */}
+                      {isBaseItemSearchOpen && (
+                        <div className="p-3 bg-slate-50 border border-indigo-200 rounded-lg space-y-2 mt-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <Search className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>اختر الصنف الأساسي الذي سيتم سحب المخزون منه:</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setIsBaseItemSearchOpen(false)}
+                              className="text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={baseItemSearchQuery}
+                            onChange={(e) => setBaseItemSearchQuery(e.target.value)}
+                            placeholder="ابحث بالاسم أو الباركود أو SKU للصنف الأساسي..."
+                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                            autoFocus
+                          />
+                          <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 bg-white border border-slate-200 rounded-lg">
+                            {scopedInventory
+                              .filter((i) => i.id !== editingItem?.id)
+                              .filter((i) => {
+                                if (!baseItemSearchQuery.trim()) return true;
+                                const q = baseItemSearchQuery.toLowerCase();
+                                return (
+                                  i.nameAr.toLowerCase().includes(q) ||
+                                  (i.sku && i.sku.toLowerCase().includes(q)) ||
+                                  (i.barcode && i.barcode.toLowerCase().includes(q))
+                                );
+                              })
+                              .slice(0, 20)
+                              .map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setItemBaseItemId(item.id);
+                                    setItemBaseItemName(item.nameAr);
+                                    setIsBaseItemSearchOpen(false);
+                                    setBaseItemSearchQuery('');
+                                    if (!itemOfferPrice || itemOfferPrice === 0) {
+                                      const defaultQty = itemOfferQuantity || 2;
+                                      const totalStd = (Number(item.salePrice) || 0) * defaultQty;
+                                      if (totalStd > 0) {
+                                        setItemOfferPrice(Number((totalStd * 0.85).toFixed(3)));
+                                      }
+                                    }
+                                  }}
+                                  className="w-full text-right p-2.5 hover:bg-indigo-50/70 flex items-center justify-between gap-2 transition-colors cursor-pointer group"
+                                >
+                                  <div>
+                                    <div className="text-xs font-bold text-slate-800 group-hover:text-indigo-900">{item.nameAr}</div>
+                                    <div className="text-[10px] text-slate-500 flex gap-2 mt-0.5">
+                                      <span>SKU: {item.sku}</span>
+                                      {item.barcode && <span>باركود: {item.barcode}</span>}
+                                    </div>
+                                  </div>
+                                  <div className="text-left shrink-0">
+                                    <span className="text-xs font-bold text-emerald-700">{item.quantityOnHand} {item.unit || 'حبة'}</span>
+                                    <div className="text-[10px] text-slate-400">سعر: {Number(item.salePrice || 0).toFixed(3)} {currency}</div>
+                                  </div>
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-bold text-amber-950 mb-1">
@@ -4471,6 +4690,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                         <span className="px-2 py-0.5 rounded-md font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                           وفر للزبون: {((itemSale * itemOfferQuantity) - itemOfferPrice).toFixed(3)} {currency}
                         </span>
+                      )}
+                      {itemBaseItemId && (
+                        <div className="w-full text-[10.5px] font-bold text-indigo-900 bg-indigo-100/80 px-2.5 py-1.5 rounded-md border border-indigo-200 flex items-center gap-1.5 mt-1">
+                          <LinkIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>مصدر المخزون: سيتم خصم ({itemOfferQuantity}) حبة تلقائياً من رصيد الصنف الأساسي [{itemBaseItemName || 'المربوط'}] لكل عملية بيع لهذا العرض</span>
+                        </div>
                       )}
                     </div>
                   </div>

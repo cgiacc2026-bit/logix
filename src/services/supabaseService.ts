@@ -580,6 +580,10 @@ export class SupabaseDataService {
           offerQuantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
           offerPrice: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
           offerBarcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
+          base_item_id: raw.base_item_id || raw.baseItemId || undefined,
+          baseItemId: raw.base_item_id || raw.baseItemId || undefined,
+          base_item_name: raw.base_item_name || raw.baseItemName || undefined,
+          baseItemName: raw.base_item_name || raw.baseItemName || undefined,
           ...raw,
           quantityOnHand: Number(row.current_balance ?? row.qty_on_hand ?? raw.quantityOnHand ?? 0),
         };
@@ -643,6 +647,10 @@ export class SupabaseDataService {
           offerPrice: offerPrice,
           offer_barcode: offerBarcode,
           offerBarcode: offerBarcode,
+          base_item_id: item.base_item_id || item.baseItemId || null,
+          baseItemId: item.base_item_id || item.baseItemId || null,
+          base_item_name: item.base_item_name || item.baseItemName || null,
+          baseItemName: item.base_item_name || item.baseItemName || null,
         },
         created_at: new Date().toISOString(),
       };

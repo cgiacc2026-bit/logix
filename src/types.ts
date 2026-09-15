@@ -343,6 +343,12 @@ export interface InventoryItem {
   offerBarcode?: string;
   offer_title_ar?: string;
   offerTitleAr?: string;
+
+  // الربط بالصنف الأساسي لسحب المخزون (Parent / Base Item Linkage)
+  base_item_id?: string;
+  baseItemId?: string;
+  base_item_name?: string;
+  baseItemName?: string;
 }
 
 export interface ItemOffer {

@@ -140,26 +140,32 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   const allItemOffers: ItemOffer[] = useMemo(() => {
     const existing = itemOffers || [];
     const directOffers: ItemOffer[] = inventory
-      .filter((item) => Boolean(item.offer_enabled ?? item.offerEnabled))
-      .map((item) => ({
-        id: `offer-${item.id}`,
-        company_id: activeCompany.id,
-        base_item_id: item.id,
-        title_ar: item.offer_title_ar || `عرض ${item.nameAr} (${item.offer_quantity || item.offerQuantity || 2} حبة)`,
-        barcode: item.offer_barcode || item.offerBarcode || '',
-        offer_quantity: Number(item.offer_quantity || item.offerQuantity || 2),
-        offer_price: Number(item.offer_price || item.offerPrice || 0),
-        original_price: (Number(item.offer_quantity || item.offerQuantity || 2)) * Number(item.salePrice || 0),
-        is_active: true,
-      }));
+      .filter((item) => Boolean(item.offer_enabled ?? item.offerEnabled) || Boolean(item.base_item_id ?? item.baseItemId))
+      .map((item) => {
+        const baseId = item.base_item_id || item.baseItemId;
+        const parentItem = baseId ? inventory.find((i) => i.id === baseId) || item : item;
+        const offerQty = Number(item.offer_quantity || item.offerQuantity || 2);
+        const offerPr = Number(item.offer_price || item.offerPrice || item.salePrice || 0);
+        return {
+          id: `offer-${item.id}`,
+          company_id: activeCompany.id,
+          base_item_id: parentItem.id,
+          baseItemId: parentItem.id,
+          title_ar: item.offer_title_ar || `عرض ${item.nameAr} (${offerQty} حبة)`,
+          barcode: item.offer_barcode || item.offerBarcode || item.barcode || item.sku || '',
+          offer_quantity: offerQty,
+          offer_price: offerPr,
+          original_price: offerQty * Number(parentItem.salePrice || item.salePrice || 0),
+          is_active: true,
+        };
+      });
 
     const map = new Map<string, ItemOffer>();
     for (const off of existing) {
-      const baseId = off.base_item_id || off.baseItemId;
-      if (baseId) map.set(baseId, off);
+      map.set(off.id, off);
     }
     for (const off of directOffers) {
-      map.set(off.base_item_id, off);
+      map.set(off.id, off);
     }
     return Array.from(map.values());
   }, [inventory, itemOffers, activeCompany.id]);
@@ -332,6 +338,28 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   );
 
   const addToCart = (item: InventoryItem, qty: number = 1) => {
+    // If the item itself is configured with a promo offer or linked to a base item:
+    if (item.base_item_id || item.baseItemId || item.offer_enabled || item.offerEnabled) {
+      const baseId = item.base_item_id || item.baseItemId;
+      const baseItem = baseId ? inventory.find((i) => i.id === baseId) || item : item;
+      const offerQty = Number(item.offer_quantity || item.offerQuantity || 2);
+      const offerPrice = Number(item.offer_price || item.offerPrice || item.salePrice || 0);
+      const synthOffer: ItemOffer = {
+        id: `offer-${item.id}`,
+        company_id: activeCompany.id,
+        base_item_id: baseItem.id,
+        baseItemId: baseItem.id,
+        title_ar: item.offer_title_ar || `عرض ${item.nameAr} (${offerQty} حبة)`,
+        barcode: item.offer_barcode || item.offerBarcode || item.barcode || item.sku || '',
+        offer_quantity: offerQty,
+        offer_price: offerPrice,
+        original_price: offerQty * Number(baseItem.salePrice || item.salePrice || 0),
+        is_active: true,
+      };
+      addOfferToCart(synthOffer, qty);
+      return;
+    }
+
     setCart((prev) => {
       const idx = prev.findIndex((c) => !c.isOffer && c.item.id === item.id);
       if (idx !== -1) {

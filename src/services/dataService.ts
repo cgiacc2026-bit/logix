@@ -2829,21 +2829,29 @@ export class DataService {
                (it.itemNameAr && i.nameAr === it.itemNameAr)
       );
       const isOutbound = isSales || isPurchaseReturn;
-      const qtyDelta = isOutbound ? -Number(it.quantity) : Number(it.quantity);
 
       if (invItem) {
+        // Check if item is linked to a parent/base item (for promotional offers/bundles)
+        const linkedBaseId = invItem.base_item_id || invItem.baseItemId;
+        const targetBaseItem = linkedBaseId ? inventory.find((i) => i.id === linkedBaseId) : null;
+        const isLinkedToParent = Boolean(targetBaseItem && targetBaseItem.id !== invItem.id);
+        const itemDeducted = isLinkedToParent ? targetBaseItem! : invItem;
+        const bundleMultiplier = isLinkedToParent ? (Number(invItem.offer_quantity || invItem.offerQuantity) || 1) : 1;
+        const effectiveQty = Number(it.quantity) * bundleMultiplier;
+        const qtyDelta = isOutbound ? -effectiveQty : effectiveQty;
+
         let newUnitCost: number | undefined = undefined;
 
         if (isOutbound) {
           // Outbound sales or purchase return: unit cost remains constant (IAS-2 rule)
-          invItem.quantityOnHand = allowNegativeStock
-            ? (invItem.quantityOnHand || 0) - Number(it.quantity)
-            : Math.max(0, (invItem.quantityOnHand || 0) - Number(it.quantity));
+          itemDeducted.quantityOnHand = allowNegativeStock
+            ? (itemDeducted.quantityOnHand || 0) - effectiveQty
+            : Math.max(0, (itemDeducted.quantityOnHand || 0) - effectiveQty);
         } else {
           // Inbound: purchase or sales return
-          const currentQty = Number(invItem.quantityOnHand) || 0;
-          const currentCost = Number(invItem.costPrice ?? invItem.purchasePrice ?? 0);
-          const incomingQty = Number(it.quantity) || 0;
+          const currentQty = Number(itemDeducted.quantityOnHand) || 0;
+          const currentCost = Number(itemDeducted.costPrice ?? itemDeducted.purchasePrice ?? 0);
+          const incomingQty = effectiveQty;
           const purchasePrice = Number(it.unitPrice) || 0;
 
           if (isPurchase) {
@@ -2854,27 +2862,30 @@ export class DataService {
               incomingQty,
               purchasePrice
             );
-            invItem.costPrice = newUnitCost;
-            invItem.purchasePrice = newUnitCost;
+            itemDeducted.costPrice = newUnitCost;
+            itemDeducted.purchasePrice = newUnitCost;
           }
 
-          invItem.quantityOnHand = currentQty + incomingQty;
+          itemDeducted.quantityOnHand = currentQty + incomingQty;
         }
 
         if (isSupabaseConfigured) {
           await SupabaseDataService.adjustItemStock(
-            it.itemId,
-            it.itemSku || invItem.sku,
-            it.barcode || invItem.barcode,
-            invItem.quantityOnHand,
+            itemDeducted.id,
+            it.itemSku || itemDeducted.sku,
+            it.barcode || itemDeducted.barcode,
+            itemDeducted.quantityOnHand,
             activeCompanyId,
             newUnitCost
           ).catch((e) => console.warn('Supabase adjustItemStock notice:', e));
         }
-      }
 
-      // Warehouse-level stock update
-      DataService.adjustWarehouseStock(effectiveWarehouseId, it.itemId, qtyDelta);
+        // Warehouse-level stock update on the deducted item
+        DataService.adjustWarehouseStock(effectiveWarehouseId, itemDeducted.id, qtyDelta);
+      } else {
+        const qtyDelta = isOutbound ? -Number(it.quantity) : Number(it.quantity);
+        DataService.adjustWarehouseStock(effectiveWarehouseId, it.itemId, qtyDelta);
+      }
     }
     localDataStore.saveInventory(inventory);
 
@@ -2946,8 +2957,14 @@ export class DataService {
       // IAS-2 COGS: Calculated at latest Moving Weighted Average Cost (Unit cost unchanged on sales)
       const totalCost = lines.reduce((sum: number, line: any) => {
         const invItem = inventory.find(i => i.id === line.itemId || (line.itemSku && (i.sku === line.itemSku || (i as any).code === line.itemSku)));
-        const unitCost = Number(invItem ? (invItem.costPrice ?? invItem.purchasePrice ?? 0) : 0);
-        return sum + (unitCost * line.quantity);
+        const linkedBaseId = invItem?.base_item_id || invItem?.baseItemId;
+        const targetBaseItem = linkedBaseId ? inventory.find(i => i.id === linkedBaseId) : null;
+        const itemForCost = targetBaseItem || invItem;
+        const multiplier = (targetBaseItem && targetBaseItem.id !== invItem?.id)
+          ? (Number(invItem?.offer_quantity || invItem?.offerQuantity) || 1)
+          : 1;
+        const unitCost = Number(itemForCost ? (itemForCost.costPrice ?? itemForCost.purchasePrice ?? 0) : 0);
+        return sum + (unitCost * line.quantity * multiplier);
       }, 0);
       const roundedCOGS = IAS2CostingEngine.roundToPrecision(totalCost);
       if (roundedCOGS > 0) {
@@ -8037,7 +8054,36 @@ export class DataService {
   // ==========================================
   public static getItemOffers(companyId?: string): ItemOffer[] {
     const list = localDataStore.getItemOffers();
-    return list.filter((o) => o.is_active !== false);
+    const inv = localDataStore.getInventory();
+    const directOffers: ItemOffer[] = inv
+      .filter((item) => Boolean(item.offer_enabled ?? item.offerEnabled) || Boolean(item.base_item_id ?? item.baseItemId))
+      .map((item) => {
+        const baseId = item.base_item_id || item.baseItemId;
+        const parentItem = baseId ? inv.find((i) => i.id === baseId) || item : item;
+        const offerQty = Number(item.offer_quantity || item.offerQuantity || 2);
+        const offerPr = Number(item.offer_price || item.offerPrice || item.salePrice || 0);
+        return {
+          id: `offer-${item.id}`,
+          company_id: companyId || item.companyId || '',
+          base_item_id: parentItem.id,
+          baseItemId: parentItem.id,
+          title_ar: item.offer_title_ar || `عرض ${item.nameAr} (${offerQty} حبة)`,
+          barcode: item.offer_barcode || item.offerBarcode || item.barcode || item.sku || '',
+          offer_quantity: offerQty,
+          offer_price: offerPr,
+          original_price: offerQty * Number(parentItem.salePrice || item.salePrice || 0),
+          is_active: true,
+        };
+      });
+
+    const combinedMap = new Map<string, ItemOffer>();
+    for (const off of list) {
+      if (off.is_active !== false) combinedMap.set(off.id, off);
+    }
+    for (const off of directOffers) {
+      if (!combinedMap.has(off.id)) combinedMap.set(off.id, off);
+    }
+    return Array.from(combinedMap.values());
   }
 
   public static getAllItemOffers(companyId?: string): ItemOffer[] {
