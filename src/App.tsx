@@ -458,9 +458,13 @@ export function AppContent() {
     };
     window.addEventListener('ERP_DATA_CHANGED', handleErpDataChanged);
 
+    // Periodic fallback refresh (only if tab is active, every 3 minutes instead of aggressive 10-second polling)
+    // Realtime changes are already handled immediately by DataSyncService and window focus
     const interval = setInterval(() => {
-      refreshAllData(true);
-    }, 10000);
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshAllData(true);
+      }
+    }, 180000);
 
     return () => {
       window.removeEventListener('focus', handleSync);
