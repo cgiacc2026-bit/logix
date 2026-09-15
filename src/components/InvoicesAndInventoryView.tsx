@@ -14,6 +14,7 @@ import {
   Branch,
   CreditNote,
   JournalEntry,
+  ItemOffer,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
@@ -30,6 +31,7 @@ import { calculateEntityCurrentBalance } from '../services/statementService.ts';
 import { CustomerSearchCombobox } from './CustomerSearchCombobox.tsx';
 import { InvoiceItemSearchCombobox } from './InvoiceItemSearchCombobox.tsx';
 import { CustomerBranchesAndPriceListModal } from './CustomerBranchesAndPriceListModal.tsx';
+import { ItemOffersManager } from './ItemOffersManager.tsx';
 import { matchesSearch } from '../utils/searchUtils.ts';
 import {
   ShoppingBag,
@@ -66,6 +68,7 @@ import {
   ChevronDown,
   Wrench,
   ArrowUpDown,
+  X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -81,8 +84,8 @@ interface InvoicesProps {
   creditNotes?: CreditNote[];
   units?: UnitDefinition[];
   currency: string;
-  activeSubTab?: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units';
-  onSubTabChange?: (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units') => void;
+  activeSubTab?: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers';
+  onSubTabChange?: (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers') => void;
   onRefreshAll?: () => Promise<void> | void;
   onCreateInvoice: (data: any) => Promise<any>;
   onUpdateInvoice?: (id: string, data: any) => Promise<void>;
@@ -178,7 +181,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     return branchService.getActiveBranch(company?.id).id;
   });
 
-  const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units'>(
+  const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers'>(
     activeSubTab || 'invoices'
   );
   const [inventoryViewMode, setInventoryViewMode] = useState<'catalog' | 'audit_ledger'>('catalog');
@@ -190,7 +193,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
   }, [activeSubTab]);
 
-  const handleSwitchSubTab = (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units') => {
+  const handleSwitchSubTab = (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'offers') => {
     setSubTab(tab);
     if (onSubTabChange) {
       onSubTabChange(tab);
@@ -465,6 +468,42 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [itemMinAlert, setItemMinAlert] = useState(5);
 
   // Invoices line handlers
+  const [isOfferPickerModalOpen, setIsOfferPickerModalOpen] = useState(false);
+
+  const handleAddOfferToInvoice = (offer: ItemOffer) => {
+    const baseItem = scopedInventory.find(
+      (i) => i.id === offer.base_item_id || (offer.baseItemId && i.id === offer.baseItemId)
+    );
+    if (!baseItem) {
+      alert('الصنف الأساسي المرتبط بالعرض غير موجود في المخزون.');
+      return;
+    }
+    const qty = Number(offer.offer_quantity) || 1;
+    const unitPrice = Number((offer.offer_price / qty).toFixed(4));
+
+    setInvLines((prev) => {
+      const isFirstBlank = prev.length === 1 && !prev[0].itemId && !prev[0].itemNameAr;
+      const newLine = {
+        itemId: baseItem.id,
+        itemNameAr: `عرض: ${offer.title_ar}`,
+        itemNameEn: baseItem.nameEn || '',
+        itemSku: baseItem.sku || '',
+        barcode: offer.barcode || baseItem.barcode || '',
+        unit: baseItem.unit || 'حبة',
+        unitsPerPack: Number(baseItem.unitsPerPack) || 1,
+        quantity: qty,
+        packQuantity: 0,
+        unitPrice: unitPrice,
+        discountType: 'FIXED' as const,
+        discountValue: 0,
+        notes: `عرض ترويجي (${offer.offer_quantity} حبة بسعر ${offer.offer_price.toFixed(3)} ${currency})`,
+      };
+      if (isFirstBlank) return [newLine];
+      return [...prev, newLine];
+    });
+    setIsOfferPickerModalOpen(false);
+  };
+
   const handleAddInvLine = () => {
     setInvLines([
       ...invLines,
@@ -1611,6 +1650,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             { id: 'entities', label: 'دليل العملاء والموردين', icon: Users },
             { id: 'inventory', label: 'دليل المنتجات والشد والمخزون', icon: Package },
             { id: 'units', label: 'وحدات القياس والشد (Units)', icon: Ruler },
+            { id: 'offers', label: 'عروض الأصناف الترويجية (Promotions)', icon: Sparkles },
           ].map((t) => (
             <button
               key={t.id}
@@ -2959,6 +2999,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         </div>
       )}
 
+      {/* TAB 6: ITEM OFFERS & PROMOTIONS (Virtual Bundles) */}
+      {subTab === 'offers' && (
+        <ItemOffersManager
+          inventory={inventory}
+          currency={currency}
+          companyId={company?.id}
+          onRefreshAll={onRefreshAll}
+        />
+      )}
+
       {/* Full Screen Invoice Creation & Posting Modal */}
       {isInvoiceModalOpen && (() => {
         const grossSubtotal = invLines.reduce((acc, l) => acc + (l.quantity * l.unitPrice), 0);
@@ -3685,14 +3735,25 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      onClick={handleAddInvLine}
-                      className="px-4 py-2 bg-[#FAF9F6] border border-[#E5E1DA] hover:border-black rounded-xl text-black font-extrabold cursor-pointer hover:bg-white flex items-center gap-2 shadow-2xs transition-all"
-                    >
-                      <Plus className="w-4 h-4 text-[#D4AF37]" />
-                      إضافة صنف آخر إلى الفاتورة
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAddInvLine}
+                        className="px-4 py-2 bg-[#FAF9F6] border border-[#E5E1DA] hover:border-black rounded-xl text-black font-extrabold cursor-pointer hover:bg-white flex items-center gap-2 shadow-2xs transition-all"
+                      >
+                        <Plus className="w-4 h-4 text-[#D4AF37]" />
+                        إضافة صنف آخر إلى الفاتورة
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsOfferPickerModalOpen(true)}
+                        className="px-4 py-2 bg-amber-50 border border-amber-300 hover:border-amber-500 rounded-xl text-amber-900 font-extrabold cursor-pointer hover:bg-amber-100 flex items-center gap-1.5 shadow-2xs transition-all"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-600" />
+                        إضافة عرض ترويجي (باقة)
+                      </button>
+                    </div>
 
                     <div className="text-xs font-bold text-neutral-600">
                       عدد البنود: <span className="font-mono text-black">{invLines.length}</span> | إجمالي الكميات: <span className="font-mono text-black">{invLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)}</span>
@@ -3877,6 +3938,94 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     </>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal: Select Item Offer for Invoice */}
+      {isOfferPickerModalOpen && (() => {
+        const activeOffers = DataService.getItemOffers(company?.id).filter((o) => o.is_active !== false);
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-60 flex items-center justify-center p-4 dir-rtl text-right">
+            <div className="bg-white rounded-2xl border border-amber-300 shadow-2xl max-w-2xl w-full p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-100 rounded-xl text-amber-800">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-base">إضافة عرض ترويجي إلى الفاتورة</h3>
+                    <p className="text-xs text-slate-500">
+                      سيتم ربط البند بالصنف الأصلي وسحب المخزون الفعلي تلقائياً مع تسجيل السعر المخفض.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsOfferPickerModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto space-y-2.5">
+                {activeOffers.map((offer) => {
+                  const baseItem = scopedInventory.find(
+                    (i) => i.id === offer.base_item_id || (offer.baseItemId && i.id === offer.baseItemId)
+                  );
+                  const availableBundles = DataService.getOfferAvailableCount(offer, scopedInventory);
+
+                  return (
+                    <div
+                      key={offer.id}
+                      className="border border-slate-200 hover:border-amber-400 rounded-xl p-3.5 flex items-center justify-between transition-colors bg-amber-50/20"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-slate-900 text-sm">{offer.title_ar}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">
+                            {offer.offer_quantity} حبة
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500 flex items-center gap-2">
+                          <span>الصنف الأساسي: {baseItem?.nameAr || '---'}</span>
+                          <span>•</span>
+                          <span className={availableBundles > 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
+                            رصيد الصنف المتاح: {baseItem?.quantityOnHand || 0} ({availableBundles} باقة)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-left">
+                          <div className="text-sm font-black text-emerald-700">
+                            {offer.offer_price.toFixed(3)} {currency}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            ({(offer.offer_price / offer.offer_quantity).toFixed(3)} للقطعة)
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddOfferToInvoice(offer)}
+                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        >
+                          إدراج بالفاتورة
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {activeOffers.length === 0 && (
+                  <div className="text-center py-8 text-slate-400">
+                    <p className="font-bold">لا توجد عروض ترويجية نشطة مسجلة</p>
+                    <p className="text-xs mt-1">يمكنك إنشاء عروض جديدة من تبويب &quot;عروض الأصناف&quot;</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -33,6 +33,7 @@ import {
   VanStockItemMovement,
   Warehouse,
   ItemWarehouseStock,
+  ItemOffer,
 } from '../types.js';
 import {
   DEFAULT_COMPANY_PROFILE,
@@ -63,6 +64,7 @@ import {
 } from './demoService.js';
 import { ThemeService } from './themeService.ts';
 import { cacheService } from './cacheService.ts';
+import { CacheAndThrottleService } from './cacheAndThrottleService.js';
 import { backgroundSync } from './backgroundSyncService.ts';
 import { getAccountStatement, getCalculatedSupplierBalance } from './statementService.ts';
 import { IAS2CostingEngine } from './costingEngine.ts';
@@ -87,6 +89,7 @@ const STORAGE_KEYS = {
   REP_VAN_STOCK: 'alwaleed_erp_rep_van_stock',
   WAREHOUSES: 'alwaleed_erp_warehouses',
   WAREHOUSE_STOCKS: 'alwaleed_erp_warehouse_stocks',
+  ITEM_OFFERS: 'alwaleed_erp_item_offers',
 };
 
 export const DEFAULT_MANUFACTURING_PROFILES: Record<ManufacturingIndustryType, ManufacturingStandardSettings> = {
@@ -1645,6 +1648,15 @@ class LocalDataStore {
     this.setLocal(this.getKey(STORAGE_KEYS.WAREHOUSE_STOCKS), stocks);
   }
 
+  public getItemOffers(): ItemOffer[] {
+    return this.getLocal<ItemOffer[]>(this.getKey(STORAGE_KEYS.ITEM_OFFERS), []);
+  }
+
+  public saveItemOffers(offers: ItemOffer[]): void {
+    this.setLocal(this.getKey(STORAGE_KEYS.ITEM_OFFERS), offers);
+    this.markTenantInitialized();
+  }
+
   public resetToDefaults(): void {
     const cleanAccounts = this.deduplicateAccounts(INITIAL_ACCOUNTS.map((a) => ({ ...a, balance: 0 })));
     this.setLocal(this.getKey(STORAGE_KEYS.COMPANY), this.getCompany());
@@ -1660,6 +1672,7 @@ class LocalDataStore {
     this.setLocal(this.getKey(STORAGE_KEYS.PRODUCTION_ORDERS), []);
     this.setLocal(this.getKey(STORAGE_KEYS.WAREHOUSES), INITIAL_WAREHOUSES);
     this.setLocal(this.getKey(STORAGE_KEYS.SALES_REPS), INITIAL_SALES_REPS);
+    this.setLocal(this.getKey(STORAGE_KEYS.ITEM_OFFERS), []);
     this.markTenantInitialized();
   }
 }
@@ -2107,17 +2120,6 @@ export class DataService {
     } catch (e) {
       console.warn('Supabase getJournals notice:', e);
     }
-
-    try {
-      const vouchers = isSupabaseConfigured ? await this.getVouchers() : localDataStore.getVouchers();
-      if (vouchers.length > 0) {
-        const jMap = new Set(localJournals.map((j) => j.sourceId || j.id || j.reference));
-        const missing = vouchers.some((v) => v.amount > 0 && !jMap.has(v.id) && !jMap.has(v.voucherNumber));
-        if (missing) {
-          this.syncVouchersWithJournals(localJournals).catch((err) => notifyCloudSyncError("CloudSync", err));
-        }
-      }
-    } catch {}
 
     return localJournals;
   }
@@ -2660,7 +2662,20 @@ export class DataService {
       const dType: 'PERCENT' | 'FIXED' = item.discountType === 'PERCENT' ? 'PERCENT' : 'FIXED';
       const dVal = Number(item.discountValue) || Number(item.discount) || 0;
       
-      const lineGross = q * p;
+      const isOfferLine = Boolean(item.isOffer || item.offerId || item.offer_id);
+      const offerId = item.offerId || item.offer_id;
+      const offerQuantity = Number(item.offerQuantity) || 1;
+      const offerPrice = Number(item.offerPrice) || (p * q);
+
+      // Resolve effective physical quantity and unit price for offer lines
+      let finalQuantity = q;
+      let finalUnitPrice = p;
+      if (isOfferLine && item.offerQuantity && !item.isExpanded) {
+        finalQuantity = q * offerQuantity;
+        finalUnitPrice = Number((offerPrice / offerQuantity).toFixed(4));
+      }
+
+      const lineGross = finalQuantity * finalUnitPrice;
       let lineDiscAmt = 0;
       if (dType === 'PERCENT') {
         lineDiscAmt = (lineGross * Math.min(100, Math.max(0, dVal))) / 100;
@@ -2674,15 +2689,15 @@ export class DataService {
 
       return {
         id: item.id || `item-${i + 1}`,
-        itemId: item.itemId || `inv-item-${i + 1}`,
+        itemId: item.base_item_id || item.baseItemId || item.itemId || `inv-item-${i + 1}`,
         itemSku: item.itemSku || item.sku || '',
         barcode: item.barcode || '',
         itemNameAr: item.itemNameAr || item.nameAr || 'صنف',
         unit: item.unit || 'حبة',
         unitsPerPack,
         packQuantity,
-        quantity: q,
-        unitPrice: p,
+        quantity: finalQuantity,
+        unitPrice: finalUnitPrice,
         subtotal: lineGross,
         discountType: dType,
         discountValue: dVal,
@@ -2690,7 +2705,12 @@ export class DataService {
         vatRate,
         vatAmount,
         total: lineNet + vatAmount,
-        notes: item.notes || '',
+        notes: item.notes || (isOfferLine ? `عرض ترويجي: ${offerQuantity} حبة بسعر ${offerPrice}` : ''),
+        offerId,
+        offer_id: offerId,
+        isOffer: isOfferLine,
+        offerQuantity,
+        offerPrice,
       };
     });
 
@@ -4722,16 +4742,18 @@ export class DataService {
       this.recalculateSupplierBalance(supp.id);
     }
 
-    // Persist to Supabase if configured
-    if (isSupabaseConfigured) {
+    // Persist to Supabase if configured (Throttled and only when new entries exist)
+    if (isSupabaseConfigured && syncedJournalEntries.length > 0) {
       try {
-        if (syncedJournalEntries.length > 0) {
-          await SupabaseDataService.saveJournals(syncedJournalEntries);
-        }
-        await SupabaseDataService.saveAccounts(updatedAccounts);
-        await SupabaseDataService.saveCustomers(localDataStore.getCustomers());
-        await SupabaseDataService.saveSuppliers(localDataStore.getSuppliers());
-        await SupabaseDataService.syncAllVouchersToLedgerRemote();
+        await SupabaseDataService.saveJournals(syncedJournalEntries);
+        const compId = localDataStore.getEffectiveCompanyId();
+        await CacheAndThrottleService.throttledRecalculate(
+          compId,
+          async () => {
+            await SupabaseDataService.syncAllVouchersToLedgerRemote();
+          },
+          60000
+        );
       } catch (err) {
         console.warn('Supabase sync warning in syncVouchersWithJournals:', err);
       }
@@ -7999,6 +8021,73 @@ export class DataService {
       });
     }
     localDataStore.saveWarehouseStocks(stocks);
+  }
+
+  // ==========================================
+  // ITEM OFFERS & PROMOTIONS API (Virtual Bundles)
+  // No dedicated stock; dynamically reads/deducts base_item_id
+  // ==========================================
+  public static getItemOffers(companyId?: string): ItemOffer[] {
+    const list = localDataStore.getItemOffers();
+    return list.filter((o) => o.is_active !== false);
+  }
+
+  public static getAllItemOffers(companyId?: string): ItemOffer[] {
+    return localDataStore.getItemOffers();
+  }
+
+  public static async fetchItemOffers(companyId?: string): Promise<ItemOffer[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const remote = await SupabaseDataService.getItemOffers(companyId);
+        if (remote && remote.length > 0) {
+          localDataStore.saveItemOffers(remote);
+          return remote;
+        }
+      } catch (err) {
+        console.warn('fetchItemOffers remote fetch notice:', err);
+      }
+    }
+    return localDataStore.getItemOffers();
+  }
+
+  public static async saveItemOffer(offer: ItemOffer): Promise<ItemOffer> {
+    const list = localDataStore.getItemOffers();
+    const idx = list.findIndex((o) => o.id === offer.id);
+    if (idx !== -1) {
+      list[idx] = offer;
+    } else {
+      list.unshift(offer);
+    }
+    localDataStore.saveItemOffers(list);
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.saveItemOffer(offer).catch((err) => notifyCloudSyncError("CloudSync", err));
+    }
+    return offer;
+  }
+
+  public static async deleteItemOffer(id: string): Promise<boolean> {
+    const list = localDataStore.getItemOffers();
+    const filtered = list.filter((o) => o.id !== id);
+    localDataStore.saveItemOffers(filtered);
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.deleteItemOffer(id).catch((err) => notifyCloudSyncError("CloudSync", err));
+    }
+    return true;
+  }
+
+  /**
+   * Reads stock directly from the base item.
+   * Offers NEVER have their own stock column.
+   */
+  public static getOfferAvailableCount(offer: ItemOffer, inventory?: InventoryItem[]): number {
+    const inv = inventory || localDataStore.getInventory();
+    const baseItem = inv.find((i) => i.id === offer.base_item_id || (offer.baseItemId && i.id === offer.baseItemId));
+    if (!baseItem) return 0;
+    const baseStock = Number(baseItem.quantityOnHand) || 0;
+    const qtyPerOffer = Number(offer.offer_quantity) || 1;
+    if (qtyPerOffer <= 0) return 0;
+    return Math.floor(baseStock / qtyPerOffer);
   }
 
   // ==========================================

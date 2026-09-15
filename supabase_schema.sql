@@ -235,3 +235,26 @@ CREATE TABLE IF NOT EXISTS public.audit_log (
     details JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- ==============================================================================
+-- 8) جدول عروض الأصناف الترويجية (item_offers)
+-- بنية عروض افتراضية بدون مخزون منفصل، تسحب من رصيد base_item_id مباشرة
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.item_offers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    base_item_id UUID NOT NULL REFERENCES public.items(id) ON DELETE CASCADE,
+    title_ar TEXT NOT NULL,
+    barcode TEXT,
+    offer_quantity NUMERIC(12, 3) NOT NULL DEFAULT 1 CHECK (offer_quantity > 0),
+    offer_price NUMERIC(12, 3) NOT NULL DEFAULT 0 CHECK (offer_price >= 0),
+    original_price NUMERIC(12, 3) DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_item_offers_company ON public.item_offers(company_id);
+CREATE INDEX IF NOT EXISTS idx_item_offers_base_item ON public.item_offers(base_item_id);
+CREATE INDEX IF NOT EXISTS idx_item_offers_barcode ON public.item_offers(barcode);
+

@@ -38,6 +38,7 @@ class BackgroundSyncService {
   private isProcessing = false;
   private currentStatus: SyncStatus = 'idle';
   private listeners: Set<(status: SyncStatus, pendingCount: number) => void> = new Set();
+  private debounceProcessTimer: any = null;
 
   private constructor() {
     this.loadPersistedQueue();
@@ -46,6 +47,13 @@ class BackgroundSyncService {
         console.log('[BackgroundSync] Connection restored, processing pending queue...');
         this.processQueue();
       });
+
+      // Background retry interval: 120s, strictly runs ONLY if pending queue has items
+      setInterval(() => {
+        if (this.queue.length > 0 && typeof navigator !== 'undefined' && navigator.onLine) {
+          this.processQueue();
+        }
+      }, 120000);
     }
   }
 
@@ -208,8 +216,11 @@ class BackgroundSyncService {
     this.currentStatus = 'syncing';
     this.notify();
 
-    // Trigger asynchronous queue processor immediately
-    setTimeout(() => this.processQueue(), 50);
+    // Trigger asynchronous queue processor with 1000ms batch debounce
+    if (this.debounceProcessTimer) {
+      clearTimeout(this.debounceProcessTimer);
+    }
+    this.debounceProcessTimer = setTimeout(() => this.processQueue(), 1000);
   }
 
   public async processQueue(): Promise<void> {

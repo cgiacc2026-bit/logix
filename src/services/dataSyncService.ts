@@ -2,13 +2,13 @@ import { supabase, getCurrentCompanyId, resolveToSupabaseCompanyUUID } from './s
 
 export class DataSyncService {
   private static activeChannels: any = null;
-  private static debounceTimers: Record<string, any> = {};
+  private static globalDebounceTimer: any = null;
+  private static pendingTables: Set<string> = new Set();
 
   /**
    * Initializes real-time listeners for Supabase to sync data automatically
    * across multiple devices for the active company without reloading.
-   * Tables: invoices, invoice_items, payment_vouchers, items, chart_of_accounts,
-   * journal_entries, customers, suppliers, company_accounting_settings.
+   * Uses unified 3000ms batch debouncing to avoid API storming and excessive bandwidth egress.
    */
   public static startRealtimeSync(onUpdate: (table: string) => void) {
     if (!supabase) return;
@@ -19,43 +19,50 @@ export class DataSyncService {
     // Remove previous channel if exists
     this.stopRealtimeSync();
 
-    const debouncedNotify = (table: string) => {
-      if (this.debounceTimers[table]) {
-        clearTimeout(this.debounceTimers[table]);
+    const batchedNotify = (table: string) => {
+      this.pendingTables.add(table);
+      if (this.globalDebounceTimer) {
+        clearTimeout(this.globalDebounceTimer);
       }
-      this.debounceTimers[table] = setTimeout(() => {
-        onUpdate(table);
-      }, 300);
+      this.globalDebounceTimer = setTimeout(() => {
+        const tables = Array.from(this.pendingTables);
+        this.pendingTables.clear();
+        this.globalDebounceTimer = null;
+        if (tables.length > 0) {
+          // Notify once with primary table or all
+          onUpdate(tables[0]);
+        }
+      }, 3000); // 3 seconds calm batch window
     };
 
     try {
       this.activeChannels = supabase.channel(`sync-company-${companyId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('invoices');
+          batchedNotify('invoices');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'invoice_items', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('invoices');
+          batchedNotify('invoices');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_vouchers', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('payment_vouchers');
+          batchedNotify('payment_vouchers');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('items');
+          batchedNotify('items');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'chart_of_accounts', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('chart_of_accounts');
+          batchedNotify('chart_of_accounts');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('journal_entries');
+          batchedNotify('journal_entries');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('customers');
+          batchedNotify('customers');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('suppliers');
+          batchedNotify('suppliers');
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'company_accounting_settings', filter: `company_id=eq.${companyId}` }, () => {
-          debouncedNotify('company_accounting_settings');
+          batchedNotify('company_accounting_settings');
         })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
@@ -74,7 +81,10 @@ export class DataSyncService {
       } catch {}
       this.activeChannels = null;
     }
-    Object.values(this.debounceTimers).forEach((t) => clearTimeout(t));
-    this.debounceTimers = {};
+    if (this.globalDebounceTimer) {
+      clearTimeout(this.globalDebounceTimer);
+      this.globalDebounceTimer = null;
+    }
+    this.pendingTables.clear();
   }
 }

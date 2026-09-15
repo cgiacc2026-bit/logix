@@ -333,6 +333,23 @@ export interface InventoryItem {
   deletion_reason?: string;
 }
 
+export interface ItemOffer {
+  id: string; // offer_id
+  company_id: string;
+  companyId?: string;
+  base_item_id: string; // Foreign Key to items.id (الصنف الأساسي الحقيقي)
+  baseItemId?: string;
+  title_ar: string; // عنوان العرض (مثال: عرض 2 حبة بسعر مخفض)
+  barcode?: string; // باركود مخصص للعرض
+  offer_quantity: number; // عدد الوحدات المخصومة من الصنف الأساسي (مثال: 2)
+  offer_price: number; // سعر البيع الإجمالي للعرض (مثال: 0.400 د.ك)
+  original_price?: number; // السعر الأصلي الإجمالي للوحدات للمقارنة (مثال: 0.500 د.ك)
+  is_active: boolean;
+  notes?: string;
+  created_at?: string;
+  createdAt?: string;
+}
+
 export type InvoiceType = 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN';
 export type InvoiceStatus = 'DRAFT' | 'POSTED' | 'PAID' | 'PARTIALLY_PAID' | 'CANCELLED';
 
@@ -361,6 +378,11 @@ export interface InvoiceLine {
   warehouseName?: string;
   notes?: string;
   invoiceId?: string;
+  offerId?: string;
+  offer_id?: string;
+  isOffer?: boolean;
+  offerQuantity?: number;
+  offerPrice?: number;
 }
 
 export interface Invoice {

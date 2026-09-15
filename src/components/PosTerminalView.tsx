@@ -10,6 +10,7 @@ import {
   ParkedCart,
   CustomerCreditEvaluation,
   Warehouse as WarehouseType,
+  ItemOffer,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { DataService } from '../services/dataService.ts';
@@ -76,6 +77,11 @@ interface CartItem {
   quantity: number;
   unitPrice: number;
   discountAmount?: number;
+  offerId?: string;
+  isOffer?: boolean;
+  offerQuantity?: number;
+  offerPrice?: number;
+  offerTitleAr?: string;
 }
 
 export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
@@ -124,6 +130,11 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [itemOffers, setItemOffers] = useState<ItemOffer[]>(() => DataService.getItemOffers(activeCompany.id));
+
+  useEffect(() => {
+    setItemOffers(DataService.getItemOffers(activeCompany.id));
+  }, [inventory, activeCompany.id]);
 
   // Customer & Sales Rep
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(() => {
@@ -294,7 +305,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
 
   const addToCart = (item: InventoryItem, qty: number = 1) => {
     setCart((prev) => {
-      const idx = prev.findIndex((c) => c.item.id === item.id);
+      const idx = prev.findIndex((c) => !c.isOffer && c.item.id === item.id);
       if (idx !== -1) {
         const updated = [...prev];
         updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + qty };
@@ -304,14 +315,63 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
     });
   };
 
+  const addOfferToCart = (offer: ItemOffer, count: number = 1) => {
+    const baseItem = inventory.find(
+      (i) => i.id === offer.base_item_id || (offer.baseItemId && i.id === offer.baseItemId)
+    );
+    if (!baseItem) {
+      alert('الصنف الأساسي المرتبط بهذا العرض غير موجود في المخزون.');
+      return;
+    }
+
+    setCart((prev) => {
+      const idx = prev.findIndex((c) => c.offerId === offer.id);
+      if (idx !== -1) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + count };
+        return updated;
+      }
+      return [
+        ...prev,
+        {
+          item: baseItem,
+          quantity: count,
+          unitPrice: offer.offer_price,
+          isOffer: true,
+          offerId: offer.id,
+          offerQuantity: offer.offer_quantity,
+          offerPrice: offer.offer_price,
+          offerTitleAr: offer.title_ar,
+        },
+      ];
+    });
+  };
+
   const handleBarcodeEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchTerm.trim()) {
       e.preventDefault();
+      const cleanTerm = searchTerm.trim().toLowerCase();
+
+      // 1. First check if it matches an active item offer's barcode
+      const matchingOffer = itemOffers.find(
+        (o) =>
+          o.is_active !== false &&
+          ((o.barcode && o.barcode.toLowerCase() === cleanTerm) ||
+            o.id.toLowerCase() === cleanTerm ||
+            o.title_ar.toLowerCase() === cleanTerm)
+      );
+      if (matchingOffer) {
+        addOfferToCart(matchingOffer);
+        setSearchTerm('');
+        return;
+      }
+
+      // 2. Standard item matching
       const exactMatch = inventory.find(
         (i) =>
-          (i.barcode && i.barcode.toLowerCase() === searchTerm.trim().toLowerCase()) ||
-          i.sku.toLowerCase() === searchTerm.trim().toLowerCase() ||
-          i.nameAr.toLowerCase() === searchTerm.trim().toLowerCase()
+          (i.barcode && i.barcode.toLowerCase() === cleanTerm) ||
+          i.sku.toLowerCase() === cleanTerm ||
+          i.nameAr.toLowerCase() === cleanTerm
       );
       if (exactMatch) {
         addToCart(exactMatch);
@@ -349,11 +409,12 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
     setIsQuickItemModalOpen(false);
   };
 
-  const updateQuantity = (itemId: string, delta: number) => {
+  const updateQuantity = (cartKey: string, delta: number) => {
     setCart((prev) =>
       prev
         .map((c) => {
-          if (c.item.id === itemId) {
+          const key = c.offerId ? `offer-${c.offerId}` : c.item.id;
+          if (key === cartKey || c.item.id === cartKey) {
             const newQty = c.quantity + delta;
             return newQty > 0 ? { ...c, quantity: newQty } : null;
           }
@@ -363,8 +424,13 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
     );
   };
 
-  const removeFromCart = (itemId: string) => {
-    setCart((prev) => prev.filter((c) => c.item.id !== itemId));
+  const removeFromCart = (cartKey: string) => {
+    setCart((prev) =>
+      prev.filter((c) => {
+        const key = c.offerId ? `offer-${c.offerId}` : c.item.id;
+        return key !== cartKey && c.item.id !== cartKey;
+      })
+    );
   };
 
   const clearCart = () => {
@@ -521,17 +587,42 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
         cashTendered: paymentMethod === 'CASH' ? (cashTendered > 0 ? cashTendered : grandTotal) : undefined,
         changeDue: paymentMethod === 'CASH' && cashTendered > grandTotal ? changeDue : 0,
         paymentMethod,
-        lines: cart.map((c) => ({
-          itemId: c.item.id,
-          itemSku: c.item.sku,
-          itemNameAr: c.item.nameAr,
-          unit: c.item.unit || 'حبة',
-          unitsPerPack: c.item.unitsPerPack || 1,
-          quantity: c.quantity,
-          unitPrice: c.unitPrice,
-          discountType: 'FIXED',
-          discountValue: 0,
-        })),
+        lines: cart.map((c) => {
+          if (c.isOffer && c.offerQuantity) {
+            const totalUnitsDeducted = c.quantity * c.offerQuantity;
+            const effectiveUnitPrice = Number(((c.offerPrice || c.unitPrice) / c.offerQuantity).toFixed(4));
+            const lineTotal = c.quantity * (c.offerPrice || c.unitPrice);
+            return {
+              itemId: c.item.id,
+              itemSku: c.item.sku,
+              itemNameAr: `عرض: ${c.offerTitleAr || `${c.offerQuantity} × ${c.item.nameAr}`}`,
+              unit: c.item.unit || 'حبة',
+              unitsPerPack: c.item.unitsPerPack || 1,
+              quantity: totalUnitsDeducted,
+              unitPrice: effectiveUnitPrice,
+              total: lineTotal,
+              discountType: 'FIXED',
+              discountValue: 0,
+              offerId: c.offerId,
+              offer_id: c.offerId,
+              isOffer: true,
+              offerQuantity: c.offerQuantity,
+              offerPrice: c.offerPrice,
+              notes: `عرض ترويجي: ${c.offerTitleAr || ''} - خصم مخزني ${totalUnitsDeducted} حبة من ${c.item.nameAr}`,
+            };
+          }
+          return {
+            itemId: c.item.id,
+            itemSku: c.item.sku,
+            itemNameAr: c.item.nameAr,
+            unit: c.item.unit || 'حبة',
+            unitsPerPack: c.item.unitsPerPack || 1,
+            quantity: c.quantity,
+            unitPrice: c.unitPrice,
+            discountType: 'FIXED',
+            discountValue: 0,
+          };
+        }),
         notes: `نقطة بيع POS - فرع: ${activeBranch.nameAr} (${
           paymentMethod === 'CASH' ? 'كاش نقدي' : paymentMethod === 'CARD' ? 'بطاقة كي نت K-Net' : 'آجل ذمم'
         })${supervisorApprovalNote ? ` [${supervisorApprovalNote}]` : ''}`,
@@ -715,6 +806,17 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
             >
               الكل
             </button>
+            <button
+              onClick={() => setSelectedCategory('OFFERS')}
+              className={`whitespace-nowrap px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${
+                selectedCategory === 'OFFERS'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>عروض الأصناف ({itemOffers.filter((o) => o.is_active !== false).length})</span>
+            </button>
             {categories.map((cat) => (
               <button
                 key={cat}
@@ -732,51 +834,188 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
 
           {/* Products Grid */}
           <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {filteredItems.map((item) => {
-                const available = (item.quantity ?? 0);
-                const isOutOfStock = available <= 0;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => !isOutOfStock && addToCart(item, 1)}
-                    disabled={isOutOfStock}
-                    className={`relative flex flex-col text-right bg-white border rounded-2xl p-3 transition-all active:scale-95 ${
-                      isOutOfStock 
-                        ? 'opacity-50 cursor-not-allowed border-slate-200' 
-                        : 'border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-500/30'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start w-full mb-2">
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
-                        {item.sku}
-                      </span>
-                      {available > 0 ? (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-600">
-                          {available} {item.unit}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600">
-                          نفذ
-                        </span>
+            {selectedCategory === 'OFFERS' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {itemOffers
+                  .filter((o) => o.is_active !== false)
+                  .filter((o) => {
+                    if (!searchTerm.trim()) return true;
+                    const q = searchTerm.toLowerCase();
+                    const base = inventory.find((i) => i.id === o.base_item_id || (o.baseItemId && i.id === o.baseItemId));
+                    return (
+                      o.title_ar.toLowerCase().includes(q) ||
+                      (o.barcode && o.barcode.toLowerCase().includes(q)) ||
+                      (base && (base.nameAr.toLowerCase().includes(q) || base.sku.toLowerCase().includes(q)))
+                    );
+                  })
+                  .map((offer) => {
+                    const baseItem = inventory.find(
+                      (i) => i.id === offer.base_item_id || (offer.baseItemId && i.id === offer.baseItemId)
+                    );
+                    const availableBundles = DataService.getOfferAvailableCount(offer, inventory);
+                    const isOutOfStock = availableBundles <= 0;
+                    const originalTotal =
+                      offer.original_price || ((baseItem?.salePrice || 0) * offer.offer_quantity);
+                    const diff = Math.max(0, originalTotal - offer.offer_price);
+                    const percent = originalTotal > 0 ? Math.round((diff / originalTotal) * 100) : 0;
+
+                    return (
+                      <div
+                        key={offer.id}
+                        className={`relative flex flex-col justify-between text-right bg-white border-2 rounded-2xl p-3.5 transition-all ${
+                          isOutOfStock
+                            ? 'opacity-60 border-slate-200'
+                            : 'border-amber-300 shadow-sm hover:shadow-md hover:border-amber-500'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex justify-between items-start w-full mb-2">
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-amber-600" />
+                              <span>عرض ({offer.offer_quantity} حبة)</span>
+                            </span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                availableBundles > 0
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              }`}
+                            >
+                              {availableBundles > 0 ? `${availableBundles} باقة متاحة` : 'نفذ المخزون'}
+                            </span>
+                          </div>
+
+                          <h3 className="text-sm font-black text-slate-900 leading-tight mb-1">
+                            {offer.title_ar}
+                          </h3>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1 mb-2">
+                            <Package className="w-3.5 h-3.5 text-slate-400" />
+                            <span>الأصل: {baseItem?.nameAr || 'صنف غير معرف'}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            رصيد الصنف الأصلي: {baseItem?.quantityOnHand || 0} {baseItem?.unit || 'حبة'}
+                          </div>
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-2.5 mt-3">
+                          <div className="flex items-baseline justify-between mb-2">
+                            <div className="text-emerald-700 font-black text-base">
+                              {offer.offer_price.toFixed(3)} <span className="text-[10px]">{currency}</span>
+                            </div>
+                            {diff > 0 && (
+                              <div className="text-left">
+                                <span className="text-xs text-slate-400 line-through mr-1">
+                                  {originalTotal.toFixed(3)}
+                                </span>
+                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">
+                                  وفر {percent}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => !isOutOfStock && addOfferToCart(offer, 1)}
+                            disabled={isOutOfStock}
+                            className={`w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                              isOutOfStock
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95'
+                            }`}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>إضافة العرض للسلة</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                {itemOffers.filter((o) => o.is_active !== false).length === 0 && (
+                  <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400">
+                    <Sparkles className="w-12 h-12 mb-3 opacity-20 text-amber-500" />
+                    <p className="font-bold">لا توجد عروض ترويجية نشطة حالياً</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      يمكنك تعريف عروض جديدة من تبويب عروض الأصناف الترويجية.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {filteredItems.map((item) => {
+                  const available = (item.quantity ?? 0);
+                  const isOutOfStock = available <= 0;
+                  const itemOffer = itemOffers.find(
+                    (o) =>
+                      o.is_active !== false &&
+                      (o.base_item_id === item.id || (o.baseItemId && o.baseItemId === item.id))
+                  );
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`relative flex flex-col justify-between text-right bg-white border rounded-2xl p-3 transition-all ${
+                        isOutOfStock 
+                          ? 'opacity-50 border-slate-200' 
+                          : 'border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-500/30'
+                      }`}
+                    >
+                      <div
+                        onClick={() => !isOutOfStock && addToCart(item, 1)}
+                        className={`cursor-pointer ${isOutOfStock ? 'cursor-not-allowed' : ''}`}
+                      >
+                        <div className="flex justify-between items-start w-full mb-2">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                            {item.sku}
+                          </span>
+                          {available > 0 ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-600">
+                              {available} {item.unit}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600">
+                              نفذ
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800 leading-tight line-clamp-2 mb-1.5">
+                          {item.nameAr}
+                        </h3>
+                        <div className="text-emerald-600 font-black text-base flex items-baseline gap-1">
+                          {formatCurrency(item.salePrice)} <span className="text-[10px] text-emerald-500 font-bold">{currency}</span>
+                        </div>
+                      </div>
+
+                      {/* Quick Offer Button if item has an active offer */}
+                      {itemOffer && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isOutOfStock) addOfferToCart(itemOffer, 1);
+                          }}
+                          disabled={isOutOfStock}
+                          className="mt-2 w-full py-1 px-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors"
+                          title="بيع كعرض ترويجي مخفض"
+                        >
+                          <span className="flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-600" />
+                            <span>عرض: {itemOffer.offer_quantity} بـ {itemOffer.offer_price.toFixed(3)}</span>
+                          </span>
+                          <Plus className="w-3 h-3" />
+                        </button>
                       )}
                     </div>
-                    <div className="flex-1 flex flex-col justify-end w-full">
-                      <h3 className="text-sm font-bold text-slate-800 leading-tight line-clamp-2 mb-1.5">{item.nameAr}</h3>
-                      <div className="text-emerald-600 font-black text-base flex items-baseline gap-1">
-                        {formatCurrency(item.salePrice)} <span className="text-[10px] text-emerald-500 font-bold">{currency}</span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              {filteredItems.length === 0 && (
-                <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400">
-                  <Package className="w-12 h-12 mb-3 opacity-20" />
-                  <p>لا توجد منتجات مطابقة للبحث</p>
-                </div>
-              )}
-            </div>
+                  );
+                })}
+                {filteredItems.length === 0 && (
+                  <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400">
+                    <Package className="w-12 h-12 mb-3 opacity-20" />
+                    <p>لا توجد منتجات مطابقة للبحث</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -816,35 +1055,65 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {cart.map((c) => (
-                    <tr key={c.item.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="py-3 px-3">
-                        <div className="font-bold text-slate-800 text-sm line-clamp-1" title={c.item.nameAr}>{c.item.nameAr}</div>
-                      </td>
-                      <td className="py-3 px-2">
-                        <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 w-fit">
-                          <button onClick={() => updateQuantity(c.item.id, c.quantity - 1)} className="p-1 hover:bg-white rounded-md text-slate-600 transition-colors shadow-sm">
-                            <Minus className="w-3 h-3" />
+                  {cart.map((c) => {
+                    const cartKey = c.offerId ? `offer-${c.offerId}` : c.item.id;
+                    const lineTotal = c.quantity * c.unitPrice;
+                    return (
+                      <tr key={cartKey} className="hover:bg-slate-50 transition-colors group">
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              className="font-bold text-slate-800 text-sm line-clamp-1"
+                              title={c.isOffer ? c.offerTitleAr : c.item.nameAr}
+                            >
+                              {c.isOffer ? c.offerTitleAr : c.item.nameAr}
+                            </div>
+                            {c.isOffer && (
+                              <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                عرض ({c.offerQuantity} حبة)
+                              </span>
+                            )}
+                          </div>
+                          {c.isOffer && (
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              خصم مخزني: {c.quantity * (c.offerQuantity || 1)} حبة من ({c.item.nameAr})
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-2">
+                          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 w-fit">
+                            <button
+                              onClick={() => updateQuantity(cartKey, -1)}
+                              className="p-1 hover:bg-white rounded-md text-slate-600 transition-colors shadow-sm"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="w-6 text-center font-bold text-slate-800 text-sm">{c.quantity}</span>
+                            <button
+                              onClick={() => updateQuantity(cartKey, 1)}
+                              className="p-1 hover:bg-white rounded-md text-slate-600 transition-colors shadow-sm"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-2 text-left font-bold text-slate-600 text-xs">
+                          {formatCurrency(c.unitPrice)}
+                        </td>
+                        <td className="py-2.5 px-2 text-left font-black text-emerald-600">
+                          {formatCurrency(lineTotal)}
+                        </td>
+                        <td className="py-2.5 px-2">
+                          <button
+                            onClick={() => removeFromCart(cartKey)}
+                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
-                          <span className="w-6 text-center font-bold text-slate-800 text-sm">{c.quantity}</span>
-                          <button onClick={() => updateQuantity(c.item.id, c.quantity + 1)} className="p-1 hover:bg-white rounded-md text-slate-600 transition-colors shadow-sm">
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2 text-left font-bold text-slate-600 text-xs">
-                        {formatCurrency(c.unitPrice)}
-                      </td>
-                      <td className="py-3 px-2 text-left font-black text-emerald-600">
-                        {formatCurrency(c.quantity * c.unitPrice)}
-                      </td>
-                      <td className="py-3 px-2">
-                        <button onClick={() => removeFromCart(c.item.id)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

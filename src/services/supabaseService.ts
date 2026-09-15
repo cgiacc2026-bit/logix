@@ -47,7 +47,9 @@ import {
   ManufacturingStandardSettings,
   Warehouse,
   SalesRep,
+  ItemOffer,
 } from '../types.js';
+import { CacheAndThrottleService } from './cacheAndThrottleService.js';
 
 export class SupabaseDataService {
   /**
@@ -309,10 +311,14 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
 
+    const cacheKey = `pricelists_${companyId}`;
+    const cached = CacheAndThrottleService.get<any[]>(cacheKey);
+    if (cached) return cached;
+
     try {
       const { data, error } = await supabase
         .from('master_price_lists')
-        .select('*')
+        .select('id, company_id, code, name_ar, name_en, currency, is_default, default_discount_percent, is_active')
         .eq('company_id', companyId)
         .eq('is_active', true)
         .order('is_default', { ascending: false })
@@ -322,7 +328,7 @@ export class SupabaseDataService {
         console.warn('Supabase getMasterPriceLists error:', error.message);
         return [];
       }
-      return (data || []).map((row: any) => ({
+      const mapped = (data || []).map((row: any) => ({
         id: row.id,
         companyId: row.company_id,
         code: row.code,
@@ -333,6 +339,9 @@ export class SupabaseDataService {
         defaultDiscountPercent: Number(row.default_discount_percent || 0),
         isActive: Boolean(row.is_active),
       }));
+
+      CacheAndThrottleService.set(cacheKey, mapped, 600000); // 10 minutes cache
+      return mapped;
     } catch (err: any) {
       console.warn('Supabase getMasterPriceLists exception:', err?.message);
       return [];
@@ -1232,19 +1241,20 @@ export class SupabaseDataService {
   /**
    * 4. INVOICES & INVOICE_ITEMS (الفواتير وبنودها مع التوافق التبادلي الكامل)
    */
-  public static async getInvoices(targetCompanyId?: string): Promise<Invoice[]> {
+  public static async getInvoices(targetCompanyId?: string, limit: number = 200): Promise<Invoice[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
 
     try {
-      // 1. Single Source of Truth: Query 'invoices' table
+      // 1. Single Source of Truth: Query 'invoices' table with targeted columns & limit
       const { data: invTableData, error: invErr } = await supabase
         .from('invoices')
-        .select('*')
+        .select('id, company_id, invoice_number, type, date, due_date, status, payment_status, payment_terms, subtotal, discount_amount, tax_amount, total_amount, paid_amount, due_amount, customer_id, customer_branch_id, warehouse_id, sales_rep_id, price_list_id, notes, raw_data, created_at, updated_at')
         .eq('company_id', companyId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
       if (invErr) {
         console.warn('Supabase getInvoices error:', invErr.message);
@@ -1255,11 +1265,12 @@ export class SupabaseDataService {
         return [];
       }
 
-      // Query related invoice_items
+      // Query related invoice_items scoped only to fetched invoice IDs with specific columns
+      const invIds = invTableData.map((inv: any) => inv.id).filter(Boolean);
       const { data: itemRows } = await supabase
         .from('invoice_items')
-        .select('*')
-        .eq('company_id', companyId);
+        .select('id, invoice_id, company_id, item_id, item_name, quantity, unit_price, total_price, tax_rate, tax_amount, raw_data')
+        .in('invoice_id', invIds);
 
       const itemsByInvoice: Record<string, InvoiceLine[]> = {};
       if (itemRows) {
@@ -1626,23 +1637,16 @@ export class SupabaseDataService {
       }
     }
 
-    // Validate that resolvedPriceListId exists in master_price_lists
+    // Validate that resolvedPriceListId exists in master_price_lists using in-memory cache
     if (resolvedPriceListId) {
       try {
-        const { data: plRow } = await supabase
-          .from('master_price_lists')
-          .select('id')
-          .eq('id', resolvedPriceListId)
-          .maybeSingle();
-        if (!plRow) {
+        const plList = await this.getMasterPriceLists(companyId);
+        const exists = plList.some((p: any) => p.id === resolvedPriceListId);
+        if (!exists) {
           const standardId = `pl-${companyId.slice(0, 8)}`;
-          const { data: stdRow } = await supabase
-            .from('master_price_lists')
-            .select('id')
-            .eq('id', standardId)
-            .maybeSingle();
-          if (stdRow?.id) {
-            resolvedPriceListId = stdRow.id;
+          const stdMatch = plList.find((p: any) => p.id === standardId || p.isDefault) || plList[0];
+          if (stdMatch?.id) {
+            resolvedPriceListId = stdMatch.id;
           }
         }
       } catch (plValErr) {
@@ -2509,7 +2513,7 @@ export class SupabaseDataService {
   /**
    * 5. JOURNAL_ENTRIES (قيود اليومية المحاسبية)
    */
-  public static async getJournals(targetCompanyId?: string): Promise<JournalEntry[]> {
+  public static async getJournals(targetCompanyId?: string, limit: number = 250): Promise<JournalEntry[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -2517,9 +2521,10 @@ export class SupabaseDataService {
     try {
       let { data, error } = await supabase
         .from('journal_entries')
-        .select('*')
+        .select('id, company_id, entry_number, date, reference, reference_id, description, status, total_debit, total_credit, source_module, source_id, lines, created_at, updated_at')
         .eq('company_id', companyId)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .limit(limit);
 
       if (error) {
         console.warn('Supabase getJournals error:', error.message);
@@ -2832,10 +2837,15 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return null;
+
+    const cacheKey = `accounts_${companyId}`;
+    const cached = CacheAndThrottleService.get<Account[]>(cacheKey);
+    if (cached) return cached;
+
     try {
       const { data, error } = await supabase
         .from('chart_of_accounts')
-        .select('*')
+        .select('id, company_id, code, name_ar, name_en, category, normal_balance, level, type, parent_id, is_system, is_active, balance, current_balance, description')
         .eq('company_id', companyId)
         .order('code', { ascending: true });
 
@@ -2874,7 +2884,9 @@ export class SupabaseDataService {
         }
       }
 
-      return Array.from(codeMap.values()).sort((a, b) => a.code.localeCompare(b.code));
+      const result = Array.from(codeMap.values()).sort((a, b) => a.code.localeCompare(b.code));
+      CacheAndThrottleService.set(cacheKey, result, 300000); // 5 minutes cache
+      return result;
     } catch (e) {
       return null;
     }
@@ -2885,6 +2897,7 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
+    CacheAndThrottleService.invalidate('accounts_');
     try {
       // Deduplicate accounts before sending to Supabase
       const dedupedMap = new Map<string, Account>();
@@ -3020,14 +3033,19 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return null;
+
+    const cacheKey = `warehouses_${companyId}`;
+    const cached = CacheAndThrottleService.get<Warehouse[]>(cacheKey);
+    if (cached) return cached;
+
     try {
       const { data, error } = await supabase
         .from('warehouses')
-        .select('*')
+        .select('id, company_id, code, name_ar, name_en, location, keeper_name, phone, is_default, is_active')
         .eq('company_id', companyId)
         .order('created_at', { ascending: true });
       if (error || !data) return null;
-      return data.map((r: any) => ({
+      const mapped = data.map((r: any) => ({
         id: r.id,
         code: r.code,
         nameAr: r.name_ar,
@@ -3038,6 +3056,9 @@ export class SupabaseDataService {
         isDefault: !!r.is_default,
         isActive: r.is_active ?? true,
       }));
+
+      CacheAndThrottleService.set(cacheKey, mapped, 600000); // 10 minutes cache
+      return mapped;
     } catch {
       return null;
     }
@@ -3048,6 +3069,7 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
+    CacheAndThrottleService.invalidate('warehouses_');
     try {
       const payload = warehouses.map((w) => ({
         id: w.id,
@@ -3163,6 +3185,7 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
+    CacheAndThrottleService.invalidate('warehouses_');
     try {
       const { error } = await supabase.from('warehouses').delete().eq('id', id).eq('company_id', companyId);
       return !error;
@@ -3188,6 +3211,156 @@ export class SupabaseDataService {
       }
       return true;
     } catch (err: any) {
+      return false;
+    }
+  }
+
+  /**
+   * 8. ITEM OFFERS & PROMOTIONS (Virtual Bundles)
+   * Offers are alternative sales packages with NO dedicated stock of their own.
+   * They deduct real stock directly from base_item_id.
+   */
+  public static async getItemOffers(targetCompanyId?: string): Promise<ItemOffer[]> {
+    if (!isSupabaseConfigured) return [];
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return [];
+
+    // 1. Check item_offers table
+    try {
+      const { data, error } = await supabase
+        .from('item_offers')
+        .select('*')
+        .eq('company_id', companyId);
+      
+      if (!error && data && Array.isArray(data) && data.length > 0) {
+        return data.map((row: any) => ({
+          id: row.id,
+          company_id: row.company_id,
+          companyId: row.company_id,
+          base_item_id: row.base_item_id,
+          baseItemId: row.base_item_id,
+          title_ar: row.title_ar,
+          barcode: row.barcode || undefined,
+          offer_quantity: Number(row.offer_quantity) || 1,
+          offer_price: Number(row.offer_price) || 0,
+          original_price: Number(row.original_price) || 0,
+          is_active: row.is_active !== false,
+          notes: row.notes || undefined,
+          created_at: row.created_at,
+          createdAt: row.created_at,
+        }));
+      }
+    } catch (e) {
+      console.warn('[SupabaseDataService] getItemOffers notice:', e);
+    }
+
+    // 2. Fallback: check item_units table
+    try {
+      const { data: uData, error: uErr } = await supabase
+        .from('item_units')
+        .select('*')
+        .eq('company_id', companyId);
+      
+      if (!uErr && uData && Array.isArray(uData) && uData.length > 0) {
+        return uData.map((row: any) => ({
+          id: row.id,
+          company_id: row.company_id,
+          companyId: row.company_id,
+          base_item_id: row.item_id,
+          baseItemId: row.item_id,
+          title_ar: row.unit_name,
+          barcode: row.barcode || undefined,
+          offer_quantity: Number(row.conversion_factor) || 1,
+          offer_price: Number(row.sale_price) || 0,
+          original_price: Number(row.cost_price) || 0,
+          is_active: true,
+          created_at: row.created_at,
+          createdAt: row.created_at,
+        }));
+      }
+    } catch {}
+
+    return [];
+  }
+
+  public static async saveItemOffer(offer: ItemOffer, targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || offer.company_id || offer.companyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+
+    const offerUuid = toValidUUID(offer.id) || generateUUID();
+    offer.id = offerUuid;
+    const baseItemUuid = toValidUUID(offer.base_item_id) || offer.base_item_id;
+
+    // 1. Save into item_offers
+    try {
+      const payload = {
+        id: offerUuid,
+        company_id: companyId,
+        base_item_id: baseItemUuid,
+        title_ar: offer.title_ar,
+        barcode: offer.barcode ? String(offer.barcode).trim() : null,
+        offer_quantity: Number(offer.offer_quantity) || 1,
+        offer_price: Number(offer.offer_price) || 0,
+        original_price: Number(offer.original_price) || 0,
+        is_active: offer.is_active !== false,
+        notes: offer.notes || null,
+        created_at: offer.created_at || new Date().toISOString(),
+      };
+      const { error } = await supabase.from('item_offers').upsert([payload]);
+      if (!error) {
+        // Also mirror to item_units for backwards compatibility
+        try {
+          await supabase.from('item_units').upsert([{
+            id: offerUuid,
+            company_id: companyId,
+            item_id: baseItemUuid,
+            unit_name: offer.title_ar,
+            conversion_factor: Number(offer.offer_quantity) || 1,
+            barcode: offer.barcode ? String(offer.barcode).trim() : null,
+            sale_price: Number(offer.offer_price) || 0,
+            cost_price: Number(offer.original_price) || 0,
+            is_base_unit: false,
+          }]);
+        } catch {}
+        return true;
+      }
+    } catch (e) {
+      console.warn('[Supabase saveItemOffer] item_offers insert notice:', e);
+    }
+
+    // 2. Backup: save into item_units table
+    try {
+      const { error: uErr } = await supabase.from('item_units').upsert([{
+        id: offerUuid,
+        company_id: companyId,
+        item_id: baseItemUuid,
+        unit_name: offer.title_ar,
+        conversion_factor: Number(offer.offer_quantity) || 1,
+        barcode: offer.barcode ? String(offer.barcode).trim() : null,
+        sale_price: Number(offer.offer_price) || 0,
+        cost_price: Number(offer.original_price) || 0,
+        is_base_unit: false,
+      }]);
+      return !uErr;
+    } catch (ex) {
+      return false;
+    }
+  }
+
+  public static async deleteItemOffer(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return false;
+
+    try {
+      await supabase.from('item_offers').delete().eq('id', id).eq('company_id', companyId);
+      await supabase.from('item_units').delete().eq('id', id).eq('company_id', companyId);
+      return true;
+    } catch {
       return false;
     }
   }

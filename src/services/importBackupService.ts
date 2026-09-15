@@ -11,6 +11,7 @@ import { supabase, toValidUUID } from './supabaseClient.js';
 import { resolveToSupabaseCompanyUUID } from './supabaseService.js';
 import { localDataStore } from './dataService.js';
 import { cacheService } from './cacheService.js';
+import { CacheAndThrottleService } from './cacheAndThrottleService.js';
 import { safeApiFetch } from '../utils/safeJson.js';
 
 export interface ImportProgress {
@@ -1150,9 +1151,15 @@ export class ERPBackupImportService {
         updateProgress('JOURNALS', `تم استيراد ${jrnAccepted} قيد يومية بنجاح`, jrnAccepted);
       }
 
-      // Auto-recalculate accounting balances in database
+      // Auto-recalculate accounting balances in database (Throttled to avoid Egress flood)
       try {
-        await supabase.rpc('recalculate_company_ledger_balances', { p_company_id: activeCompanyUUID });
+        await CacheAndThrottleService.throttledRecalculate(
+          activeCompanyUUID,
+          async () => {
+            await supabase.rpc('recalculate_company_ledger_balances', { p_company_id: activeCompanyUUID });
+          },
+          60000
+        );
       } catch (e) {
         console.warn('Recalculate balances RPC note:', e);
       }
