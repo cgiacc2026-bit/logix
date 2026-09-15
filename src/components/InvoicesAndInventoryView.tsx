@@ -2899,7 +2899,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                               setInventoryViewMode('audit_ledger');
                             }}
                             className="p-1.5 text-amber-700 hover:text-amber-950 hover:bg-amber-100/70 rounded-lg transition-all cursor-pointer"
-                            title="عرض كارت حركة الصنف وضبط الجودة والإطلاق"
+                            title="عرض كارت حركة الصنف ودفتر أستاذ المخزون"
                           >
                             <Layers className="w-4 h-4" />
                           </button>
