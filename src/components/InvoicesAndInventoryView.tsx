@@ -27,7 +27,7 @@ import { NegativeStockConfirmationModal, DeficitItem } from './NegativeStockConf
 import { StockLedgerAndAuditView } from './StockLedgerAndAuditView';
 import { ReceiptVouchersView } from './ReceiptVouchersView';
 import { DataService, localDataStore } from '../services/dataService.ts';
-import { calculateEntityCurrentBalance } from '../services/statementService.ts';
+import { calculateEntityCurrentBalance, getCalculatedCustomerBalance, getCalculatedSupplierBalance } from '../services/statementService.ts';
 import { CustomerSearchCombobox } from './CustomerSearchCombobox.tsx';
 import { InvoiceItemSearchCombobox } from './InvoiceItemSearchCombobox.tsx';
 import { CustomerBranchesAndPriceListModal } from './CustomerBranchesAndPriceListModal.tsx';
@@ -1279,22 +1279,14 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
   };
 
-  // الربط المباشر برصيد العميل اللحظي في قاعدة البيانات المحدث عبر المشغلات (Database Triggers)
+  // الربط المحاسبي الموحد بسجل الأستاذ العام وقيود اليومية عبر statementService
   const getCustomerCurrentBalance = (c: Customer): number => {
-    const dbBal = (c as any).current_balance ?? (c as any).currentBalance;
-    if (dbBal !== undefined && dbBal !== null && !isNaN(Number(dbBal))) {
-      return Number(dbBal);
-    }
-    return calculateEntityCurrentBalance(c, 'CUSTOMER', invoices, vouchers, journals, creditNotes);
+    return getCalculatedCustomerBalance(c.id, invoices, vouchers, journals, customers, creditNotes);
   };
 
-  // الربط المباشر برصيد المورد اللحظي في قاعدة البيانات المحدث عبر المشغلات (Database Triggers)
+  // الربط المحاسبي الموحد بسجل الأستاذ العام وقيود اليومية عبر statementService
   const getSupplierCurrentBalance = (s: Supplier): number => {
-    const dbBal = (s as any).current_balance ?? (s as any).currentBalance;
-    if (dbBal !== undefined && dbBal !== null && !isNaN(Number(dbBal))) {
-      return Number(dbBal);
-    }
-    return calculateEntityCurrentBalance(s, 'SUPPLIER', invoices, vouchers, journals);
+    return getCalculatedSupplierBalance(s.id, invoices, vouchers, journals, suppliers);
   };
 
   // Inventory Filtering & Categories with Multi-Tenant Scoping & Normalized Search

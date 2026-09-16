@@ -1023,231 +1023,24 @@ export function calculateEntityCurrentBalance(
   creditNotes: CreditNote[] = []
 ): number {
   if (!entity) return 0;
-
-  // 1. الأولوية للرصيد المربوط مباشرة بقاعدة البيانات والمحدث عبر المشغلات (PostgreSQL Database Triggers)
-  const dbBalance = (entity as any).current_balance ?? (entity as any).currentBalance;
-  if (dbBalance !== undefined && dbBalance !== null && !isNaN(Number(dbBalance))) {
-    return Number(dbBalance);
+  if (entityType === 'CUSTOMER') {
+    return getCalculatedCustomerBalance(
+      entity.id,
+      invoices,
+      vouchers,
+      journals,
+      [entity as Customer],
+      creditNotes
+    );
+  } else {
+    return getCalculatedSupplierBalance(
+      entity.id,
+      invoices,
+      vouchers,
+      journals,
+      [entity as Supplier]
+    );
   }
-
-  const entityId = entity.id;
-  const entityCode = entity.code || '';
-  const initialOpening = Number(entity.openingBalance) || 0;
-  
-  let net = initialOpening;
-
-  // 0. الاستبعاد الصارم للعمليات والقيود الملغاة
-  const validInvoices = (invoices || []).filter(
-    (inv) => inv && inv.status !== 'CANCELLED' && !inv.is_void && (inv as any).status !== 'VOID'
-  );
-  const validVouchers = (vouchers || []).filter(
-    (v) => v && v.status !== 'CANCELLED' && !v.is_void && (v as any).status !== 'VOID'
-  );
-
-  const cancelledDocNumbers = new Set<string>();
-  const cancelledDocIds = new Set<string>();
-  for (const inv of (invoices || [])) {
-    if (inv && (inv.status === 'CANCELLED' || inv.is_void || (inv as any).status === 'VOID')) {
-      if (inv.invoiceNumber) cancelledDocNumbers.add(inv.invoiceNumber.trim().toUpperCase());
-      if (inv.id) cancelledDocIds.add(inv.id.trim());
-      if (inv.journalEntryId) cancelledDocIds.add(inv.journalEntryId.trim());
-    }
-  }
-  for (const v of (vouchers || [])) {
-    if (v && (v.status === 'CANCELLED' || v.is_void || (v as any).status === 'VOID')) {
-      if (v.voucherNumber) cancelledDocNumbers.add(v.voucherNumber.trim().toUpperCase());
-      if (v.id) cancelledDocIds.add(v.id.trim());
-      if (v.journalEntryId) cancelledDocIds.add(v.journalEntryId.trim());
-    }
-  }
-
-  // إزالة التكرار بدقة باستخدام الدوال المساعدة
-  const dedupedInvoices = deduplicateStatementInvoices(validInvoices);
-  const dedupedVouchers = deduplicateStatementVouchers(validVouchers);
-
-  const knownVoucherNumbers = new Set<string>();
-  const knownVoucherIds = new Set<string>();
-  const knownVoucherJournalIds = new Set<string>();
-  for (const v of dedupedVouchers) {
-    if (v.voucherNumber) knownVoucherNumbers.add(v.voucherNumber.trim().toUpperCase());
-    if (v.id) knownVoucherIds.add(v.id.trim());
-    if (v.journalEntryId) knownVoucherJournalIds.add(v.journalEntryId.trim());
-  }
-
-  const knownInvoiceNumbers = new Set<string>();
-  const knownInvoiceIds = new Set<string>();
-  const knownInvoiceJournalIds = new Set<string>();
-  for (const inv of dedupedInvoices) {
-    if (inv.invoiceNumber) knownInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
-    if (inv.id) knownInvoiceIds.add(inv.id.trim());
-    if (inv.journalEntryId) knownInvoiceJournalIds.add(inv.journalEntryId.trim());
-  }
-
-  // 1. الفواتير والمرتجعات الفريدة
-  const relevantInvoices = dedupedInvoices.filter(
-    (inv) => isDocMatchingEntity(inv, entityId, entity, entityType) && inv.status !== 'CANCELLED' && !inv.is_void
-  );
-  for (const inv of relevantInvoices) {
-    const total = Number(inv.grandTotal) || 0;
-    const invNum = (inv.invoiceNumber || '').trim().toUpperCase();
-    const isPurchaseReturn = inv.type === 'PURCHASE_RETURN' || invNum.startsWith('RET-PUR');
-    const isSalesReturn = inv.type === 'SALES_RETURN' || invNum.startsWith('RET-SAL');
-    const isSales = entityType === 'CUSTOMER' ? !isSalesReturn : (inv.type === 'SALES' || invNum.startsWith('INV-SAL'));
-    const isPurchase = entityType === 'SUPPLIER' ? !isPurchaseReturn : (inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR'));
-
-    if (entityType === 'CUSTOMER') {
-      if (isSales) net += total;
-      else if (isSalesReturn) net -= total;
-    } else {
-      if (isPurchase) net += total;
-      else if (isPurchaseReturn) net -= total;
-    }
-  }
-
-  // 2. سندات القبض والصرف الفريدة
-  const relevantVouchers = dedupedVouchers.filter(
-    (v) => isDocMatchingEntity(v, entityId, entity, entityType) && v.status !== 'CANCELLED' && !v.is_void
-  );
-  for (const v of relevantVouchers) {
-    const amount = Number(v.amount) || 0;
-    const vType = v.type || (entityType === 'CUSTOMER' ? 'RECEIPT' : 'PAYMENT');
-    if (entityType === 'CUSTOMER') {
-      if (vType === 'RECEIPT') net -= amount;
-      else if (vType === 'PAYMENT') net += amount;
-    } else {
-      if (vType === 'PAYMENT') net -= amount;
-      else if (vType === 'RECEIPT') net += amount;
-    }
-  }
-
-  // 3. القيود والتسويات اليدوية الفريدة
-  const relevantJournals = (journals || []).filter(
-    (j) =>
-      j &&
-      j.id &&
-      (j.status as string) === 'POSTED' &&
-      (j.status as string) !== 'CANCELLED' &&
-      (j.status as string) !== 'REVERSED' &&
-      !(j as any).is_void &&
-      !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id) &&
-      !j.entryNumber?.toUpperCase().startsWith('REV-') &&
-      !(j.reference && cancelledDocNumbers.has(j.reference.trim().toUpperCase())) &&
-      !(j.sourceId && cancelledDocIds.has(j.sourceId.trim()))
-  );
-  for (const j of relevantJournals) {
-    // تجنب التكرار للقيود الآلية الصادرة عن الفواتير أو السندات
-    const isAuto = Boolean(j.isAutoGenerated);
-    const autoModules = [
-      'SALES_INVOICE', 'PURCHASE_INVOICE', 'RECEIPT', 'PAYMENT', 
-      'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER', 'VOUCHER', 'INVOICE'
-    ];
-    if (autoModules.includes(j.sourceModule || '') || (isAuto && j.sourceModule !== 'MANUAL')) {
-      continue;
-    }
-
-    const refUpper = (j.reference || '').trim().toUpperCase();
-    const entryNumUpper = (j.entryNumber || '').trim().toUpperCase();
-    const jId = (j.id || '').trim();
-    const srcId = (j.sourceId || '').trim();
-
-    if (
-      (refUpper && (knownVoucherNumbers.has(refUpper) || knownInvoiceNumbers.has(refUpper))) ||
-      (srcId && (knownVoucherIds.has(srcId) || knownInvoiceIds.has(srcId))) ||
-      (jId && (knownVoucherJournalIds.has(jId) || knownInvoiceJournalIds.has(jId)))
-    ) {
-      continue;
-    }
-
-    let matchesDoc = false;
-    for (const vNum of knownVoucherNumbers) {
-      if (
-        entryNumUpper.includes(vNum) ||
-        refUpper.includes(vNum) ||
-        (j.description && j.description.toUpperCase().includes(vNum))
-      ) {
-        matchesDoc = true;
-        break;
-      }
-    }
-    if (matchesDoc) continue;
-
-    for (const invNum of knownInvoiceNumbers) {
-      if (
-        entryNumUpper.includes(invNum) ||
-        refUpper.includes(invNum) ||
-        (j.description && j.description.toUpperCase().includes(invNum))
-      ) {
-        matchesDoc = true;
-        break;
-      }
-    }
-    if (matchesDoc) continue;
-
-    for (const line of j.lines || []) {
-      const isDirectEntityIdMatch = Boolean(
-        line.entityId && (line.entityId === entityId || isDocMatchingEntity(line, entityId, entity, entityType))
-      );
-      const isDirectAccountMatch = Boolean(line.accountId === entityId || (entity.accountId && line.accountId === entity.accountId));
-      const isAccountCodeMatch = Boolean(entityCode && line.accountCode === entityCode);
-      
-      const isEntityNameMatch = Boolean(
-        (line.entityNameAr && (
-          line.entityNameAr.trim() === entity.nameAr.trim() || 
-          line.entityNameAr.includes(entity.nameAr) || 
-          entity.nameAr.includes(line.entityNameAr)
-        )) ||
-        (line.entityType === entityType && (
-          (line.entityId && line.entityId === entityId) || 
-          (line.entityNameAr && line.entityNameAr.trim() === entity.nameAr.trim())
-        ))
-      );
-
-      const isMemoOrDescMatch = Boolean(
-        (line.memo && (
-          (entity.nameAr && line.memo.includes(entity.nameAr)) ||
-          (entityCode && line.memo.includes(entityCode))
-        )) ||
-        (j.description && (
-          (entity.nameAr && j.description.includes(entity.nameAr)) ||
-          (entityCode && j.description.includes(entityCode))
-        ))
-      );
-
-      const isEntityLine = isDirectEntityIdMatch || isDirectAccountMatch || isAccountCodeMatch || isEntityNameMatch || isMemoOrDescMatch;
-
-      if (isEntityLine) {
-        const debit = Number(line.debit) || 0;
-        const credit = Number(line.credit) || 0;
-        if (entityType === 'CUSTOMER') {
-          net += (debit - credit);
-        } else {
-          net += (credit - debit);
-        }
-      }
-    }
-  }
-
-  // 4. إشعارات الدائن المعتمدة للعملاء (Credit Notes / Memos) - تجميع التحصيلات والمرتجعات
-  if (entityType === 'CUSTOMER' && Array.isArray(creditNotes)) {
-    for (const cn of creditNotes) {
-      if (!cn || cn.status === 'REVERSED' || cn.is_deleted) continue;
-      const matchesCust = isDocMatchingEntity(
-        { customerId: cn.customer_id, customerName: cn.customer_name },
-        entityId,
-        entity,
-        entityType
-      );
-      if (matchesCust) {
-        const amount = Number(cn.total_refund_amount) || 0;
-        if (amount > 0) {
-          // يخصم من رصيد العميل المدين كدائن (Credit)
-          net -= amount;
-        }
-      }
-    }
-  }
-
-  return Math.round(net * 1000) / 1000;
 }
 
 /**
@@ -1265,15 +1058,6 @@ export function getCalculatedCustomerBalance(
 ): number {
   if (!customerId) return 0;
   const cust = customers.find((c) => c.id === customerId);
-  const dbBalance = cust?.current_balance ?? (cust as any)?.currentBalance;
-  if (
-    dbBalance !== undefined &&
-    dbBalance !== null &&
-    !isNaN(Number(dbBalance)) &&
-    Math.abs(Number(dbBalance) - 3313.046) >= 0.01
-  ) {
-    return Number(dbBalance);
-  }
   try {
     const stmt = getAccountStatement(customerId, 'CUSTOMER', '1970-01-01', '2099-12-31', {
       invoices,

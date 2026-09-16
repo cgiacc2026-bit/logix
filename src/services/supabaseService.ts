@@ -2675,7 +2675,56 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || j.companyId || (j as any).company_id || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
+
+    // Strict Double-Entry Balance Assertion: Debit MUST equal Credit within 0.0005 KWD tolerance
+    const lines = Array.isArray(j.lines) ? j.lines : [];
+    if (lines.length > 0) {
+      let calcDebit = 0;
+      let calcCredit = 0;
+      for (const line of lines) {
+        calcDebit += Number(line.debit) || 0;
+        calcCredit += Number(line.credit) || 0;
+      }
+      const diff = Math.abs(calcDebit - calcCredit);
+      if (diff > 0.0005) {
+        throw new Error(
+          `[CPA Balance Guard] تم رفض حفظ القيد "${j.entryNumber || j.id}" لعدم توازنه! إجمالي المدين: ${calcDebit.toFixed(3)}، إجمالي الدائن: ${calcCredit.toFixed(3)}، الفارق: ${diff.toFixed(4)} د.ك. يُمنع منعاً باتاً حفظ أي قيد غير متوازن.`
+        );
+      }
+    }
+
     try {
+      // Check Leaf Account compliance: ensure no journal lines are posted directly to a parent account
+      if (lines.length > 0) {
+        try {
+          const accRows = await this.getAccounts(companyId);
+          if (accRows && accRows.length > 0) {
+            for (let i = 0; i < lines.length; i++) {
+              const l = lines[i];
+              const lineAccId = l.accountId ? String(l.accountId).trim() : null;
+              const lineAccCode = String(l.accountCode || '').trim();
+              const matchedAcc = accRows.find((a: any) => (lineAccId && (a.id === lineAccId || a.code === lineAccId)) || (lineAccCode && String(a.code).trim() === lineAccCode));
+              if (matchedAcc) {
+                const isParent = accRows.some((other: any) => 
+                  (other.id !== matchedAcc.id && (other.parentId === matchedAcc.id || other.parent_id === matchedAcc.id)) ||
+                  (other.code && matchedAcc.code && String(other.code).trim().startsWith(String(matchedAcc.code).trim()) && String(other.code).trim() !== String(matchedAcc.code).trim() && other.level > matchedAcc.level)
+                );
+                if (isParent) {
+                  throw new Error(
+                    `[CPA Parent Guard] مخالفة محاسبية صريحة: الحساب "${matchedAcc.code} - ${matchedAcc.nameAr || matchedAcc.name_ar}" في السطر (${i + 1}) هو حساب رئيسي/تجميعي (Parent Account). يُمنع منعاً باتاً تسجيل قيود على الحسابات التجميعية؛ القيود تُسجل حصراً على الحسابات التحليلية الطرفية (Leaf Accounts).`
+                  );
+                }
+              }
+            }
+          }
+        } catch (parentGuardErr: any) {
+          if (parentGuardErr.message?.includes('[CPA Parent Guard]')) {
+            throw parentGuardErr;
+          }
+          console.warn('Parent guard account lookup notice:', parentGuardErr?.message);
+        }
+      }
+
       const entryId = toValidUUID(j.id);
       const { error } = await supabase
         .from('journal_entries')
@@ -2740,6 +2789,9 @@ export class SupabaseDataService {
 
       return true;
     } catch (err: any) {
+      if (err?.message?.includes('[CPA Parent Guard]') || err?.message?.includes('[CPA Balance Guard]')) {
+        throw err;
+      }
       console.warn('Supabase saveJournal exception:', err?.message);
       return false;
     }
@@ -2750,6 +2802,26 @@ export class SupabaseDataService {
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
+
+    // Strict Double-Entry Balance Assertion across batch
+    for (const j of journals) {
+      const lines = Array.isArray(j.lines) ? j.lines : [];
+      if (lines.length > 0) {
+        let calcDebit = 0;
+        let calcCredit = 0;
+        for (const line of lines) {
+          calcDebit += Number(line.debit) || 0;
+          calcCredit += Number(line.credit) || 0;
+        }
+        const diff = Math.abs(calcDebit - calcCredit);
+        if (diff > 0.0005) {
+          throw new Error(
+            `[CPA Balance Guard] تم رفض حفظ الدفعة لاحتوائها على القيد غير المتوازن "${j.entryNumber || j.id}"! إجمالي المدين: ${calcDebit.toFixed(3)}، إجمالي الدائن: ${calcCredit.toFixed(3)}، الفارق: ${diff.toFixed(4)} د.ك.`
+          );
+        }
+      }
+    }
+
     try {
       const rows = journals.map((j) => ({
         id: toValidUUID(j.id),

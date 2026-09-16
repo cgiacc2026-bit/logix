@@ -235,11 +235,27 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
                     {formatCurrency(getBalance(selectedEntity), currency)}
                   </strong>
                 </span>
-              ) : (
-                <span>
-                  الرصيد: <strong>{formatCurrency(Number(selectedEntity.balance || 0), currency)}</strong>
-                </span>
-              )}
+              ) : (() => {
+                const liveBal = isSupplier
+                  ? getCalculatedSupplierBalance(selectedEntity.id, localDataStore.getInvoices(), localDataStore.getVouchers(), localDataStore.getJournals(), [selectedEntity as any])
+                  : getCalculatedCustomerBalance(selectedEntity.id, localDataStore.getInvoices(), localDataStore.getVouchers(), localDataStore.getJournals(), [selectedEntity as any]);
+                return (
+                  <span>
+                    الرصيد:{' '}
+                    <strong
+                      className={
+                        liveBal > 0
+                          ? 'text-rose-700'
+                          : liveBal < 0
+                          ? 'text-emerald-700'
+                          : 'text-neutral-700'
+                      }
+                    >
+                      {formatCurrency(liveBal, currency)}
+                    </strong>
+                  </span>
+                );
+              })()}
               {(selectedEntity as any).phone && (
                 <span className="text-neutral-500 font-mono text-[10px]">
                   هاتف: {(selectedEntity as any).phone}

@@ -66,7 +66,7 @@ import { ThemeService } from './themeService.ts';
 import { cacheService } from './cacheService.ts';
 import { CacheAndThrottleService } from './cacheAndThrottleService.js';
 import { backgroundSync } from './backgroundSyncService.ts';
-import { getAccountStatement, getCalculatedSupplierBalance } from './statementService.ts';
+import { getAccountStatement, getCalculatedCustomerBalance, getCalculatedSupplierBalance } from './statementService.ts';
 import { IAS2CostingEngine } from './costingEngine.ts';
 import { aggregateChartOfAccountsTree, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
 
@@ -1418,6 +1418,33 @@ class LocalDataStore {
   }
   public saveJournals(j: JournalEntry[]): void {
     const deduped = this.deduplicateJournals(j);
+    // Strict Double-Entry and Leaf validation on local storage save
+    const accounts = this.getAccounts();
+    for (const entry of deduped) {
+      if (entry && Array.isArray(entry.lines) && entry.lines.length > 0) {
+        let deb = 0;
+        let cred = 0;
+        for (let idx = 0; idx < entry.lines.length; idx++) {
+          const l = entry.lines[idx];
+          deb += Number(l.debit) || 0;
+          cred += Number(l.credit) || 0;
+          if (accounts.length > 0) {
+            const acc = accounts.find((a) => a.id === l.accountId || (l.accountCode && a.code === l.accountCode));
+            if (acc && !isAccountLeaf(acc, accounts)) {
+              throw new Error(
+                `[CPA Parent Guard] مخالفة محاسبية صريحة في القيد "${entry.entryNumber || entry.id}": الحساب "${acc.code} - ${acc.nameAr}" هو حساب رئيسي/تجميعي (Parent Account). يُمنع منعاً باتاً تسجيل قيود على الحسابات التجميعية.`
+              );
+            }
+          }
+        }
+        const diff = Math.abs(deb - cred);
+        if (diff > 0.0005) {
+          throw new Error(
+            `[CPA Balance Guard] تم رفض حفظ القيد "${entry.entryNumber || entry.id}" لعدم توازنه! إجمالي المدين: ${deb.toFixed(3)}، إجمالي الدائن: ${cred.toFixed(3)}، الفارق: ${diff.toFixed(4)} د.ك.`
+          );
+        }
+      }
+    }
     this.setLocal(this.getKey(STORAGE_KEYS.JOURNALS), deduped);
     this.markTenantInitialized();
   }
@@ -2133,10 +2160,18 @@ export class DataService {
     let totalDebit = 0;
     let totalCredit = 0;
 
+    const accounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
+
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
       if (!l.accountId || !l.accountId.trim()) {
         throw new Error(`لا يمكن حفظ القيد: السطر رقم (${i + 1}) غير مرتبط بحساب محاسبي.`);
+      }
+      const acc = accounts.find((a) => a.id === l.accountId || (l.accountCode && a.code === l.accountCode));
+      if (acc && !isAccountLeaf(acc, accounts)) {
+        throw new Error(
+          `[CPA Parent Guard] مخالفة محاسبية صريحة: الحساب "${acc.code} - ${acc.nameAr}" في السطر (${i + 1}) هو حساب رئيسي/تجميعي (Parent Account). يُمنع منعاً باتاً تسجيل قيود على الحسابات التجميعية؛ القيود تُسجل حصراً على الحسابات التحليلية الطرفية (Leaf Accounts).`
+        );
       }
       const d = Number(l.debit) || 0;
       const c = Number(l.credit) || 0;
@@ -2157,9 +2192,9 @@ export class DataService {
     if (totalDebit <= 0 || totalCredit <= 0) {
       throw new Error('لا يمكن حفظ القيد: إجمالي مبالغ القيد يجب أن تكون أكبر من الصفر.');
     }
-    if (diff >= 0.001) {
+    if (diff > 0.0005) {
       throw new Error(
-        `لا يمكن حفظ القيد: القيد غير متوازن إطلاقاً! إجمالي الطرف المدين (${totalDebit.toFixed(3)}) يجب أن يتطابق تماماً مع إجمالي الطرف الدائن (${totalCredit.toFixed(3)}). فارق عدم التوازن: ${diff.toFixed(3)}`
+        `[CPA Balance Guard] لا يمكن حفظ القيد: القيد غير متوازن إطلاقاً! إجمالي الطرف المدين (${totalDebit.toFixed(3)}) يجب أن يتطابق تماماً مع إجمالي الطرف الدائن (${totalCredit.toFixed(3)}). فارق عدم التوازن: ${diff.toFixed(4)} د.ك.`
       );
     }
 
@@ -2728,6 +2763,7 @@ export class DataService {
     }
     
     const discountTotal = lineDiscountsSum + invDiscAmt;
+    // TODO: عند تفعيل ضريبة القيمة المضافة (VAT) مستقبلاً، يجب توزيع خصم الفاتورة الإجمالي (invDiscAmt) تناسبياً على الوعاء الضريبي للبنود الخاضعة قبل احتساب الضريبة، حتى لا تُحتسب الضريبة على مبالغ تم خصمها لاحقاً. حالياً في دولة الكويت نسبة الضريبة 0%.
     const computedVatTotal = lines.reduce((s: number, it: any) => s + (it.vatAmount || 0), 0);
     const grandTotal = Math.max(0, grossSubtotal - discountTotal) + computedVatTotal;
     
@@ -4481,95 +4517,65 @@ export class DataService {
   }
 
   /**
-   * Dynamically recalculates customer balance from first principles (Opening + Invoices - Returns - Receipts + Payments + Journals)
+   * Dynamically recalculates customer balance from GL Ledger via statementService (Single Source of Truth)
    */
   public static recalculateCustomerBalance(customerId: string): number {
     const customers = localDataStore.getCustomers();
     const cust = customers.find((c) => c.id === customerId);
     if (!cust) return 0;
 
-    const invoices = localDataStore.getInvoices().filter((i) => i.status !== 'CANCELLED');
-    const vouchers = localDataStore.getVouchers().filter((v) => v.status !== 'CANCELLED');
-    const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
+    const invoices = localDataStore.getInvoices();
+    const vouchers = localDataStore.getVouchers();
+    const journals = localDataStore.getJournals();
+    const creditNotes = localDataStore.getCreditNotes?.() || [];
 
-    const stmt = getAccountStatement(
+    const balance = getCalculatedCustomerBalance(
       customerId,
-      'CUSTOMER',
-      '1970-01-01',
-      '2099-12-31',
-      {
-        invoices,
-        vouchers,
-        journals,
-        customers,
-      }
+      invoices,
+      vouchers,
+      journals,
+      customers,
+      creditNotes
     );
 
-    const balance = Math.round((Number(stmt?.closingBalance) || 0) * 1000) / 1000;
-    cust.balance = balance;
-    cust.currentBalance = balance;
+    const roundedBalance = Math.round((Number(balance) || 0) * 1000) / 1000;
+    cust.balance = roundedBalance;
+    cust.currentBalance = roundedBalance;
     localDataStore.saveCustomers(customers);
     if (isSupabaseConfigured) {
       SupabaseDataService.saveCustomer(cust).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
-    return balance;
+    return roundedBalance;
   }
 
   /**
-   * Dynamically recalculates supplier balance from first principles (Opening + Purchases - Returns - Payments + Receipts + Journals)
+   * Dynamically recalculates supplier balance from GL Ledger via statementService (Single Source of Truth)
    */
   public static recalculateSupplierBalance(supplierId: string): number {
     const suppliers = localDataStore.getSuppliers();
     const sup = suppliers.find((s) => s.id === supplierId);
     if (!sup) return 0;
 
-    let balance = Number(sup.openingBalance) || 0;
+    const invoices = localDataStore.getInvoices();
+    const vouchers = localDataStore.getVouchers();
+    const journals = localDataStore.getJournals();
 
-    // Invoices
-    const invoices = localDataStore.getInvoices().filter((i) => i.entityId === supplierId && i.status !== 'CANCELLED');
-    const vouchers = localDataStore.getVouchers().filter((v) => v.entityId === supplierId && v.status !== 'CANCELLED');
+    const balance = getCalculatedSupplierBalance(
+      supplierId,
+      invoices,
+      vouchers,
+      journals,
+      suppliers
+    );
 
-    for (const inv of invoices) {
-      // Calculate how much was settled via standalone vouchers linked to this invoice
-      const settledByVouchers = vouchers
-        .filter((v) => v.invoiceId === inv.id && v.status !== 'CANCELLED')
-        .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
-      const directInvoicePaid = Math.max(0, (Number(inv.paidAmount) || 0) - settledByVouchers);
-      const effectivePayableImpact = Math.max(0, (Number(inv.grandTotal) || 0) - directInvoicePaid);
-
-      if (inv.type === 'PURCHASE') {
-        balance += effectivePayableImpact;
-      } else if (inv.type === 'PURCHASE_RETURN') {
-        balance -= effectivePayableImpact;
-      }
-    }
-
-    // Vouchers
-    for (const v of vouchers) {
-      if (v.type === 'PAYMENT') {
-        balance -= Number(v.amount) || 0;
-      } else if (v.type === 'RECEIPT') {
-        balance += Number(v.amount) || 0;
-      }
-    }
-
-    // Manual Journals touching this supplier
-    const journals = localDataStore.getJournals().filter((j) => (j.status === 'POSTED' || j.status === 'REVERSED') && !j.isAutoGenerated);
-    for (const j of journals) {
-      for (const line of j.lines || []) {
-        if (line.entityId === supplierId || (line.entityType === 'SUPPLIER' && line.entityId === supplierId)) {
-          balance += (Number(line.credit) || 0) - (Number(line.debit) || 0);
-        }
-      }
-    }
-
-    balance = Math.round(balance * 1000) / 1000;
-    sup.balance = balance;
+    const roundedBalance = Math.round((Number(balance) || 0) * 1000) / 1000;
+    sup.balance = roundedBalance;
+    sup.currentBalance = roundedBalance;
     localDataStore.saveSuppliers(suppliers);
     if (isSupabaseConfigured) {
       SupabaseDataService.saveSupplier(sup).catch((err) => notifyCloudSyncError("CloudSync", err));
     }
-    return balance;
+    return roundedBalance;
   }
 
   /**
