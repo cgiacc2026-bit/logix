@@ -19,6 +19,7 @@ import {
   Layers,
   Sparkles,
   Lock,
+  X,
 } from 'lucide-react';
 import {
   CompanyProfile,
@@ -61,6 +62,7 @@ interface OpeningInventoryRow {
 export const CompanyOnboardingWizard: React.FC<CompanyOnboardingWizardProps> = ({
   company,
   onComplete,
+  onCancel,
 }) => {
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
   const [isSaving, setIsSaving] = useState(false);
@@ -460,9 +462,21 @@ export const CompanyOnboardingWizard: React.FC<CompanyOnboardingWizardProps> = (
               </div>
             </div>
 
-            <div className="hidden sm:flex items-center gap-1.5 bg-black/20 px-3 py-1.5 rounded-lg text-xs border border-white/10">
-              <Lock className="w-3.5 h-3.5 text-emerald-300" />
-              <span className="font-mono text-emerald-200">{company.id.slice(0, 13)}...</span>
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-1.5 bg-black/20 px-3 py-1.5 rounded-lg text-xs border border-white/10">
+                <Lock className="w-3.5 h-3.5 text-emerald-300" />
+                <span className="font-mono text-emerald-200">{company.id.slice(0, 13)}...</span>
+              </div>
+              {onCancel && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="p-2 rounded-lg bg-black/20 hover:bg-black/40 text-white/80 hover:text-white transition-colors cursor-pointer"
+                  title="إلغاء وإغلاق المعالج"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -1198,7 +1212,17 @@ export const CompanyOnboardingWizard: React.FC<CompanyOnboardingWizardProps> = (
 
         {/* Wizard Footer Controls */}
         <div className="p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
-          <div>
+          <div className="flex items-center gap-2">
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isSaving}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                إلغاء والعودة
+              </button>
+            )}
             {currentStep > 1 && (
               <button
                 type="button"
