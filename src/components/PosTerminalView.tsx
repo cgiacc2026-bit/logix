@@ -338,10 +338,10 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   );
 
   const addToCart = (item: InventoryItem, qty: number = 1) => {
-    // If the item itself is configured with a promo offer or linked to a base item:
-    if (item.base_item_id || item.baseItemId || item.offer_enabled || item.offerEnabled) {
-      const baseId = item.base_item_id || item.baseItemId;
-      const baseItem = baseId ? inventory.find((i) => i.id === baseId) || item : item;
+    // Only if the item is purely a dedicated bundle SKU pointing to a different parent/base item:
+    const linkedBaseId = item.base_item_id || item.baseItemId;
+    if (linkedBaseId && linkedBaseId !== item.id) {
+      const baseItem = inventory.find((i) => i.id === linkedBaseId) || item;
       const offerQty = Number(item.offer_quantity || item.offerQuantity || 2);
       const offerPrice = Number(item.offer_price || item.offerPrice || item.salePrice || 0);
       const synthOffer: ItemOffer = {

@@ -50,8 +50,8 @@ export class StockLedgerService {
           qty_out: 0,
           balanceAfter: initialQty,
           unit: item.unit || 'حبة',
-          unitCost: item.purchasePrice,
-          totalCostValue: initialQty * item.purchasePrice,
+          unitCost: item.purchasePrice || item.costPrice || 0,
+          totalCostValue: initialQty * (item.purchasePrice || item.costPrice || 0),
           warehouse: 'المستودع الرئيسي',
           notes: 'إثبات رصيد المخزون التأسيسي الأولي',
         });
@@ -70,9 +70,21 @@ export class StockLedgerService {
               (line.barcode && i.barcode === line.barcode) ||
               (line.itemNameAr && i.nameAr === line.itemNameAr)
           );
-          const effectiveItemId = matchedItem?.id || line.itemId;
-          const unitCost = matchedItem?.purchasePrice || (line.unitPrice ? line.unitPrice * 0.7 : 0);
-          const qty = Number(line.quantity) || 1;
+
+          // Check if item is linked to a parent/base item (for promotional offers/bundles)
+          const linkedBaseId = matchedItem?.base_item_id || matchedItem?.baseItemId || (line as any).base_item_id;
+          const targetBaseItem = linkedBaseId ? inventory.find((i) => i.id === linkedBaseId) : null;
+          const isOfferLinked = Boolean(targetBaseItem && targetBaseItem.id !== matchedItem?.id);
+          const effectiveItem = isOfferLinked ? targetBaseItem! : (matchedItem || line);
+          const effectiveItemId = effectiveItem.id || line.itemId;
+
+          const unitCost = Number(effectiveItem?.costPrice ?? effectiveItem?.purchasePrice ?? (line.unitPrice ? line.unitPrice * 0.7 : 0));
+          
+          // Determine exact physical quantity deducted from base item
+          const bundleMultiplier = isOfferLinked && !line.isOffer
+            ? (Number(matchedItem?.offer_quantity || matchedItem?.offerQuantity) || 1)
+            : 1;
+          const effectiveQty = (Number(line.quantity) || 1) * bundleMultiplier;
 
           const isPurchase = inv.type === 'PURCHASE';
           const isSalesReturn = inv.type === 'SALES_RETURN';
@@ -103,16 +115,20 @@ export class StockLedgerService {
             ? 'مرتجع مشتريات'
             : 'فاتورة مبيعات';
 
-          const qtyIn = isInbound ? qty : 0;
-          const qtyOut = isInbound ? 0 : qty;
+          const qtyIn = isInbound ? effectiveQty : 0;
+          const qtyOut = isInbound ? 0 : effectiveQty;
+
+          const movementNote = isOfferLinked
+            ? `سحب عرض ترويجي [${line.itemNameAr}] - خصم (${effectiveQty}) ${effectiveItem.unit || 'حبة'} من الصنف الأساسي (${effectiveItem.nameAr})`
+            : `${typeTitleAr} - الطرف: ${inv.entityNameAr || 'عميل / مورد'}`;
 
           generatedMovements.push({
             id: `mv-inv-${inv.id}-${line.id}`,
             date: inv.date || new Date().toISOString().slice(0, 10),
             time: '11:30',
             itemId: effectiveItemId,
-            itemSku: line.itemSku || matchedItem?.sku || effectiveItemId,
-            itemNameAr: line.itemNameAr || matchedItem?.nameAr || 'صنف مخزني',
+            itemSku: effectiveItem?.sku || line.itemSku || effectiveItemId,
+            itemNameAr: effectiveItem?.nameAr || line.itemNameAr || 'صنف مخزني',
             type: movementType as any,
             typeTitleAr,
             referenceDocNumber: inv.invoiceNumber,
@@ -122,11 +138,11 @@ export class StockLedgerService {
             qty_in: qtyIn,
             qty_out: qtyOut,
             balanceAfter: 0, // Will be calculated chronologically
-            unit: line.unit || matchedItem?.unit || 'حبة',
+            unit: effectiveItem?.unit || line.unit || 'حبة',
             unitCost: unitCost,
-            totalCostValue: qty * unitCost,
+            totalCostValue: effectiveQty * unitCost,
             warehouse: (inv as any).warehouseName || 'المستودع الرئيسي',
-            notes: `${typeTitleAr} - الطرف: ${inv.entityNameAr || 'عميل / مورد'}`,
+            notes: movementNote,
           });
         });
       }
@@ -202,7 +218,13 @@ export class StockLedgerService {
       const current = itemBalances[mv.itemId] || 0;
       const qIn = Number(mv.quantityIn ?? (mv as any).qty_in ?? 0);
       const qOut = Number(mv.quantityOut ?? (mv as any).qty_out ?? 0);
-      const updated = current + (qIn - qOut);
+      let updated = current + (qIn - qOut);
+
+      // If this movement is a stock adjustment that calibrated the actual count, anchor the running balance
+      if (mv.type === 'STOCK_ADJUSTMENT' && mv.balanceAfter !== undefined && mv.balanceAfter !== null) {
+        updated = Number(mv.balanceAfter);
+      }
+
       itemBalances[mv.itemId] = updated;
       return {
         ...mv,
@@ -268,28 +290,46 @@ export class StockLedgerService {
   }
 
   /**
-   * Perform Stock Reconciliation (تسوية جردية فعلية)
+   * Perform Stock Reconciliation (تسوية جردية فعلية ومباشرة)
+   * Supports both Physical Count (جرد فعلي على الرف) and Direct Adjustment (تسوية مباشرة بالزيادة أو النقص +/-)
    */
   public static async reconcileStock(
     itemId: string,
-    actualCount: number,
+    actualCountOrDelta: number,
     reason: string,
-    operatorName: string = 'مدير المستودع'
-  ): Promise<{ success: boolean; difference: number; movement?: StockMovement }> {
+    operatorName: string = 'مدير المستودع',
+    mode: 'PHYSICAL_COUNT' | 'DIRECT_ADJUSTMENT' = 'PHYSICAL_COUNT',
+    warehouseId: string = 'wh-main-01'
+  ): Promise<{ success: boolean; difference: number; newBalance: number; movement?: StockMovement }> {
     const inventory = await DataService.getInventory();
     const item = inventory.find((i) => i.id === itemId);
-    if (!item) return { success: false, difference: 0 };
+    if (!item) return { success: false, difference: 0, newBalance: 0 };
 
-    const bookQty = item.quantityOnHand || 0;
-    const diff = actualCount - bookQty;
+    // Ensure item has initialQuantity established so opening balance does not drift
+    if (item.initialQuantity === undefined || item.initialQuantity === null) {
+      item.initialQuantity = item.quantityOnHand || 0;
+    }
+
+    const currentBookQty = item.quantityOnHand || 0;
+    let diff = 0;
+    let targetBalance = 0;
+
+    if (mode === 'DIRECT_ADJUSTMENT') {
+      diff = Number(actualCountOrDelta) || 0;
+      targetBalance = Math.max(0, currentBookQty + diff);
+    } else {
+      targetBalance = Math.max(0, Number(actualCountOrDelta) || 0);
+      diff = targetBalance - currentBookQty;
+    }
 
     if (diff === 0) {
-      return { success: true, difference: 0 };
+      return { success: true, difference: 0, newBalance: currentBookQty };
     }
 
     const isSurplus = diff > 0;
     const absDiff = Math.abs(diff);
-    const unitCost = item.purchasePrice || 0;
+    const unitCost = Number(item.costPrice ?? item.purchasePrice ?? 0);
+    const totalCostValue = Number((absDiff * unitCost).toFixed(3));
 
     const adjustmentMovement: StockMovement = {
       id: `adj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -299,31 +339,111 @@ export class StockLedgerService {
       itemSku: item.sku,
       itemNameAr: item.nameAr,
       type: 'STOCK_ADJUSTMENT',
-      typeTitleAr: isSurplus ? 'تسوية جردية (فائض مخزني)' : 'تسوية جردية (عجز مخزني)',
+      typeTitleAr: isSurplus ? 'تسوية جردية (فائض مخزني +)' : 'تسوية جردية (عجز مخزني -)',
       referenceDocNumber: `ADJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       referenceDocType: 'محضر تسوية جردية',
       quantityIn: isSurplus ? absDiff : 0,
       quantityOut: !isSurplus ? absDiff : 0,
-      balanceAfter: actualCount,
+      qty_in: isSurplus ? absDiff : 0,
+      qty_out: !isSurplus ? absDiff : 0,
+      balanceAfter: targetBalance,
       unit: item.unit || 'حبة',
       unitCost: unitCost,
-      totalCostValue: absDiff * unitCost,
+      totalCostValue: totalCostValue,
       warehouse: 'المستودع الرئيسي',
-      notes: `${reason || 'تسوية فروقات الجرد الدوري'} - المنفذ: ${operatorName}`,
+      notes: `${reason || 'تسوية فروقات الجرد الدوري'} [الرصيد الدفتري السابق: ${currentBookQty} | الرصيد المعتمد الجديد: ${targetBalance} | الفارق: ${diff > 0 ? `+${diff}` : diff}] - المنفذ: ${operatorName}`,
       createdBy: operatorName,
     };
 
-    // 1. Save adjustment movement
+    // 1. Save adjustment movement to stored history
     const stored = this.getStoredMovements();
     stored.push(adjustmentMovement);
     this.saveStoredMovements(stored);
 
-    // 2. Update item quantity on hand
+    // 2. Update item quantity on hand and preserve initialQuantity
     await DataService.updateInventoryItem(itemId, {
-      quantityOnHand: actualCount,
+      quantityOnHand: targetBalance,
+      initialQuantity: item.initialQuantity,
     });
 
-    return { success: true, difference: diff, movement: adjustmentMovement };
+    // 3. Update Warehouse specific stock
+    DataService.adjustWarehouseStock(warehouseId, item.id, diff);
+
+    // 4. Sync stock balance with Supabase Cloud
+    const activeCompanyId = item.companyId || (item as any).company_id || 'default';
+    SupabaseDataService.adjustItemStock(
+      item.id,
+      item.sku,
+      item.barcode,
+      targetBalance,
+      activeCompanyId,
+      unitCost
+    ).catch((e) => console.warn('Supabase adjustItemStock notice:', e));
+
+    // 5. Automated IFRS Journal Entry for Stock Variance
+    try {
+      const resolved = DataService.getResolvedAccounts();
+      const accounts = localDataStore.getAccounts();
+      const varianceRevenueAcc = accounts.find((a) => a.code === '4200' || a.category === 'REVENUE') || resolved.sales;
+      const varianceExpenseAcc = accounts.find((a) => a.code === '5200' || a.category === 'EXPENSE') || resolved.cogs;
+
+      if (totalCostValue > 0) {
+        const jLines = isSurplus
+          ? [
+              {
+                id: 'jl-adj-1',
+                accountId: resolved.inventory.id,
+                accountCode: resolved.inventory.code,
+                accountNameAr: resolved.inventory.nameAr,
+                debit: totalCostValue,
+                credit: 0,
+                memo: `إثبات زيادة وفائض جرد مخزني - محضر ${adjustmentMovement.referenceDocNumber} (${item.nameAr})`,
+              },
+              {
+                id: 'jl-adj-2',
+                accountId: varianceRevenueAcc.id,
+                accountCode: varianceRevenueAcc.code,
+                accountNameAr: varianceRevenueAcc.nameAr || 'أرباح وفروقات جرد المخزون',
+                debit: 0,
+                credit: totalCostValue,
+                memo: `أرباح وفروقات الجرد الفعلي للمخزون - صنف ${item.nameAr}`,
+              },
+            ]
+          : [
+              {
+                id: 'jl-adj-1',
+                accountId: varianceExpenseAcc.id,
+                accountCode: varianceExpenseAcc.code,
+                accountNameAr: varianceExpenseAcc.nameAr || 'خسائر وعجز جرد المخزون والتالف',
+                debit: totalCostValue,
+                credit: 0,
+                memo: `إثبات عجز وفروقات جرد مخزني - محضر ${adjustmentMovement.referenceDocNumber} (${item.nameAr})`,
+              },
+              {
+                id: 'jl-adj-2',
+                accountId: resolved.inventory.id,
+                accountCode: resolved.inventory.code,
+                accountNameAr: resolved.inventory.nameAr,
+                debit: 0,
+                credit: totalCostValue,
+                memo: `تخفيض المخزون بعجز الجرد - صنف ${item.nameAr}`,
+              },
+            ];
+
+        await DataService.createJournal({
+          date: adjustmentMovement.date,
+          reference: adjustmentMovement.referenceDocNumber,
+          description: `قيد تسوية جردية - ${item.nameAr} (${adjustmentMovement.typeTitleAr})`,
+          status: 'POSTED',
+          lines: jLines as any,
+          companyId: activeCompanyId,
+        });
+      }
+    } catch (err) {
+      console.warn('Reconciliation journal entry creation notice:', err);
+    }
+
+    return { success: true, difference: diff, newBalance: targetBalance, movement: adjustmentMovement };
   }
 
   private static getStoredMovements(): StockMovement[] {

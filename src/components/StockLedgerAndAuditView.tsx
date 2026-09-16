@@ -88,7 +88,9 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
 
   // Reconciliation States
   const [reconcileItemId, setReconcileItemId] = useState<string>('');
+  const [reconcileMode, setReconcileMode] = useState<'PHYSICAL_COUNT' | 'DIRECT_ADJUSTMENT'>('PHYSICAL_COUNT');
   const [physicalCount, setPhysicalCount] = useState<number | ''>('');
+  const [directDelta, setDirectDelta] = useState<number | ''>('');
   const [reconcileReason, setReconcileReason] = useState<string>('جرد دوري ربع سنوي');
   const [reconcileSuccess, setReconcileSuccess] = useState<string>('');
   const [isSubmittingReconcile, setIsSubmittingReconcile] = useState(false);
@@ -219,7 +221,12 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   // Handle reconciliation
   const handleExecuteReconciliation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reconcileItemId || physicalCount === '') return;
+    if (!reconcileItemId) return;
+    if (reconcileMode === 'PHYSICAL_COUNT' && physicalCount === '') return;
+    if (reconcileMode === 'DIRECT_ADJUSTMENT' && directDelta === '') return;
+
+    const selectedItem = inventory.find((i) => i.id === reconcileItemId);
+    const valueToPass = reconcileMode === 'DIRECT_ADJUSTMENT' ? Number(directDelta) : Number(physicalCount);
 
     setIsSubmittingReconcile(true);
     setReconcileSuccess('');
@@ -227,15 +234,20 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
     try {
       const res = await StockLedgerService.reconcileStock(
         reconcileItemId,
-        Number(physicalCount),
-        reconcileReason
+        valueToPass,
+        reconcileReason,
+        'مدير المستودع',
+        reconcileMode
       );
 
       if (res.success) {
+        const diffSign = res.difference > 0 ? '+' : '';
+        const unitName = selectedItem?.unit || 'حبة';
         setReconcileSuccess(
-          `تمت التسوية بنجاح! الفارق المسجل: (${res.difference > 0 ? '+' : ''}${res.difference} وحدة) وتم تحديث رصيد المستودع فورياً.`
+          `تمت التسوية بنجاح! حركة التسوية: (${diffSign}${res.difference} ${unitName}) | الرصيد المعتمد الجديد: (${res.newBalance} ${unitName}). تم ترحيل الأثر إلى دفتر الأستاذ، أرصدة المستودع، وإثبات القيد المحاسبي آلياً.`
         );
         setPhysicalCount('');
+        setDirectDelta('');
         if (onRefreshData) onRefreshData();
       }
     } catch (err) {
@@ -904,12 +916,16 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
             </div>
           )}
 
-          <form onSubmit={handleExecuteReconciliation} className="max-w-2xl space-y-4">
+          <form onSubmit={handleExecuteReconciliation} className="max-w-3xl space-y-5">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">اختر الصنف المراد تسويته:</label>
               <select
                 value={reconcileItemId}
-                onChange={(e) => setReconcileItemId(e.target.value)}
+                onChange={(e) => {
+                  setReconcileItemId(e.target.value);
+                  setPhysicalCount('');
+                  setDirectDelta('');
+                }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
                 required
               >
@@ -922,49 +938,178 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
               </select>
             </div>
 
+            {/* Reconciliation Mode Switcher */}
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setReconcileMode('PHYSICAL_COUNT')}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  reconcileMode === 'PHYSICAL_COUNT'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                1. جرد فعلي على الرف (Physical Stock Count)
+              </button>
+              <button
+                type="button"
+                onClick={() => setReconcileMode('DIRECT_ADJUSTMENT')}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  reconcileMode === 'DIRECT_ADJUSTMENT'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                2. تسوية مباشرة بالكمية (Direct Adjustment +/-)
+              </button>
+            </div>
+
             {reconcileItemId && (() => {
               const selectedItem = inventory.find((i) => i.id === reconcileItemId);
               if (!selectedItem) return null;
               const bookQty = getItemLiveBalance(selectedItem);
-              const actual = physicalCount !== '' ? Number(physicalCount) : bookQty;
-              const diff = actual - bookQty;
-              const unitCost = selectedItem.purchasePrice || 0;
-              const diffVal = Math.abs(diff) * unitCost;
+              const unitCost = Number(selectedItem.costPrice ?? selectedItem.purchasePrice ?? 0);
+              const unitName = selectedItem.unit || 'حبة';
 
-              return (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="p-2 bg-white rounded-lg border">
-                      <span className="text-slate-400 block text-[10px]">الرصيد الدفتري بالنظام:</span>
-                      <span className="font-extrabold text-sm text-slate-900">{bookQty} {selectedItem.unit}</span>
+              if (reconcileMode === 'PHYSICAL_COUNT') {
+                const actual = physicalCount !== '' ? Number(physicalCount) : bookQty;
+                const diff = actual - bookQty;
+                const diffVal = Math.abs(diff) * unitCost;
+                const isNegativeInput = physicalCount !== '' && Number(physicalCount) < 0;
+
+                return (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">الرصيد الدفتري الحالي:</span>
+                          <span className="font-extrabold text-sm text-slate-900">{bookQty} {unitName}</span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">الرصيد الفعلي الجديد:</span>
+                          <span className="font-extrabold text-sm text-indigo-900">{actual} {unitName}</span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">فارق التسوية المعتمد:</span>
+                          <span className={`font-extrabold text-sm ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                            {diff > 0 ? `+${diff}` : diff} {unitName}
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">القيمة المالية للفارق:</span>
+                          <span className="font-extrabold text-sm text-amber-700">{formatCurrency(diffVal, currency)}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="p-2 bg-white rounded-lg border">
-                      <span className="text-slate-400 block text-[10px]">فارق الجرد الفعلي:</span>
-                      <span className={`font-extrabold text-sm ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
-                        {diff > 0 ? `+${diff}` : diff} {selectedItem.unit}
-                      </span>
-                    </div>
-                    <div className="p-2 bg-white rounded-lg border">
-                      <span className="text-slate-400 block text-[10px]">القيمة المالية للفارق:</span>
-                      <span className="font-extrabold text-sm text-indigo-700">{formatCurrency(diffVal, currency)}</span>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        الكمية الفعلية الموجودة على الرف (الرصيد النهائي المتبقي):
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={physicalCount}
+                        onChange={(e) => setPhysicalCount(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder={`مثال: أدخل الكمية الفعلية (الرصيد الحالي بالنظام هو ${bookQty})...`}
+                        className={`w-full bg-slate-50 border rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 ${
+                          isNegativeInput ? 'border-rose-400 focus:ring-rose-400' : 'border-slate-200 focus:ring-amber-500'
+                        }`}
+                        required
+                      />
+                      {isNegativeInput && (
+                        <p className="text-[11px] font-bold text-rose-600 mt-1">
+                          ⚠️ تنبيه محاسبي: لا يمكن أن يكون ناتج الجرد الفعلي على الرف سالباً. إذا كنت ترغب في خصم أو تصفير رصيد، استخدم خيار "تسوية مباشرة بالكمية" أو أدخل 0 لتصفير الرصيد.
+                        </p>
+                      )}
                     </div>
                   </div>
-                </div>
-              );
-            })()}
+                );
+              } else {
+                // DIRECT_ADJUSTMENT mode
+                const delta = directDelta !== '' ? Number(directDelta) : 0;
+                const newBal = Math.max(0, bookQty + delta);
+                const diffVal = Math.abs(delta) * unitCost;
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">الكمية الفعلية بالجرد بالمستودع:</label>
-              <input
-                type="number"
-                step="any"
-                value={physicalCount}
-                onChange={(e) => setPhysicalCount(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="أدخل ناتج الجرد الفعلي..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
-                required
-              />
-            </div>
+                return (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">الرصيد الدفتري الحالي:</span>
+                          <span className="font-extrabold text-sm text-slate-900">{bookQty} {unitName}</span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">كمية التسوية المدخلة:</span>
+                          <span className={`font-extrabold text-sm ${delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                            {delta > 0 ? `+${delta}` : delta} {unitName}
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">الرصيد الجديد بعد التسوية:</span>
+                          <span className="font-extrabold text-sm text-indigo-900">{newBal} {unitName}</span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-slate-400 block text-[10px] mb-0.5">القيمة المالية للتسوية:</span>
+                          <span className="font-extrabold text-sm text-amber-700">{formatCurrency(diffVal, currency)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-slate-700">
+                          كمية التسوية المباشرة (+ لإضافة رصيد / - لخصم رصيد أو تالف):
+                        </label>
+                        {bookQty > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setDirectDelta(-bookQty)}
+                            className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                          >
+                            تصفير الرصيد بالكامل (خصم {bookQty}-)
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        step="any"
+                        value={directDelta}
+                        onChange={(e) => setDirectDelta(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder={`أدخل كمية التسوية (مثال: +10 للإضافة أو -${bookQty} للخصم)...`}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
+                        required
+                      />
+
+                      {/* Quick Buttons */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {[-10, -50, -100].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => setDirectDelta(val)}
+                            className="px-2.5 py-1 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg cursor-pointer transition-all"
+                          >
+                            خصم ({val})
+                          </button>
+                        ))}
+                        {[+10, +50, +100].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => setDirectDelta(val)}
+                            className="px-2.5 py-1 text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg cursor-pointer transition-all"
+                          >
+                            إضافة (+{val})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+            })()}
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">سبب أو مبرر التسوية:</label>
@@ -979,7 +1124,12 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
 
             <button
               type="submit"
-              disabled={isSubmittingReconcile || !reconcileItemId || physicalCount === ''}
+              disabled={
+                isSubmittingReconcile ||
+                !reconcileItemId ||
+                (reconcileMode === 'PHYSICAL_COUNT' && (physicalCount === '' || Number(physicalCount) < 0)) ||
+                (reconcileMode === 'DIRECT_ADJUSTMENT' && (directDelta === '' || Number(directDelta) === 0))
+              }
               className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
