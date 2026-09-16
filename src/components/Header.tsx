@@ -33,7 +33,6 @@ interface HeaderProps {
   currency: string;
   setCurrency: (c: string) => void;
   onOpenCompanySetup: () => void;
-  onOpenOnboardingGuide?: () => void;
   onOpenDiagnostics?: () => void;
   onOpenSuperAdminPortal?: () => void;
   currentUser?: SystemUser | null;
@@ -47,7 +46,6 @@ export const Header: React.FC<HeaderProps> = ({
   currency,
   setCurrency,
   onOpenCompanySetup,
-  onOpenOnboardingGuide,
   onOpenDiagnostics,
   onOpenSuperAdminPortal,
   currentUser,
@@ -258,22 +256,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
               <span className="hidden sm:inline">تفعيل الشركات</span>
-            </button>
-          )}
-
-          {/* Onboarding Guide Button */}
-          {onOpenOnboardingGuide && (
-            <button
-              onClick={onOpenOnboardingGuide}
-              title="دليل الإرشاد التفاعلي لتهيئة المنشأة خطوة بخطوة"
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-xs transition-all active:scale-95 cursor-pointer shrink-0 ${
-                isLight
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
-                  : 'bg-cyan-700 hover:bg-cyan-600 text-white border-cyan-400/40'
-              }`}
-            >
-              <Compass className={`w-3.5 h-3.5 ${isLight ? 'text-slate-600' : 'text-cyan-200'}`} />
-              <span className="hidden sm:inline">دليل التهيئة</span>
             </button>
           )}
 

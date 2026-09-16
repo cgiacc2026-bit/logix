@@ -47,7 +47,6 @@ import { PrintDocumentModal } from './components/PrintDocumentModal.tsx';
 import { AccountStatementModal } from './components/AccountStatementModal.tsx';
 import { SuperAdminCompanyPortalModal } from './components/SuperAdminCompanyPortalModal.tsx';
 import { AutoBackupController } from './components/AutoBackupController.tsx';
-import { OnboardingGuideModal, OnboardingBannerWidget, loadOnboardingState } from './components/OnboardingGuide.tsx';
 import { LoginView } from './components/LoginView.tsx';
 import { CompanyOnboardingWizard } from './components/CompanyOnboardingWizard.tsx';
 import { CompanyProvider, useCompany } from './contexts/CompanyContext.tsx';
@@ -286,7 +285,6 @@ export function AppContent() {
   });
 
   const [isSuperAdminModalOpen, setIsSuperAdminModalOpen] = useState(false);
-  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
 
   const handleLogin = async (user: SystemUser, selectedCompany?: CompanyProfile) => {
     setCurrentUser(user);
@@ -305,35 +303,12 @@ export function AppContent() {
       }
     }
     refreshAllData();
-
-    // Trigger onboarding guide if company hasn't completed or dismissed it
-    const targetCompId = selectedCompany?.id || localStorage.getItem('supabase_company_id') || 'default_tenant';
-    const onboarding = loadOnboardingState(targetCompId);
-    if (!onboarding.isDismissed && onboarding.completedSteps.length < 6) {
-      setTimeout(() => {
-        setIsOnboardingModalOpen(true);
-      }, 500);
-    }
   };
 
   // Initialize ERP Theme and Day/Night mode on startup
   useEffect(() => {
     ThemeService.initTheme();
   }, []);
-
-  // Check onboarding on initial authenticated load
-  useEffect(() => {
-    if (isAuthenticated) {
-      const activeId = activeCompany?.id || localStorage.getItem('supabase_company_id') || 'default_tenant';
-      const onboarding = loadOnboardingState(activeId);
-      if (!onboarding.isDismissed && onboarding.completedSteps.length < 6) {
-        const timer = setTimeout(() => {
-          setIsOnboardingModalOpen(true);
-        }, 700);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isAuthenticated, activeCompany?.id]);
 
   const handleLogout = () => {
     setIsAuthenticated(false);
@@ -829,7 +804,6 @@ export function AppContent() {
           currency={currency}
           setCurrency={handleCurrencyChange}
           onOpenCompanySetup={() => navigateToTab('company')}
-          onOpenOnboardingGuide={() => setIsOnboardingModalOpen(true)}
           onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
           currentUser={currentUser}
           onLogout={handleLogout}
@@ -842,17 +816,6 @@ export function AppContent() {
           {/* 1. Executive Modern KPI Dashboard */}
           {activeTab === 'dashboard' && (
             <div className="space-y-4">
-              <OnboardingBannerWidget
-                company={activeCompany}
-                onOpenFullGuide={() => setIsOnboardingModalOpen(true)}
-                onNavigateTab={(tab) => navigateToTab(tab)}
-                accountsCount={accounts.length}
-                customersCount={customers.length}
-                suppliersCount={suppliers.length}
-                inventoryCount={inventory.length}
-                journalsCount={journals.length}
-                invoicesCount={invoices.length}
-              />
               <ExecutiveDashboardView
                 company={activeCompany}
                 currency={currency}
@@ -1545,20 +1508,6 @@ export function AppContent() {
         onClose={() => setIsSuperAdminModalOpen(false)}
         currentUser={currentUser}
         onSwitchCompany={() => refreshAllData()}
-      />
-
-      {/* Step-by-Step Onboarding Interactive Guide Modal */}
-      <OnboardingGuideModal
-        isOpen={isOnboardingModalOpen}
-        onClose={() => setIsOnboardingModalOpen(false)}
-        onNavigateTab={(tab) => setActiveTab(tab)}
-        company={activeCompany}
-        accountsCount={accounts.length}
-        customersCount={customers.length}
-        suppliersCount={suppliers.length}
-        inventoryCount={inventory.length}
-        journalsCount={journals.length}
-        invoicesCount={invoices.length}
       />
     </div>
   );
