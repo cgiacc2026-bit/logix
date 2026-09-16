@@ -1,0 +1,2391 @@
+[
+  {
+    "index": 1,
+    "id": "00000000-0000-4000-a000-000000202609",
+    "entry_number": "JV-SETTLE-2026-09-10",
+    "entry_date": "2026-08-13",
+    "amount": 923.252,
+    "description": "قيد تسوية ومطابقة أرصدة العملاء والجمعيات التعاونية كما في 10-09-2026 (معتمد وقابل للإلغاء)",
+    "reference": "",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 2,
+    "id": "a605269e-dab9-4eba-8b5c-1554b3878ee9",
+    "entry_number": "JV-RCV-2026-0005",
+    "entry_date": "2026-09-12",
+    "amount": 512,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0005) - جمعية الصباحية التعاونية",
+    "reference": "RCV-2026-0005",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "إيداع سند قبض رقم RCV-2026-0005 - جمعية الصباحية التعاونية",
+        "debit": 512,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل دفعة من العميل جمعية الصباحية التعاونية",
+        "debit": 0,
+        "credit": 512,
+        "entityId": "cust-3124",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      }
+    ]
+  },
+  {
+    "index": 3,
+    "id": "2a0be813-45dd-4f79-af49-52ff4a7d1d6a",
+    "entry_number": "JV-INV-SAL-2026-0058",
+    "entry_date": "2026-09-12",
+    "amount": 183.5,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0058) - جمعية صباح الأحمد التعاونية",
+    "reference": "INV-SAL-2026-0058",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0058 - جمعية صباح الأحمد التعاونية",
+        "debit": 183.5,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0058",
+        "debit": 0,
+        "credit": 183.5,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 4,
+    "id": "deff5073-5636-4b35-9b49-bd0c27a410c4",
+    "entry_number": "JV-RCV-2026-0002",
+    "entry_date": "2026-09-12",
+    "amount": 423,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0002) - جمعية مبارك الكبير التعاونية",
+    "reference": "RCV-2026-0002",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "إيداع سند قبض رقم RCV-2026-0002 - جمعية مبارك الكبير التعاونية",
+        "debit": 423,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل دفعة من العميل جمعية مبارك الكبير التعاونية",
+        "debit": 0,
+        "credit": 423,
+        "entityId": "cust-4640",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      }
+    ]
+  },
+  {
+    "index": 5,
+    "id": "cd390b84-152d-4260-8884-2e1fd63cf82a",
+    "entry_number": "JV-INV-SAL-2026-0030",
+    "entry_date": "2026-09-12",
+    "amount": 386.8,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0030) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0030",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0030 - جمعية مبارك الكبير التعاونية",
+        "debit": 386.8,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0030",
+        "debit": 0,
+        "credit": 386.8,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 6,
+    "id": "33e7a6cf-ea95-4d9c-9a53-de16befc496a",
+    "entry_number": "REV-JV-2026-0037",
+    "entry_date": "2026-09-12",
+    "amount": 80,
+    "description": "عكس القيد رقم JV-2026-0037 - السبب: طلب إلغاء وتصحيح قيد",
+    "reference": "JV-2026-0037",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "rev-1",
+        "memo": "عكس: العميل: جمعية بيان التعاونية",
+        "debit": 80,
+        "credit": 0,
+        "entityId": "cust-5563",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "entityNameAr": "جمعية بيان التعاونية",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      },
+      {
+        "id": "rev-2",
+        "memo": "عكس: اشعارمدين فرق مهرجان من 24-7-2026 الي 1/8/2026",
+        "debit": 0,
+        "credit": 80,
+        "accountId": "acc-5200",
+        "entityType": "NONE",
+        "accountCode": "5200",
+        "accountNameAr": "المصروفات العمومية والإدارية والتسويقية"
+      }
+    ]
+  },
+  {
+    "index": 7,
+    "id": "f71b4ca3-961d-4f82-be40-8307166818cc",
+    "entry_number": "JV-RCV-2026-0006",
+    "entry_date": "2026-09-12",
+    "amount": 500,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0006) - جمعية صباح الأحمد التعاونية",
+    "reference": "RCV-2026-0006",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "إيداع سند قبض رقم RCV-2026-0006 - جمعية صباح الأحمد التعاونية",
+        "debit": 500,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل دفعة من العميل جمعية صباح الأحمد التعاونية",
+        "debit": 0,
+        "credit": 500,
+        "entityId": "cust-3900",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      }
+    ]
+  },
+  {
+    "index": 8,
+    "id": "e4606180-ee71-43b6-8add-7dc3024ff9b9",
+    "entry_number": "JV-INV-SAL-2026-0060",
+    "entry_date": "2026-09-12",
+    "amount": 85.55,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0060) - جمعية صباح الأحمد التعاونية",
+    "reference": "INV-SAL-2026-0060",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0060 - جمعية صباح الأحمد التعاونية",
+        "debit": 85.55,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0060",
+        "debit": 0,
+        "credit": 85.55,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 9,
+    "id": "3b965626-0c88-49c2-b117-a3feaa91b3fb",
+    "entry_number": "JV-RCV-2026-0007",
+    "entry_date": "2026-09-12",
+    "amount": 797,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0007) - جمعية شمال غرب الصليبيخات التعاونية",
+    "reference": "RCV-2026-0007",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "إيداع سند قبض رقم RCV-2026-0007 - جمعية شمال غرب الصليبيخات التعاونية",
+        "debit": 797,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل دفعة من العميل جمعية شمال غرب الصليبيخات التعاونية",
+        "debit": 0,
+        "credit": 797,
+        "entityId": "cust-0301",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      }
+    ]
+  },
+  {
+    "index": 10,
+    "id": "56f5fc2d-a5c4-4b17-9c7b-dd4ced68a06c",
+    "entry_number": "JV-RCV-2026-0008",
+    "entry_date": "2026-09-12",
+    "amount": 300,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0008) - جمعية علي صباح السالم التعاونية",
+    "reference": "RCV-2026-0008",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "إيداع سند قبض رقم RCV-2026-0008 - جمعية علي صباح السالم التعاونية",
+        "debit": 300,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل دفعة من العميل جمعية علي صباح السالم التعاونية",
+        "debit": 0,
+        "credit": 300,
+        "entityId": "cust-2537",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      }
+    ]
+  },
+  {
+    "index": 11,
+    "id": "bb37af92-31be-4601-92bb-609ffd52e8db",
+    "entry_number": "JV-RCV-2026-0004",
+    "entry_date": "2026-09-12",
+    "amount": 600,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0004) - شركة الجليب للتجارة والاستثمار",
+    "reference": "RCV-2026-0004",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "إيداع سند قبض رقم RCV-2026-0004 - شركة الجليب للتجارة والاستثمار",
+        "debit": 600,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل دفعة من العميل شركة الجليب للتجارة والاستثمار",
+        "debit": 0,
+        "credit": 600,
+        "entityId": "cust-9407",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      }
+    ]
+  },
+  {
+    "index": 12,
+    "id": "87df1899-e00e-4e12-88d7-9878202b5c22",
+    "entry_number": "JV-RCV-2026-0001",
+    "entry_date": "2026-09-12",
+    "amount": 950,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0001) - جمعية القيروان التعاونية",
+    "reference": "RCV-2026-0001",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "إيداع سند قبض رقم RCV-2026-0001 - جمعية القيروان التعاونية",
+        "debit": 950,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل دفعة من العميل جمعية القيروان التعاونية",
+        "debit": 0,
+        "credit": 950,
+        "entityId": "cust-4568",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      }
+    ]
+  },
+  {
+    "index": 13,
+    "id": "00000000-0000-4000-8000-54d7614b0000",
+    "entry_number": "JV-INV-SAL-2026-0089",
+    "entry_date": "2026-09-12",
+    "amount": 129.06,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0089) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0089",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0089)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 14,
+    "id": "bd1bd6db-d4bd-46ed-82ac-07c8bf10fac0",
+    "entry_number": "JV-RCV-2026-0010",
+    "entry_date": "2026-09-12",
+    "amount": 2001,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0010) - جمعية مبارك الكبير التعاونية",
+    "reference": "RCV-2026-0010",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري",
+        "debit": 2001,
+        "credit": 0,
+        "memo": "قبض مبالغ سند معدل رقم RCV-2026-0010 - جمعية مبارك الكبير التعاونية"
+      },
+      {
+        "id": "jl-2",
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)",
+        "debit": 0,
+        "credit": 2001,
+        "memo": "تحصيل من العميل جمعية مبارك الكبير التعاونية",
+        "entityType": "CUSTOMER",
+        "entityId": "cust-4640"
+      }
+    ]
+  },
+  {
+    "index": 15,
+    "id": "b7946c16-ee30-417b-b6d0-efec67900ce4",
+    "entry_number": "JV-INV-SAL-2026-0032",
+    "entry_date": "2026-09-12",
+    "amount": 100.8,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0032) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0032",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0032 - جمعية مبارك الكبير التعاونية",
+        "debit": 100.8,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0032",
+        "debit": 0,
+        "credit": 100.8,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 16,
+    "id": "00000000-0000-4000-8000-23db544b0000",
+    "entry_number": "JV-INV-SAL-2026-0090",
+    "entry_date": "2026-09-12",
+    "amount": 123.12,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0090) - جمعية علي صباح السالم التعاونية",
+    "reference": "INV-SAL-2026-0090",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0090)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 17,
+    "id": "00000000-0000-4000-8000-246a8ba40000",
+    "entry_number": "JV-INV-SAL-2026-0091",
+    "entry_date": "2026-09-12",
+    "amount": 89.208,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0091) - جمعية علي صباح السالم التعاونية",
+    "reference": "INV-SAL-2026-0091",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0091)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 18,
+    "id": "00000000-0000-4000-8000-3436107e0000",
+    "entry_number": "JV-INV-SAL-2026-0092",
+    "entry_date": "2026-09-12",
+    "amount": 106.38,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0092) - جمعية علي صباح السالم التعاونية",
+    "reference": "INV-SAL-2026-0092",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0092)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 19,
+    "id": "00000000-0000-4000-8000-0a7ce29b0000",
+    "entry_number": "JV-INV-SAL-2026-0093",
+    "entry_date": "2026-09-12",
+    "amount": 0,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0093) - جمعية علي صباح السالم التعاونية",
+    "reference": "INV-SAL-2026-0093",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0093)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 20,
+    "id": "17dd65aa-cd11-4d4b-8691-06c251505076",
+    "entry_number": "JV-INV-SAL-2026-0068",
+    "entry_date": "2026-09-12",
+    "amount": 365.22,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0068) - جمعية سلوى التعاونية",
+    "reference": "INV-SAL-2026-0068",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0068 - جمعية سلوى التعاونية",
+        "debit": 365.22,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0068",
+        "debit": 0,
+        "credit": 365.22,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 21,
+    "id": "d3e0813d-ecf0-489f-b558-2ea859a52706",
+    "entry_number": "JV-INV-SAL-2026-0069",
+    "entry_date": "2026-09-12",
+    "amount": 245.96,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0069) - جمعية سلوى التعاونية",
+    "reference": "INV-SAL-2026-0069",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0069 - جمعية سلوى التعاونية",
+        "debit": 245.96,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0069",
+        "debit": 0,
+        "credit": 245.96,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 22,
+    "id": "feb7336c-d8dd-40e8-9ad4-9b372f6282b5",
+    "entry_number": "JV-INV-SAL-2026-0005",
+    "entry_date": "2026-09-12",
+    "amount": 37.1,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0005) - جمعية مدينة سعد العبدالله التعاونية",
+    "reference": "INV-SAL-2026-0005",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0005 - جمعية مدينة سعد العبدالله التعاونية",
+        "debit": 37.1,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0005",
+        "debit": 0,
+        "credit": 37.1,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 23,
+    "id": "ca06720d-dd0d-430f-98f3-f48379d67438",
+    "entry_number": "JV-INV-SAL-2026-0065",
+    "entry_date": "2026-09-12",
+    "amount": 175.41,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0065) - جمعية صباح الناصر التعاونية",
+    "reference": "INV-SAL-2026-0065",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0065 - جمعية صباح الناصر التعاونية",
+        "debit": 175.41,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0065",
+        "debit": 0,
+        "credit": 175.41,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 24,
+    "id": "a5818967-1fc4-4f26-9a09-1db6ab0b7ec2",
+    "entry_number": "JV-INV-SAL-2026-0064",
+    "entry_date": "2026-09-12",
+    "amount": 66,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0064) - جمعية صباح الناصر التعاونية",
+    "reference": "INV-SAL-2026-0064",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0064 - جمعية صباح الناصر التعاونية",
+        "debit": 66,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0064",
+        "debit": 0,
+        "credit": 66,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 25,
+    "id": "bcaf682c-ddb5-4c5c-ad72-870db6a3a1f4",
+    "entry_number": "JV-INV-SAL-2026-0051",
+    "entry_date": "2026-09-12",
+    "amount": 160.16,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0051) - جمعية الجليب التعاونية",
+    "reference": "INV-SAL-2026-0051",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0051 - جمعية الجليب التعاونية",
+        "debit": 160.16,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0051",
+        "debit": 0,
+        "credit": 160.16,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 26,
+    "id": "b304d716-e1b7-428e-b529-51dbc4e516d8",
+    "entry_number": "JV-INV-SAL-2026-0034",
+    "entry_date": "2026-09-12",
+    "amount": 91.2,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0034) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0034",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0034 - جمعية مبارك الكبير التعاونية",
+        "debit": 91.2,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0034",
+        "debit": 0,
+        "credit": 91.2,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 27,
+    "id": "85ce7ba2-035d-4d54-b294-a8ea397c2223",
+    "entry_number": "JV-INV-SAL-2026-0059",
+    "entry_date": "2026-09-12",
+    "amount": 184.8,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0059) - جمعية صباح الأحمد التعاونية",
+    "reference": "INV-SAL-2026-0059",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0059 - جمعية صباح الأحمد التعاونية",
+        "debit": 184.8,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0059",
+        "debit": 0,
+        "credit": 184.8,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 28,
+    "id": "4c1f3e24-2bf4-4de5-b0f7-0e26cfc0b42a",
+    "entry_number": "JV-INV-SAL-2026-0004",
+    "entry_date": "2026-09-12",
+    "amount": 61.428,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0004) - جمعية مدينة سعد العبدالله التعاونية",
+    "reference": "INV-SAL-2026-0004",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0004 - جمعية مدينة سعد العبدالله التعاونية",
+        "debit": 61.428,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0004",
+        "debit": 0,
+        "credit": 61.428,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 29,
+    "id": "e37136f5-764d-4f4c-9b27-d761e57ac890",
+    "entry_number": "JV-INV-SAL-2026-0003",
+    "entry_date": "2026-09-12",
+    "amount": 96.2,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0003) - جمعية مدينة سعد العبدالله التعاونية",
+    "reference": "INV-SAL-2026-0003",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0003 - جمعية مدينة سعد العبدالله التعاونية",
+        "debit": 96.2,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0003",
+        "debit": 0,
+        "credit": 96.2,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 30,
+    "id": "6b84f7d0-af68-42b8-8a91-cf99c18824a8",
+    "entry_number": "JV-INV-SAL-2026-0020",
+    "entry_date": "2026-09-12",
+    "amount": 191.034,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0020) - جمعية شمال غرب الصليبيخات التعاونية",
+    "reference": "INV-SAL-2026-0020",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0020 - جمعية شمال غرب الصليبيخات التعاونية",
+        "debit": 191.034,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0020",
+        "debit": 0,
+        "credit": 191.034,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 31,
+    "id": "5b6c0135-0854-4508-89af-a8482606d253",
+    "entry_number": "JV-INV-SAL-2026-0018",
+    "entry_date": "2026-09-12",
+    "amount": 124.065,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0018) - جمعية شمال غرب الصليبيخات التعاونية",
+    "reference": "INV-SAL-2026-0018",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0018 - جمعية شمال غرب الصليبيخات التعاونية",
+        "debit": 124.065,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0018",
+        "debit": 0,
+        "credit": 124.065,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 32,
+    "id": "8256c8ec-e811-42a1-aab9-ec93f62a9c60",
+    "entry_number": "JV-INV-SAL-2026-0048",
+    "entry_date": "2026-09-12",
+    "amount": 33.516,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0048) - جمعية مشرف التعاونية ",
+    "reference": "INV-SAL-2026-0048",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0048 - جمعية مشرف التعاونية ",
+        "debit": 33.516,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0048",
+        "debit": 0,
+        "credit": 33.516,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 33,
+    "id": "f03f1afb-fe87-4c3e-bde3-d19cb9eebf67",
+    "entry_number": "JV-INV-SAL-2026-0054",
+    "entry_date": "2026-09-12",
+    "amount": 328.64,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0054) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0054",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0054 - جمعية الصباحية التعاونية",
+        "debit": 328.64,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0054",
+        "debit": 0,
+        "credit": 328.64,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 34,
+    "id": "5dc3922b-c61e-47e8-915a-a6735de4b903",
+    "entry_number": "JV-INV-SAL-2026-0057",
+    "entry_date": "2026-09-12",
+    "amount": 338.73,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0057) - جمعية صباح الأحمد التعاونية",
+    "reference": "INV-SAL-2026-0057",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0057 - جمعية صباح الأحمد التعاونية",
+        "debit": 338.73,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0057",
+        "debit": 0,
+        "credit": 338.73,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 35,
+    "id": "ecf19b64-d2b0-436e-adba-e06b59e15110",
+    "entry_number": "JV-2026-0037",
+    "entry_date": "2026-09-12",
+    "amount": 80,
+    "description": "اشعارمدين فرق مهرجان من 24-7-2026 الي 1/8/2026",
+    "reference": "304",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-m4rzrqt7u",
+        "memo": "العميل: جمعية بيان التعاونية",
+        "debit": 0,
+        "credit": 80,
+        "entityId": "cust-5563",
+        "accountId": "acc-1120",
+        "entityType": "CUSTOMER",
+        "accountCode": "1120",
+        "entityNameAr": "جمعية بيان التعاونية",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      },
+      {
+        "id": "jl-ffajy1gpd",
+        "memo": "اشعارمدين فرق مهرجان من 24-7-2026 الي 1/8/2026",
+        "debit": 80,
+        "credit": 0,
+        "accountId": "acc-5200",
+        "entityType": "NONE",
+        "accountCode": "5200",
+        "accountNameAr": "المصروفات العمومية والإدارية والتسويقية"
+      }
+    ]
+  },
+  {
+    "index": 36,
+    "id": "81caa22d-7dbb-49c6-a6c1-fb009323d15f",
+    "entry_number": "JV-INV-SAL-2026-0001",
+    "entry_date": "2026-09-12",
+    "amount": 439,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0001) - جمعية القيروان التعاونية",
+    "reference": "INV-SAL-2026-0001",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0001 - جمعية القيروان التعاونية",
+        "debit": 188,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)",
+        "entityType": "CUSTOMER",
+        "entityId": "cust-4568"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0001",
+        "debit": 0,
+        "credit": 188,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 37,
+    "id": "dda4070b-aff7-4f16-beef-251d9decca97",
+    "entry_number": "JV-INV-SAL-2026-0042",
+    "entry_date": "2026-09-12",
+    "amount": 24.915,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0042) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0042",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0042 - جمعية الصباحية التعاونية",
+        "debit": 24.915,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0042",
+        "debit": 0,
+        "credit": 24.915,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 38,
+    "id": "3cdcb4bf-3c20-4888-a637-2172022d1be5",
+    "entry_number": "JV-INV-SAL-2026-0031",
+    "entry_date": "2026-09-12",
+    "amount": 58.8,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0031) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0031",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0031 - جمعية مبارك الكبير التعاونية",
+        "debit": 58.8,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0031",
+        "debit": 0,
+        "credit": 58.8,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 39,
+    "id": "b92accee-13c7-4ee0-bede-4cdbb1730b78",
+    "entry_number": "JV-INV-SAL-2026-0041",
+    "entry_date": "2026-09-12",
+    "amount": 135,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0041) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0041",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0041 - جمعية الصباحية التعاونية",
+        "debit": 135,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0041",
+        "debit": 0,
+        "credit": 135,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 40,
+    "id": "27cd265f-4ff5-4b4e-a781-bed8576c6b07",
+    "entry_number": "JV-INV-SAL-2026-0087",
+    "entry_date": "2026-09-12",
+    "amount": 33.873,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0087) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0087",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0087 - جمعية المطلاع التعاونية ",
+        "debit": 33.873,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0087",
+        "debit": 0,
+        "credit": 33.873,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات الجمعيات والبهارات"
+      }
+    ]
+  },
+  {
+    "index": 41,
+    "id": "36a4a181-f8e4-4142-87aa-05bb63ab3539",
+    "entry_number": "JV-INV-SAL-2026-0036",
+    "entry_date": "2026-09-12",
+    "amount": 79.2,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0036) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0036",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0036 - جمعية مبارك الكبير التعاونية",
+        "debit": 79.2,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0036",
+        "debit": 0,
+        "credit": 79.2,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 42,
+    "id": "fef47458-34e2-4a5e-8da9-b836d842cdab",
+    "entry_number": "JV-INV-SAL-2026-0017",
+    "entry_date": "2026-09-12",
+    "amount": 62.586,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0017) - جمعية بيان التعاونية",
+    "reference": "INV-SAL-2026-0017",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0017 - جمعية بيان التعاونية",
+        "debit": 62.586,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0017",
+        "debit": 0,
+        "credit": 62.586,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 43,
+    "id": "77ebfb4d-75bd-44d6-8935-1aff790ea7d8",
+    "entry_number": "JV-INV-SAL-2026-0062",
+    "entry_date": "2026-09-12",
+    "amount": 285.48,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0062) - جمعية شمال غرب الصليبيخات التعاونية",
+    "reference": "INV-SAL-2026-0062",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0062 - جمعية شمال غرب الصليبيخات التعاونية",
+        "debit": 285.48,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0062",
+        "debit": 0,
+        "credit": 285.48,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 44,
+    "id": "ebadfb63-4665-4995-a165-81ba173ee58d",
+    "entry_number": "JV-INV-SAL-2026-0061",
+    "entry_date": "2026-09-12",
+    "amount": 132,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0061) - جمعية صباح الأحمد التعاونية",
+    "reference": "INV-SAL-2026-0061",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0061 - جمعية صباح الأحمد التعاونية",
+        "debit": 132,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0061",
+        "debit": 0,
+        "credit": 132,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 45,
+    "id": "0a8395a2-9b55-4ffc-942e-28c34830ca4d",
+    "entry_number": "JV-INV-SAL-2026-0033",
+    "entry_date": "2026-09-12",
+    "amount": 193.2,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0033) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0033",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0033 - جمعية مبارك الكبير التعاونية",
+        "debit": 193.2,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0033",
+        "debit": 0,
+        "credit": 193.2,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 46,
+    "id": "6ab446c3-df81-48fe-9c73-050078218aa1",
+    "entry_number": "JV-INV-SAL-2026-0063",
+    "entry_date": "2026-09-12",
+    "amount": 306.45,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0063) - جمعية شمال غرب الصليبيخات التعاونية",
+    "reference": "INV-SAL-2026-0063",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0063 - جمعية شمال غرب الصليبيخات التعاونية",
+        "debit": 306.45,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0063",
+        "debit": 0,
+        "credit": 306.45,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 47,
+    "id": "0548c0a0-def7-4214-8e03-58183a4285ea",
+    "entry_number": "JV-INV-SAL-2026-0056",
+    "entry_date": "2026-09-12",
+    "amount": 188.13,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0056) - جمعية صباح الأحمد التعاونية",
+    "reference": "INV-SAL-2026-0056",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0056 - جمعية صباح الأحمد التعاونية",
+        "debit": 188.13,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0056",
+        "debit": 0,
+        "credit": 188.13,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 48,
+    "id": "a5424489-195e-411d-b035-9e0e2715298a",
+    "entry_number": "JV-INV-SAL-2026-0019",
+    "entry_date": "2026-09-12",
+    "amount": 128.96,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0019) - جمعية شمال غرب الصليبيخات التعاونية",
+    "reference": "INV-SAL-2026-0019",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0019 - جمعية شمال غرب الصليبيخات التعاونية",
+        "debit": 128.96,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0019",
+        "debit": 0,
+        "credit": 128.96,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 49,
+    "id": "e4be39cf-6df8-4591-96b0-8e7974505d31",
+    "entry_number": "JV-INV-SAL-2026-0028",
+    "entry_date": "2026-09-12",
+    "amount": 254.496,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0028) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0028",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0028 - جمعية مبارك الكبير التعاونية",
+        "debit": 254.496,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0028",
+        "debit": 0,
+        "credit": 254.496,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 50,
+    "id": "17d3412e-eca6-4147-ac4b-349d5b13f5ce",
+    "entry_number": "JV-INV-SAL-2026-0055",
+    "entry_date": "2026-09-12",
+    "amount": 87,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0055) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0055",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0055 - جمعية الصباحية التعاونية",
+        "debit": 87,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0055",
+        "debit": 0,
+        "credit": 87,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 51,
+    "id": "06046c50-cc79-4370-81b0-ce524ff48f86",
+    "entry_number": "JV-RCV-2026-0009",
+    "entry_date": "2026-09-12",
+    "amount": 2001,
+    "description": "قيد ترحيل سند قبض رقم (RCV-2026-0009) - جمعية مبارك الكبير التعاونية",
+    "reference": "RCV-2026-0009",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "قبض مبالغ سند رقم RCV-2026-0009 - جمعية مبارك الكبير التعاونية",
+        "debit": 2001,
+        "credit": 0,
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك / الصندوق"
+      },
+      {
+        "id": "jl-2",
+        "memo": "تحصيل من العميل جمعية مبارك الكبير التعاونية",
+        "debit": 0,
+        "credit": 2001,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      }
+    ]
+  },
+  {
+    "index": 52,
+    "id": "6f47a8fb-0c93-41b6-a361-376a10be4ba5",
+    "entry_number": "JV-INV-SAL-2026-0029",
+    "entry_date": "2026-09-12",
+    "amount": 356.496,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0029) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0029",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0029 - جمعية مبارك الكبير التعاونية",
+        "debit": 356.496,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0029",
+        "debit": 0,
+        "credit": 356.496,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 53,
+    "id": "53390b20-5d9b-4043-8e94-e2941daa4b3e",
+    "entry_number": "JV-INV-SAL-2026-0072",
+    "entry_date": "2026-09-12",
+    "amount": 5.754,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0072) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0072",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0072 - جمعية المطلاع التعاونية ",
+        "debit": 5.754,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0072",
+        "debit": 0,
+        "credit": 5.754,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 54,
+    "id": "960062b9-2089-45b1-a07a-e4db24f5f80f",
+    "entry_number": "JV-RCV-2026-0003",
+    "entry_date": "2026-09-12",
+    "amount": 1914.884,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0003) - جمعية مبارك الكبير التعاونية",
+    "reference": "RCV-2026-0003",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "accountId": "acc-1111",
+        "accountCode": "1111",
+        "accountNameAr": "البنك التجاري",
+        "debit": 1914.884,
+        "credit": 0,
+        "memo": "قبض مبالغ سند معدل رقم RCV-2026-0003 - جمعية مبارك الكبير التعاونية"
+      },
+      {
+        "id": "jl-2",
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)",
+        "debit": 0,
+        "credit": 1914.884,
+        "memo": "تحصيل من العميل جمعية مبارك الكبير التعاونية",
+        "entityType": "CUSTOMER",
+        "entityId": "cust-4640"
+      }
+    ]
+  },
+  {
+    "index": 55,
+    "id": "a91935b6-5aac-4c59-ac09-e33ef2277083",
+    "entry_number": "JV-INV-SAL-2026-0047",
+    "entry_date": "2026-09-12",
+    "amount": 20.016,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0047) - جمعية مشرف التعاونية ",
+    "reference": "INV-SAL-2026-0047",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0047 - جمعية مشرف التعاونية ",
+        "debit": 20.016,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0047",
+        "debit": 0,
+        "credit": 20.016,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 56,
+    "id": "48d02ac6-0a89-4ad2-9ffa-a4edba5595ef",
+    "entry_number": "JV-INV-SAL-2026-0016",
+    "entry_date": "2026-09-12",
+    "amount": 92.7,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0016) - جمعية بيان التعاونية",
+    "reference": "INV-SAL-2026-0016",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0016 - جمعية بيان التعاونية",
+        "debit": 92.7,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "العملاء والجمعيات التعاونية (مدينون)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0016",
+        "debit": 0,
+        "credit": 92.7,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة"
+      }
+    ]
+  },
+  {
+    "index": 57,
+    "id": "d39b5eb7-95a3-4c87-ab2d-38481aad34a2",
+    "entry_number": "JV-INV-INV-PUR-2026-0050",
+    "entry_date": "2026-09-13",
+    "amount": 0.9,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0050 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0050",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 58,
+    "id": "42ab86f3-3069-4566-ac28-4cc39ca220ca",
+    "entry_number": "JV-INV-INV-PUR-2026-0066",
+    "entry_date": "2026-09-13",
+    "amount": 83.4,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0066 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0066",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 59,
+    "id": "abd16b25-7388-4042-9dca-ec7b76bf3cee",
+    "entry_number": "JV-INV-INV-PUR-2026-0040",
+    "entry_date": "2026-09-13",
+    "amount": 1.6,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0040 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0040",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 60,
+    "id": "c28291ed-1d90-4926-a062-e4b53cb8809a",
+    "entry_number": "JV-INV-INV-PUR-2026-0049",
+    "entry_date": "2026-09-13",
+    "amount": 2.7,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0049 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0049",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 61,
+    "id": "6fd80e41-a3ce-435d-9c56-29720800c690",
+    "entry_number": "JV-INV-SAL-2026-0014",
+    "entry_date": "2026-09-13",
+    "amount": 223.8,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0014) - جمعية بيان التعاونية",
+    "reference": "INV-SAL-2026-0014",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0014)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 62,
+    "id": "84cc7690-a12a-4484-a38c-4e7721d9133c",
+    "entry_number": "JV-INV-SAL-2026-0024",
+    "entry_date": "2026-09-13",
+    "amount": 77.232,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0024) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0024",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0024)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 63,
+    "id": "00000000-0000-4000-8000-0a2d89e20000",
+    "entry_number": "JV-INV-SAL-2026-0094",
+    "entry_date": "2026-09-13",
+    "amount": 273.55,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0094) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0094",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0094)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 64,
+    "id": "2ec45973-b030-4814-b0b4-7e40656fe367",
+    "entry_number": "JV-INV-SAL-2026-0026",
+    "entry_date": "2026-09-13",
+    "amount": 162.4,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0026) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0026",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0026)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 65,
+    "id": "a9138d83-3dab-42d4-884d-9b9d4efdd1df",
+    "entry_number": "JV-INV-SAL-2026-0044",
+    "entry_date": "2026-09-13",
+    "amount": 256.49,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0044) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0044",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0044)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 66,
+    "id": "281c7f2e-c26a-4886-88d4-14c64051fac5",
+    "entry_number": "JV-INV-SAL-2026-0008",
+    "entry_date": "2026-09-13",
+    "amount": 168.782,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0008) - جمعية اشبيلية التعاونية",
+    "reference": "INV-SAL-2026-0008",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0008)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 67,
+    "id": "4e439a63-68e9-47e7-98fc-13f8d9b75f70",
+    "entry_number": "JV-INV-SAL-2026-0006",
+    "entry_date": "2026-09-13",
+    "amount": 151.52,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0006) - جمعية اشبيلية التعاونية",
+    "reference": "INV-SAL-2026-0006",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0006)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 68,
+    "id": "80f03b49-d5fe-4bef-8e46-6b5256961043",
+    "entry_number": "JV-INV-SAL-2026-0070",
+    "entry_date": "2026-09-13",
+    "amount": 36.744,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0070) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0070",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0070)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 69,
+    "id": "e9b7d950-ad63-4a14-b197-658eba0fc86c",
+    "entry_number": "JV-INV-SAL-2026-0077",
+    "entry_date": "2026-09-13",
+    "amount": 0,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0077) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0077",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0077)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 70,
+    "id": "d41794ea-c43c-4542-a105-cd8b5a3a38a8",
+    "entry_number": "JV-AUTO-INV-PUR-2026-0001",
+    "entry_date": "2026-09-13",
+    "amount": 350,
+    "description": "قيد ترحيل آلي متوازن لفاتورة مبيعات INV-PUR-2026-0001",
+    "reference": "INV-PUR-2026-0001",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 71,
+    "id": "00000000-0000-4000-8000-0d0525b30000",
+    "entry_number": "JV-INV-SAL-2026-0095",
+    "entry_date": "2026-09-13",
+    "amount": 101.38,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0095) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0095",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0095)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 72,
+    "id": "8e6f053e-9494-4380-89bb-ebe1e045927f",
+    "entry_number": "JV-INV-SAL-2026-0046",
+    "entry_date": "2026-09-13",
+    "amount": 27,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0046) - جمعية مشرف التعاونية ",
+    "reference": "INV-SAL-2026-0046",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0046)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 73,
+    "id": "88f17b0c-2bb7-468b-8ab1-7df97f6ae2bc",
+    "entry_number": "JV-INV-SAL-2026-0015",
+    "entry_date": "2026-09-13",
+    "amount": 238.572,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0015) - جمعية بيان التعاونية",
+    "reference": "INV-SAL-2026-0015",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0015)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 74,
+    "id": "e5d6b73f-1812-4458-934e-c8e4a9366da4",
+    "entry_number": "JV-AUTO-INV-SAL-2026-0002",
+    "entry_date": "2026-09-13",
+    "amount": 115.5,
+    "description": "قيد ترحيل آلي متوازن لفاتورة مبيعات INV-SAL-2026-0002",
+    "reference": "INV-SAL-2026-0002",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-inv-002-dr",
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)",
+        "debit": 115.5,
+        "credit": 0,
+        "memo": "فاتورة مبيعات INV-SAL-2026-0002 - جمعية بيان التعاونية",
+        "entityType": "CUSTOMER",
+        "entityId": "cust-5563"
+      },
+      {
+        "id": "jl-inv-002-cr",
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات بهارات ومطحنة",
+        "debit": 0,
+        "credit": 115.5,
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0002"
+      }
+    ]
+  },
+  {
+    "index": 75,
+    "id": "0dce97da-d57a-44dc-8d4c-477132544a0f",
+    "entry_number": "JV-INV-SAL-2026-0075",
+    "entry_date": "2026-09-13",
+    "amount": 0,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0075) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0075",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0075)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 76,
+    "id": "c562a6a5-d57c-4fda-8599-6b1e9ad1d40b",
+    "entry_number": "JV-INV-SAL-2026-0007",
+    "entry_date": "2026-09-13",
+    "amount": 28.263,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0007) - جمعية اشبيلية التعاونية",
+    "reference": "INV-SAL-2026-0007",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0007)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 77,
+    "id": "5dd6e910-67e1-4d07-8676-713e02b7d546",
+    "entry_number": "JV-INV-SAL-2026-0073",
+    "entry_date": "2026-09-13",
+    "amount": 0,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0073) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0073",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0073)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 78,
+    "id": "232d0c12-b019-4e75-bd21-37e344895be5",
+    "entry_number": "JV-INV-SAL-2026-0071",
+    "entry_date": "2026-09-13",
+    "amount": 0,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0071) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0071",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0071)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 79,
+    "id": "8a67ecbc-6376-4207-b038-1a58bda24d77",
+    "entry_number": "JV-INV-INV-PUR-2026-0013",
+    "entry_date": "2026-09-13",
+    "amount": 110.5,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0013 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0013",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 80,
+    "id": "1763a0ea-787e-452d-b3de-ccc5b16204cd",
+    "entry_number": "JV-INV-INV-PUR-2026-0063",
+    "entry_date": "2026-09-13",
+    "amount": 15.36,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0063 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0063",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 81,
+    "id": "dd79cc27-821a-41a0-a1dd-0df69af5d4a5",
+    "entry_number": "JV-INV-SAL-2026-0025",
+    "entry_date": "2026-09-13",
+    "amount": 98.464,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0025) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0025",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0025)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 82,
+    "id": "6e83ca66-de0b-4bf0-9317-ae3101290e18",
+    "entry_number": "JV-AUTO-INV-SAL-2026-0070",
+    "entry_date": "2026-09-13",
+    "amount": 441,
+    "description": "قيد ترحيل آلي متوازن لفاتورة مبيعات INV-SAL-2026-0070",
+    "reference": "INV-SAL-2026-0070",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0070)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 83,
+    "id": "00000000-0000-4000-8000-53caa0d40000",
+    "entry_number": "JV-2026-0001",
+    "entry_date": "2026-09-13",
+    "amount": 20999.53,
+    "description": "الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-08-01",
+    "reference": "OB-2026-07-31",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "line-ob-dr",
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)",
+        "debit": 20999.53,
+        "credit": 0,
+        "memo": "إجمالي الأرصدة الافتتاحية لعملاء الجمعيات التعاونية"
+      },
+      {
+        "id": "line-ob-cr",
+        "accountId": "acc-3100",
+        "accountCode": "3100",
+        "accountNameAr": "رأس المال المكتتب به / الأرصدة الافتتاحية",
+        "debit": 0,
+        "credit": 20999.53,
+        "memo": "مقابل الأرصدة الافتتاحية المدينة للعملاء"
+      }
+    ]
+  },
+  {
+    "index": 84,
+    "id": "fbfcaf31-8d3a-4078-889e-28e8532c2c84",
+    "entry_number": "JV-INV-SAL-2026-0076",
+    "entry_date": "2026-09-13",
+    "amount": 36.066,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0076) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0076",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0076)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 85,
+    "id": "00000000-0000-4000-8000-1970312d0000",
+    "entry_number": "JV-INV-SAL-2026-0096",
+    "entry_date": "2026-09-13",
+    "amount": 17.25,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0096) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0096",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0096)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 86,
+    "id": "b8dda04d-d720-43ad-b96e-c7164f475680",
+    "entry_number": "JV-INV-SAL-2026-0027",
+    "entry_date": "2026-09-13",
+    "amount": 93.6,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0027) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0027",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0027)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 87,
+    "id": "e982fe66-be3a-496b-8f81-f886583446c9",
+    "entry_number": "JV-INV-SAL-2026-0088",
+    "entry_date": "2026-09-13",
+    "amount": 28.854,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0088) - جمعية المطلاع التعاونية ",
+    "reference": "INV-SAL-2026-0088",
+    "source": "ملف alwaleedPresetData.ts (السطور متوفرة وموثقة بالكامل)",
+    "hasLines": true,
+    "lineCount": 2,
+    "linesData": [
+      {
+        "id": "jl-1",
+        "memo": "فاتورة مبيعات INV-SAL-2026-0088 - جمعية المطلاع التعاونية ",
+        "debit": 28.854,
+        "credit": 0,
+        "accountId": "acc-1120",
+        "accountCode": "1120",
+        "accountNameAr": "الذمم المدينة (حسابات العملاء والجمعيات التعاونية)"
+      },
+      {
+        "id": "jl-2",
+        "memo": "إيراد مبيعات فاتورة INV-SAL-2026-0088",
+        "debit": 0,
+        "credit": 28.854,
+        "accountId": "acc-4100",
+        "accountCode": "4100",
+        "accountNameAr": "إيرادات مبيعات الجمعيات والبهارات"
+      }
+    ]
+  },
+  {
+    "index": 88,
+    "id": "f0e64e54-0732-464b-bd85-93b3b7cbe41e",
+    "entry_number": "JV-INV-SAL-2026-0043",
+    "entry_date": "2026-09-13",
+    "amount": 323.04,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0043) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0043",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0043)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 89,
+    "id": "7eaea0ef-1d97-4e7f-afa9-928d137a318f",
+    "entry_number": "JV-INV-SAL-2026-0010",
+    "entry_date": "2026-09-13",
+    "amount": 218.44,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0010) - جمعية سلوى التعاونية",
+    "reference": "INV-SAL-2026-0010",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0010)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 90,
+    "id": "2f27b9d4-63ac-4067-9ae0-eb9c03c19117",
+    "entry_number": "JV-INV-INV-PUR-2026-0002",
+    "entry_date": "2026-09-13",
+    "amount": 12.868,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0002 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0002",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 91,
+    "id": "1bac0789-400a-4b1b-bcff-702927856138",
+    "entry_number": "JV-INV-SAL-2026-0011",
+    "entry_date": "2026-09-13",
+    "amount": 120,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0011) - جمعية سلوى التعاونية",
+    "reference": "INV-SAL-2026-0011",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0011)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 92,
+    "id": "75a521c0-582a-4e1b-be40-2969661e94e4",
+    "entry_number": "JV-INV-INV-PUR-2026-0039",
+    "entry_date": "2026-09-13",
+    "amount": 3.068,
+    "description": "إثبات فاتورة مبيعات رقم INV-PUR-2026-0039 - العميل: شركة مطاحن الدقيق والمطاحن الكويتية",
+    "reference": "INV-PUR-2026-0039",
+    "source": "قيد مسجل في قاعدة البيانات دون سطور",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 93,
+    "id": "00000000-0000-4000-8000-950000000001",
+    "entry_number": "JV-CORR-SAL-2026-0095",
+    "entry_date": "2026-09-14",
+    "amount": 67.66,
+    "description": "قيد تسوية وتصحيح: إثبات ذمة العميل (جمعية الصباحية التعاونية) وتصحيح التوجيه لفاتورة INV-SAL-2026-0095",
+    "reference": "INV-SAL-2026-0095",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0095)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 94,
+    "id": "00000000-0000-4000-8000-29e9e9800000",
+    "entry_number": "JV-INV-SAL-2026-0100",
+    "entry_date": "2026-09-14",
+    "amount": 269.816,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0100) - جمعية اشبيلية التعاونية",
+    "reference": "INV-SAL-2026-0100",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0100)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 95,
+    "id": "00000000-0000-4000-8000-00b715480000",
+    "entry_number": "JV-INV-SAL-2026-0101",
+    "entry_date": "2026-09-14",
+    "amount": 8.3,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0101) - جمعية اشبيلية التعاونية",
+    "reference": "INV-SAL-2026-0101",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0101)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 96,
+    "id": "00000000-0000-4000-8000-71542f6c0000",
+    "entry_number": "JV-INV-SAL-2026-0099",
+    "entry_date": "2026-09-14",
+    "amount": 209.926,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0099) - جمعية اشبيلية التعاونية",
+    "reference": "INV-SAL-2026-0099",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0099)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 97,
+    "id": "00000000-0000-4000-8000-465f37c10000",
+    "entry_number": "JV-INV-SAL-2026-0102",
+    "entry_date": "2026-09-14",
+    "amount": 329.34,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0102) - جمعية الصباحية التعاونية",
+    "reference": "INV-SAL-2026-0102",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0102)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 98,
+    "id": "00000000-0000-4000-8000-940000000001",
+    "entry_number": "JV-CORR-SAL-2026-0094",
+    "entry_date": "2026-09-14",
+    "amount": 195.43,
+    "description": "قيد تسوية وتصحيح: إثبات ذمة العميل (جمعية الصباحية التعاونية) وتصحيح التوجيه لفاتورة INV-SAL-2026-0094",
+    "reference": "INV-SAL-2026-0094",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0094)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 99,
+    "id": "00000000-0000-4000-8000-469f305b0000",
+    "entry_number": "JV-INV-SAL-2026-0103",
+    "entry_date": "2026-09-14",
+    "amount": 71.76,
+    "description": "قيد ترحيل فاتورة مبيعات معدلة رقم (INV-SAL-2026-0103) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0103",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0103)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 100,
+    "id": "00000000-0000-4000-8000-7db1f6d40000",
+    "entry_number": "JV-INV-SAL-2026-0104",
+    "entry_date": "2026-09-14",
+    "amount": 315.564,
+    "description": "قيد ترحيل فاتورة مبيعات معدلة رقم (INV-SAL-2026-0104) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0104",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0104)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 101,
+    "id": "00000000-0000-4000-8000-06e2927f0000",
+    "entry_number": "JV-INV-SAL-2026-0009-TEST-CANCELLED",
+    "entry_date": "2026-09-15",
+    "amount": 20.14,
+    "description": "قيد ترحيل فاتورة مبيعات معدلة رقم (INV-SAL-2026-0009-TEST-CANCELLED) - مطحنة الوليد المتحدة (عميل تجاري)",
+    "reference": "INV-SAL-2026-0009-TEST-CANCELLED",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0009-TEST-CANCELLED)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 102,
+    "id": "00000000-0000-4000-8000-467af3510000",
+    "entry_number": "JV-INV-SAL-2026-0106",
+    "entry_date": "2026-09-15",
+    "amount": 42.9,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0106) - جمعية مبارك الكبير التعاونية",
+    "reference": "INV-SAL-2026-0106",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0106)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 103,
+    "id": "00000000-0000-4000-8000-146f9ea30000",
+    "entry_number": "JV-INV-SAL-2026-0107",
+    "entry_date": "2026-09-16",
+    "amount": 5.61,
+    "description": "قيد ترحيل فاتورة مبيعات رقم (INV-SAL-2026-0107) - عميل مستعاد من النسخة الاحتياطية",
+    "reference": "INV-SAL-2026-0107",
+    "source": "فاتورة بقاعدة البيانات (INV-SAL-2026-0107)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  },
+  {
+    "index": 104,
+    "id": "9c273f93-c85c-4412-9bca-2248e2c23dfa",
+    "entry_number": "JV-RCV-2026-0011",
+    "entry_date": "2026-09-16",
+    "amount": 3.85,
+    "description": "قيد ترحيل سند قبض آلي رقم (RCV-2026-0011) - عميل مستعاد من النسخة الاحتياطية",
+    "reference": "RCV-2026-0011",
+    "source": "سند دفع/قبض بقاعدة البيانات (RCV-2026-0011)",
+    "hasLines": false,
+    "lineCount": 0,
+    "linesData": []
+  }
+]
