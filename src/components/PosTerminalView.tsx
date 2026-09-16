@@ -662,6 +662,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
               offerId: c.offerId,
               offer_id: c.offerId,
               isOffer: true,
+              isExpanded: true,
               offerQuantity: c.offerQuantity,
               offerPrice: c.offerPrice,
               notes: `عرض ترويجي: ${c.offerTitleAr || ''} - خصم مخزني ${totalUnitsDeducted} حبة من ${c.item.nameAr}`,

@@ -723,9 +723,13 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
               const currentItem = inventory.find((i) => i.id === selectedCardItemId) || inventory[0];
               if (!currentItem) return null;
 
-              // Filter movements for this specific item (matching by ID or SKU)
+              // Filter movements for this specific item (matching by ID, SKU, or linked offer parent/child)
               const itemMvs = movements.filter(
-                (m) => m.itemId === currentItem.id || (currentItem.sku && m.itemSku === currentItem.sku)
+                (m) =>
+                  m.itemId === currentItem.id ||
+                  (m as any).originalItemId === currentItem.id ||
+                  (currentItem.sku && (m.itemSku === currentItem.sku || (m as any).originalItemSku === currentItem.sku)) ||
+                  (currentItem.base_item_id && m.itemId === currentItem.base_item_id)
               );
 
               // Chronological sort ascending to guarantee strict sequential integrity

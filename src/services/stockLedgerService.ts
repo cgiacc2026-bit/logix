@@ -60,7 +60,14 @@ export class StockLedgerService {
 
     // B. Invoices (Sales, Purchases, Returns)
     invoices.forEach((inv) => {
-      if (inv.status !== 'CANCELLED') {
+      const invStatus = String(inv.status || '').trim().toUpperCase();
+      const isCancelled =
+        invStatus === 'CANCELLED' ||
+        invStatus === 'VOID' ||
+        invStatus === 'REVERSED' ||
+        (inv.invoiceNumber && inv.invoiceNumber.toUpperCase().includes('CANCELLED'));
+
+      if (!isCancelled) {
         const lines = inv.lines || (inv as any).items || [];
         lines.forEach((line: any) => {
           const matchedItem = inventory.find(
@@ -81,8 +88,10 @@ export class StockLedgerService {
           const unitCost = Number(effectiveItem?.costPrice ?? effectiveItem?.purchasePrice ?? (line.unitPrice ? line.unitPrice * 0.7 : 0));
           
           // Determine exact physical quantity deducted from base item
+          // If line.isOffer is true, line.quantity might already be multiplied; otherwise apply configured offer_quantity
+          const configuredOfferQty = Number(matchedItem?.offer_quantity || matchedItem?.offerQuantity || (matchedItem?.nameAr?.includes('2 حبة') ? 2 : 1)) || 1;
           const bundleMultiplier = isOfferLinked && !line.isOffer
-            ? (Number(matchedItem?.offer_quantity || matchedItem?.offerQuantity) || 1)
+            ? configuredOfferQty
             : 1;
           const effectiveQty = (Number(line.quantity) || 1) * bundleMultiplier;
 
@@ -129,6 +138,8 @@ export class StockLedgerService {
             itemId: effectiveItemId,
             itemSku: effectiveItem?.sku || line.itemSku || effectiveItemId,
             itemNameAr: effectiveItem?.nameAr || line.itemNameAr || 'صنف مخزني',
+            originalItemId: matchedItem?.id,
+            originalItemSku: matchedItem?.sku,
             type: movementType as any,
             typeTitleAr,
             referenceDocNumber: inv.invoiceNumber,
@@ -143,7 +154,7 @@ export class StockLedgerService {
             totalCostValue: effectiveQty * unitCost,
             warehouse: (inv as any).warehouseName || 'المستودع الرئيسي',
             notes: movementNote,
-          });
+          } as any);
         });
       }
     });

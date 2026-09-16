@@ -2836,7 +2836,8 @@ export class DataService {
         const targetBaseItem = linkedBaseId ? inventory.find((i) => i.id === linkedBaseId) : null;
         const isLinkedToParent = Boolean(targetBaseItem && targetBaseItem.id !== invItem.id);
         const itemDeducted = isLinkedToParent ? targetBaseItem! : invItem;
-        const bundleMultiplier = isLinkedToParent ? (Number(invItem.offer_quantity || invItem.offerQuantity) || 1) : 1;
+        const configuredOfferQty = Number(invItem.offer_quantity || invItem.offerQuantity || (invItem.nameAr?.includes('2 حبة') ? 2 : 1)) || 1;
+        const bundleMultiplier = isLinkedToParent && !it.isOffer ? configuredOfferQty : 1;
         const effectiveQty = Number(it.quantity) * bundleMultiplier;
         const qtyDelta = isOutbound ? -effectiveQty : effectiveQty;
 
@@ -2960,8 +2961,9 @@ export class DataService {
         const linkedBaseId = invItem?.base_item_id || invItem?.baseItemId;
         const targetBaseItem = linkedBaseId ? inventory.find(i => i.id === linkedBaseId) : null;
         const itemForCost = targetBaseItem || invItem;
-        const multiplier = (targetBaseItem && targetBaseItem.id !== invItem?.id)
-          ? (Number(invItem?.offer_quantity || invItem?.offerQuantity) || 1)
+        const configuredOfferQty = Number(invItem?.offer_quantity || invItem?.offerQuantity || (invItem?.nameAr?.includes('2 حبة') ? 2 : 1)) || 1;
+        const multiplier = (targetBaseItem && targetBaseItem.id !== invItem?.id && !line.isOffer)
+          ? configuredOfferQty
           : 1;
         const unitCost = Number(itemForCost ? (itemForCost.costPrice ?? itemForCost.purchasePrice ?? 0) : 0);
         return sum + (unitCost * line.quantity * multiplier);
@@ -3700,25 +3702,34 @@ export class DataService {
       const inventory = localDataStore.getInventory();
       const cancelWhId = inv.warehouseId || 'wh-main-01';
       (inv.lines || []).forEach((line: any) => {
-        const invItem = inventory.find((i) => i.id === line.itemId);
-        const q = Number(line.quantity) || 0;
+        const invItem = inventory.find((i) => i.id === line.itemId || (line.itemSku && (i.sku === line.itemSku || (i as any).code === line.itemSku)));
+        const linkedBaseId = invItem?.base_item_id || invItem?.baseItemId;
+        const targetBaseItem = linkedBaseId ? inventory.find((i) => i.id === linkedBaseId) : null;
+        const isLinkedToParent = Boolean(targetBaseItem && targetBaseItem.id !== invItem?.id);
+        const itemRestored = isLinkedToParent ? targetBaseItem! : invItem;
+        const configuredOfferQty = Number(invItem?.offer_quantity || invItem?.offerQuantity || (invItem?.nameAr?.includes('2 حبة') ? 2 : 1)) || 1;
+        const bundleMultiplier = isLinkedToParent && !line.isOffer ? configuredOfferQty : 1;
+        const q = (Number(line.quantity) || 0) * bundleMultiplier;
         let cancelWhDelta = 0;
-        if (invItem) {
+        if (itemRestored) {
           if (inv.type === 'SALES') {
-            invItem.quantityOnHand += q;
+            itemRestored.quantityOnHand += q;
             cancelWhDelta = q;
           } else if (inv.type === 'PURCHASE') {
-            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            itemRestored.quantityOnHand = Math.max(0, itemRestored.quantityOnHand - q);
             cancelWhDelta = -q;
           } else if (inv.type === 'SALES_RETURN') {
-            invItem.quantityOnHand = Math.max(0, invItem.quantityOnHand - q);
+            itemRestored.quantityOnHand = Math.max(0, itemRestored.quantityOnHand - q);
             cancelWhDelta = -q;
           } else if (inv.type === 'PURCHASE_RETURN') {
-            invItem.quantityOnHand += q;
+            itemRestored.quantityOnHand += q;
             cancelWhDelta = q;
           }
+          DataService.adjustWarehouseStock(cancelWhId, itemRestored.id, cancelWhDelta);
+        } else {
+          cancelWhDelta = inv.type === 'SALES' || inv.type === 'PURCHASE_RETURN' ? q : -q;
+          DataService.adjustWarehouseStock(cancelWhId, line.itemId, cancelWhDelta);
         }
-        DataService.adjustWarehouseStock(cancelWhId, line.itemId, cancelWhDelta);
       });
       localDataStore.saveInventory(inventory);
 
