@@ -858,6 +858,118 @@ export async function updateCompanyStatus(
   }
 }
 
+/**
+ * Super Admin Multi-Tenant Control: Get Company Records Count Breakdown before Deletion
+ */
+export async function getCompanyStatsForSuperAdmin(companyId: string): Promise<{
+  success: boolean;
+  counts?: Record<string, number>;
+  totalRecords?: number;
+  company?: any;
+  message?: string;
+}> {
+  try {
+    // 1. Try server endpoint
+    if (typeof window !== 'undefined' && typeof fetch === 'function') {
+      const res = await fetch(`/api/admin/companies/${companyId}/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          return data;
+        }
+      }
+    }
+
+    // 2. Direct Supabase Fallback
+    if (checkIsSupabaseConfigured()) {
+      const tables = [
+        'customers',
+        'suppliers',
+        'items',
+        'warehouses',
+        'invoices',
+        'invoice_items',
+        'journal_entries',
+        'journal_entry_lines',
+        'payment_vouchers',
+        'chart_of_accounts',
+        'company_accounting_settings',
+      ];
+      const counts: Record<string, number> = {};
+      for (const tbl of tables) {
+        try {
+          const { count } = await supabase
+            .from(tbl)
+            .select('id', { count: 'exact', head: true })
+            .eq('company_id', companyId);
+          counts[tbl] = count || 0;
+        } catch {
+          counts[tbl] = 0;
+        }
+      }
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
+      return { success: true, counts, totalRecords: total };
+    }
+
+    return { success: false, message: 'تعذر جلب إحصائيات المنشأة' };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'فشل فحص سجلات المنشأة' };
+  }
+}
+
+/**
+ * Super Admin Multi-Tenant Control: Permanent Cascading Delete for Suspended Company
+ */
+export async function deleteCompanyPermanently(
+  companyId: string,
+  confirmationName: string,
+  deletedBy?: string
+): Promise<{
+  success: boolean;
+  message: string;
+  deletedCounts?: Record<string, number>;
+}> {
+  try {
+    // 1. Primary: Server-side cascading delete with audit log
+    if (typeof window !== 'undefined' && typeof fetch === 'function') {
+      const res = await fetch(`/api/admin/companies/${companyId}/cascading-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmationName, deletedBy }),
+      });
+
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        return {
+          success: false,
+          message: resData.message || 'فشل تنفيذ الحذف المتسلسل للمنشأة',
+        };
+      }
+
+      // Purge from local client storage cache
+      if (typeof window !== 'undefined') {
+        const cached = getStoredLocalCompanies().filter((c) => c.id !== companyId);
+        localStorage.setItem('all_tenants_cache', JSON.stringify(cached));
+        localStorage.setItem(LOCAL_COMPANIES_KEY, JSON.stringify(cached));
+      }
+
+      return {
+        success: true,
+        message: resData.message,
+        deletedCounts: resData.deletedCounts,
+      };
+    }
+
+    return {
+      success: false,
+      message: 'الخادم غير متاح لتنفيذ عملية الحذف المتسلسل',
+    };
+  } catch (err: any) {
+    console.error('deleteCompanyPermanently error:', err);
+    return { success: false, message: err?.message || 'حدث خطأ أثناء تنفيذ الحذف' };
+  }
+}
+
 function getStoredLocalCompanies(): TenantCompanyRecord[] {
   if (typeof window === 'undefined') return [];
   const list: TenantCompanyRecord[] = [];

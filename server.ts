@@ -643,6 +643,235 @@ async function startServer() {
     }
   });
 
+  // PROTECTED SUPER ADMIN: Get Company Related Record Counts before Deletion
+  app.get('/api/admin/companies/:id/stats', async (req, res) => {
+    try {
+      const companyId = req.params.id;
+      if (!companyId) {
+        return res.status(400).json({ success: false, message: 'معرّف الشركة مطلوب' });
+      }
+
+      const { data: company, error: compErr } = await supabaseAdmin
+        .from('companies')
+        .select('*')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      if (compErr || !company) {
+        return res.status(404).json({ success: false, message: 'الشركة غير موجودة' });
+      }
+
+      const tables = [
+        'customers',
+        'suppliers',
+        'items',
+        'warehouses',
+        'invoices',
+        'invoice_items',
+        'journal_entries',
+        'journal_entry_lines',
+        'payment_vouchers',
+        'chart_of_accounts',
+        'company_accounting_settings'
+      ];
+
+      const counts: Record<string, number> = {};
+      for (const tbl of tables) {
+        try {
+          const { count, error } = await supabaseAdmin
+            .from(tbl)
+            .select('id', { count: 'exact', head: true })
+            .eq('company_id', companyId);
+          counts[tbl] = (!error && count !== null) ? count : 0;
+        } catch {
+          counts[tbl] = 0;
+        }
+      }
+
+      const totalRecords = Object.values(counts).reduce((sum, n) => sum + n, 0);
+
+      return res.json({
+        success: true,
+        company: {
+          id: company.id,
+          company_name: company.company_name,
+          owner_email: company.owner_email,
+          status: company.status,
+          created_at: company.created_at,
+        },
+        counts,
+        totalRecords,
+      });
+    } catch (err: any) {
+      console.error('Company stats error:', err);
+      return res.status(500).json({ success: false, message: err?.message || 'فشل جلب إحصائيات الشركة' });
+    }
+  });
+
+  // PROTECTED SUPER ADMIN: Cascading Delete for Suspended Company
+  app.post('/api/admin/companies/:id/cascading-delete', async (req, res) => {
+    try {
+      const companyId = req.params.id;
+      const { confirmationName, deletedBy } = req.body;
+
+      if (!companyId) {
+        return res.status(400).json({ success: false, message: 'معرّف الشركة مطلوب' });
+      }
+
+      // 1. Safety check: Protect core canonical tenants
+      const CANONICAL_PROTECTED = [
+        '20000000-0000-0000-0000-000000000001', // Al-Waleed
+        '10000000-0000-0000-0000-000000000001', // Logix Official / Master Super Admin
+        '00000000-0000-0000-0000-000000000099', // Demo Company
+      ];
+      if (CANONICAL_PROTECTED.includes(companyId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'محظور أمنياً: لا يمكن حذف المنشآت الأساسية أو شركة مطاحن الوليد المعتمدة للنظام.'
+        });
+      }
+
+      // 2. Fetch company and verify existence & suspended status
+      const { data: company, error: fetchErr } = await supabaseAdmin
+        .from('companies')
+        .select('*')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      if (fetchErr || !company) {
+        return res.status(404).json({ success: false, message: 'الشركة المطلوبة غير موجودة' });
+      }
+
+      // Two-step safety requirement: Company MUST be in 'suspended' status
+      if (company.status !== 'suspended') {
+        return res.status(400).json({
+          success: false,
+          message: 'إجراء أمان مضاعف: لا يمكن حذف شركة نشطة مباشرة. يجب تعليق الشركة (Suspend) أولاً كخطوة أولى، ثم الحذف كخطوة منفصلة ثانية.'
+        });
+      }
+
+      // 3. Type-to-confirm validation
+      const expectedName = String(company.company_name || '').trim();
+      const enteredName = String(confirmationName || '').trim();
+      if (enteredName !== expectedName) {
+        return res.status(400).json({
+          success: false,
+          message: `اسم التأكيد غير متطابق. المطلوب كتابة: "${expectedName}"`
+        });
+      }
+
+      // 4. Pre-deletion inventory of records for audit trail
+      const tablesInOrder = [
+        'invoice_items',
+        'invoices',
+        'journal_entry_lines',
+        'journal_entries',
+        'payment_vouchers',
+        'customers',
+        'suppliers',
+        'items',
+        'warehouses',
+        'chart_of_accounts',
+        'company_accounting_settings'
+      ];
+
+      const deletedCounts: Record<string, number> = {};
+      for (const tbl of tablesInOrder) {
+        try {
+          const { count } = await supabaseAdmin
+            .from(tbl)
+            .select('id', { count: 'exact', head: true })
+            .eq('company_id', companyId);
+          deletedCounts[tbl] = count || 0;
+        } catch {
+          deletedCounts[tbl] = 0;
+        }
+      }
+
+      // 5. Execute cascading delete in exact foreign-key safe order
+      // Order: invoice_items -> invoices -> journal_entry_lines -> journal_entries -> payment_vouchers -> customers -> suppliers -> items -> warehouses -> chart_of_accounts -> company_accounting_settings -> companies
+      for (const tbl of tablesInOrder) {
+        const { error: delErr } = await supabaseAdmin
+          .from(tbl)
+          .delete()
+          .eq('company_id', companyId);
+
+        if (delErr) {
+          console.error(`Error deleting from ${tbl} for company ${companyId}:`, delErr);
+          return res.status(500).json({
+            success: false,
+            message: `فشل الحذف المتسلسل في جدول ${tbl}: ${delErr.message}. تم إيقاف العملية للحفاظ على سلامة البيانات.`
+          });
+        }
+      }
+
+      // Finally delete the company itself from `companies`
+      const { error: compDelErr } = await supabaseAdmin
+        .from('companies')
+        .delete()
+        .eq('id', companyId);
+
+      if (compDelErr) {
+        console.error(`Error deleting company ${companyId}:`, compDelErr);
+        return res.status(500).json({
+          success: false,
+          message: `فشل حذف سجل الشركة من جدول companies: ${compDelErr.message}`
+        });
+      }
+
+      // 6. Record permanent, immutable audit log in `audit_logs`
+      // Uses master tenant company_id to ensure foreign key integrity is preserved forever
+      const auditLogRecord = {
+        id: crypto.randomUUID ? crypto.randomUUID() : '10000000-0000-4000-8000-' + Math.random().toString().slice(2, 14),
+        company_id: '10000000-0000-0000-0000-000000000001',
+        user_id: '00000000-0000-0000-0000-000000000001',
+        action: 'DELETE',
+        table_name: 'companies',
+        record_id: companyId,
+        old_data: {
+          event: 'PERMANENT_CASCADING_DELETE',
+          company_id: companyId,
+          company_name: company.company_name,
+          owner_email: company.owner_email,
+          deleted_by: deletedBy || 'Super Admin (cgiacc2026@gmail.com)',
+          deleted_at: new Date().toISOString(),
+          deleted_records_counts: deletedCounts,
+        },
+        new_data: {
+          status: 'PERMANENTLY_DELETED',
+          cascading_completed: true,
+        },
+        ip_address: req.ip || '127.0.0.1',
+        created_at: new Date().toISOString(),
+      };
+
+      const { error: auditErr } = await supabaseAdmin
+        .from('audit_logs')
+        .insert([auditLogRecord]);
+
+      if (auditErr) {
+        console.warn('Permanent audit_logs insert warning:', auditErr.message);
+      }
+
+      console.log(`[Super Admin] Cascading Delete completed for company "${company.company_name}" (${companyId}) by ${deletedBy || 'Super Admin'}`);
+
+      return res.json({
+        success: true,
+        message: `تم حذف شركة "${company.company_name}" وجميع بياناتها وسجلاتها المرتبطة نهائياً بنجاح.`,
+        deletedCompany: {
+          id: company.id,
+          name: company.company_name,
+          email: company.owner_email,
+        },
+        deletedCounts,
+        auditLog: auditLogRecord,
+      });
+    } catch (err: any) {
+      console.error('Cascading delete server endpoint error:', err);
+      return res.status(500).json({ success: false, message: err?.message || 'حدث خطأ غير متوقع أثناء الحذف المتسلسل' });
+    }
+  });
+
   // Health Check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
