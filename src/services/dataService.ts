@@ -1255,17 +1255,24 @@ class LocalDataStore {
         num = inv.invoiceNumber;
       }
 
-      const isCustomerEntity = !!(inv as any).customerSnapshot || !!(inv as any).customerId || ((inv.entityNameAr || '') as string).includes('جمعية');
+      // Check explicit sales return flag
+      const isExplicitSalesReturn =
+        inv.type === 'SALES_RETURN' ||
+        num.startsWith('RET-SAL') ||
+        Boolean((inv as any).isSalesReturn) ||
+        Boolean((inv as any).raw_data?.isSalesReturn);
 
-      // Ensure proper type normalization
-      if (num.startsWith('RET-PUR') && inv.type !== 'PURCHASE_RETURN') {
+      // Ensure proper type normalization with correct precedence
+      if (num.startsWith('RET-PUR') || inv.type === 'PURCHASE_RETURN') {
         inv.type = 'PURCHASE_RETURN';
-      } else if (num.startsWith('RET-SAL') && inv.type !== 'SALES_RETURN') {
+      } else if (isExplicitSalesReturn) {
         inv.type = 'SALES_RETURN';
-      } else if (isCustomerEntity || inv.type === 'SALES' || num.startsWith('INV-SAL')) {
-        inv.type = 'SALES';
-      } else if (num.startsWith('INV-PUR') && inv.type !== 'PURCHASE') {
+      } else if (num.startsWith('INV-PUR') || inv.type === 'PURCHASE') {
         inv.type = 'PURCHASE';
+      } else if (num.startsWith('INV-SAL') || inv.type === 'SALES') {
+        inv.type = 'SALES';
+      } else {
+        inv.type = 'SALES';
       }
 
       const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
@@ -2648,18 +2655,38 @@ export class DataService {
     return finalLocal.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
   }
 
-  public static async getNextInvoiceNumber(isSales: boolean, targetCompanyId?: string): Promise<string> {
+  public static async getNextInvoiceNumber(
+    docTypeOrIsSales: boolean | 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN',
+    targetCompanyId?: string
+  ): Promise<string> {
     const rawCompanyId = targetCompanyId || localDataStore.getEffectiveCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+
+    let docType: 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN' = 'SALES';
+    if (typeof docTypeOrIsSales === 'boolean') {
+      docType = docTypeOrIsSales ? 'SALES' : 'PURCHASE';
+    } else {
+      docType = docTypeOrIsSales;
+    }
+
     if (isSupabaseConfigured && companyId) {
       try {
-        const nextNum = await SupabaseDataService.getNextUniqueInvoiceNumber(isSales, companyId);
+        const nextNum = await SupabaseDataService.getNextUniqueInvoiceNumber(docType, companyId);
         if (nextNum) return nextNum;
       } catch (err) {
         console.warn('[DataService] Error querying next invoice number from Supabase:', err);
       }
     }
-    const prefix = isSales ? 'INV-SAL-2026-' : 'INV-PUR-2026-';
+
+    const prefix =
+      docType === 'SALES'
+        ? 'INV-SAL-2026-'
+        : docType === 'SALES_RETURN'
+        ? 'RET-SAL-2026-'
+        : docType === 'PURCHASE_RETURN'
+        ? 'RET-PUR-2026-'
+        : 'INV-PUR-2026-';
+
     const invoices = localDataStore.getInvoices();
     let maxSeq = 0;
     for (const inv of invoices) {
@@ -2679,14 +2706,23 @@ export class DataService {
     const suppliers = isSupabaseConfigured ? await this.getSuppliers() : localDataStore.getSuppliers();
     const inventory = localDataStore.getInventory();
     
-    const isSales = (data.type === 'SALES' || !data.type) && data.type !== 'SALES_RETURN';
     const isSalesReturn = data.type === 'SALES_RETURN';
-    const isPurchase = data.type === 'PURCHASE';
     const isPurchaseReturn = data.type === 'PURCHASE_RETURN';
+    const isPurchase = data.type === 'PURCHASE';
+    const isSales = (data.type === 'SALES' || !data.type) && !isSalesReturn && !isPurchase && !isPurchaseReturn;
+
+    const resolvedDocType: 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN' =
+      isSalesReturn
+        ? 'SALES_RETURN'
+        : isPurchaseReturn
+        ? 'PURCHASE_RETURN'
+        : isPurchase
+        ? 'PURCHASE'
+        : 'SALES';
     
     const invoiceNumber = (data.invoiceNumber && String(data.invoiceNumber).trim())
       ? String(data.invoiceNumber).trim()
-      : await this.getNextInvoiceNumber(isSales, data.companyId || data.company_id);
+      : await this.getNextInvoiceNumber(resolvedDocType, data.companyId || data.company_id);
     
     const lines = (data.lines || data.items || []).map((item: any, i: number) => {
       const q = Number(item.quantity) || 1;
@@ -4527,15 +4563,13 @@ export class DataService {
     const invoices = localDataStore.getInvoices();
     const vouchers = localDataStore.getVouchers();
     const journals = localDataStore.getJournals();
-    const creditNotes = localDataStore.getCreditNotes?.() || [];
 
     const balance = getCalculatedCustomerBalance(
       customerId,
       invoices,
       vouchers,
       journals,
-      customers,
-      creditNotes
+      customers
     );
 
     const roundedBalance = Math.round((Number(balance) || 0) * 1000) / 1000;

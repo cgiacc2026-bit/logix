@@ -1393,18 +1393,22 @@ export class SupabaseDataService {
           finalInvNum = COOP_MISCLASSIFIED_INVOICES[finalInvNum];
         }
 
-        const isCustomerEntity = !!inv.customer_id || !!raw.customerId || ((inv.customer_name || raw.entityNameAr || '') as string).includes('جمعية');
         const isPurRet = finalInvNum.startsWith('RET-PUR') || inv.invoice_type === 'PURCHASE_RETURN' || raw.type === 'PURCHASE_RETURN';
-        const isSalRet = finalInvNum.startsWith('RET-SAL') || inv.invoice_type === 'SALES_RETURN' || raw.type === 'SALES_RETURN';
+        const isSalRet =
+          finalInvNum.startsWith('RET-SAL') ||
+          inv.invoice_type === 'SALES_RETURN' ||
+          raw.type === 'SALES_RETURN' ||
+          Boolean((raw as any).isSalesReturn) ||
+          Boolean((raw as any).notes?.includes('مرتجع مبيعات'));
+        const isPurchase =
+          (finalInvNum.startsWith('INV-PUR') || inv.invoice_type === 'PURCHASE' || raw.type === 'PURCHASE') && !isSalRet;
         
         let resolvedType: 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN' = 'SALES';
         if (isPurRet) {
           resolvedType = 'PURCHASE_RETURN';
         } else if (isSalRet) {
           resolvedType = 'SALES_RETURN';
-        } else if (isCustomerEntity || inv.invoice_type === 'SALES' || raw.type === 'SALES' || finalInvNum.startsWith('INV-SAL')) {
-          resolvedType = 'SALES';
-        } else if (inv.invoice_type === 'PURCHASE' || raw.type === 'PURCHASE' || finalInvNum.startsWith('INV-PUR')) {
+        } else if (isPurchase) {
           resolvedType = 'PURCHASE';
         } else {
           resolvedType = 'SALES';
@@ -1447,8 +1451,21 @@ export class SupabaseDataService {
     }
   }
 
-  public static async getNextUniqueInvoiceNumber(isSales: boolean, companyId: string): Promise<string> {
-    const prefix = isSales ? 'INV-SAL-2026-' : 'INV-PUR-2026-';
+  public static async getNextUniqueInvoiceNumber(
+    docTypeOrIsSales: boolean | 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN',
+    companyId: string
+  ): Promise<string> {
+    let prefix = 'INV-SAL-2026-';
+    if (typeof docTypeOrIsSales === 'boolean') {
+      prefix = docTypeOrIsSales ? 'INV-SAL-2026-' : 'INV-PUR-2026-';
+    } else if (docTypeOrIsSales === 'SALES_RETURN') {
+      prefix = 'RET-SAL-2026-';
+    } else if (docTypeOrIsSales === 'PURCHASE_RETURN') {
+      prefix = 'RET-PUR-2026-';
+    } else if (docTypeOrIsSales === 'PURCHASE') {
+      prefix = 'INV-PUR-2026-';
+    }
+
     try {
       const { data: rows } = await supabase
         .from('invoices')
@@ -1478,9 +1495,10 @@ export class SupabaseDataService {
     const invUuid = toValidUUID(inv.id);
     inv.id = invUuid;
 
-    // Foreign key candidate for customer_id (must be valid UUID or null)
+    // عزل صارم: فواتير المشتريات لا ترتبط بـ customer_id نهائياً في قاعدة البيانات
+    const isPurchaseDoc = inv.type === 'PURCHASE' || inv.type === 'PURCHASE_RETURN';
     let customerIdCandidate: string | null = null;
-    if (inv.entityId) {
+    if (!isPurchaseDoc && inv.entityId) {
       customerIdCandidate = toValidUUID(inv.entityId);
     }
 
@@ -1602,7 +1620,7 @@ export class SupabaseDataService {
     // Ensure valid and unique invoice_number
     let finalInvoiceNumber = (inv.invoiceNumber || '').trim();
     if (!finalInvoiceNumber || finalInvoiceNumber === 'undefined') {
-      finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type === 'SALES' || !inv.type, companyId);
+      finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type || 'SALES', companyId);
       inv.invoiceNumber = finalInvoiceNumber;
     }
 
@@ -1617,7 +1635,7 @@ export class SupabaseDataService {
 
       if (existingRow && existingRow.id !== invUuid) {
         console.warn(`[Supabase saveInvoice] Auto-resolving collision on ${finalInvoiceNumber} (owned by ${existingRow.id})`);
-        finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type === 'SALES' || !inv.type, companyId);
+        finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type || 'SALES', companyId);
         inv.invoiceNumber = finalInvoiceNumber;
       }
     } catch (checkErr) {
@@ -1704,8 +1722,8 @@ export class SupabaseDataService {
       invoice_number: finalInvoiceNumber,
       invoice_date: inv.date || new Date().toISOString().split('T')[0],
       date: inv.date || new Date().toISOString().split('T')[0],
-      customer_id: customerIdCandidate,
-      customer_name: inv.entityNameAr || (inv as any).entityName || 'عميل نقدي',
+      customer_id: isPurchaseDoc ? null : customerIdCandidate,
+      customer_name: isPurchaseDoc ? null : (inv.entityNameAr || (inv as any).entityName || 'عميل نقدي'),
       subtotal: subtotal,
       tax_amount: taxAmount,
       vat_amount: taxAmount,
@@ -1912,7 +1930,7 @@ export class SupabaseDataService {
     // Retry 2: If unique constraint conflict, advance sequence and retry
     if (invErr && (invErr.code === '23505' || invErr.message.includes('unique constraint') || invErr.message.includes('already exists'))) {
       console.warn('[Supabase saveInvoice] Unique conflict on upsert, advancing sequence and retrying...');
-      finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type === 'SALES' || !inv.type, companyId);
+      finalInvoiceNumber = await this.getNextUniqueInvoiceNumber(inv.type || 'SALES', companyId);
       inv.invoiceNumber = finalInvoiceNumber;
       invoicePayload.invoice_number = finalInvoiceNumber;
       if (invoicePayload.raw_data) {
@@ -2711,7 +2729,7 @@ export class SupabaseDataService {
                 );
                 if (isParent) {
                   throw new Error(
-                    `[CPA Parent Guard] مخالفة محاسبية صريحة: الحساب "${matchedAcc.code} - ${matchedAcc.nameAr || matchedAcc.name_ar}" في السطر (${i + 1}) هو حساب رئيسي/تجميعي (Parent Account). يُمنع منعاً باتاً تسجيل قيود على الحسابات التجميعية؛ القيود تُسجل حصراً على الحسابات التحليلية الطرفية (Leaf Accounts).`
+                    `[CPA Parent Guard] مخالفة محاسبية صريحة: الحساب "${matchedAcc.code} - ${matchedAcc.nameAr || (matchedAcc as any).name_ar}" في السطر (${i + 1}) هو حساب رئيسي/تجميعي (Parent Account). يُمنع منعاً باتاً تسجيل قيود على الحسابات التجميعية؛ القيود تُسجل حصراً على الحسابات التحليلية الطرفية (Leaf Accounts).`
                   );
                 }
               }

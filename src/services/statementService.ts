@@ -265,22 +265,81 @@ export function isDocMatchingEntity(
 ): boolean {
   if (!targetEntityId && !targetEntity) return false;
 
+  // فحص أولي صارم لعزل الكيانات (Strict Entity Isolation)
+  if (doc.entityType && doc.entityType !== entityType) {
+    return false;
+  }
+
   const raw = doc.raw_data || {};
   const rawTarget = (targetEntity as any)?.raw_data || {};
 
-  // 1. استخراج كافة المعرفات الممكنة من المستند
-  const docIds = [
-    doc.entityId,
-    doc.customerId,
-    doc.customer_id,
-    doc.supplierId,
-    doc.supplier_id,
-    doc.entity_id,
-    raw.entityId,
-    raw.customerId,
-    raw.supplierId,
-    raw.customer_id,
-  ]
+  // عزل صارم بحسب طبيعة المستند ونوع الكيان لمنع تسريب المشتريات إلى العملاء والمبيعات إلى الموردين
+  if (entityType === 'CUSTOMER') {
+    // السندات: سندات الصرف لمورد (PAYMENT) لا يمكن أن تنتمي لعميل
+    const vType = doc.type || raw.type || (doc as any).voucher_type;
+    const vNum = (doc.voucherNumber || (doc as any).voucher_number || '').trim().toUpperCase();
+    if (vType === 'PAYMENT' || vNum.startsWith('PAY-')) {
+      return false;
+    }
+
+    // الفواتير: فواتير المشتريات الصريحة لا تنتمي لعميل مطلقاً
+    const invType = doc.type || (doc as any).invoice_type || raw.type;
+    const invNum = (doc.invoiceNumber || (doc as any).invoice_number || '').trim().toUpperCase();
+    const isExplicitSalesReturn =
+      invType === 'SALES_RETURN' ||
+      invNum.startsWith('RET-SAL') ||
+      Boolean((doc as any).isSalesReturn) ||
+      Boolean(raw.isSalesReturn) ||
+      Boolean(doc.notes?.includes('مرتجع مبيعات'));
+
+    if ((invType === 'PURCHASE' || invType === 'PURCHASE_RETURN' || invNum.startsWith('RET-PUR')) && !isExplicitSalesReturn) {
+      return false;
+    }
+  } else {
+    // entityType === 'SUPPLIER'
+    // السندات: سندات القبض من عميل (RECEIPT) لا يمكن أن تنتمي لمورد
+    const vType = doc.type || raw.type || (doc as any).voucher_type;
+    const vNum = (doc.voucherNumber || (doc as any).voucher_number || '').trim().toUpperCase();
+    if (vType === 'RECEIPT' || vNum.startsWith('RCV-')) {
+      return false;
+    }
+
+    // الفواتير: فواتير المبيعات الصريحة لا تنتمي لمورد مطلقاً
+    const invType = doc.type || (doc as any).invoice_type || raw.type;
+    const invNum = (doc.invoiceNumber || (doc as any).invoice_number || '').trim().toUpperCase();
+    const isExplicitPurchaseReturn =
+      invType === 'PURCHASE_RETURN' ||
+      invNum.startsWith('RET-PUR') ||
+      Boolean((doc as any).isPurchaseReturn) ||
+      Boolean(raw.isPurchaseReturn);
+
+    if ((invType === 'SALES' || invType === 'SALES_RETURN' || invNum.startsWith('RET-SAL') || invNum.startsWith('INV-SAL')) && !isExplicitPurchaseReturn) {
+      return false;
+    }
+  }
+
+  // 1. استخراج المعرفات الموثوقة الخاصة بنوع الكيان فقط (منع الخلط بين customer_id و supplier_id)
+  const docIds = (
+    entityType === 'CUSTOMER'
+      ? [
+          doc.entityId,
+          doc.customerId,
+          doc.customer_id,
+          doc.entity_id,
+          raw.entityId,
+          raw.customerId,
+          raw.customer_id,
+        ]
+      : [
+          doc.entityId,
+          doc.supplierId,
+          doc.supplier_id,
+          doc.entity_id,
+          raw.entityId,
+          raw.supplierId,
+          raw.supplier_id,
+        ]
+  )
     .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
     .map((x) => x.trim());
 
@@ -319,7 +378,7 @@ export function isDocMatchingEntity(
     }
   }
 
-  // 3. مطابقة ذكية عبر الأسماء والكلمات المفتاحية للجمعيات والمؤسسات
+  // 3. مطابقة ذكية عبر الأسماء المعتمدة لنفس نوع الكيان فقط
   const targetNames = [
     targetEntity?.nameAr,
     targetEntity?.nameEn,
@@ -327,17 +386,29 @@ export function isDocMatchingEntity(
     rawTarget.nameAr,
   ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
 
-  const docNames = [
-    doc.entityNameAr,
-    doc.customerName,
-    doc.customer_name,
-    doc.supplierName,
-    doc.entityName,
-    doc.entity_name,
-    raw.entityNameAr,
-    raw.customerName,
-    raw.entity_name,
-  ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
+  const docNames = (
+    entityType === 'CUSTOMER'
+      ? [
+          doc.entityNameAr,
+          doc.customerName,
+          doc.customer_name,
+          doc.entityName,
+          doc.entity_name,
+          raw.entityNameAr,
+          raw.customerName,
+          raw.entity_name,
+        ]
+      : [
+          doc.entityNameAr,
+          doc.supplierName,
+          doc.supplier_name,
+          doc.entityName,
+          doc.entity_name,
+          raw.entityNameAr,
+          raw.supplierName,
+          raw.entity_name,
+        ]
+  ).filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
 
   for (const tName of targetNames) {
     const normTarget = normalizeArabicForMatching(tName);
@@ -349,24 +420,7 @@ export function isDocMatchingEntity(
 
       if (normDoc === normTarget) return true;
 
-      // مطابقة الكيانات التعاونية والتجارية الرئيسية
-      if (normDoc.includes('جليب') && normTarget.includes('جليب')) return true;
-      if (normDoc.includes('صباح الاحمد') && normTarget.includes('صباح الاحمد')) return true;
-      if (normDoc.includes('صباح الناصر') && normTarget.includes('صباح الناصر')) return true;
-      if (normDoc.includes('علي صباح') && normTarget.includes('علي صباح')) return true;
-      if (normDoc.includes('سعد العبدالله') && normTarget.includes('سعد العبدالله')) return true;
-      if (normDoc.includes('مبارك الكبير') && normTarget.includes('مبارك الكبير')) return true;
-      if (normDoc.includes('صليبيخات') && normTarget.includes('صليبيخات')) return true;
-      if (normDoc.includes('اشبيليه') && normTarget.includes('اشبيليه')) return true;
-      if (normDoc.includes('قيروان') && normTarget.includes('قيروان')) return true;
-      if (normDoc.includes('صباحيه') && normTarget.includes('صباحيه')) return true;
-      if (normDoc.includes('احمدي') && normTarget.includes('احمدي')) return true;
-      if (normDoc.includes('بيان') && normTarget.includes('بيان')) return true;
-      if (normDoc.includes('سلوي') && normTarget.includes('سلوي')) return true;
-      if (normDoc.includes('مشرف') && normTarget.includes('مشرف')) return true;
-      if (normDoc.includes('مطلاع') && normTarget.includes('مطلاع')) return true;
-      if (normDoc.includes('وليد') && normTarget.includes('وليد')) return true;
-
+      // مطابقة الأسماء المركبة التامة للجمعيات والشركات
       if (normDoc.length >= 8 && normTarget.length >= 8) {
         if (normDoc.includes(normTarget) || normTarget.includes(normDoc)) return true;
       }
@@ -523,10 +577,6 @@ export function getAccountStatement(
     .filter((inv) => isDocMatchingEntity(inv, entityId, entity, entityType))
     .forEach((inv) => {
       const invNum = (inv.invoiceNumber || '').trim().toUpperCase();
-      const isSalesReturn = inv.type === 'SALES_RETURN' || invNum.startsWith('RET-SAL');
-      const isPurchaseReturn = inv.type === 'PURCHASE_RETURN' || invNum.startsWith('RET-PUR');
-      const isSales = entityType === 'CUSTOMER' ? !isSalesReturn : (inv.type === 'SALES' || invNum.startsWith('INV-SAL'));
-      const isPurchase = entityType === 'SUPPLIER' ? !isPurchaseReturn : (inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR'));
       const isCancelled = inv.status === 'CANCELLED';
 
       let debit = 0;
@@ -535,6 +585,19 @@ export function getAccountStatement(
       let docTypeLabel = 'فاتورة';
 
       if (entityType === 'CUSTOMER') {
+        const isSalesReturn =
+          inv.type === 'SALES_RETURN' ||
+          invNum.startsWith('RET-SAL') ||
+          Boolean((inv as any).isSalesReturn) ||
+          Boolean((inv as any).raw_data?.isSalesReturn) ||
+          Boolean(inv.notes?.includes('مرتجع مبيعات'));
+        const isSales = (inv.type === 'SALES' || invNum.startsWith('INV-SAL')) && !isSalesReturn;
+
+        if (!isSales && !isSalesReturn) {
+          // عزل صارم: أي مستند ليس بيعاً أو مردود مبيعات لعميل يتم استبعاده تماماً لمنع التسريب
+          return;
+        }
+
         if (isSales) {
           debit = Number(inv.grandTotal) || 0;
           docType = 'SALES_INVOICE';
@@ -542,10 +605,22 @@ export function getAccountStatement(
         } else if (isSalesReturn) {
           credit = Number(inv.grandTotal) || 0;
           docType = 'SALES_RETURN';
-          docTypeLabel = 'مرتجع مبيعات (إشعار دائن)';
+          docTypeLabel = 'إشعار دائن (مرتجع مبيعات)';
         }
       } else {
-        // المورد (Supplier)
+        // entityType === 'SUPPLIER'
+        const isPurchaseReturn =
+          inv.type === 'PURCHASE_RETURN' ||
+          invNum.startsWith('RET-PUR') ||
+          Boolean((inv as any).isPurchaseReturn) ||
+          Boolean((inv as any).raw_data?.isPurchaseReturn);
+        const isPurchase = (inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR')) && !isPurchaseReturn;
+
+        if (!isPurchase && !isPurchaseReturn) {
+          // عزل صارم: أي مستند ليس شراء أو مردود مشتريات لمورد يتم استبعاده تماماً
+          return;
+        }
+
         if (isPurchase) {
           credit = Number(inv.grandTotal) || 0;
           docType = 'PURCHASE_INVOICE';
@@ -553,7 +628,7 @@ export function getAccountStatement(
         } else if (isPurchaseReturn) {
           debit = Number(inv.grandTotal) || 0;
           docType = 'PURCHASE_RETURN';
-          docTypeLabel = 'مرتجع مشتريات (إشعار مدين)';
+          docTypeLabel = 'إشعار مدين (مرتجع مشتريات)';
         }
       }
 
@@ -584,12 +659,23 @@ export function getAccountStatement(
       let docType: StatementDocType = 'PAYMENT_RECEIPT';
       let docTypeLabel = 'سند مالي';
 
+      const vType = v.type || (v as any).voucher_type || (v as any).raw_data?.type;
+      const vNum = (v.voucherNumber || '').trim().toUpperCase();
+
       if (entityType === 'CUSTOMER') {
+        if (vType === 'PAYMENT' || vNum.startsWith('PAY-')) {
+          // سند صرف لا ينتمي للعميل
+          return;
+        }
         // سند قبض من العميل -> يجعل العميل دائناً (تخفيض المديونية)
         credit = Number(v.amount) || 0;
         docType = 'PAYMENT_RECEIPT';
         docTypeLabel = 'سند قبض نقدية/بنك';
       } else {
+        if (vType === 'RECEIPT' || vNum.startsWith('RCV-')) {
+          // سند قبض لا ينتمي للمورد
+          return;
+        }
         // سند صرف للمورد -> يجعل المورد مديناً (تخفيض الالتزام)
         debit = Number(v.amount) || 0;
         docType = 'PAYMENT_DISBURSEMENT';
@@ -668,40 +754,39 @@ export function getAccountStatement(
     }
     if (matchesExistingDoc) return;
 
-    // نبحث عن أسطر القيد التي ترتبط بكود هذا العميل/المورد أو حسابه التحليلي أو اسمه
+    // نبحث بدقة عن السطر الذي يخص هذا الكيان محاسبياً، مع تجنب إضافة الطرف المقابل للقيد
     j.lines?.forEach((line) => {
+      // عزل نوع الكيان للسطر
+      if (line.entityType && line.entityType !== entityType) {
+        return;
+      }
+
       const isDirectEntityIdMatch = Boolean(
         line.entityId && (line.entityId === entityId || isDocMatchingEntity(line, entityId, entity, entityType))
       );
       const isDirectAccountMatch = Boolean(line.accountId === entityId || (entity?.accountId && line.accountId === entity.accountId));
       const isAccountCodeMatch = Boolean(entityCode && line.accountCode === entityCode);
-      
+
       const isEntityNameMatch = Boolean(
-        (line.entityNameAr && entityNameAr && (
-          line.entityNameAr.trim() === entityNameAr.trim() || 
-          line.entityNameAr.includes(entityNameAr) || 
-          entityNameAr.includes(line.entityNameAr)
-        )) ||
-        (line.entityType === entityType && (
-          (line.entityId && line.entityId === entityId) || 
-          (line.entityNameAr && entityNameAr && line.entityNameAr.trim() === entityNameAr.trim())
-        ))
+        line.entityType === entityType &&
+        line.entityNameAr &&
+        entityNameAr &&
+        (line.entityNameAr.trim() === entityNameAr.trim() || line.entityNameAr.includes(entityNameAr))
       );
 
-      const isMemoOrDescMatch = Boolean(
-        (line.memo && (
-          (entityNameAr && line.memo.includes(entityNameAr)) ||
-          (entityCode && line.memo.includes(entityCode)) ||
-          (entity?.nameAr && line.memo.includes(entity.nameAr))
-        )) ||
-        (j.description && (
-          (entityNameAr && j.description.includes(entityNameAr)) ||
-          (entityCode && j.description.includes(entityCode)) ||
-          (entity?.nameAr && j.description.includes(entity.nameAr))
-        ))
+      // في حال لم يكن السطر محدداً بـ entityId صريح، نتحقق أن الحساب هو حساب ذمم وليس حساب إيراد أو تكلفة أو بنك
+      const isApplicableAccount =
+        entityType === 'CUSTOMER'
+          ? (line.accountCode?.startsWith('112') || line.accountNameAr?.includes('عملاء') || line.accountNameAr?.includes('ذمم مدينة') || isDirectAccountMatch || isDirectEntityIdMatch)
+          : (line.accountCode?.startsWith('211') || line.accountNameAr?.includes('موردين') || line.accountNameAr?.includes('ذمم دائنة') || isDirectAccountMatch || isDirectEntityIdMatch);
+
+      const isMemoMatch = Boolean(
+        isApplicableAccount &&
+        line.memo &&
+        ((entityNameAr && line.memo.includes(entityNameAr)) || (entityCode && line.memo.includes(entityCode)))
       );
 
-      const isEntityLine = isDirectEntityIdMatch || isDirectAccountMatch || isAccountCodeMatch || isEntityNameMatch || isMemoOrDescMatch;
+      const isEntityLine = (isDirectEntityIdMatch || isDirectAccountMatch || isAccountCodeMatch || isEntityNameMatch || isMemoMatch) && isApplicableAccount;
 
       if (isEntityLine) {
         allRawMovements.push({

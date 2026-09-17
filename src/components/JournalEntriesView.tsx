@@ -483,10 +483,18 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
                               ? 'فاتورة مبيعات'
                               : j.sourceModule === 'PURCHASE_INVOICE'
                               ? 'فاتورة مشتريات'
-                              : j.sourceModule === 'RECEIPT'
+                              : j.sourceModule === 'SALES_RETURN'
+                              ? 'إشعار دائن (مرتجع مبيعات)'
+                              : j.sourceModule === 'PURCHASE_RETURN'
+                              ? 'إشعار مدين (مرتجع مشتريات)'
+                              : j.sourceModule === 'RECEIPT' || j.sourceModule === 'RECEIPT_VOUCHER'
                               ? 'سند قبض'
-                              : j.sourceModule === 'PAYMENT'
+                              : j.sourceModule === 'PAYMENT' || j.sourceModule === 'PAYMENT_VOUCHER'
                               ? 'سند صرف'
+                              : j.sourceModule === 'MANUAL'
+                              ? 'قيد تسوية يدوي'
+                              : j.sourceModule === 'OPENING'
+                              ? 'قيد افتتاحي'
                               : j.sourceModule}
                           </span>
                         )}
