@@ -523,8 +523,8 @@ export class SupabaseDataService {
       bankAccountId: findAcc(['1112', '1114', '112'], ['بنك', 'مصرف', 'bank'], 'ASSET'),
       receivableAccountId: findAcc(['1120', '1121', '112'], ['عملاء', 'مدين', 'زبائن', 'receivable', 'customer'], 'ASSET'),
       payableAccountId: findAcc(['2110', '2111', '211'], ['مورد', 'دائن', 'موردين', 'payable', 'supplier'], 'LIABILITY'),
-      salesAccountId: findAcc(['4100', '4110', '41'], ['مبيعات', 'إيراد', 'sales', 'revenue'], 'REVENUE'),
-      cogsAccountId: findAcc(['5100', '5110', '51'], ['تكلفة', 'بضاعة مباعة', 'cogs', 'cost'], 'EXPENSE'),
+      salesAccountId: findAcc(['4101', '4100', '4110', '41'], ['إيرادات المبيعات', 'مبيعات', 'إيراد', 'sales', 'revenue'], 'REVENUE'),
+      cogsAccountId: findAcc(['5101', '5100', '5110', '51'], ['تكلفة البضاعة', 'تكلفة', 'بضاعة مباعة', 'cogs', 'cost'], 'EXPENSE'),
       inventoryAccountId: findAcc(['1130', '1131', '113'], ['مخزون', 'بضاعة', 'inventory', 'stock'], 'ASSET'),
       retainedEarningsAccountId: findAcc(['3200', '3210', '32'], ['أرباح مبقاة', 'أرباح مرحلة', 'retained', 'earnings'], 'EQUITY'),
       vatAccountId: findAcc(['2120', '2121', '212'], ['ضريبة', 'مضافة', 'vat', 'tax'], 'LIABILITY'),
@@ -2598,6 +2598,8 @@ export class SupabaseDataService {
       if (!data || data.length === 0) return [];
 
       const BOGUS_PUR_JOURNALS = new Set([
+        'JV-INV-PUR-2026-0047',
+        'JV-INV-PUR-2026-0046',
         'JV-INV-PUR-2026-0045',
         'JV-INV-PUR-2026-0023',
         'JV-INV-PUR-2026-0022',
@@ -2610,7 +2612,33 @@ export class SupabaseDataService {
         .filter((row: any) => !BOGUS_PUR_JOURNALS.has(row.entry_number))
         .map((row: any) => {
         const raw = row.raw_data || {};
-        const lines = row.lines || raw.lines || [];
+        const rawLines = row.lines || raw.lines || [];
+        const lines = rawLines.map((l: any) => {
+          if (!l) return l;
+          const code = String(l.accountCode || '').trim();
+          if (code === '4100' || l.accountId === 'acc-4100') {
+            return { ...l, accountId: 'acc-4101', accountCode: '4101', accountNameAr: 'إيرادات المبيعات والخدمات' };
+          }
+          if (code === '5100' || l.accountId === 'acc-5100') {
+            return { ...l, accountId: 'acc-5101', accountCode: '5101', accountNameAr: 'تكلفة البضاعة المباعة والمشتريات' };
+          }
+          if (code === '1110' || l.accountId === 'acc-1110') {
+            return { ...l, accountId: 'acc-1113', accountCode: '1113', accountNameAr: 'الصندوق الرئيسي (الخزينة) ابوكريم' };
+          }
+          if (code === '3100' || l.accountId === 'acc-3100') {
+            return { ...l, accountId: 'acc-3110', accountCode: '3110', accountNameAr: 'رأس مال المنشأة' };
+          }
+          if (code === '5200' || l.accountId === 'acc-5200') {
+            return { ...l, accountId: 'acc-5210', accountCode: '5210', accountNameAr: 'مصروف الرواتب والأجور' };
+          }
+          if (code === '1000' || l.accountId === 'acc-1000') {
+            if (l.memo?.includes('إيراد مبيعات')) {
+              return { ...l, accountId: 'acc-4101', accountCode: '4101', accountNameAr: 'إيرادات المبيعات والخدمات' };
+            }
+            return { ...l, accountId: 'acc-1120', accountCode: '1120', accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)' };
+          }
+          return l;
+        });
         const totalDebit =
           Number(row.total_debit) ||
           Number(raw.totalDebit) ||

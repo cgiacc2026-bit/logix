@@ -706,9 +706,9 @@ export class AccountingEngine {
           // 1. Debit: Sales Revenue / Returns (تخفيض الإيراد)
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-4100',
-            accountCode: '4100',
-            accountNameAr: 'مردودات ومسموحات المبيعات',
+            accountId: 'acc-4101',
+            accountCode: '4101',
+            accountNameAr: 'إيرادات المبيعات والخدمات (مردودات)',
             debit: netRevenue,
             credit: 0,
             memo: `مردودات مبيعات - إشعار رقم ${invoice.invoiceNumber}`,
@@ -754,9 +754,9 @@ export class AccountingEngine {
             },
             {
               id: 'jl-' + Math.random().toString(36).substr(2, 9),
-              accountId: 'acc-5100',
-              accountCode: '5100',
-              accountNameAr: 'تكلفة البضاعة المباعة (COGS)',
+              accountId: 'acc-5101',
+              accountCode: '5101',
+              accountNameAr: 'تكلفة البضاعة المباعة والمشتريات',
               debit: 0,
               credit: totalCogs,
               memo: `تخفيض تكلفة المبيعات للمردودات - إشعار ${invoice.invoiceNumber}`,
@@ -782,9 +782,9 @@ export class AccountingEngine {
           // 2. Credit: Sales Revenue (صافي الإيراد بعد الخصومات وقبل الضريبة)
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-4100',
-            accountCode: '4100',
-            accountNameAr: 'إيرادات مبيعات البضائع والمنتجات',
+            accountId: 'acc-4101',
+            accountCode: '4101',
+            accountNameAr: 'إيرادات المبيعات والخدمات',
             debit: 0,
             credit: netRevenue,
             memo: `إيراد مبيعات - فاتورة رقم ${invoice.invoiceNumber}`,
