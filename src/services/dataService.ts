@@ -443,12 +443,12 @@ class LocalDataStore {
         window.localStorage.setItem(`stock_ledger_${alwId}`, '[]');
         window.localStorage.setItem(`tenant_initialized_${alwId}`, 'true');
 
-        this.memoryFallback[`invoices_${alwId}`] = [];
-        this.memoryFallback[`journals_${alwId}`] = [];
-        this.memoryFallback[`vouchers_${alwId}`] = [];
-        this.memoryFallback[`inventory_movements_${alwId}`] = [];
-        this.memoryFallback[`production_orders_${alwId}`] = [];
-        this.memoryFallback[`stock_ledger_${alwId}`] = [];
+        this.memoryFallback[`invoices_${alwId}`] = '[]';
+        this.memoryFallback[`journals_${alwId}`] = '[]';
+        this.memoryFallback[`vouchers_${alwId}`] = '[]';
+        this.memoryFallback[`inventory_movements_${alwId}`] = '[]';
+        this.memoryFallback[`production_orders_${alwId}`] = '[]';
+        this.memoryFallback[`stock_ledger_${alwId}`] = '[]';
 
         const custKey = `customers_${alwId}`;
         const cachedCustsStr = window.localStorage.getItem(custKey);

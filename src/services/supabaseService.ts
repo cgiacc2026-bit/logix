@@ -2057,7 +2057,6 @@ export class SupabaseDataService {
         .from('invoices')
         .update({
           status: 'CANCELLED',
-          notes: updatedNotes,
           raw_data: updatedRaw,
           updated_at: new Date().toISOString(),
         })
@@ -3139,7 +3138,7 @@ export class SupabaseDataService {
       // 1. Fetch all accounts
       const { data: accounts } = await supabase
         .from('chart_of_accounts')
-        .select('id, code, opening_balance')
+        .select('id, code, balance, current_balance')
         .eq('company_id', companyId);
 
       if (!accounts || accounts.length === 0) return true;
@@ -3151,10 +3150,11 @@ export class SupabaseDataService {
         .eq('company_id', companyId);
 
       const netBalances: Record<string, number> = {};
-      accounts.forEach((acc) => {
-        netBalances[acc.id] = Number(acc.opening_balance || 0);
+      accounts.forEach((acc: any) => {
+        const opBal = Number(acc.opening_balance || acc.current_balance || acc.balance || 0);
+        netBalances[acc.id] = opBal;
         if (acc.code) {
-          netBalances[acc.code] = Number(acc.opening_balance || 0);
+          netBalances[acc.code] = opBal;
         }
       });
 
@@ -3544,7 +3544,7 @@ export class SupabaseDataService {
         .from('production_orders')
         .select('*')
         .eq('company_id', companyId)
-        .order('date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.warn('Supabase getProductionOrders error (fallback to local):', error.message);

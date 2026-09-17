@@ -21,6 +21,7 @@ export interface Account {
   type?: 'ROOT' | 'HEADER' | 'DETAIL';
   description?: string;
   balance?: number; // Calculated dynamic balance
+  openingBalance?: number;
   current_balance?: number;
   currentBalance?: number;
   isLeaf?: boolean; // True if account has no sub-accounts
@@ -319,6 +320,7 @@ export interface InventoryItem {
   costPrice?: number;
   salePrice: number;
   quantityOnHand: number;
+  openingBalance?: number;
   initialQuantity?: number;
   quantity?: number;
   minQuantityAlert: number;
@@ -818,6 +820,7 @@ export interface CompanyProfile {
   depreciationMethod: 'STRAIGHT_LINE' | 'DECLINING_BALANCE';
   decimalPlaces: number;
   allowNegativeInventory?: boolean; // السماح بالبيع بالسالب ونفاد المخزون
+  allowNegativeStock?: boolean;
   allowNegativeBalance?: boolean; // السماح بالحسابات المكشوفة والأرصدة السالبة
   themeColor?: string;
   themeMode?: 'light' | 'slate' | 'navy' | 'dark' | 'system';
@@ -1318,6 +1321,7 @@ export interface CompanyBackupEnvelope {
     customers?: Customer[];
     suppliers?: Supplier[];
     productionOrders?: ProductionOrder[];
+    inventoryMovements?: any[];
     units?: UnitDefinition[];
     users?: SystemUser[];
   };

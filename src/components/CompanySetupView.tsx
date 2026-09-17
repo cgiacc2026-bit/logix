@@ -212,7 +212,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
         // Query Supabase chart_of_accounts by company_id
         let { data, error } = await supabase
           .from('chart_of_accounts')
-          .select('id, code, name, account_type')
+          .select('id, code, name_ar, name_en, type, category')
           .eq('company_id', activeCompanyId)
           .order('code', { ascending: true });
 

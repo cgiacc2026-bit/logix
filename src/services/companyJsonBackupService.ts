@@ -79,7 +79,7 @@ export class CompanyJsonBackupService {
       supabase.from('chart_of_accounts').select('*').eq('company_id', currentCompanyId),
       supabase.from('customers').select('*').eq('company_id', currentCompanyId),
       supabase.from('suppliers').select('*').eq('company_id', currentCompanyId),
-      supabase.from('inventory_items').select('*').eq('company_id', currentCompanyId),
+      supabase.from('items').select('*').eq('company_id', currentCompanyId),
       supabase.from('journal_entries').select('*, journal_entry_lines(*)').eq('company_id', currentCompanyId),
       supabase.from('invoices').select('*, invoice_items(*)').eq('company_id', currentCompanyId),
       supabase.from('payment_vouchers').select('*').eq('company_id', currentCompanyId),

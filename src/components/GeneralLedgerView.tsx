@@ -201,7 +201,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                 date,
                 reference,
                 status,
-                narration
+                description
               )
             `)
             .or(`account_id.eq.${targetAccount.id},account_code.eq.${targetAccount.code}`)
