@@ -1529,8 +1529,8 @@ class LocalDataStore {
       filtered = list.filter((inv) => !tombstones.has(inv.id));
     }
 
-    // If Al-Waleed is active and local storage has fewer invoices than the full preset backup, reconcile missing ones
-    if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.invoices)) {
+    // If Al-Waleed is active and local storage has fewer invoices than the full preset backup, reconcile missing ones (only if not initialized or reset)
+    if (this.isAlWaleedActive() && !this.isTenantInitialized() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.invoices)) {
       const presetInvoices = ALWALEED_MILL_PRESET_BACKUP.data.invoices;
       if (filtered.length < presetInvoices.length) {
         const existingNumbers = new Set(filtered.map((i) => (i.invoiceNumber || '').trim().toUpperCase()));
@@ -1579,8 +1579,8 @@ class LocalDataStore {
       filtered = list.filter((v) => !tombstones.has(v.id));
     }
 
-    // If Al-Waleed is active and local storage has fewer vouchers than the preset backup, reconcile missing ones
-    if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.vouchers)) {
+    // If Al-Waleed is active and local storage has fewer vouchers than the preset backup, reconcile missing ones (only if not initialized or reset)
+    if (this.isAlWaleedActive() && !this.isTenantInitialized() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.vouchers)) {
       const presetVouchers = ALWALEED_MILL_PRESET_BACKUP.data.vouchers;
       if (filtered.length < presetVouchers.length) {
         const existingNumbers = new Set(filtered.map((v) => (v.voucherNumber || '').trim().toUpperCase()));
