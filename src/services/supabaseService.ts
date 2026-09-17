@@ -1295,7 +1295,7 @@ export class SupabaseDataService {
       // 1. Single Source of Truth: Query 'invoices' table with targeted columns & limit
       const { data: invTableData, error: invErr } = await supabase
         .from('invoices')
-        .select('id, company_id, invoice_number, type, date, due_date, status, payment_status, payment_terms, subtotal, discount_amount, tax_amount, total_amount, paid_amount, due_amount, customer_id, customer_branch_id, warehouse_id, sales_rep_id, price_list_id, notes, raw_data, created_at, updated_at')
+        .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(limit);
