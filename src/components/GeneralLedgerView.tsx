@@ -234,7 +234,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
                   entryNumber: je?.entry_number || `JE-${line.id.slice(0, 6)}`,
                   date: lineDate,
                   reference: je?.reference || '',
-                  description: line.description || je?.narration || 'حركة قيد محاسبي',
+                  description: line.description || je?.description || je?.narration || 'حركة قيد محاسبي',
                   debit: d,
                   credit: c,
                 });
