@@ -400,7 +400,128 @@ class LocalDataStore {
     }
   }
 
+  private ensureAlwaleedPurged(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const purgeKey = 'alwaleed_zero_reset_v2026_09_17_final_v3';
+      if (window.localStorage.getItem(purgeKey) === 'true') return;
+
+      const alwaleedIds = ['20000000-0000-0000-0000-000000000001', 'company-alwaleed-client-003'];
+      
+      // Sweep all localStorage keys matching transactions
+      try {
+        const allKeys: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k) allKeys.push(k);
+        }
+        for (const k of allKeys) {
+          const lower = k.toLowerCase();
+          const isAlw = lower.includes('20000000-0000-0000-0000-000000000001') || lower.includes('company-alwaleed-client-003') || lower.includes('alwaleed');
+          if (isAlw) {
+            if (
+              lower.includes('invoice') ||
+              lower.includes('journal') ||
+              lower.includes('voucher') ||
+              lower.includes('movement') ||
+              lower.includes('stock_ledger') ||
+              lower.includes('production_order')
+            ) {
+              window.localStorage.setItem(k, '[]');
+              delete this.memoryFallback[k];
+            }
+          }
+        }
+      } catch {}
+
+      for (const alwId of alwaleedIds) {
+        window.localStorage.setItem(`invoices_${alwId}`, '[]');
+        window.localStorage.setItem(`journals_${alwId}`, '[]');
+        window.localStorage.setItem(`vouchers_${alwId}`, '[]');
+        window.localStorage.setItem(`inventory_movements_${alwId}`, '[]');
+        window.localStorage.setItem(`production_orders_${alwId}`, '[]');
+        window.localStorage.setItem(`stock_ledger_${alwId}`, '[]');
+        window.localStorage.setItem(`tenant_initialized_${alwId}`, 'true');
+
+        this.memoryFallback[`invoices_${alwId}`] = [];
+        this.memoryFallback[`journals_${alwId}`] = [];
+        this.memoryFallback[`vouchers_${alwId}`] = [];
+        this.memoryFallback[`inventory_movements_${alwId}`] = [];
+        this.memoryFallback[`production_orders_${alwId}`] = [];
+        this.memoryFallback[`stock_ledger_${alwId}`] = [];
+
+        const custKey = `customers_${alwId}`;
+        const cachedCustsStr = window.localStorage.getItem(custKey);
+        if (cachedCustsStr) {
+          try {
+            const custs = JSON.parse(cachedCustsStr);
+            if (Array.isArray(custs)) {
+              custs.forEach((c: any) => {
+                c.balance = 0;
+                c.currentBalance = 0;
+                c.openingBalance = 0;
+              });
+              window.localStorage.setItem(custKey, JSON.stringify(custs));
+            }
+          } catch {}
+        }
+
+        const suppKey = `suppliers_${alwId}`;
+        const cachedSuppStr = window.localStorage.getItem(suppKey);
+        if (cachedSuppStr) {
+          try {
+            const supps = JSON.parse(cachedSuppStr);
+            if (Array.isArray(supps)) {
+              supps.forEach((s: any) => {
+                s.balance = 0;
+                s.currentBalance = 0;
+                s.openingBalance = 0;
+              });
+              window.localStorage.setItem(suppKey, JSON.stringify(supps));
+            }
+          } catch {}
+        }
+
+        const itemsKey = `inventory_${alwId}`;
+        const cachedItemsStr = window.localStorage.getItem(itemsKey);
+        if (cachedItemsStr) {
+          try {
+            const items = JSON.parse(cachedItemsStr);
+            if (Array.isArray(items)) {
+              items.forEach((it: any) => {
+                it.quantityOnHand = 0;
+                it.openingBalance = 0;
+              });
+              window.localStorage.setItem(itemsKey, JSON.stringify(items));
+            }
+          } catch {}
+        }
+
+        const accKey = `accounts_${alwId}`;
+        const cachedAccStr = window.localStorage.getItem(accKey);
+        if (cachedAccStr) {
+          try {
+            const accs = JSON.parse(cachedAccStr);
+            if (Array.isArray(accs)) {
+              accs.forEach((a: any) => {
+                a.balance = 0;
+                a.currentBalance = 0;
+                a.openingBalance = 0;
+              });
+              window.localStorage.setItem(accKey, JSON.stringify(accs));
+            }
+          } catch {}
+        }
+      }
+
+      window.localStorage.setItem(purgeKey, 'true');
+    } catch (e) {
+      console.warn('Alwaleed zero purge notice:', e);
+    }
+  }
+
   public getKey(baseKey: string, specificCompanyId?: string): string {
+    this.ensureAlwaleedPurged();
     const rawId = specificCompanyId || this.getEffectiveCompanyId();
     if (!rawId) {
       return `${baseKey}_unauthenticated`;
@@ -1350,10 +1471,9 @@ class LocalDataStore {
         return [];
       }
       if (this.isAlWaleedActive()) {
-        const alwaleedJournals = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP?.data?.journals || INITIAL_JOURNALS)).filter((j: any) => !tombstones.has(j.id));
-        this.saveJournals(alwaleedJournals);
+        this.saveJournals([]);
         this.markTenantInitialized();
-        return this.deduplicateJournals(alwaleedJournals);
+        return [];
       }
       this.saveJournals([]);
       return [];
@@ -1515,10 +1635,9 @@ class LocalDataStore {
         return [];
       }
       if (this.isAlWaleedActive()) {
-        const alwaleedInvoices = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP?.data?.invoices || INITIAL_INVOICES));
-        this.saveInvoices(alwaleedInvoices);
+        this.saveInvoices([]);
         this.markTenantInitialized();
-        return this.deduplicateInvoices(alwaleedInvoices);
+        return [];
       }
       this.saveInvoices([]);
       return [];
@@ -1527,29 +1646,6 @@ class LocalDataStore {
     let filtered = list;
     if (tombstones.size > 0) {
       filtered = list.filter((inv) => !tombstones.has(inv.id));
-    }
-
-    // If Al-Waleed is active and local storage has fewer invoices than the full preset backup, reconcile missing ones (only if not initialized or reset)
-    if (this.isAlWaleedActive() && !this.isTenantInitialized() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.invoices)) {
-      const presetInvoices = ALWALEED_MILL_PRESET_BACKUP.data.invoices;
-      if (filtered.length < presetInvoices.length) {
-        const existingNumbers = new Set(filtered.map((i) => (i.invoiceNumber || '').trim().toUpperCase()));
-        const existingIds = new Set(filtered.map((i) => (i.id || '').trim()));
-        let hasNew = false;
-        const merged = [...filtered];
-        for (const pi of presetInvoices) {
-          const num = (pi.invoiceNumber || '').trim().toUpperCase();
-          const id = (pi.id || '').trim();
-          if ((!num || !existingNumbers.has(num)) && (!id || !existingIds.has(id)) && !tombstones.has(pi.id)) {
-            merged.push(JSON.parse(JSON.stringify(pi)));
-            hasNew = true;
-          }
-        }
-        if (hasNew) {
-          filtered = merged;
-          this.saveInvoices(this.deduplicateInvoices(filtered));
-        }
-      }
     }
 
     return this.deduplicateInvoices(filtered);
@@ -1565,11 +1661,6 @@ class LocalDataStore {
     const tombstones = this.getTombstones('vouchers');
 
     if (!list) {
-      if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.vouchers)) {
-        const alwaleedVouchers = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP.data.vouchers));
-        this.saveVouchers(alwaleedVouchers);
-        return this.deduplicateVouchers(alwaleedVouchers);
-      }
       this.saveVouchers([]);
       return [];
     }
@@ -1577,29 +1668,6 @@ class LocalDataStore {
     let filtered = list;
     if (tombstones.size > 0) {
       filtered = list.filter((v) => !tombstones.has(v.id));
-    }
-
-    // If Al-Waleed is active and local storage has fewer vouchers than the preset backup, reconcile missing ones (only if not initialized or reset)
-    if (this.isAlWaleedActive() && !this.isTenantInitialized() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.vouchers)) {
-      const presetVouchers = ALWALEED_MILL_PRESET_BACKUP.data.vouchers;
-      if (filtered.length < presetVouchers.length) {
-        const existingNumbers = new Set(filtered.map((v) => (v.voucherNumber || '').trim().toUpperCase()));
-        const existingIds = new Set(filtered.map((v) => (v.id || '').trim()));
-        let hasNew = false;
-        const merged = [...filtered];
-        for (const pv of presetVouchers) {
-          const num = (pv.voucherNumber || '').trim().toUpperCase();
-          const id = (pv.id || '').trim();
-          if ((!num || !existingNumbers.has(num)) && (!id || !existingIds.has(id)) && !tombstones.has(pv.id)) {
-            merged.push(JSON.parse(JSON.stringify(pv)));
-            hasNew = true;
-          }
-        }
-        if (hasNew) {
-          filtered = merged;
-          this.saveVouchers(this.deduplicateVouchers(filtered));
-        }
-      }
     }
 
     return this.deduplicateVouchers(filtered);
@@ -1831,8 +1899,8 @@ export class DataService {
 
   // KPIs
   public static async getKPIs(): Promise<FinancialKPIs> {
-    const accounts = localDataStore.getAccounts();
-    const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
+    const accounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
+    const journals = isSupabaseConfigured ? (await this.getJournals()).filter((j) => j.status === 'POSTED') : localDataStore.getJournals().filter((j) => j.status === 'POSTED');
     const invoices = isSupabaseConfigured ? await this.getInvoices() : localDataStore.getInvoices();
     const inventory = isSupabaseConfigured ? await this.getInventory() : localDataStore.getInventory();
 
@@ -2172,6 +2240,23 @@ export class DataService {
     let localJournals = localDataStore.getJournals().filter((j) => !tombstones.has(j.id));
     const isLocked = localDataStore.isRestoreLocked();
 
+    if (isSupabaseConfigured) {
+      try {
+        const fromSupabase = await SupabaseDataService.getJournals();
+        if (Array.isArray(fromSupabase)) {
+          const remoteTombstoned = fromSupabase.filter((j) => tombstones.has(j.id));
+          if (remoteTombstoned.length > 0) {
+            Promise.all(remoteTombstoned.map((j) => SupabaseDataService.deleteJournal(j.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
+          }
+          const validSupabase = fromSupabase.filter((j) => !tombstones.has(j.id));
+          localDataStore.saveJournals(validSupabase);
+          return validSupabase.sort((a, b) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime());
+        }
+      } catch (e) {
+        console.warn('Supabase getJournals notice:', e);
+      }
+    }
+
     try {
       const fromServer = await safeApiFetch<JournalEntry[]>('/api/journals');
       if (Array.isArray(fromServer)) {
@@ -2189,39 +2274,6 @@ export class DataService {
         }
       }
     } catch {}
-
-    try {
-      const fromSupabase = await SupabaseDataService.getJournals();
-      if (Array.isArray(fromSupabase)) {
-        const remoteTombstoned = fromSupabase.filter((j) => tombstones.has(j.id));
-        if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-          Promise.all(remoteTombstoned.map((j) => SupabaseDataService.deleteJournal(j.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
-        }
-        const validRemote = fromSupabase.filter((j) => !tombstones.has(j.id));
-
-        if (localJournals.length > 0 || localDataStore.isTenantInitialized()) {
-          const localMap = new Map(localJournals.map((j) => [j.id, j]));
-          let hasNew = false;
-          for (const rj of validRemote) {
-            if (!localMap.has(rj.id)) {
-              localJournals.push(rj);
-              hasNew = true;
-            }
-          }
-          if (hasNew) {
-            localDataStore.saveJournals(localJournals);
-          }
-          return localJournals;
-        }
-
-        if (validRemote.length > 0) {
-          localDataStore.saveJournals(validRemote);
-          return validRemote;
-        }
-      }
-    } catch (e) {
-      console.warn('Supabase getJournals notice:', e);
-    }
 
     return localJournals;
   }
@@ -2661,62 +2713,21 @@ export class DataService {
     let localInvoices = localDataStore.getInvoices().filter((inv) => !tombstones.has(inv.id));
     const isLocked = localDataStore.isRestoreLocked();
 
-    try {
-      const fromSupabase = await SupabaseDataService.getInvoices();
-      if (Array.isArray(fromSupabase)) {
-        const remoteTombstoned = fromSupabase.filter((inv) => tombstones.has(inv.id));
-        if (remoteTombstoned.length > 0 && isSupabaseConfigured) {
-          Promise.all(remoteTombstoned.map((inv) => SupabaseDataService.deleteInvoice(inv.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
-        }
-        const validRemote = fromSupabase.filter((inv) => !tombstones.has(inv.id));
-
-        if (localInvoices.length > 0 || localDataStore.isTenantInitialized()) {
-          const localById = new Map<string, Invoice>();
-          const localByNumber = new Map<string, Invoice>();
-          for (const inv of localInvoices) {
-            if (inv.id) localById.set(inv.id, inv);
-            if (inv.invoiceNumber) localByNumber.set(inv.invoiceNumber.trim().toUpperCase(), inv);
+    if (isSupabaseConfigured) {
+      try {
+        const fromSupabase = await SupabaseDataService.getInvoices();
+        if (Array.isArray(fromSupabase)) {
+          const remoteTombstoned = fromSupabase.filter((inv) => tombstones.has(inv.id));
+          if (remoteTombstoned.length > 0) {
+            Promise.all(remoteTombstoned.map((inv) => SupabaseDataService.deleteInvoice(inv.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
           }
-
-          let hasChanges = false;
-          for (const rInv of validRemote) {
-            const rNum = (rInv.invoiceNumber || '').trim().toUpperCase();
-            const existing = (rInv.id ? localById.get(rInv.id) : null) || (rNum ? localByNumber.get(rNum) : null);
-            if (!existing) {
-              localInvoices.push(rInv);
-              if (rInv.id) localById.set(rInv.id, rInv);
-              if (rNum) localByNumber.set(rNum, rInv);
-              hasChanges = true;
-            } else {
-              // Existing record found: reconcile without creating duplicate
-              const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-              const remoteTime = new Date(rInv.updatedAt || rInv.createdAt || 0).getTime();
-              const remoteHasLines = Array.isArray(rInv.lines) && rInv.lines.length > 0;
-              const localHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
-
-              if (remoteTime > localTime || (remoteHasLines && !localHasLines) || existing.type !== rInv.type || !existing.type) {
-                Object.assign(existing, rInv);
-                hasChanges = true;
-              }
-            }
-          }
-          const deduplicated = localDataStore.deduplicateInvoices(localInvoices);
-          deduplicated.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
-          if (hasChanges || deduplicated.length !== localInvoices.length) {
-            localDataStore.saveInvoices(deduplicated);
-          }
-          return deduplicated;
+          const validSupabase = fromSupabase.filter((inv) => !tombstones.has(inv.id));
+          localDataStore.saveInvoices(validSupabase);
+          return validSupabase.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
         }
-
-        if (validRemote.length > 0) {
-          const deduplicated = localDataStore.deduplicateInvoices(validRemote);
-          deduplicated.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
-          localDataStore.saveInvoices(deduplicated);
-          return deduplicated;
-        }
+      } catch (e) {
+        console.warn('Supabase getInvoices notice:', e);
       }
-    } catch (e) {
-      console.warn('Supabase getInvoices notice:', e);
     }
 
     const finalLocal = localDataStore.deduplicateInvoices(localInvoices);

@@ -127,19 +127,19 @@ class DatabaseStore {
         this.data = {
           company: envelopeData.company || JSON.parse(JSON.stringify(DEFAULT_COMPANY_PROFILE)),
           users: envelopeData.users || JSON.parse(JSON.stringify(INITIAL_USERS)),
-          accounts: envelopeData.accounts || JSON.parse(JSON.stringify(INITIAL_ACCOUNTS)),
-          customers: envelopeData.customers || JSON.parse(JSON.stringify(INITIAL_CUSTOMERS)),
-          suppliers: envelopeData.suppliers || JSON.parse(JSON.stringify(INITIAL_SUPPLIERS)),
-          inventory: envelopeData.inventory || JSON.parse(JSON.stringify(INITIAL_INVENTORY)),
-          journals: envelopeData.journals || JSON.parse(JSON.stringify(INITIAL_JOURNALS)),
-          invoices: envelopeData.invoices || JSON.parse(JSON.stringify(INITIAL_INVOICES)),
-          vouchers: envelopeData.vouchers || [],
+          accounts: (envelopeData.accounts || JSON.parse(JSON.stringify(INITIAL_ACCOUNTS))).map((a: any) => ({ ...a, balance: 0, currentBalance: 0, openingBalance: 0 })),
+          customers: (envelopeData.customers || JSON.parse(JSON.stringify(INITIAL_CUSTOMERS))).map((c: any) => ({ ...c, balance: 0, currentBalance: 0, openingBalance: 0 })),
+          suppliers: (envelopeData.suppliers || JSON.parse(JSON.stringify(INITIAL_SUPPLIERS))).map((s: any) => ({ ...s, balance: 0, currentBalance: 0, openingBalance: 0 })),
+          inventory: (envelopeData.inventory || JSON.parse(JSON.stringify(INITIAL_INVENTORY))).map((i: any) => ({ ...i, quantityOnHand: 0, openingBalance: 0 })),
+          journals: [],
+          invoices: [],
+          vouchers: [],
           units: envelopeData.units || JSON.parse(JSON.stringify(INITIAL_UNITS)),
-          productionOrders: envelopeData.productionOrders || [],
+          productionOrders: [],
           tombstones: this.data?.tombstones || { journals: [] },
         };
         this.save();
-        console.log('🌱 Seeded full Al-Waleed ERP database from authentic dataset.');
+        console.log('🌱 Seeded clean Al-Waleed ERP database.');
         return;
       } catch (e) {
         console.error('Failed to load full preset during seed, falling back:', e);
@@ -151,18 +151,19 @@ class DatabaseStore {
     this.data = {
       company: JSON.parse(JSON.stringify(DEFAULT_COMPANY_PROFILE)),
       users: JSON.parse(JSON.stringify(INITIAL_USERS)),
-      accounts: JSON.parse(JSON.stringify(INITIAL_ACCOUNTS)).map((a: any) => ({ ...a, balance: 0 })),
-      customers: JSON.parse(JSON.stringify(INITIAL_CUSTOMERS)),
-      suppliers: JSON.parse(JSON.stringify(INITIAL_SUPPLIERS)),
-      inventory: JSON.parse(JSON.stringify(INITIAL_INVENTORY)),
-      journals: JSON.parse(JSON.stringify(INITIAL_JOURNALS)).filter((j: any) => !tombSet.has(j.id)),
-      invoices: JSON.parse(JSON.stringify(INITIAL_INVOICES)),
+      accounts: JSON.parse(JSON.stringify(INITIAL_ACCOUNTS)).map((a: any) => ({ ...a, balance: 0, currentBalance: 0, openingBalance: 0 })),
+      customers: JSON.parse(JSON.stringify(INITIAL_CUSTOMERS)).map((c: any) => ({ ...c, balance: 0, currentBalance: 0, openingBalance: 0 })),
+      suppliers: JSON.parse(JSON.stringify(INITIAL_SUPPLIERS)).map((s: any) => ({ ...s, balance: 0, currentBalance: 0, openingBalance: 0 })),
+      inventory: JSON.parse(JSON.stringify(INITIAL_INVENTORY)).map((i: any) => ({ ...i, quantityOnHand: 0, openingBalance: 0 })),
+      journals: [],
+      invoices: [],
       vouchers: [],
       units: JSON.parse(JSON.stringify(INITIAL_UNITS)),
-      tombstones: this.data?.tombstones || { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] },
+      productionOrders: [],
+      tombstones: this.data?.tombstones || { journals: [] },
     };
     this.save();
-    console.log('🌱 Seeded authentic Al-Waleed ERP database.');
+    console.log('🌱 Seeded clean Al-Waleed ERP database.');
   }
 
   public save() {
