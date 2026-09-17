@@ -1381,12 +1381,14 @@ export class SupabaseDataService {
         let finalInvNum = (inv.invoice_number || raw.invoiceNumber || inv.id || '').trim().toUpperCase();
 
         const COOP_MISCLASSIFIED_INVOICES: Record<string, string> = {
-          'INV-PUR-2026-0045': 'INV-SAL-2026-0045',
-          'INV-PUR-2026-0023': 'INV-SAL-2026-0023',
-          'INV-PUR-2026-0022': 'INV-SAL-2026-0022',
-          'INV-PUR-2026-0021': 'INV-SAL-2026-0021',
-          'INV-PUR-2026-0012': 'INV-SAL-2026-0012',
-          'INV-PUR-2026-0009': 'INV-SAL-2026-0009',
+          'INV-PUR-2026-0047': 'RET-SAL-2026-0047',
+          'INV-PUR-2026-0046': 'RET-SAL-2026-0046',
+          'INV-PUR-2026-0045': 'RET-SAL-2026-0045',
+          'INV-PUR-2026-0023': 'RET-SAL-2026-0023',
+          'INV-PUR-2026-0022': 'RET-SAL-2026-0022',
+          'INV-PUR-2026-0021': 'RET-SAL-2026-0021',
+          'INV-PUR-2026-0012': 'RET-SAL-2026-0012',
+          'INV-PUR-2026-0009': 'RET-SAL-2026-0009',
         };
 
         if (COOP_MISCLASSIFIED_INVOICES[finalInvNum]) {

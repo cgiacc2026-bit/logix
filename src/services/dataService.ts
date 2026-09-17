@@ -1235,12 +1235,14 @@ class LocalDataStore {
     const result: Invoice[] = [];
 
     const COOP_MISCLASSIFIED: Record<string, string> = {
-      'INV-PUR-2026-0045': 'INV-SAL-2026-0045',
-      'INV-PUR-2026-0023': 'INV-SAL-2026-0023',
-      'INV-PUR-2026-0022': 'INV-SAL-2026-0022',
-      'INV-PUR-2026-0021': 'INV-SAL-2026-0021',
-      'INV-PUR-2026-0012': 'INV-SAL-2026-0012',
-      'INV-PUR-2026-0009': 'INV-SAL-2026-0009',
+      'INV-PUR-2026-0047': 'RET-SAL-2026-0047',
+      'INV-PUR-2026-0046': 'RET-SAL-2026-0046',
+      'INV-PUR-2026-0045': 'RET-SAL-2026-0045',
+      'INV-PUR-2026-0023': 'RET-SAL-2026-0023',
+      'INV-PUR-2026-0022': 'RET-SAL-2026-0022',
+      'INV-PUR-2026-0021': 'RET-SAL-2026-0021',
+      'INV-PUR-2026-0012': 'RET-SAL-2026-0012',
+      'INV-PUR-2026-0009': 'RET-SAL-2026-0009',
     };
 
     for (const inv of invoices) {
@@ -1251,7 +1253,7 @@ class LocalDataStore {
       // Normalize coop customer invoices misclassified with INV-PUR prefix
       if (COOP_MISCLASSIFIED[num]) {
         inv.invoiceNumber = COOP_MISCLASSIFIED[num];
-        inv.type = 'SALES';
+        inv.type = 'SALES_RETURN';
         num = inv.invoiceNumber;
       }
 
