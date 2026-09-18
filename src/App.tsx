@@ -1,5 +1,5 @@
 import { isSupabaseConfigured } from './services/supabaseClient.ts';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Account,
   JournalEntry,
@@ -328,8 +328,62 @@ export function AppContent() {
 
   };
 
-  // Fetch all ERP system data from Supabase / DataService
-  const refreshAllData = async (silent: boolean = false) => {
+  const isRefreshingRef = useRef<boolean>(false);
+  const lastRefreshTimeRef = useRef<number>(0);
+
+  // Selective table update to prevent egress spikes across the whole database
+  const refreshSelectiveData = async (tableName?: string) => {
+    try {
+      if (!tableName) {
+        await refreshAllData(true);
+        return;
+      }
+      if (tableName === 'invoices' || tableName === 'invoice_items') {
+        const invData = await DataService.getInvoices();
+        setInvoices(invData || []);
+        const kpisData = await DataService.getKPIs();
+        setKpis(kpisData);
+      } else if (tableName === 'payment_vouchers') {
+        const vData = await DataService.getVouchers();
+        setVouchers(vData || []);
+        const kpisData = await DataService.getKPIs();
+        setKpis(kpisData);
+      } else if (tableName === 'customers') {
+        const cData = await DataService.getCustomers();
+        setCustomers(cData || []);
+      } else if (tableName === 'suppliers') {
+        const sData = await DataService.getSuppliers();
+        setSuppliers(sData || []);
+      } else if (tableName === 'items' || tableName === 'inventory_items') {
+        const iData = await DataService.getInventory();
+        setInventory(iData || []);
+      } else if (tableName === 'chart_of_accounts') {
+        const accsData = await DataService.getAccounts();
+        setAccounts(accsData || []);
+      } else if (tableName === 'journal_entries' || tableName === 'journal_entry_lines') {
+        const jData = await DataService.getJournals();
+        setJournals(jData || []);
+        const kpisData = await DataService.getKPIs();
+        setKpis(kpisData);
+      } else {
+        await refreshAllData(true);
+      }
+    } catch (e) {
+      console.warn('Selective sync notice:', e);
+    }
+  };
+
+  // Fetch all ERP system data from Supabase / DataService with throttle protection
+  const refreshAllData = async (silent: boolean = false, force: boolean = false) => {
+    const now = Date.now();
+    if (isRefreshingRef.current) return;
+    // Throttle silent background refreshes: require at least 30s gap unless forced
+    if (silent && !force && now - lastRefreshTimeRef.current < 30000) {
+      return;
+    }
+    isRefreshingRef.current = true;
+    lastRefreshTimeRef.current = now;
+
     if (!silent) {
       setIsLoadingData(true);
     }
@@ -378,6 +432,7 @@ export function AppContent() {
     } catch (err) {
       console.error('Error fetching ERP data:', err);
     } finally {
+      isRefreshingRef.current = false;
       if (!silent) {
         setIsLoadingData(false);
       }
@@ -392,25 +447,27 @@ export function AppContent() {
       console.warn('Auto-reconciliation on mount:', err);
     }
 
-    refreshAllData();
+    refreshAllData(false, true);
 
-    const handleSync = () => {
-      refreshAllData(true);
-    };
-    
-    // Start Realtime Data Sync
+    // Start Realtime Data Sync - selective per table to prevent egress spikes
     if (isSupabaseConfigured) {
       DataSyncService.startRealtimeSync((tableName) => {
-        // Trigger a background re-fetch for all essential data without showing the loading spinner
-        console.log(`Realtime update received for ${tableName}. Refreshing data...`);
-        refreshAllData(true);
+        console.log(`Realtime update received for ${tableName}. Selectively refreshing...`);
+        refreshSelectiveData(tableName);
       });
     }
 
-    window.addEventListener('focus', handleSync);
+    // Window focus / visibility change handler with 2-minute cooldown
+    const handleFocusOrVisibility = () => {
+      if (Date.now() - lastRefreshTimeRef.current > 120000) {
+        refreshAllData(true);
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisibility);
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        handleSync();
+        handleFocusOrVisibility();
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -438,16 +495,16 @@ export function AppContent() {
     };
     window.addEventListener('ERP_DATA_CHANGED', handleErpDataChanged);
 
-    // Periodic fallback refresh (only if tab is active, every 3 minutes instead of aggressive 10-second polling)
-    // Realtime changes are already handled immediately by DataSyncService and window focus
+    // Periodic fallback refresh (only if tab is active, every 5 minutes instead of aggressive polling)
+    // Realtime changes are already handled immediately by DataSyncService selectively
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         refreshAllData(true);
       }
-    }, 180000);
+    }, 300000);
 
     return () => {
-      window.removeEventListener('focus', handleSync);
+      window.removeEventListener('focus', handleFocusOrVisibility);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('ERP_DATA_CHANGED', handleErpDataChanged);
       if (bc) bc.close();

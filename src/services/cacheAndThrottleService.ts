@@ -22,9 +22,15 @@ export class CacheAndThrottleService {
   private static cache: Map<string, CacheEntry<any>> = new Map();
   private static lastRecalculateTime: Map<string, number> = new Map();
   private static recalculateTimers: Map<string, any> = new Map();
+  private static inFlightRequests: Map<string, Promise<any>> = new Map();
+
+  // Standard TTL intervals (in ms) to cut down egress
+  public static readonly TTL_STATIC = 10 * 60 * 1000;      // 10 mins: warehouses, price lists, settings
+  public static readonly TTL_MASTER = 5 * 60 * 1000;       // 5 mins: items, customers, suppliers, accounts
+  public static readonly TTL_TRANSACTIONS = 2 * 60 * 1000; // 2 mins: invoices, vouchers, journals
 
   // ==========================================
-  // In-Memory Cache for Semi-Static Data
+  // In-Memory Cache for Semi-Static & Master Data
   // ==========================================
 
   public static get<T>(key: string): T | null {
@@ -37,12 +43,30 @@ export class CacheAndThrottleService {
     return entry.data as T;
   }
 
+  public static has(key: string): boolean {
+    return this.get(key) !== null;
+  }
+
   public static set<T>(key: string, data: T, ttlMs: number = 300000): void {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
       ttl: ttlMs,
     });
+  }
+
+  /**
+   * Request Deduplication: prevents multiple identical queries from hitting Supabase simultaneously
+   */
+  public static deduplicate<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
+    if (this.inFlightRequests.has(key)) {
+      return this.inFlightRequests.get(key) as Promise<T>;
+    }
+    const promise = fetchFn().finally(() => {
+      this.inFlightRequests.delete(key);
+    });
+    this.inFlightRequests.set(key, promise);
+    return promise;
   }
 
   public static invalidate(keyPrefix: string): void {
@@ -55,6 +79,7 @@ export class CacheAndThrottleService {
 
   public static clearAll(): void {
     this.cache.clear();
+    this.inFlightRequests.clear();
   }
 
   // ==========================================

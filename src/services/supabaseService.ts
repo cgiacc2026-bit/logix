@@ -538,61 +538,73 @@ export class SupabaseDataService {
   /**
    * 2. ITEMS (الأصناف والمخزون)
    */
-  public static async getItems(targetCompanyId?: string): Promise<InventoryItem[]> {
+  public static async getItems(targetCompanyId?: string, forceRefresh: boolean = false): Promise<InventoryItem[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
-    try {
-      let { data, error } = await supabase
-        .from('items')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: true });
 
-      if (error) {
-        console.warn('Supabase getItems error:', error.message);
+    const cacheKey = `items_${companyId}`;
+    if (!forceRefresh) {
+      const cached = CacheAndThrottleService.get<InventoryItem[]>(cacheKey);
+      if (cached) return cached;
+    }
+
+    return CacheAndThrottleService.deduplicate<InventoryItem[]>(cacheKey, async () => {
+      try {
+        let { data, error } = await supabase
+          .from('items')
+          .select('id, company_id, code, barcode, name_ar, name_en, category, unit, cost_price, selling_price, current_balance, is_active, offer_enabled, offer_quantity, offer_price, offer_barcode, base_item_id, base_item_name, raw_data')
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.warn('Supabase getItems error:', error.message);
+          return [];
+        }
+
+        if (!data || data.length === 0) return [];
+
+        const mapped = data.map((row: any) => {
+          const raw = row.raw_data || {};
+          return {
+            id: raw.id || row.id,
+            sku: row.code || raw.sku || raw.code || row.id,
+            barcode: row.barcode || raw.barcode || '',
+            nameAr: row.name_ar || row.name || raw.nameAr || '',
+            nameEn: row.name_en || row.nameEn || '',
+            category: row.category || raw.category || 'عام',
+            unit: row.unit || raw.unit || 'حبة',
+            unitsPerPack: raw.unitsPerPack || 1,
+            packUnit: raw.packUnit || '',
+            purchasePrice: Number(row.cost_price ?? raw.purchasePrice ?? raw.costPrice ?? 0),
+            costPrice: Number(row.cost_price ?? raw.costPrice ?? raw.purchasePrice ?? 0),
+            salePrice: Number(row.selling_price ?? row.sale_price ?? raw.salePrice ?? 0),
+            isActive: raw.isActive ?? row.is_active ?? true,
+            offer_enabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
+            offer_quantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
+            offer_price: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
+            offer_barcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
+            offerEnabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
+            offerQuantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
+            offerPrice: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
+            offerBarcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
+            base_item_id: raw.base_item_id || raw.baseItemId || undefined,
+            baseItemId: raw.base_item_id || raw.baseItemId || undefined,
+            base_item_name: raw.base_item_name || raw.baseItemName || undefined,
+            baseItemName: raw.base_item_name || raw.baseItemName || undefined,
+            ...raw,
+            quantityOnHand: Number(row.current_balance ?? row.qty_on_hand ?? raw.quantityOnHand ?? 0),
+          };
+        });
+
+        CacheAndThrottleService.set(cacheKey, mapped, CacheAndThrottleService.TTL_MASTER);
+        return mapped;
+      } catch (err: any) {
+        console.warn('Supabase getItems exception:', err?.message);
         return [];
       }
-
-      if (!data || data.length === 0) return [];
-
-      return data.map((row: any) => {
-        const raw = row.raw_data || {};
-        return {
-          id: raw.id || row.id,
-          sku: row.code || raw.sku || raw.code || row.id,
-          barcode: row.barcode || raw.barcode || '',
-          nameAr: row.name_ar || row.name || raw.nameAr || '',
-          nameEn: row.name_en || raw.nameEn || '',
-          category: row.category || raw.category || 'عام',
-          unit: row.unit || raw.unit || 'حبة',
-          unitsPerPack: raw.unitsPerPack || 1,
-          packUnit: raw.packUnit || '',
-          purchasePrice: Number(row.cost_price ?? raw.purchasePrice ?? raw.costPrice ?? 0),
-          costPrice: Number(row.cost_price ?? raw.costPrice ?? raw.purchasePrice ?? 0),
-          salePrice: Number(row.selling_price ?? row.sale_price ?? raw.salePrice ?? 0),
-          isActive: raw.isActive ?? row.is_active ?? true,
-          offer_enabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
-          offer_quantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
-          offer_price: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
-          offer_barcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
-          offerEnabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
-          offerQuantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
-          offerPrice: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
-          offerBarcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
-          base_item_id: raw.base_item_id || raw.baseItemId || undefined,
-          baseItemId: raw.base_item_id || raw.baseItemId || undefined,
-          base_item_name: raw.base_item_name || raw.baseItemName || undefined,
-          baseItemName: raw.base_item_name || raw.baseItemName || undefined,
-          ...raw,
-          quantityOnHand: Number(row.current_balance ?? row.qty_on_hand ?? raw.quantityOnHand ?? 0),
-        };
-      });
-    } catch (err: any) {
-      console.warn('Supabase getItems exception:', err?.message);
-      return [];
-    }
+    });
   }
 
   public static async saveItem(item: InventoryItem, targetCompanyId?: string): Promise<boolean> {
@@ -824,85 +836,97 @@ export class SupabaseDataService {
   /**
    * 3. CUSTOMERS (العملاء)
    */
-  public static async getCustomers(targetCompanyId?: string): Promise<Customer[]> {
+  public static async getCustomers(targetCompanyId?: string, forceRefresh: boolean = false): Promise<Customer[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
-    try {
-      let { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: true });
 
-      if (error) {
-        console.warn('Supabase getCustomers error:', error.message);
+    const cacheKey = `customers_${companyId}`;
+    if (!forceRefresh) {
+      const cached = CacheAndThrottleService.get<Customer[]>(cacheKey);
+      if (cached) return cached;
+    }
+
+    return CacheAndThrottleService.deduplicate<Customer[]>(cacheKey, async () => {
+      try {
+        let { data, error } = await supabase
+          .from('customers')
+          .select('id, company_id, code, name, name_ar, name_en, phone, address, city, balance, current_balance, opening_balance, is_active, master_price_list_id, raw_data')
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.warn('Supabase getCustomers error:', error.message);
+          return [];
+        }
+
+        if (!data || data.length === 0) return [];
+
+        let dbBranches: any[] = [];
+        try {
+          const { data: brData } = await supabase
+            .from('customer_branches')
+            .select('id, company_id, customer_id, code, name_ar, name_en, governorate, city, detailed_address, contact_person, contact_phone, is_default, is_active')
+            .eq('company_id', companyId);
+          if (brData) dbBranches = brData;
+        } catch (brErr: any) {
+          console.warn('Supabase customer_branches fetch notice:', brErr?.message);
+        }
+
+        const mapped = data.map((row: any) => {
+          const raw = row.raw_data || {};
+          const custBranchesFromDb = dbBranches
+            .filter((b: any) => b.customer_id === row.id)
+            .map((b: any) => ({
+              id: b.id,
+              code: b.code || 'BR-01',
+              nameAr: b.name_ar,
+              nameEn: b.name_en || '',
+              customerId: row.code || row.id,
+              governorate: b.governorate || '',
+              city: b.city || '',
+              detailedAddress: b.detailed_address || '',
+              address: b.detailed_address || '',
+              contactPerson: b.contact_person || '',
+              contactPhone: b.contact_phone || '',
+              phone: b.contact_phone || '',
+              isDefault: Boolean(b.is_default),
+              isActive: Boolean(b.is_active ?? true),
+            }));
+
+          const finalBranches = custBranchesFromDb.length > 0 ? custBranchesFromDb : (raw.branches || []);
+
+          return {
+            ...raw,
+            id: row.id || raw.id,
+            code: row.code || raw.code || row.id,
+            nameAr: row.name_ar || row.name || raw.nameAr || '',
+            nameEn: row.name_en || raw.nameEn || '',
+            phone: row.phone || raw.phone || '',
+            address: row.address || raw.address || '',
+            city: row.city || raw.city || 'الكويت',
+            openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
+            openingBalanceDate: raw.openingBalanceDate || '2026-07-31',
+            isActive: raw.isActive ?? row.is_active ?? true,
+            current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+            currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+            balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+            branches: finalBranches,
+            priceListId: row.master_price_list_id || raw.priceListId || raw.price_list_id || '',
+            priceListName: raw.priceListName || '',
+            defaultDiscountRate: Number(raw.defaultDiscountRate ?? 0),
+            customPrices: raw.customPrices || [],
+          };
+        });
+
+        CacheAndThrottleService.set(cacheKey, mapped, CacheAndThrottleService.TTL_MASTER);
+        return mapped;
+      } catch (err: any) {
+        console.warn('Supabase getCustomers exception:', err?.message);
         return [];
       }
-
-      if (!data || data.length === 0) return [];
-
-      let dbBranches: any[] = [];
-      try {
-        const { data: brData } = await supabase
-          .from('customer_branches')
-          .select('*')
-          .eq('company_id', companyId);
-        if (brData) dbBranches = brData;
-      } catch (brErr: any) {
-        console.warn('Supabase customer_branches fetch notice:', brErr?.message);
-      }
-
-      return data.map((row: any) => {
-        const raw = row.raw_data || {};
-        const custBranchesFromDb = dbBranches
-          .filter((b: any) => b.customer_id === row.id)
-          .map((b: any) => ({
-            id: b.id,
-            code: b.code || 'BR-01',
-            nameAr: b.name_ar,
-            nameEn: b.name_en || '',
-            customerId: row.code || row.id,
-            governorate: b.governorate || '',
-            city: b.city || '',
-            detailedAddress: b.detailed_address || '',
-            address: b.detailed_address || '',
-            contactPerson: b.contact_person || '',
-            contactPhone: b.contact_phone || '',
-            phone: b.contact_phone || '',
-            isDefault: Boolean(b.is_default),
-            isActive: Boolean(b.is_active ?? true),
-          }));
-
-        const finalBranches = custBranchesFromDb.length > 0 ? custBranchesFromDb : (raw.branches || []);
-
-        return {
-          ...raw,
-          id: row.id || raw.id,
-          code: row.code || raw.code || row.id,
-          nameAr: row.name_ar || row.name || raw.nameAr || '',
-          nameEn: row.name_en || raw.nameEn || '',
-          phone: row.phone || raw.phone || '',
-          address: row.address || raw.address || '',
-          city: row.city || raw.city || 'الكويت',
-          openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
-          openingBalanceDate: raw.openingBalanceDate || '2026-07-31',
-          isActive: raw.isActive ?? row.is_active ?? true,
-          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          branches: finalBranches,
-          priceListId: row.master_price_list_id || raw.priceListId || raw.price_list_id || '',
-          priceListName: raw.priceListName || '',
-          defaultDiscountRate: Number(raw.defaultDiscountRate ?? 0),
-          customPrices: raw.customPrices || [],
-        };
-      });
-    } catch (err: any) {
-      console.warn('Supabase getCustomers exception:', err?.message);
-      return [];
-    }
+    });
   }
 
   public static async saveCustomer(cust: Customer, targetCompanyId?: string): Promise<boolean> {
@@ -976,6 +1000,7 @@ export class SupabaseDataService {
         }
       }
 
+      CacheAndThrottleService.invalidate('customers_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveCustomer exception:', err?.message);
@@ -1054,6 +1079,7 @@ export class SupabaseDataService {
         }
       }
 
+      CacheAndThrottleService.invalidate('customers_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveCustomers exception:', err?.message);
@@ -1074,6 +1100,7 @@ export class SupabaseDataService {
         .eq('company_id', companyId)
         .or(`id.eq.${custUuid},code.eq.${id}`);
 
+      CacheAndThrottleService.invalidate('customers_');
       return !error;
     } catch (err: any) {
       console.warn('Supabase deleteCustomer exception:', err?.message);
@@ -1139,48 +1166,60 @@ export class SupabaseDataService {
   /**
    * 3.1 SUPPLIERS (الموردين)
    */
-  public static async getSuppliers(targetCompanyId?: string): Promise<Supplier[]> {
+  public static async getSuppliers(targetCompanyId?: string, forceRefresh: boolean = false): Promise<Supplier[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
-    try {
-      let { data, error } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: true });
 
-      if (error) {
-        console.warn('Supabase getSuppliers error:', error.message);
+    const cacheKey = `suppliers_${companyId}`;
+    if (!forceRefresh) {
+      const cached = CacheAndThrottleService.get<Supplier[]>(cacheKey);
+      if (cached) return cached;
+    }
+
+    return CacheAndThrottleService.deduplicate<Supplier[]>(cacheKey, async () => {
+      try {
+        let { data, error } = await supabase
+          .from('suppliers')
+          .select('id, company_id, code, name_ar, name_en, phone, address, city, tax_number, is_active, current_balance, balance, raw_data')
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.warn('Supabase getSuppliers error:', error.message);
+          return [];
+        }
+
+        if (!data || data.length === 0) return [];
+
+        const mapped = data.map((row: any) => {
+          const raw = row.raw_data || {};
+          return {
+            id: raw.id || row.id,
+            code: row.code || raw.code || row.id,
+            nameAr: row.name_ar || raw.nameAr || '',
+            nameEn: row.name_en || raw.nameEn || '',
+            phone: row.phone || raw.phone || '',
+            address: row.address || raw.address || '',
+            city: row.city || raw.city || 'الرياض',
+            taxNumber: row.tax_number || raw.taxNumber || '',
+            openingBalance: raw.openingBalance ?? 0,
+            isActive: raw.isActive ?? true,
+            ...raw,
+            current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+            currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+            balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
+          };
+        });
+
+        CacheAndThrottleService.set(cacheKey, mapped, CacheAndThrottleService.TTL_MASTER);
+        return mapped;
+      } catch (err: any) {
+        console.warn('Supabase getSuppliers exception:', err?.message);
         return [];
       }
-
-      if (!data || data.length === 0) return [];
-
-      return data.map((row: any) => {
-        const raw = row.raw_data || {};
-        return {
-          id: raw.id || row.id,
-          code: row.code || raw.code || row.id,
-          nameAr: row.name_ar || raw.nameAr || '',
-          nameEn: row.name_en || raw.nameEn || '',
-          phone: row.phone || raw.phone || '',
-          address: row.address || raw.address || '',
-          city: row.city || raw.city || 'الرياض',
-          taxNumber: row.tax_number || raw.taxNumber || '',
-          openingBalance: raw.openingBalance ?? 0,
-          isActive: raw.isActive ?? true,
-          ...raw,
-          current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-          balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
-        };
-      });
-    } catch (err: any) {
-      console.warn('Supabase getSuppliers exception:', err?.message);
-      return [];
-    }
+    });
   }
 
   public static async saveSupplier(supp: Supplier, targetCompanyId?: string): Promise<boolean> {
@@ -1217,6 +1256,7 @@ export class SupabaseDataService {
         console.warn('Supabase saveSupplier error:', error.message);
         return false;
       }
+      CacheAndThrottleService.invalidate('suppliers_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveSupplier exception:', err?.message);
@@ -1256,6 +1296,7 @@ export class SupabaseDataService {
           console.warn('Supabase saveSuppliers batch error:', error.message);
         }
       }
+      CacheAndThrottleService.invalidate('suppliers_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveSuppliers exception:', err?.message);
@@ -1276,6 +1317,7 @@ export class SupabaseDataService {
         .eq('company_id', companyId)
         .or(`id.eq.${supUuid},code.eq.${id}`);
 
+      CacheAndThrottleService.invalidate('suppliers_');
       return !error;
     } catch (err: any) {
       console.warn('Supabase deleteSupplier exception:', err?.message);
@@ -1286,36 +1328,48 @@ export class SupabaseDataService {
   /**
    * 4. INVOICES & INVOICE_ITEMS (الفواتير وبنودها مع التوافق التبادلي الكامل)
    */
-  public static async getInvoices(targetCompanyId?: string, limit: number = 200): Promise<Invoice[]> {
+  public static async getInvoices(
+    targetCompanyId?: string,
+    limit: number = 50,
+    offset: number = 0,
+    forceRefresh: boolean = false
+  ): Promise<Invoice[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
 
-    try {
-      // 1. Single Source of Truth: Query 'invoices' table with targeted columns & limit
-      const { data: invTableData, error: invErr } = await supabase
-        .from('invoices')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    const cacheKey = `invoices_${companyId}_${limit}_${offset}`;
+    if (!forceRefresh) {
+      const cached = CacheAndThrottleService.get<Invoice[]>(cacheKey);
+      if (cached) return cached;
+    }
 
-      if (invErr) {
-        console.warn('Supabase getInvoices error:', invErr.message);
-        return [];
-      }
+    return CacheAndThrottleService.deduplicate<Invoice[]>(cacheKey, async () => {
+      try {
+        // 1. Single Source of Truth: Query 'invoices' table with targeted columns & range pagination
+        const { data: invTableData, error: invErr } = await supabase
+          .from('invoices')
+          .select('id, company_id, invoice_number, doc_type, date, issue_date, due_date, customer_id, customer_name, subtotal, tax_amount, discount_amount, total_amount, total, paid_amount, remaining_amount, status, payment_type, notes, created_at, updated_at, warehouse_id, rep_id, raw_data')
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + limit - 1);
 
-      if (!invTableData || invTableData.length === 0) {
-        return [];
-      }
+        if (invErr) {
+          console.warn('Supabase getInvoices error:', invErr.message);
+          return [];
+        }
 
-      // Query related invoice_items scoped only to fetched invoice IDs with specific columns
-      const invIds = invTableData.map((inv: any) => inv.id).filter(Boolean);
-      const { data: itemRows } = await supabase
-        .from('invoice_items')
-        .select('id, invoice_id, company_id, item_id, item_name, quantity, unit_price, total_price, tax_rate, tax_amount, raw_data')
-        .in('invoice_id', invIds);
+        if (!invTableData || invTableData.length === 0) {
+          return [];
+        }
+
+        // Query related invoice_items scoped only to fetched invoice IDs with specific columns
+        const invIds = invTableData.map((inv: any) => inv.id).filter(Boolean);
+        const { data: itemRows } = await supabase
+          .from('invoice_items')
+          .select('id, invoice_id, company_id, item_id, item_name, quantity, unit_price, total_price, tax_rate, tax_amount, raw_data')
+          .in('invoice_id', invIds);
 
       const itemsByInvoice: Record<string, InvoiceLine[]> = {};
       if (itemRows) {
@@ -1353,7 +1407,7 @@ export class SupabaseDataService {
         });
       }
 
-      return invTableData.map((inv: any) => {
+      const mapped = invTableData.map((inv: any) => {
         const raw = inv.raw_data || {};
         const snapshot = inv.customer_snapshot || {};
         const rawLines = Array.isArray(raw.lines) && raw.lines.length > 0 ? raw.lines : null;
@@ -1448,11 +1502,15 @@ export class SupabaseDataService {
           createdAt: raw.createdAt || inv.created_at || new Date().toISOString(),
         };
       });
+
+      CacheAndThrottleService.set(cacheKey, mapped, CacheAndThrottleService.TTL_TRANSACTIONS);
+      return mapped;
     } catch (err: any) {
       console.warn('Supabase getInvoices exception:', err?.message);
       return [];
     }
-  }
+  });
+}
 
   public static async getNextUniqueInvoiceNumber(
     docTypeOrIsSales: boolean | 'SALES' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN',
@@ -1978,6 +2036,8 @@ export class SupabaseDataService {
       }
     }
 
+    CacheAndThrottleService.invalidate('invoices_');
+    CacheAndThrottleService.invalidate('journals_');
     return true;
   }
 
@@ -1988,6 +2048,8 @@ export class SupabaseDataService {
       const ok = await SupabaseDataService.saveInvoice(inv, targetCompanyId);
       if (!ok) allOk = false;
     }
+    CacheAndThrottleService.invalidate('invoices_');
+    CacheAndThrottleService.invalidate('journals_');
     return allOk;
   }
 
@@ -2371,6 +2433,8 @@ export class SupabaseDataService {
         console.warn('Recalculate balances after invoice delete note:', balErr);
       }
 
+      CacheAndThrottleService.invalidate('invoices_');
+      CacheAndThrottleService.invalidate('journals_');
       return !error;
     } catch (err: any) {
       console.warn('Supabase deleteInvoice exception:', err?.message);
@@ -2382,52 +2446,70 @@ export class SupabaseDataService {
    * 4.1 PAYMENT_VOUCHERS (سندات القبض والصرف)
    * Single Source of Truth: payment_vouchers table
    */
-  public static async getVouchers(targetCompanyId?: string): Promise<PaymentVoucher[]> {
+  public static async getVouchers(
+    targetCompanyId?: string,
+    limit: number = 50,
+    offset: number = 0,
+    forceRefresh: boolean = false
+  ): Promise<PaymentVoucher[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
-    try {
-      const { data, error } = await supabase
-        .from('payment_vouchers')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('date', { ascending: false });
 
-      if (error) {
-        console.warn('Supabase getVouchers error:', error.message);
+    const cacheKey = `vouchers_${companyId}_${limit}_${offset}`;
+    if (!forceRefresh) {
+      const cached = CacheAndThrottleService.get<PaymentVoucher[]>(cacheKey);
+      if (cached) return cached;
+    }
+
+    return CacheAndThrottleService.deduplicate<PaymentVoucher[]>(cacheKey, async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payment_vouchers')
+          .select('id, company_id, voucher_number, type, date, amount, payment_method, entity_type, entity_id, entity_name, account_id, reference, description, status, created_at, updated_at, raw_data')
+          .eq('company_id', companyId)
+          .order('date', { ascending: false })
+          .range(offset, offset + limit - 1);
+
+        if (error) {
+          console.warn('Supabase getVouchers error:', error.message);
+          return [];
+        }
+
+        if (!data || data.length === 0) return [];
+
+        const mapped = data.map((row: any) => {
+          const raw = row.raw_data || {};
+          return {
+            ...raw,
+            id: raw.id || row.id,
+            companyId: row.company_id || companyId,
+            voucherNumber: row.voucher_number || raw.voucherNumber || row.id,
+            type: (row.type || raw.type || 'RECEIPT') as 'RECEIPT' | 'PAYMENT',
+            date: row.date || raw.date || (row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+            amount: Number(row.amount ?? raw.amount ?? 0),
+            paymentMethod: (row.payment_method || raw.paymentMethod || 'CASH') as 'BANK' | 'CASH',
+            entityType: (row.entity_type || raw.entityType || 'CUSTOMER') as 'CUSTOMER' | 'SUPPLIER',
+            entityId: row.entity_id || raw.entityId || '',
+            entityNameAr: row.entity_name || raw.entityNameAr || raw.entityName || '',
+            bankAccountId: raw.bankAccountId || row.account_id || '',
+            reference: row.reference || raw.reference || '',
+            notes: raw.notes || row.notes || row.description || '',
+            status: (row.status || raw.status || 'POSTED') as 'POSTED' | 'CANCELLED',
+            invoiceId: raw.invoiceId || row.invoice_id || undefined,
+            journalEntryId: raw.journalEntryId || undefined,
+            createdAt: raw.createdAt || row.created_at || new Date().toISOString(),
+          };
+        });
+
+        CacheAndThrottleService.set(cacheKey, mapped, CacheAndThrottleService.TTL_TRANSACTIONS);
+        return mapped;
+      } catch (err: any) {
+        console.warn('Supabase getVouchers exception:', err?.message);
         return [];
       }
-
-      if (!data || data.length === 0) return [];
-
-      return data.map((row: any) => {
-        const raw = row.raw_data || {};
-        return {
-          ...raw,
-          id: raw.id || row.id,
-          companyId: row.company_id || companyId,
-          voucherNumber: row.voucher_number || raw.voucherNumber || row.id,
-          type: (row.type || raw.type || 'RECEIPT') as 'RECEIPT' | 'PAYMENT',
-          date: row.date || raw.date || (row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-          amount: Number(row.amount ?? raw.amount ?? 0),
-          paymentMethod: (row.payment_method || raw.paymentMethod || 'CASH') as 'BANK' | 'CASH',
-          entityType: (row.entity_type || raw.entityType || 'CUSTOMER') as 'CUSTOMER' | 'SUPPLIER',
-          entityId: row.entity_id || raw.entityId || '',
-          entityNameAr: row.entity_name || raw.entityNameAr || raw.entityName || '',
-          bankAccountId: raw.bankAccountId || row.account_id || '',
-          reference: row.reference || raw.reference || '',
-          notes: raw.notes || row.notes || row.description || '',
-          status: (row.status || raw.status || 'POSTED') as 'POSTED' | 'CANCELLED',
-          invoiceId: raw.invoiceId || row.invoice_id || undefined,
-          journalEntryId: raw.journalEntryId || undefined,
-          createdAt: raw.createdAt || row.created_at || new Date().toISOString(),
-        };
-      });
-    } catch (err: any) {
-      console.warn('Supabase getVouchers exception:', err?.message);
-      return [];
-    }
+    });
   }
 
   public static async saveVoucher(v: PaymentVoucher, targetCompanyId?: string): Promise<boolean> {
@@ -2468,6 +2550,8 @@ export class SupabaseDataService {
         console.warn('Supabase saveVoucher error:', error.message);
         return false;
       }
+      CacheAndThrottleService.invalidate('vouchers_');
+      CacheAndThrottleService.invalidate('journals_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveVoucher exception:', err?.message);
@@ -2512,6 +2596,8 @@ export class SupabaseDataService {
         }
       }
 
+      CacheAndThrottleService.invalidate('vouchers_');
+      CacheAndThrottleService.invalidate('journals_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveVouchers exception:', err?.message);
@@ -2571,6 +2657,8 @@ export class SupabaseDataService {
         console.warn('Recalculate balances after voucher delete note:', balErr);
       }
 
+      CacheAndThrottleService.invalidate('vouchers_');
+      CacheAndThrottleService.invalidate('journals_');
       return !error;
     } catch (err: any) {
       console.warn('Supabase deleteVoucher exception:', err?.message);
@@ -2581,95 +2669,112 @@ export class SupabaseDataService {
   /**
    * 5. JOURNAL_ENTRIES (قيود اليومية المحاسبية)
    */
-  public static async getJournals(targetCompanyId?: string, limit: number = 250): Promise<JournalEntry[]> {
+  public static async getJournals(
+    targetCompanyId?: string,
+    limit: number = 100,
+    offset: number = 0,
+    forceRefresh: boolean = false
+  ): Promise<JournalEntry[]> {
     if (!isSupabaseConfigured) return [];
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return [];
-    try {
-      let { data, error } = await supabase
-        .from('journal_entries')
-        .select('id, company_id, entry_number, date, reference, reference_id, description, status, total_debit, total_credit, source_module, source_id, lines, created_at, updated_at')
-        .eq('company_id', companyId)
-        .order('date', { ascending: false })
-        .limit(limit);
 
-      if (error) {
-        console.warn('Supabase getJournals error:', error.message);
-        return [];
-      }
+    const cacheKey = `journals_${companyId}_${limit}_${offset}`;
+    if (!forceRefresh) {
+      const cached = CacheAndThrottleService.get<JournalEntry[]>(cacheKey);
+      if (cached) return cached;
+    }
 
-      if (!data || data.length === 0) return [];
+    return CacheAndThrottleService.deduplicate<JournalEntry[]>(cacheKey, async () => {
+      try {
+        let { data, error } = await supabase
+          .from('journal_entries')
+          .select('id, company_id, entry_number, date, reference, reference_id, description, status, total_debit, total_credit, source_module, source_id, lines, created_at, updated_at')
+          .eq('company_id', companyId)
+          .order('date', { ascending: false })
+          .range(offset, offset + limit - 1);
 
-      const BOGUS_PUR_JOURNALS = new Set([
-        'JV-INV-PUR-2026-0047',
-        'JV-INV-PUR-2026-0046',
-        'JV-INV-PUR-2026-0045',
-        'JV-INV-PUR-2026-0023',
-        'JV-INV-PUR-2026-0022',
-        'JV-INV-PUR-2026-0021',
-        'JV-INV-PUR-2026-0012',
-        'JV-INV-PUR-2026-0009',
-      ]);
+        if (error) {
+          console.warn('Supabase getJournals error:', error.message);
+          return [];
+        }
 
-      return data
-        .filter((row: any) => !BOGUS_PUR_JOURNALS.has(row.entry_number))
-        .map((row: any) => {
-        const raw = row.raw_data || {};
-        const rawLines = row.lines || raw.lines || [];
-        const lines = rawLines.map((l: any) => {
-          if (!l) return l;
-          const code = String(l.accountCode || '').trim();
-          if (code === '4100' || l.accountId === 'acc-4100') {
-            return { ...l, accountId: 'acc-4101', accountCode: '4101', accountNameAr: 'إيرادات المبيعات والخدمات' };
-          }
-          if (code === '5100' || l.accountId === 'acc-5100') {
-            return { ...l, accountId: 'acc-5101', accountCode: '5101', accountNameAr: 'تكلفة البضاعة المباعة والمشتريات' };
-          }
-          if (code === '1110' || l.accountId === 'acc-1110') {
-            return { ...l, accountId: 'acc-1113', accountCode: '1113', accountNameAr: 'الصندوق الرئيسي (الخزينة) ابوكريم' };
-          }
-          if (code === '3100' || l.accountId === 'acc-3100') {
-            return { ...l, accountId: 'acc-3110', accountCode: '3110', accountNameAr: 'رأس مال المنشأة' };
-          }
-          if (code === '5200' || l.accountId === 'acc-5200') {
-            return { ...l, accountId: 'acc-5210', accountCode: '5210', accountNameAr: 'مصروف الرواتب والأجور' };
-          }
-          if (code === '1000' || l.accountId === 'acc-1000') {
-            if (l.memo?.includes('إيراد مبيعات')) {
+        if (!data || data.length === 0) return [];
+
+        const BOGUS_PUR_JOURNALS = new Set([
+          'JV-INV-PUR-2026-0047',
+          'JV-INV-PUR-2026-0046',
+          'JV-INV-PUR-2026-0045',
+          'JV-INV-PUR-2026-0023',
+          'JV-INV-PUR-2026-0022',
+          'JV-INV-PUR-2026-0021',
+          'JV-INV-PUR-2026-0012',
+          'JV-INV-PUR-2026-0009',
+        ]);
+
+        const mapped = data
+          .filter((row: any) => !BOGUS_PUR_JOURNALS.has(row.entry_number))
+          .map((row: any) => {
+          const raw = row.raw_data || {};
+          const rawLines = row.lines || raw.lines || [];
+          const lines = rawLines.map((l: any) => {
+            if (!l) return l;
+            const code = String(l.accountCode || '').trim();
+            if (code === '4100' || l.accountId === 'acc-4100') {
               return { ...l, accountId: 'acc-4101', accountCode: '4101', accountNameAr: 'إيرادات المبيعات والخدمات' };
             }
-            return { ...l, accountId: 'acc-1120', accountCode: '1120', accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)' };
-          }
-          return l;
+            if (code === '5100' || l.accountId === 'acc-5100') {
+              return { ...l, accountId: 'acc-5101', accountCode: '5101', accountNameAr: 'تكلفة البضاعة المباعة والمشتريات' };
+            }
+            if (code === '1110' || l.accountId === 'acc-1110') {
+              return { ...l, accountId: 'acc-1113', accountCode: '1113', accountNameAr: 'الصندوق الرئيسي (الخزينة) ابوكريم' };
+            }
+            if (code === '3100' || l.accountId === 'acc-3100') {
+              return { ...l, accountId: 'acc-3110', accountCode: '3110', accountNameAr: 'رأس مال المنشأة' };
+            }
+            if (code === '5200' || l.accountId === 'acc-5200') {
+              return { ...l, accountId: 'acc-5210', accountCode: '5210', accountNameAr: 'مصروف الرواتب والأجور' };
+            }
+            if (code === '1000' || l.accountId === 'acc-1000') {
+              if (l.memo?.includes('إيراد مبيعات')) {
+                return { ...l, accountId: 'acc-4101', accountCode: '4101', accountNameAr: 'إيرادات المبيعات والخدمات' };
+              }
+              return { ...l, accountId: 'acc-1120', accountCode: '1120', accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)' };
+            }
+            return l;
+          });
+          const totalDebit =
+            Number(row.total_debit) ||
+            Number(raw.totalDebit) ||
+            lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+          const totalCredit =
+            Number(row.total_credit) ||
+            Number(raw.totalCredit) ||
+            lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+          return {
+            id: raw.id || row.id,
+            companyId: row.company_id || companyId,
+            entryNumber: row.entry_number,
+            date: row.date || row.entry_date || (row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+            reference: row.reference || row.reference_id || raw.reference || '',
+            description: row.description || raw.description || '',
+            status: row.status || raw.status || 'POSTED',
+            lines,
+            totalDebit: Math.round(totalDebit * 1000) / 1000,
+            totalCredit: Math.round(totalCredit * 1000) / 1000,
+            createdAt: row.created_at || raw.createdAt || new Date().toISOString(),
+            ...raw,
+          };
         });
-        const totalDebit =
-          Number(row.total_debit) ||
-          Number(raw.totalDebit) ||
-          lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
-        const totalCredit =
-          Number(row.total_credit) ||
-          Number(raw.totalCredit) ||
-          lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
-        return {
-          id: raw.id || row.id,
-          companyId: row.company_id || companyId,
-          entryNumber: row.entry_number,
-          date: row.date || row.entry_date || (row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-          reference: row.reference || row.reference_id || raw.reference || '',
-          description: row.description || raw.description || '',
-          status: row.status || raw.status || 'POSTED',
-          lines,
-          totalDebit: Math.round(totalDebit * 1000) / 1000,
-          totalCredit: Math.round(totalCredit * 1000) / 1000,
-          createdAt: row.created_at || raw.createdAt || new Date().toISOString(),
-          ...raw,
-        };
-      });
-    } catch (err: any) {
-      console.warn('Supabase getJournals exception:', err?.message);
-      return [];
-    }
+
+        CacheAndThrottleService.set(cacheKey, mapped, CacheAndThrottleService.TTL_TRANSACTIONS);
+        return mapped;
+      } catch (err: any) {
+        console.warn('Supabase getJournals exception:', err?.message);
+        return [];
+      }
+    });
   }
 
   public static async getJournal(id: string, targetCompanyId?: string): Promise<JournalEntry | null> {
@@ -2899,6 +3004,7 @@ export class SupabaseDataService {
         }
       }
 
+      CacheAndThrottleService.invalidate('journals_');
       return true;
     } catch (err: any) {
       if (err?.message?.includes('[CPA Parent Guard]') || err?.message?.includes('[CPA Balance Guard]')) {
@@ -3005,6 +3111,7 @@ export class SupabaseDataService {
         }
       }
 
+      CacheAndThrottleService.invalidate('journals_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveJournals exception:', err?.message);
@@ -3055,6 +3162,7 @@ export class SupabaseDataService {
         console.warn('Recalculate balances after journal delete note:', balErr);
       }
 
+      CacheAndThrottleService.invalidate('journals_');
       return !error;
     } catch (err: any) {
       console.warn('Supabase deleteJournal exception:', err?.message);

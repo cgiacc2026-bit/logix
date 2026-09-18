@@ -86,30 +86,26 @@ export const UnifiedBackupRestoreHub: React.FC<UnifiedBackupRestoreHubProps> = (
     setIsExportingJson(true);
     setFeedback(null);
     try {
-      const currentCompanyId = resolveToSupabaseCompanyUUID(company.id) || company.id;
-
-      const [accounts, customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
-        supabase.from('chart_of_accounts').select('*').eq('company_id', currentCompanyId),
-        supabase.from('customers').select('*').eq('company_id', currentCompanyId),
-        supabase.from('suppliers').select('*').eq('company_id', currentCompanyId),
-        supabase.from('inventory_items').select('*').eq('company_id', currentCompanyId),
-        supabase.from('journal_entries').select('*, journal_entry_lines(*)').eq('company_id', currentCompanyId),
-        supabase.from('invoices').select('*, invoice_items(*)').eq('company_id', currentCompanyId),
-        supabase.from('payment_vouchers').select('*').eq('company_id', currentCompanyId),
-      ]);
+      const localAcc = localDataStore.getAccounts();
+      const localCust = localDataStore.getCustomers();
+      const localSupp = localDataStore.getSuppliers();
+      const localInv = localDataStore.getInventory();
+      const localJv = localDataStore.getJournals();
+      const localInvcs = localDataStore.getInvoices();
+      const localVch = localDataStore.getVouchers();
 
       const fullBackup = {
         exportDate: new Date().toISOString(),
         version: '2.0.0',
         company,
         users: localDataStore.getUsers(),
-        accounts: (accounts.data && accounts.data.length > 0) ? accounts.data : localDataStore.getAccounts(),
-        customers: (customers.data && customers.data.length > 0) ? customers.data : localDataStore.getCustomers(),
-        suppliers: (suppliers.data && suppliers.data.length > 0) ? suppliers.data : localDataStore.getSuppliers(),
-        inventory: (inventory.data && inventory.data.length > 0) ? inventory.data : localDataStore.getInventory(),
-        journals: (journals.data && journals.data.length > 0) ? journals.data : localDataStore.getJournals(),
-        invoices: (invoices.data && invoices.data.length > 0) ? invoices.data : localDataStore.getInvoices(),
-        vouchers: (vouchers.data && vouchers.data.length > 0) ? vouchers.data : localDataStore.getVouchers(),
+        accounts: localAcc,
+        customers: localCust,
+        suppliers: localSupp,
+        inventory: localInv,
+        journals: localJv,
+        invoices: localInvcs,
+        vouchers: localVch,
         units: localDataStore.getUnits(),
         warehouses: localDataStore.getWarehouses(),
         warehouseStocks: localDataStore.getWarehouseStocks(),

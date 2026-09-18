@@ -136,18 +136,14 @@ export const Header: React.FC<HeaderProps> = ({
   const handleQuickBackup = async () => {
     setIsExporting(true);
     try {
-      const currentCompanyId = resolveToSupabaseCompanyUUID(company?.id) || company?.id || '20000000-0000-0000-0000-000000000001';
-
-      const [accounts, customers, suppliers, inventory, journals, invoices, vouchers] = await Promise.all([
-        supabase.from('chart_of_accounts').select('*').eq('company_id', currentCompanyId),
-        supabase.from('customers').select('*').eq('company_id', currentCompanyId),
-        supabase.from('suppliers').select('*').eq('company_id', currentCompanyId),
-        supabase.from('inventory_items').select('*').eq('company_id', currentCompanyId),
-        supabase.from('journal_entries').select('*, journal_entry_lines(*)').eq('company_id', currentCompanyId),
-        supabase.from('invoices').select('*, invoice_items(*)').eq('company_id', currentCompanyId),
-        supabase.from('payment_vouchers').select('*').eq('company_id', currentCompanyId),
-      ]);
-
+      // Use localDataStore directly (instant & 0 network egress)
+      const accounts = localDataStore.getAccounts();
+      const customers = localDataStore.getCustomers();
+      const suppliers = localDataStore.getSuppliers();
+      const inventory = localDataStore.getInventory();
+      const journals = localDataStore.getJournals();
+      const invoices = localDataStore.getInvoices();
+      const vouchers = localDataStore.getVouchers();
       const users = localDataStore.getUsers();
       const units = localDataStore.getUnits();
 
@@ -156,13 +152,13 @@ export const Header: React.FC<HeaderProps> = ({
         version: "2.0.0",
         company,
         users,
-        accounts: accounts.data || [],
-        customers: customers.data || [],
-        suppliers: suppliers.data || [],
-        inventory: inventory.data || [],
-        journals: journals.data || [],
-        invoices: invoices.data || [],
-        vouchers: vouchers.data || [],
+        accounts,
+        customers,
+        suppliers,
+        inventory,
+        journals,
+        invoices,
+        vouchers,
         units
       };
 
