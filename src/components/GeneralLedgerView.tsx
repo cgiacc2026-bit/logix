@@ -68,7 +68,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
     }
   }, [selectedAccountId, accounts, currentAccountId]);
 
-  // Core data fetching with dedicated RPC and fallback to journal_entry_lines
+  // Core data fetching with DataService.getLedger and DataService.getAllLedgers
   const fetchLedger = async (accId: string, fromDate: string, toDate: string) => {
     if (!accId) return;
     setLoading(true);
@@ -77,13 +77,10 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
         const allLedgers = await DataService.getAllLedgers(fromDate, toDate);
         setAllReports(allLedgers);
         setReport(null);
-        setLoading(false);
         return;
       }
 
       setAllReports([]);
-      const rawCompId = getCurrentCompanyId();
-      const companyId = resolveToSupabaseCompanyUUID(rawCompId);
 
       // Resolve the actual Account entity
       const targetAccount: Account = accounts.find((a) => a.id === accId || a.code === accId) || {
@@ -101,188 +98,11 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
         balance: 0,
       };
 
-      let ledgerEntries: any = null;
-      let rpcSuccess = false;
-
-      // 1. Dedicated RPC Call: rpc_get_general_ledger
-      if (isSupabaseConfigured && companyId) {
-        try {
-          const currentCompanyId = companyId;
-          const selectedAccountId = targetAccount.id;
-
-          const { data, error } = await supabase.rpc('rpc_get_general_ledger', {
-            p_company_id: currentCompanyId,
-            p_account_id: selectedAccountId,
-            p_from_date: fromDate,
-            p_to_date: toDate,
-          });
-
-          if (!error && data) {
-            ledgerEntries = data;
-            rpcSuccess = true;
-          } else if (error) {
-            console.warn('rpc_get_general_ledger notice:', error.message);
-          }
-        } catch (rpcErr) {
-          console.warn('rpc_get_general_ledger call failed, falling back:', rpcErr);
-        }
-      }
-
-      // If RPC succeeded, map rows directly to cumulative_balance returned from the RPC
-      if (rpcSuccess && ledgerEntries) {
-        let movementsList: any[] = [];
-        let openingBal = 0;
-        let totalDeb = 0;
-        let totalCred = 0;
-
-        if (Array.isArray(ledgerEntries)) {
-          movementsList = ledgerEntries;
-        } else if (typeof ledgerEntries === 'object') {
-          movementsList = ledgerEntries.movements || ledgerEntries.lines || ledgerEntries.transactions || [];
-          openingBal = Number(ledgerEntries.opening_balance ?? ledgerEntries.openingBalance ?? 0);
-          totalDeb = Number(ledgerEntries.total_debit ?? ledgerEntries.totalDebit ?? 0);
-          totalCred = Number(ledgerEntries.total_credit ?? ledgerEntries.totalCredit ?? 0);
-        }
-
-        const mappedMovements = movementsList.map((m: any, idx: number) => {
-          const d = Number(m.debit ?? m.debit_amount ?? 0);
-          const c = Number(m.credit ?? m.credit_amount ?? 0);
-          if (!totalDeb && !totalCred) {
-            totalDeb += d;
-            totalCred += c;
-          }
-          return {
-            id: m.id || `mov-${idx}`,
-            journalEntryId: m.journal_entry_id || m.journalEntryId || '',
-            entryNumber: m.entry_number || m.entryNumber || m.journal_number || `JE-${idx + 1}`,
-            date: m.date || m.entry_date || fromDate,
-            reference: m.reference || m.reference_number || '',
-            description: m.description || m.narration || m.notes || m.memo || 'قيد محاسبي',
-            debit: d,
-            credit: c,
-            runningBalance: Number(m.cumulative_balance ?? m.running_balance ?? 0),
-            cumulative_balance: Number(m.cumulative_balance ?? m.running_balance ?? 0),
-          };
-        });
-
-        const closingBal = movementsList.length > 0
-          ? Number(movementsList[movementsList.length - 1].cumulative_balance ?? movementsList[movementsList.length - 1].running_balance ?? openingBal)
-          : openingBal;
-
-        setReport({
-          account: targetAccount,
-          startDate: fromDate,
-          endDate: toDate,
-          openingBalance: openingBal,
-          movements: mappedMovements,
-          totalDebit: totalDeb,
-          totalCredit: totalCred,
-          closingBalance: closingBal,
-        });
-        return;
-      }
-
-      // 2. Direct Supabase query on journal_entry_lines
-      if (isSupabaseConfigured && companyId) {
-        try {
-          const { data: lines, error: linesErr } = await supabase
-            .from('journal_entry_lines')
-            .select(`
-              id,
-              account_id,
-              account_code,
-              debit,
-              credit,
-              description,
-              created_at,
-              journal_entries!inner (
-                id,
-                entry_number,
-                date,
-                reference,
-                status,
-                description
-              )
-            `)
-            .or(`account_id.eq.${targetAccount.id},account_code.eq.${targetAccount.code}`)
-            .order('created_at', { ascending: true });
-
-          if (!linesErr && lines && lines.length > 0) {
-            let openingBal = 0;
-            let totalDeb = 0;
-            let totalCred = 0;
-            const filteredMovements: any[] = [];
-            const isDebitNature = (targetAccount.normalBalance || (targetAccount as any).nature) === 'DEBIT';
-
-            lines.forEach((line: any) => {
-              const je = Array.isArray(line.journal_entries) ? line.journal_entries[0] : line.journal_entries;
-              const lineDate = je?.date || line.created_at?.split('T')[0] || fromDate;
-              const d = Number(line.debit) || 0;
-              const c = Number(line.credit) || 0;
-
-              if (lineDate < fromDate) {
-                if (isDebitNature) {
-                  openingBal += (d - c);
-                } else {
-                  openingBal += (c - d);
-                }
-              } else if (lineDate <= toDate) {
-                totalDeb += d;
-                totalCred += c;
-                filteredMovements.push({
-                  id: line.id,
-                  entryNumber: je?.entry_number || `JE-${line.id.slice(0, 6)}`,
-                  date: lineDate,
-                  reference: je?.reference || '',
-                  description: line.description || je?.description || je?.narration || 'حركة قيد محاسبي',
-                  debit: d,
-                  credit: c,
-                });
-              }
-            });
-
-            // If openingBal is 0 and targetAccount has balance, use it as baseline
-            if (openingBal === 0 && Number(targetAccount.balance || 0) > 0 && totalDeb === 0 && totalCred === 0) {
-              openingBal = Number(targetAccount.balance || 0);
-            }
-
-            let currentRunning = openingBal;
-            const finalMovements = filteredMovements.map((m) => {
-              if (isDebitNature) {
-                currentRunning += (m.debit - m.credit);
-              } else {
-                currentRunning += (m.credit - m.debit);
-              }
-              return {
-                ...m,
-                journalEntryId: m.journalEntryId || '',
-                runningBalance: currentRunning,
-              };
-            });
-
-            setReport({
-              account: targetAccount,
-              startDate: fromDate,
-              endDate: toDate,
-              openingBalance: openingBal,
-              movements: finalMovements,
-              totalDebit: totalDeb,
-              totalCredit: totalCred,
-              closingBalance: currentRunning,
-            });
-            return;
-          }
-        } catch (lineQueryErr) {
-          console.warn('journal_entry_lines query notice:', lineQueryErr);
-        }
-      }
-
-      // 3. Fallback: DataService.getLedger
-      const localReport = await DataService.getLedger(targetAccount.id, fromDate, toDate);
-      if (localReport) {
-        setReport(localReport);
+      const ledgerReport = await DataService.getLedger(targetAccount.id, fromDate, toDate);
+      if (ledgerReport) {
+        setReport(ledgerReport);
       } else {
-        const fallbackBal = Number(targetAccount.balance ?? (targetAccount as any).current_balance ?? 0);
+        const fallbackBal = Number(targetAccount.balance ?? (targetAccount as any)?.current_balance ?? 0);
         setReport({
           account: targetAccount,
           startDate: fromDate,

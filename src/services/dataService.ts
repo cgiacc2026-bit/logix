@@ -7128,7 +7128,7 @@ export class DataService {
   }
 
   public static async getLedger(accountId: string, startDate?: string, endDate?: string): Promise<GeneralLedgerReport | null> {
-    const accounts = localDataStore.getAccounts();
+    const accounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
     const account = accounts.find((a) => a.id === accountId || a.code === accountId);
     if (!account) return null;
 
@@ -7139,61 +7139,79 @@ export class DataService {
     const ifrsNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
     const isDebitNature = (account.normalBalance || account.nature || ifrsNature) === 'DEBIT';
 
-    const isLeaf = isAccountLeaf(account, accounts);
+    // 1. Build complete set of target account IDs and codes (including sub-accounts and hierarchy)
     const targetIds = new Set<string>();
+    const targetCodes = new Set<string>();
     targetIds.add(account.id);
-    if (!isLeaf) {
-      const code = String(account.code || '').trim();
-      accounts.forEach((a) => {
-        if (a.id === account.id) return;
-        const c = String(a.code || '').trim();
-        if (a.parentId === account.id || (code && c.startsWith(code))) {
-          if (isAccountLeaf(a, accounts)) {
-            targetIds.add(a.id);
-          }
+    if (account.code) targetCodes.add(String(account.code).trim());
+
+    // Recursively collect all descendant accounts in the tree by parentId
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const a of accounts) {
+        if (!targetIds.has(a.id) && a.parentId && targetIds.has(a.parentId)) {
+          targetIds.add(a.id);
+          if (a.code) targetCodes.add(String(a.code).trim());
+          changed = true;
         }
-      });
+      }
     }
 
-    const allPostedJournals = localDataStore
-      .getJournals()
-      .filter((j) => j.status === 'POSTED' || j.status === 'REVERSED')
-      .sort((a, b) => a.date.localeCompare(b.date));
+    // Significant code prefix matching (e.g., "1000" -> "1", "1100" -> "11", "1120" -> "112", etc.)
+    const rootCode = String(account.code || '').trim();
+    const trimmedCode = rootCode.replace(/0+$/, '');
+    if (trimmedCode) {
+      for (const a of accounts) {
+        const c = String(a.code || '').trim();
+        if (c.startsWith(trimmedCode)) {
+          targetIds.add(a.id);
+          targetCodes.add(c);
+        }
+      }
+    }
 
-    let openingBalance = 0;
-    let totalDebit = 0;
-    let totalCredit = 0;
+    const allPostedJournals = (isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals())
+      .filter((j) => j.status === 'POSTED' || j.status === 'REVERSED')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    let periodDebit = 0;
+    let periodCredit = 0;
+    let priorMovements = 0;
     const movements: any[] = [];
 
-    // Accumulate opening balance prior to start date
+    // Helper to check if a journal line matches this account or any of its sub-accounts
+    const isLineMatch = (l: any) => {
+      const lineAccId = l.accountId || l.account_id;
+      const lineAccCode = String(l.accountCode || l.account_code || '').trim();
+      if (lineAccId && targetIds.has(lineAccId)) return true;
+      if (lineAccCode && targetCodes.has(lineAccCode)) return true;
+      if (trimmedCode && lineAccCode && lineAccCode.startsWith(trimmedCode)) return true;
+      return false;
+    };
+
     for (const j of allPostedJournals) {
-      if (j.date < start) {
-        for (const l of j.lines || []) {
-          const isMatch = targetIds.has(l.accountId) || accounts.some((a) => targetIds.has(a.id) && a.code === l.accountCode);
-          if (isMatch) {
-            const d = Number(l.debit) || 0;
-            const c = Number(l.credit) || 0;
+      const jDate = j.date || (j as any).entry_date || (j as any).createdAt?.split('T')[0] || '';
+      for (const l of j.lines || []) {
+        if (isLineMatch(l)) {
+          const d = Number(l.debit) || 0;
+          const c = Number(l.credit) || 0;
+          if (jDate < start) {
             if (isDebitNature) {
-              openingBalance += (d - c);
+              priorMovements += (d - c);
             } else {
-              openingBalance += (c - d);
+              priorMovements += (c - d);
             }
-          }
-        }
-      } else if (j.date <= end) {
-        // Collect period movements
-        for (const l of j.lines || []) {
-          const isMatch = targetIds.has(l.accountId) || accounts.some((a) => targetIds.has(a.id) && a.code === l.accountCode);
-          if (isMatch) {
+          } else if (jDate <= end) {
             movements.push({
               journalId: j.id,
               journalEntryId: j.id,
-              entryNumber: j.entryNumber,
-              date: j.date,
+              entryNumber: j.entryNumber || (j as any).entry_number || `JE-${j.id.slice(0, 6)}`,
+              date: jDate,
               reference: j.reference || '',
-              description: l.memo || j.description || 'حركة قيد',
-              debit: Number(l.debit) || 0,
-              credit: Number(l.credit) || 0,
+              description: l.memo || (l as any).description || ((l as any).entityNameAr ? `${(l as any).entityNameAr} - ${j.description || 'قيد'}` : j.description) || 'حركة قيد محاسبي',
+              debit: d,
+              credit: c,
             });
           }
         }
@@ -7203,15 +7221,43 @@ export class DataService {
     // Sort movements chronologically
     movements.sort((a, b) => a.date.localeCompare(b.date));
 
+    // Base opening balance determination:
+    const explicitOpening = Number(account.openingBalance ?? (account as any).opening_balance ?? 0);
+    let baselineOpening = explicitOpening;
+
+    // If explicit opening balance is 0 and no prior journal movements exist before start date,
+    // check if the account carries a pre-seeded balance from COA without journal entries:
+    if (baselineOpening === 0 && priorMovements === 0) {
+      const totalAllJournalsForAccount = allPostedJournals.reduce((sum, j) => {
+        let delta = 0;
+        for (const l of j.lines || []) {
+          if (isLineMatch(l)) {
+            const d = Number(l.debit) || 0;
+            const c = Number(l.credit) || 0;
+            delta += isDebitNature ? (d - c) : (c - d);
+          }
+        }
+        return sum + delta;
+      }, 0);
+
+      const recordedBal = Math.abs(Number((account as any).current_balance ?? account.balance ?? 0));
+      if (Math.abs(totalAllJournalsForAccount) < 0.0001 && recordedBal > 0) {
+        baselineOpening = recordedBal;
+      }
+    }
+
+    const openingBalance = Math.round((priorMovements + baselineOpening) * 1000) / 1000;
     let currentRunning = openingBalance;
+
     const mappedMovements = movements.map((m, idx) => {
-      totalDebit += m.debit;
-      totalCredit += m.credit;
+      periodDebit += m.debit;
+      periodCredit += m.credit;
       if (isDebitNature) {
         currentRunning += (m.debit - m.credit);
       } else {
         currentRunning += (m.credit - m.debit);
       }
+      currentRunning = Math.round(currentRunning * 1000) / 1000;
       return {
         id: `mov-${idx}-${m.journalId}`,
         journalEntryId: m.journalEntryId,
@@ -7222,6 +7268,7 @@ export class DataService {
         debit: m.debit,
         credit: m.credit,
         runningBalance: currentRunning,
+        cumulative_balance: currentRunning,
       };
     });
 
@@ -7234,15 +7281,15 @@ export class DataService {
       startDate: start,
       endDate: end,
       openingBalance,
-      totalDebit,
-      totalCredit,
+      totalDebit: Math.round(periodDebit * 1000) / 1000,
+      totalCredit: Math.round(periodCredit * 1000) / 1000,
       closingBalance: currentRunning,
       movements: mappedMovements,
     };
   }
 
   public static async getAllLedgers(startDate?: string, endDate?: string): Promise<GeneralLedgerReport[]> {
-    const accounts = localDataStore.getAccounts();
+    const accounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
     const sortedAccounts = [...accounts].sort((a, b) => a.code.localeCompare(b.code));
     const reports: GeneralLedgerReport[] = [];
 
