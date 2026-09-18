@@ -45,9 +45,10 @@ import {
   Account,
   JournalEntry,
   Warehouse,
+  CreditNote,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
-import { normalizeArabicForMatching, toValidUUID } from '../services/statementService.ts';
+import { normalizeArabicForMatching, toValidUUID, getCalculatedCustomerBalance } from '../services/statementService.ts';
 import { DataService } from '../services/dataService.ts';
 import { tafqeetCurrency } from '../utils/tafqeet.ts';
 
@@ -62,6 +63,7 @@ interface OneClickExecutiveReportHubProps {
   accounts: Account[];
   journals: JournalEntry[];
   warehouses: Warehouse[];
+  creditNotes?: CreditNote[];
   onViewAccountStatement?: (entityId: string, entityType: 'CUSTOMER' | 'SUPPLIER') => void;
   onViewInvoice?: (invoice: Invoice) => void;
 }
@@ -79,6 +81,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
   accounts,
   journals,
   warehouses,
+  creditNotes = [],
   onViewAccountStatement,
   onViewInvoice,
 }) => {
@@ -98,11 +101,6 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEntityFilter, setSelectedEntityFilter] = useState<string>('ALL');
 
-  // Consolidation & Deduplication mode (Default TRUE: ادمجهم فوراً)
-  const [mergeDuplicates, setMergeDuplicates] = useState<boolean>(true);
-  const [isFixingDb, setIsFixingDb] = useState<boolean>(false);
-  const [fixSuccessNotice, setFixSuccessNotice] = useState<string | null>(null);
-  const [isConsolidationExpanded, setIsConsolidationExpanded] = useState<boolean>(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
 
   // Print Preview Modal state
@@ -118,24 +116,6 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       setIsAggregating(false);
       setLastAggregatedAt(new Date().toLocaleTimeString('ar-SA'));
     }, 250);
-  };
-
-  const handleFixDatabasePermanently = () => {
-    setIsFixingDb(true);
-    try {
-      const result = DataService.reconcileAndLinkInvoicesToMasterCustomers();
-      setFixSuccessNotice(
-        `تم تثبيت الدمج بنجاح في قاعدة البيانات: تم ربط وتحديث ${result.updatedInvoices} فاتورة و ${result.updatedVouchers} سند تحصيل ببطاقات الجمعيات المعتمدة بشكل دائم.`
-      );
-      setTimeout(() => {
-        setFixSuccessNotice(null);
-      }, 7000);
-    } catch (e: any) {
-      console.error('Failed to fix database:', e);
-      alert('حدث تنبيه أثناء تثبيت الدمج: ' + (e?.message || 'يرجى المحاولة مجدداً'));
-    } finally {
-      setIsFixingDb(false);
-    }
   };
 
   const handleDatePresetChange = (preset: 'ALL' | 'THIS_YEAR' | 'THIS_MONTH' | 'CUSTOM') => {
@@ -186,31 +166,31 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
   }, [journals, datePreset, startDate, endDate]);
 
   // =========================================================================
-  // REPORT 1: Customer & Co-op Society Aggregated Sales (With Smart Consolidation)
+  // REPORT 1: Customer & Co-op Society Aggregated Sales (Strict Matching & GL-Verified)
   // =========================================================================
 
-  // Intelligent Master Customer Resolver (by ID, Code, Normalized Arabic Name, & Cooperative Keywords)
-  const resolveMasterCustomer = (
-    invEntityId?: string,
-    invEntityNameAr?: string,
-    invEntityCode?: string
+  // Strict matching of document to customer (Prevents erroneous merging of distinct entities or branches)
+  const findMatchingCustomer = (
+    docEntityId?: string,
+    docEntityNameAr?: string,
+    docEntityCode?: string
   ): Customer | undefined => {
-    if (!invEntityId && !invEntityNameAr && !invEntityCode) return undefined;
+    if (!docEntityId && !docEntityNameAr && !docEntityCode) return undefined;
 
-    // 1. Direct ID match
-    if (invEntityId) {
-      const byId = customers.find((c) => c.id === invEntityId);
+    // 1. Direct ID / UUID match
+    if (docEntityId) {
+      const byId = customers.find((c) => c.id === docEntityId);
       if (byId) return byId;
 
-      const validUUID = toValidUUID(invEntityId);
+      const validUUID = toValidUUID(docEntityId);
       if (validUUID) {
         const byUUID = customers.find((c) => toValidUUID(c.id) === validUUID);
         if (byUUID) return byUUID;
       }
     }
 
-    // 2. Code match
-    const codeCandidates = [invEntityCode, invEntityId].filter(Boolean) as string[];
+    // 2. Exact code match
+    const codeCandidates = [docEntityCode, docEntityId].filter(Boolean) as string[];
     for (const cand of codeCandidates) {
       const trimmed = cand.trim();
       const byCode = customers.find((c) => {
@@ -226,26 +206,25 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       if (byCode) return byCode;
     }
 
-    // 3. Name & Cooperative Society Keywords Matching
-    if (invEntityNameAr) {
-      const normDoc = normalizeArabicForMatching(invEntityNameAr);
+    // 3. Strict Arabic Name matching (Full exact normalized string match only)
+    if (docEntityNameAr) {
+      const normDoc = normalizeArabicForMatching(docEntityNameAr);
       if (normDoc && normDoc.length >= 3) {
-        const byName = customers.find((c) => normalizeArabicForMatching(c.nameAr) === normDoc);
-        if (byName) return byName;
+        const byExactName = customers.find(
+          (c) => normalizeArabicForMatching(c.nameAr) === normDoc
+        );
+        if (byExactName) return byExactName;
 
-        const coopKeywords = [
-          'مبارك الكبير', 'صباح الاحمد', 'صباح الناصر', 'علي صباح',
-          'سعد العبدالله', 'صليبيخات', 'اشبيليه', 'اشبيلية', 'قيروان',
-          'صباحيه', 'صباحية', 'احمدي', 'بيان', 'سلوي', 'سلوى',
-          'مشرف', 'مطلاع', 'جليب', 'وليد'
-        ];
-        for (const kw of coopKeywords) {
-          const normKw = normalizeArabicForMatching(kw);
-          if (normDoc.includes(normKw)) {
-            const match = customers.find((c) => normalizeArabicForMatching(c.nameAr).includes(normKw));
-            if (match) return match;
-          }
-        }
+        // Strict registered branch match (only if customer explicitly has a registered branch with matching code/name)
+        const byBranch = customers.find((c) =>
+          c.branches?.some((b) => {
+            if (b.id && b.id === docEntityId) return true;
+            if (b.code && b.code === docEntityCode) return true;
+            if (b.nameAr && normalizeArabicForMatching(b.nameAr) === normDoc) return true;
+            return false;
+          })
+        );
+        if (byBranch) return byBranch;
       }
     }
 
@@ -272,13 +251,33 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       }
     > = {};
 
-    // Seed with all official customers
+    // 1. Seed with ALL authorized customers and calculate their real GL balance
     customers.forEach((c) => {
       const isCoop =
         c.nameAr.includes('جمعية') ||
         c.nameAr.includes('تعاونية') ||
         (c.city && c.city.includes('جمعية')) ||
         (c.address && c.address.includes('جمعية'));
+
+      // Dynamic GL Calculation as the Single Source of Truth
+      const glBal = getCalculatedCustomerBalance(
+        c.id,
+        invoices,
+        vouchers,
+        journals,
+        customers,
+        creditNotes || []
+      );
+      const cardBal = Number(
+        c.currentBalance ||
+        c.current_balance ||
+        c.balance ||
+        (c as any).raw_data?.currentBalance ||
+        (c as any).raw_data?.balance ||
+        c.openingBalance ||
+        0
+      );
+      const currentBalance = glBal !== 0 ? glBal : cardBal;
 
       map[c.id] = {
         id: c.id,
@@ -293,49 +292,24 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
         netSales: 0,
         vatTotal: 0,
         paidAmount: 0,
-        currentBalance: Number(c.current_balance ?? c.currentBalance ?? c.balance) || 0,
+        currentBalance,
       };
     });
 
-    // Aggregate Sales Invoices
+    // 2. Aggregate Sales Invoices without dropping any valid invoices
     validInvoices.forEach((inv) => {
       if (!inv.entityId && !inv.entityNameAr) return;
 
       const isReturn =
         inv.type === 'SALES_RETURN' ||
-        (inv.type === 'SALES' && (Number(inv.grandTotal) < 0 || inv.invoiceNumber.includes('RET')));
+        Number(inv.grandTotal) < 0 ||
+        Boolean(inv.invoiceNumber && inv.invoiceNumber.toUpperCase().startsWith('RET-'));
       const isSale = inv.type === 'SALES' && !isReturn;
 
       if (!isSale && !isReturn) return;
 
-      let targetKey = inv.entityId || inv.entityNameAr;
-
-      if (mergeDuplicates) {
-        const masterCustomer = resolveMasterCustomer(inv.entityId, inv.entityNameAr, (inv as any).entityCode);
-        if (masterCustomer) {
-          targetKey = masterCustomer.id;
-          if (!map[targetKey]) {
-            const isCoop =
-              masterCustomer.nameAr.includes('جمعية') ||
-              masterCustomer.nameAr.includes('تعاونية');
-            map[targetKey] = {
-              id: masterCustomer.id,
-              code: masterCustomer.code || 'CUST',
-              nameAr: masterCustomer.nameAr,
-              isCoop,
-              category: isCoop ? 'جمعية تعاونية' : 'عميل تجزئة / جملة',
-              invoiceCount: 0,
-              returnCount: 0,
-              grossSales: 0,
-              returns: 0,
-              netSales: 0,
-              vatTotal: 0,
-              paidAmount: 0,
-              currentBalance: Number(masterCustomer.current_balance ?? masterCustomer.currentBalance ?? masterCustomer.balance) || 0,
-            };
-          }
-        }
-      }
+      const matchedCustomer = findMatchingCustomer(inv.entityId, inv.entityNameAr, (inv as any).entityCode);
+      const targetKey = matchedCustomer ? matchedCustomer.id : (inv.entityId || inv.entityNameAr || 'GEN');
 
       if (!map[targetKey]) {
         const isCoop =
@@ -343,7 +317,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
           (inv.entityNameAr || '').includes('تعاونية');
         map[targetKey] = {
           id: targetKey,
-          code: 'GEN',
+          code: (inv as any).entityCode || (inv.entityId?.startsWith('cust-') ? inv.entityId.replace('cust-', '') : 'GEN'),
           nameAr: inv.entityNameAr || 'عميل عام',
           isCoop,
           category: isCoop ? 'جمعية تعاونية' : 'عميل عام',
@@ -375,17 +349,42 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       row.netSales = row.grossSales - row.returns;
     });
 
-    // Also include vouchers for collected payments
+    // 3. Aggregate Credit Notes (Returns)
+    (creditNotes || []).forEach((cn) => {
+      if (cn.status === 'REVERSED' || (cn as any).is_void || cn.is_deleted) return;
+      if (datePreset !== 'ALL') {
+        if (cn.date < startDate || cn.date > endDate) return;
+      }
+      const matchedCustomer = findMatchingCustomer(
+        cn.customer_id || (cn as any).customerId,
+        cn.customer_name || (cn as any).customerNameAr || (cn as any).customerName,
+        (cn as any).customerCode
+      );
+      const targetKey = matchedCustomer ? matchedCustomer.id : (cn.customer_id || (cn as any).customerId || cn.customer_name || 'GEN');
+      if (map[targetKey]) {
+        const amount = Math.abs(Number(cn.total_refund_amount ?? (cn as any).totalAmount ?? (cn as any).grandTotal) || 0);
+        map[targetKey].returnCount += 1;
+        map[targetKey].returns += amount;
+        map[targetKey].netSales = map[targetKey].grossSales - map[targetKey].returns;
+      }
+    });
+
+    // 4. Include Vouchers for collected payments
     validVouchers.forEach((v) => {
-      if (v.type === 'RECEIPT') {
-        let targetKey = v.entityId;
-        if (mergeDuplicates) {
-          const master = resolveMasterCustomer(v.entityId, v.entityNameAr, (v as any).entityCode);
-          if (master) targetKey = master.id;
-        }
+      const vType = v.type || (v as any).voucher_type;
+      if (vType === 'RECEIPT') {
+        const matched = findMatchingCustomer(v.entityId, v.entityNameAr, (v as any).entityCode);
+        const targetKey = matched ? matched.id : v.entityId;
         if (targetKey && map[targetKey]) {
           map[targetKey].paidAmount += Number(v.amount) || 0;
         }
+      }
+    });
+
+    // 5. Ensure any external/unregistered customer has an accurate balance derived from net sales and payments
+    Object.values(map).forEach((row) => {
+      if (row.currentBalance === 0 && (row.netSales !== 0 || row.paidAmount !== 0)) {
+        row.currentBalance = row.netSales - row.paidAmount;
       }
     });
 
@@ -397,7 +396,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
     } else if (selectedEntityFilter === 'REGULAR_ONLY') {
       list = list.filter((item) => !item.isCoop);
     } else if (selectedEntityFilter === 'ACTIVE_ONLY') {
-      list = list.filter((item) => item.invoiceCount > 0 || item.returnCount > 0);
+      list = list.filter((item) => item.invoiceCount > 0 || item.returnCount > 0 || item.currentBalance !== 0);
     }
 
     if (searchTerm) {
@@ -409,8 +408,12 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       );
     }
 
-    return list.sort((a, b) => b.netSales - a.netSales);
-  }, [customers, validInvoices, validVouchers, selectedEntityFilter, searchTerm, mergeDuplicates]);
+    return list.sort((a, b) => {
+      // Prioritize active sales or non-zero balance
+      if (b.netSales !== a.netSales) return b.netSales - a.netSales;
+      return Math.abs(b.currentBalance) - Math.abs(a.currentBalance);
+    });
+  }, [customers, validInvoices, validVouchers, creditNotes, invoices, vouchers, journals, datePreset, startDate, endDate, selectedEntityFilter, searchTerm]);
 
   // Report 1 Totals
   const report1Totals = useMemo(() => {
@@ -463,8 +466,17 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
     // Traverse all valid journal entries
     validJournals.forEach((j) => {
       j.lines.forEach((line) => {
-        if (selectedAccountId !== 'ALL' && line.accountId !== selectedAccountId) {
-          return;
+        if (selectedAccountId !== 'ALL') {
+          const targetAcc = accounts.find((a) => a.id === selectedAccountId || a.code === selectedAccountId);
+          const isMatch =
+            line.accountId === selectedAccountId ||
+            (targetAcc && (
+              line.accountId === targetAcc.id ||
+              line.accountCode === targetAcc.code ||
+              line.accountId === targetAcc.code ||
+              line.accountId === `acc-${targetAcc.code}`
+            ));
+          if (!isMatch) return;
         }
 
         if (searchTerm) {
@@ -499,7 +511,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
     if (selectedAccountId !== 'ALL') {
       const targetAcc = accounts.find((a) => a.id === selectedAccountId || a.code === selectedAccountId);
       const isCredit = (targetAcc?.normalBalance || targetAcc?.nature) === 'CREDIT';
-      let balance = 0;
+      let balance = Number(targetAcc?.openingBalance || (targetAcc as any)?.opening_balance || 0);
       rows.forEach((r) => {
         if (isCredit) {
           balance += (r.credit - r.debit);
@@ -515,7 +527,8 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
         const acc = accounts.find((a) => a.code === r.accountCode || a.nameAr === r.accountNameAr);
         const isCredit = (acc?.normalBalance || acc?.nature) === 'CREDIT';
         const key = r.accountCode || r.accountNameAr || 'UNKNOWN';
-        const prev = accBalanceMap.get(key) || 0;
+        const initialAccOpening = Number(acc?.openingBalance || (acc as any)?.opening_balance || 0);
+        const prev = accBalanceMap.has(key) ? accBalanceMap.get(key)! : initialAccOpening;
         const next = isCredit ? prev + (r.credit - r.debit) : prev + (r.debit - r.credit);
         accBalanceMap.set(key, next);
         r.runningBalance = next;
@@ -545,6 +558,44 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       return code.startsWith('1101') || code.startsWith('1102') || code.startsWith('111');
     });
   }, [accounts]);
+
+  // Calculate accurate live balances for cash and bank accounts based on journals
+  const cashboxAccountsWithBalances = useMemo(() => {
+    return cashboxAccounts.map((acc) => {
+      let movDebit = 0;
+      let movCredit = 0;
+      validJournals.forEach((j) => {
+        j.lines?.forEach((line) => {
+          const matchesAccount =
+            line.accountId === acc.id ||
+            line.accountCode === acc.code ||
+            line.accountId === acc.code ||
+            line.accountId === `acc-${acc.code}`;
+          if (matchesAccount) {
+            movDebit += Number(line.debit) || 0;
+            movCredit += Number(line.credit) || 0;
+          }
+        });
+      });
+
+      const isDebit = (acc.normalBalance || (acc as any).nature || 'DEBIT') === 'DEBIT';
+      const initialOpening = Number(acc.openingBalance || (acc as any)?.opening_balance || 0);
+      const cardBal = Number(acc.currentBalance || acc.current_balance || acc.balance || 0);
+
+      let liveBal = isDebit
+        ? initialOpening + (movDebit - movCredit)
+        : initialOpening + (movCredit - movDebit);
+
+      if (movDebit === 0 && movCredit === 0 && cardBal !== 0) {
+        liveBal = cardBal;
+      }
+
+      return {
+        ...acc,
+        liveBalance: liveBal,
+      };
+    });
+  }, [cashboxAccounts, validJournals]);
 
   const inventoryValuationRows = useMemo(() => {
     return inventory.map((item) => {
@@ -879,103 +930,46 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
       {/* REPORT 1: Customer & Society Sales */}
       {activeReport === 'customer-society-sales' && (
         <div className="space-y-6">
-          {/* Smart Entity Consolidation & Merge Control Banner - Collapsible by default */}
-          <div className="bg-slate-900 text-white rounded-2xl shadow-xs border border-slate-800 overflow-hidden no-print transition-all">
-            {/* Collapsed Header Bar: Compact & Scannable */}
-            <div className="p-3 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-white">
-                      التوحيد الذكي الموحد للجمعيات والعملاء
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-                      mergeDuplicates
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                    }`}>
-                      {mergeDuplicates ? 'مفعّل (16 جهة رسمية معتمدة)' : 'غير مفعّل (28 جهة خام)'}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
-                    {mergeDuplicates
-                      ? 'تم توحيد فواتير وسطور GEN المكررة تلقائياً تحت الأكواد الرسمية المعتمدة'
-                      : 'العرض التفصيلي الخام لكافة السجلات بما فيها سطور GEN المنفصلة'}
-                  </div>
-                </div>
+          {/* Executive Audit & Integrity Status Bar */}
+          <div className="bg-slate-900 text-white rounded-2xl shadow-xs border border-slate-800 p-3 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3 no-print">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                <ShieldCheck className="w-4 h-4" />
               </div>
-
-              {/* Quick Compact Controls + Toggle Details */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMergeDuplicates(!mergeDuplicates)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
-                    mergeDuplicates
-                      ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
-                      : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40'
-                  }`}
-                  title="التبديل بين العرض المدمج المعتمد والعرض التفصيلي"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>{mergeDuplicates ? 'عرض مدمج (16)' : 'عرض خام (28)'}</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsConsolidationExpanded(!isConsolidationExpanded)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/15 text-slate-200 border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <span>{isConsolidationExpanded ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isConsolidationExpanded ? 'rotate-180' : ''}`} />
-                </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-white">
+                    التدقيق المالي والمطابقة المحاسبية الشاملة
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    مطابق لدفتر الأستاذ العام (GL)
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  عرض شامل ومفصل لكافة الجمعيات والعملاء المعتمدين دون حذف أو اختصار مع احتساب فوري للأرصدة والمبيعات والمرتجعات
+                </div>
               </div>
             </div>
 
-            {/* Expandable Secondary Details (Collapsed by default) */}
-            {isConsolidationExpanded && (
-              <div className="px-4 pb-4 pt-2 border-t border-slate-800/80 bg-slate-950/40 space-y-3">
-                <p className="text-xs text-slate-300 max-w-4xl leading-relaxed">
-                  {mergeDuplicates
-                    ? `تم حل إشكالية السطور المكررة (مثل جمعية مبارك الكبير، سلوى، الصباحية، وغيرها) وتوحيد كافة الفواتير (${report1Totals.invoices} فاتورة) وصافي المبيعات (${formatCurrency(report1Totals.netSales, currency)}) والأرصدة المستحقة (${formatCurrency(report1Totals.balance, currency)}) تحت البطاقة الرسمية المعتمدة لكل جمعية.`
-                    : 'يمكنك تفعيل الدمج الذكي لتوحيد كافة الحركات والسطور المكررة تلقائياً.'}
-                </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTriggerAggregation}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isAggregating ? 'animate-spin' : 'text-emerald-400'}`} />
+                <span>تحديث ومزامنة الأرقام</span>
+              </button>
 
-                {fixSuccessNotice && (
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-bold">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>{fixSuccessNotice}</span>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleFixDatabasePermanently}
-                    disabled={isFixingDb}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                    title="تحديث معرّفات الفواتير في قاعدة البيانات لربطها بالبطاقات المعتمدة بشكل دائم"
-                  >
-                    <Check className={`w-3.5 h-3.5 ${isFixingDb ? 'animate-spin' : 'text-emerald-400'}`} />
-                    <span>{isFixingDb ? 'جاري التثبيت...' : 'تثبيت الدمج في قاعدة البيانات'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsPrintPreviewOpen(true)}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>طباعة الكشف الموحد (A4)</span>
-                  </button>
-                </div>
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setIsPrintPreviewOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>معاينة وطباعة (A4)</span>
+              </button>
+            </div>
           </div>
 
           {/* Executive Summary Cards: Balanced Row with Hero Metric */}
@@ -1283,8 +1277,8 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
               <span>أرصدة الصناديق النقدية والحسابات البنكية المعتمدة</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-              {cashboxAccounts.map((acc) => {
-                const bal = Number(acc.current_balance ?? acc.currentBalance ?? acc.balance) || 0;
+              {cashboxAccountsWithBalances.map((acc) => {
+                const bal = Number(acc.liveBalance) || 0;
                 return (
                   <div key={acc.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
                     <div className="flex items-center justify-between">

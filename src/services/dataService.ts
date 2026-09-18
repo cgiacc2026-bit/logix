@@ -682,12 +682,6 @@ class LocalDataStore {
       raw = this.memoryFallback[key] || this.memoryFallback[altKey] || null;
     }
     const result = new Set<string>();
-    if (type === 'journals') {
-      result.add('jv-2026-0001');
-      result.add('jv-2026-0002');
-      result.add('jv-2026-0003');
-      result.add('jv-2026-0004');
-    }
     if (raw) {
       try {
         const parsed = JSON.parse(raw);

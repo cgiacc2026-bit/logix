@@ -238,6 +238,7 @@ export const DedicatedReportsWorkspace: React.FC<DedicatedReportsWorkspaceProps>
             accounts={accounts}
             journals={journals}
             warehouses={warehouses}
+            creditNotes={creditNotes || []}
             onViewAccountStatement={(entityId, entityType) => {
               if (onViewAccountStatement) {
                 onViewAccountStatement(entityId, entityType);

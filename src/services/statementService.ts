@@ -512,7 +512,6 @@ export function getAccountStatement(
       (j.status as string) !== 'CANCELLED' &&
       (j.status as string) !== 'REVERSED' &&
       !(j as any).is_void &&
-      !['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'].includes(j.id) &&
       !j.entryNumber?.toUpperCase().startsWith('REV-') &&
       !(j.reference && cancelledDocNumbers.has(j.reference.trim().toUpperCase())) &&
       !(j.sourceId && cancelledDocIds.has(j.sourceId.trim()))
