@@ -828,17 +828,30 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const handleSaveInvoice = async (e: React.FormEvent, autoPost: boolean = true) => {
     if (e && e.preventDefault) e.preventDefault();
 
-    let entityId = invEntityId;
-    if (!entityId) {
-      const defaultCustomer = scopedCustomers && scopedCustomers.length > 0 ? scopedCustomers[0] : null;
-      const defaultSupplier = suppliers && suppliers.length > 0 ? suppliers[0] : null;
-      const defaultEntity = (invType === 'PURCHASE' || invType === 'PURCHASE_RETURN') ? defaultSupplier : defaultCustomer;
-      if (defaultEntity) {
-        entityId = defaultEntity.id;
-        setInvEntityId(entityId);
+    const isSalesDoc = invType === 'SALES' || invType === 'SALES_RETURN';
+    const entityId = invEntityId?.trim();
+
+    if (isSalesDoc) {
+      if (!entityId) {
+        alert('خطأ تدقيق محاسبي رقابي: يجب اختيار عميل مسجل رسمياً في النظام من القائمة المنسدلة (لا يُقبل الحفظ دون تحديد العميل). للعملاء العابرين اختر "عميل نقدي عام (كاش)".');
+        return;
+      }
+      const customerExists = scopedCustomers.some((c) => c.id === entityId);
+      if (!customerExists) {
+        alert('خطأ تدقيق محاسبي رقابي: العميل المحدد غير موجود في سجل العملاء المعتمدين لهذه الشركة. يرجى اختياره من القائمة أو تسجيله أولاً.');
+        return;
+      }
+    } else {
+      if (!entityId) {
+        alert('خطأ تدقيق محاسبي رقابي: يجب اختيار مورد مسجل رسمياً في النظام من القائمة المنسدلة.');
+        return;
+      }
+      const supplierExists = suppliers.some((s) => s.id === entityId);
+      if (!supplierExists) {
+        alert('خطأ تدقيق محاسبي رقابي: المورد المحدد غير موجود في سجل الموردين المعتمدين.');
+        return;
       }
     }
-    if (!entityId) return alert('الرجاء اختيار العميل أو المورد');
 
     // Auto-resolve Warehouse if missing
     let warehouseId = invWarehouseId;

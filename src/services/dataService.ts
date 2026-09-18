@@ -2890,10 +2890,26 @@ export class DataService {
     let entityNameAr = data.entityNameAr || data.entityName || '';
     if (isSales || isSalesReturn) {
       const cust = customers.find((c) => c.id === data.entityId);
-      if (cust) entityNameAr = cust.nameAr;
+      if (cust) {
+        entityNameAr = cust.nameAr;
+      } else {
+        const cashCust = customers.find((c) => c.code === 'CUST-CASH' || c.id === '10000000-0000-0000-0000-000000000020');
+        if (data.entityId === 'cust-cash-01' || data.entityId === 'CUST-CASH' || (!data.entityId && data.paymentTerms === 'CASH')) {
+          if (cashCust) {
+            data.entityId = cashCust.id;
+            entityNameAr = cashCust.nameAr;
+          }
+        } else {
+          throw new Error(`خطأ رقابي: العميل المحدد برمز (${data.entityId || 'فارغ'}) غير مسجل في قاعدة بيانات العملاء. لا يُسمح بإصدار فواتير يتيمة.`);
+        }
+      }
     } else {
       const supp = suppliers.find((s) => s.id === data.entityId);
-      if (supp) entityNameAr = supp.nameAr;
+      if (supp) {
+        entityNameAr = supp.nameAr;
+      } else {
+        throw new Error(`خطأ رقابي: المورد المحدد برمز (${data.entityId || 'فارغ'}) غير مسجل في قاعدة بيانات الموردين.`);
+      }
     }
 
     const newId = generateUUID();
@@ -6925,8 +6941,10 @@ export class DataService {
   // Financial Reports
   public static async getTrialBalance(asOfDate?: string): Promise<TrialBalanceReport> {
     const cutoff = asOfDate || new Date().toISOString().split('T')[0];
-    const accounts = localDataStore.getAccounts();
-    const journals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= cutoff);
+    const accounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
+    const journals = (isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals()).filter(
+      (j) => j.status === 'POSTED' && j.date <= cutoff
+    );
 
     const agg = aggregateChartOfAccountsTree(accounts, journals, true);
     const enrichedMap = agg.accountMap;
@@ -7124,8 +7142,10 @@ export class DataService {
   public static async getPnL(startDate: string, endDate: string): Promise<IncomeStatementReport> {
     const start = startDate || '2026-01-01';
     const end = endDate || '2099-12-31';
-    const accounts = localDataStore.getAccounts();
-    const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
+    const accounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
+    const postedJournals = (isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals()).filter(
+      (j) => j.status === 'POSTED'
+    );
 
     // Aggregate movements in date range
     const rangeMovementMap = new Map<string, { debit: number; credit: number }>();
@@ -7236,10 +7256,12 @@ export class DataService {
     }
 
     if (accounts.length === 0) {
-      const localAccs = localDataStore.getAccounts();
-      const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= cutoff);
-      accounts = this.calculateDynamicAccountBalances(localAccs, postedJournals);
+      accounts = localDataStore.getAccounts();
     }
+
+    const postedJournals = (isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals())
+      .filter((j) => j.status === 'POSTED' && j.date <= cutoff);
+    accounts = this.calculateDynamicAccountBalances(accounts, postedJournals);
 
     const currentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
     const nonCurrentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
@@ -7348,37 +7370,121 @@ export class DataService {
 
     const income = await this.getPnL(start, end);
     const accounts = localDataStore.getAccounts();
-    const postedJournals = localDataStore.getJournals().filter((j) => j.status === 'POSTED' && j.date <= end);
-    const withBalances = this.calculateDynamicAccountBalances(accounts, postedJournals);
+    const allPosted = localDataStore.getJournals().filter((j) => j.status === 'POSTED');
 
-    const resolved = this.getResolvedAccounts();
-    const cashAccount = withBalances.find((a) => a.id === resolved.bank.id || a.code === resolved.bank.code);
-    const cashBoxAccount = withBalances.find((a) => a.id === resolved.cash.id || a.code === resolved.cash.code);
-    const closingCash = (cashAccount?.balance || 0) + (cashBoxAccount?.balance || 0);
+    // 1. Identify all 111x leaf accounts (Cash and Bank)
+    const is111xLeaf = (acc: Account) => {
+      const code = String(acc.code || '').trim();
+      return (code.startsWith('111') || code === '1111' || code === '1112' || code === '1113') && isAccountLeaf(acc, accounts);
+    };
+    const cashLeafAccounts = accounts.filter(is111xLeaf);
+    const cashLeafIds = new Set(cashLeafAccounts.map((a) => a.id));
+    const cashLeafCodes = new Set(cashLeafAccounts.map((a) => a.code));
+
+    // 2. Opening cash: all posted movements before startDate (date < start)
+    let openingCash = 0;
+    for (const j of allPosted) {
+      if (j.date < start) {
+        for (const line of j.lines || []) {
+          const isCash = (line.accountId && cashLeafIds.has(line.accountId)) || (line.accountCode && cashLeafCodes.has(line.accountCode));
+          if (isCash) {
+            openingCash += (Number(line.debit) || 0) - (Number(line.credit) || 0);
+          }
+        }
+      }
+    }
+    openingCash = Math.round(openingCash * 1000) / 1000;
+
+    // 3. Closing cash: all posted movements up to endDate (date <= end)
+    let closingCash = 0;
+    for (const j of allPosted) {
+      if (j.date <= end) {
+        for (const line of j.lines || []) {
+          const isCash = (line.accountId && cashLeafIds.has(line.accountId)) || (line.accountCode && cashLeafCodes.has(line.accountCode));
+          if (isCash) {
+            closingCash += (Number(line.debit) || 0) - (Number(line.credit) || 0);
+          }
+        }
+      }
+    }
+    closingCash = Math.round(closingCash * 1000) / 1000;
+
+    // 4. Net actual change in 111x cash & bank accounts
+    const netCashChange = Math.round((closingCash - openingCash) * 1000) / 1000;
+
+    // 5. Working Capital & Cash Flow breakdown (IAS 7 Indirect Method)
+    const periodJournals = allPosted.filter((j) => j.date >= start && j.date <= end);
+    let deltaAR = 0; // 1120
+    let deltaInv = 0; // 1130
+    let deltaAP = 0; // 2110
+    let deltaVAT = 0; // 2120 / 2150
+    let deltaFA = 0; // 12xx
+    let deltaCapital = 0; // 3100
+
+    for (const j of periodJournals) {
+      for (const line of j.lines || []) {
+        const c = String(line.accountCode || '').trim();
+        const d = Number(line.debit) || 0;
+        const cr = Number(line.credit) || 0;
+
+        if (c.startsWith('112') || c === '1120') deltaAR += (d - cr);
+        else if (c.startsWith('113') || c === '1130') deltaInv += (d - cr);
+        else if (c.startsWith('211') || c === '2110') deltaAP += (cr - d);
+        else if (c.startsWith('212') || c.startsWith('215')) deltaVAT += (cr - d);
+        else if (c.startsWith('12')) deltaFA += (d - cr);
+        else if (c.startsWith('31')) deltaCapital += (cr - d);
+      }
+    }
+
+    const adjustments: { label: string; amount: number }[] = [];
+    if (Math.abs(deltaAR) > 0.0005) {
+      adjustments.push({
+        label: deltaAR > 0 ? 'التغير في ذمم العملاء والمدينين (زيادة رصيد - تدفق خارج)' : 'التغير في ذمم العملاء والمدينين (تحصيل - تدفق داخل)',
+        amount: Math.round(-deltaAR * 1000) / 1000,
+      });
+    }
+    if (Math.abs(deltaInv) > 0.0005) {
+      adjustments.push({
+        label: deltaInv > 0 ? 'التغير في بضاعة المخزون (شراء وتخزين - تدفق خارج)' : 'التغير في بضاعة المخزون (صرف للمبيعات - أثر نقدي)',
+        amount: Math.round(-deltaInv * 1000) / 1000,
+      });
+    }
+    if (Math.abs(deltaAP) > 0.0005) {
+      adjustments.push({
+        label: deltaAP > 0 ? 'التغير في ذمم الموردين والدائنين (زيادة التزامات - تمويل تشغيلي)' : 'التغير في ذمم الموردين والدائنين (سداد التزامات - تدفق خارج)',
+        amount: Math.round(deltaAP * 1000) / 1000,
+      });
+    }
+    if (Math.abs(deltaVAT) > 0.0005) {
+      adjustments.push({
+        label: 'التغير في أمانات ضريبة القيمة المضافة',
+        amount: Math.round(deltaVAT * 1000) / 1000,
+      });
+    }
 
     const netIncome = income.netIncome;
-    const totalOperating = netIncome;
-    const totalInvesting = 0;
-    const totalFinancing = 0;
+    const totalInvesting = Math.round(-deltaFA * 1000) / 1000;
+    const totalFinancing = Math.round(deltaCapital * 1000) / 1000;
+    const totalOperating = Math.round((netCashChange - totalInvesting - totalFinancing) * 1000) / 1000;
 
     return {
       startDate: start,
       endDate: end,
       operatingCashFlow: {
         netIncome,
-        adjustments: [],
+        adjustments,
         totalOperating,
       },
       investingCashFlow: {
-        items: [],
-        totalInvesting: 0,
+        items: deltaFA !== 0 ? [{ label: 'شراء / بيع أصول ثابتة ومعدات', amount: totalInvesting }] : [],
+        totalInvesting,
       },
       financingCashFlow: {
-        items: [],
-        totalFinancing: 0,
+        items: deltaCapital !== 0 ? [{ label: 'زيادة / تخفيض رأس المال وحقوق الشركاء', amount: totalFinancing }] : [],
+        totalFinancing,
       },
-      netCashChange: totalOperating + totalInvesting + totalFinancing,
-      openingCash: closingCash - netIncome,
+      netCashChange,
+      openingCash,
       closingCash,
     };
   }

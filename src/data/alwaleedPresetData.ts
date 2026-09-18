@@ -896,6 +896,42 @@ export const ALWALEED_MILL_PRESET_BACKUP: CompanyBackupEnvelope = {
         "companyId": "20000000-0000-0000-0000-000000000001",
         "governorate": "",
         "branches": []
+      },
+      {
+        "id": "10000000-0000-0000-0000-000000000021",
+        "code": "3025",
+        "nameAr": "جمعية الروضة التعاونية",
+        "nameEn": "Rawda Co-operative Society",
+        "phone": "+965 2251 0000",
+        "address": "منطقة الروضة، قطعة 2",
+        "city": "الكويت",
+        "balance": 540,
+        "currentBalance": 540,
+        "taxNumber": "",
+        "creditLimit": 5000,
+        "openingBalance": 0,
+        "isActive": true,
+        "companyId": "20000000-0000-0000-0000-000000000001",
+        "governorate": "العاصمة",
+        "branches": []
+      },
+      {
+        "id": "10000000-0000-0000-0000-000000000020",
+        "code": "CUST-CASH",
+        "nameAr": "عميل نقدي عام (كاش)",
+        "nameEn": "Cash Walk-in Customer",
+        "phone": "",
+        "address": "مبيعات نقدية مباشرة",
+        "city": "الكويت",
+        "balance": 0,
+        "currentBalance": 0,
+        "taxNumber": "",
+        "creditLimit": 0,
+        "openingBalance": 0,
+        "isActive": true,
+        "companyId": "20000000-0000-0000-0000-000000000001",
+        "governorate": "",
+        "branches": []
       }
     ],
     "suppliers": [

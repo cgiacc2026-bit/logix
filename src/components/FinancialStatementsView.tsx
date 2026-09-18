@@ -528,11 +528,61 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                     <span>صافي أرباح الفترة:</span>
                     <span className="font-serif font-bold text-[#1A1A1A]">{formatKWD(cashFlow.operatingCashFlow.netIncome)}</span>
                   </div>
+                  {cashFlow.operatingCashFlow.adjustments && cashFlow.operatingCashFlow.adjustments.length > 0 && (
+                    <div className="space-y-1 pt-1 pb-1">
+                      {cashFlow.operatingCashFlow.adjustments.map((adj, idx) => (
+                        <div key={idx} className="flex justify-between text-[#6E6659] pl-2 border-r-2 border-[#2D6A4F]/30 pr-2 text-[11px]">
+                          <span>{adj.label}:</span>
+                          <span className="font-serif font-semibold text-[#1A1A1A]">
+                            {adj.amount >= 0 ? `+${formatKWD(adj.amount)}` : `(${formatKWD(Math.abs(adj.amount))})`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex justify-between text-[#2D6A4F] font-serif font-bold border-t border-[#E5E1DA] pt-2">
                     <span>صافي التدفق النقدي التشغيلي:</span>
                     <span>{formatKWD(cashFlow.operatingCashFlow.totalOperating)}</span>
                   </div>
                 </div>
+
+                {/* Investing */}
+                {cashFlow.investingCashFlow && cashFlow.investingCashFlow.items && cashFlow.investingCashFlow.items.length > 0 && (
+                  <div className="bg-[#F7F5F0] p-4 rounded-md border border-[#E5E1DA] space-y-2">
+                    <h4 className="font-serif font-bold text-[#B8860B]">
+                      2. التدفقات النقدية من الأنشطة الاستثمارية (Investing Activities)
+                    </h4>
+                    {cashFlow.investingCashFlow.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-[#6E6659] pl-2 border-r-2 border-[#B8860B]/30 pr-2 text-[11px]">
+                        <span>{item.label}:</span>
+                        <span className="font-serif font-semibold text-[#1A1A1A]">{formatKWD(item.amount)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between text-[#B8860B] font-serif font-bold border-t border-[#E5E1DA] pt-2">
+                      <span>صافي التدفق النقدي الاستثماري:</span>
+                      <span>{formatKWD(cashFlow.investingCashFlow.totalInvesting)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Financing */}
+                {cashFlow.financingCashFlow && cashFlow.financingCashFlow.items && cashFlow.financingCashFlow.items.length > 0 && (
+                  <div className="bg-[#F7F5F0] p-4 rounded-md border border-[#E5E1DA] space-y-2">
+                    <h4 className="font-serif font-bold text-[#1A1A1A]">
+                      3. التدفقات النقدية من الأنشطة التمويلية (Financing Activities)
+                    </h4>
+                    {cashFlow.financingCashFlow.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-[#6E6659] pl-2 border-r-2 border-[#1A1A1A]/30 pr-2 text-[11px]">
+                        <span>{item.label}:</span>
+                        <span className="font-serif font-semibold text-[#1A1A1A]">{formatKWD(item.amount)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between text-[#1A1A1A] font-serif font-bold border-t border-[#E5E1DA] pt-2">
+                      <span>صافي التدفق النقدي التمويلي:</span>
+                      <span>{formatKWD(cashFlow.financingCashFlow.totalFinancing)}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Summary */}
                 <div className="bg-white p-4 rounded-md border border-[#E5E1DA] space-y-2 font-serif font-bold text-[#1A1A1A]">

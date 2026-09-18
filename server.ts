@@ -328,6 +328,68 @@ const requireCompanyAccess = async (req: express.Request, res: express.Response,
   }
 };
 
+// Strict RBAC Middleware: Enforces role-based permissions on backend endpoints
+const requireRole = (allowedRoles: string[]) => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const user = (req as any).user;
+    if (!user) {
+      return res.status(401).json({
+        error: 'غير مصرح: يجب تسجيل الدخول وتوفير رمز مصادقة أولاً',
+        code: 'UNAUTHORIZED_NO_USER',
+      });
+    }
+
+    if (user.isPlatformAdmin || user.role === 'SUPER_ADMIN') {
+      return next();
+    }
+
+    const currentRole = String(user.role || '').toUpperCase();
+    const normalizedAllowed = allowedRoles.map((r) => r.toUpperCase());
+
+    if (!normalizedAllowed.includes(currentRole)) {
+      return res.status(403).json({
+        error: `غير مصرح (403 Forbidden): الدور الحالي للمستخدم (${user.role || 'غير محدد'}) لا يملك صلاحية تنفيذ هذا الإجراء`,
+        code: 'FORBIDDEN_ROLE_ACTION',
+        userRole: user.role,
+        requiredRoles: allowedRoles,
+      });
+    }
+
+    next();
+  };
+};
+
+// Permanent Audit Logger for Critical Operations
+const logAuditEvent = async (params: {
+  companyId: string;
+  userId?: string;
+  action: string;
+  tableName: string;
+  recordId: string;
+  oldData?: any;
+  newData?: any;
+  ipAddress?: string;
+}) => {
+  if (!supabaseAdmin) return;
+  try {
+    const record = {
+      id: crypto.randomUUID ? crypto.randomUUID() : 'log-' + Math.random().toString(36).slice(2, 10),
+      company_id: params.companyId,
+      user_id: params.userId || '00000000-0000-0000-0000-000000000001',
+      action: params.action,
+      table_name: params.tableName,
+      record_id: params.recordId,
+      old_data: params.oldData || null,
+      new_data: params.newData || null,
+      ip_address: params.ipAddress || '127.0.0.1',
+      created_at: new Date().toISOString(),
+    };
+    await supabaseAdmin.from('audit_logs').insert([record]);
+  } catch (err: any) {
+    console.warn('[AuditLog] Warning writing audit record:', err?.message);
+  }
+};
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -888,7 +950,7 @@ async function startServer() {
   });
 
   // 1. Chart of Accounts
-  app.get('/api/accounts', (req, res) => {
+  app.get('/api/accounts', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
       const asOfDate = req.query.asOfDate as string;
       const accounts = AccountingEngine.getAccountsWithBalances(asOfDate);
@@ -898,7 +960,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/accounts', (req, res) => {
+  app.post('/api/accounts', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
       const { code, nameAr, nameEn, category, parentId, normalBalance, description } = req.body;
 
@@ -947,7 +1009,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/accounts/:id', (req, res) => {
+  app.put('/api/accounts/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
       const { id } = req.params;
       const { code, nameAr, nameEn, category, parentId, description, isActive, normalBalance, nature } = req.body;
@@ -971,9 +1033,10 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/accounts/:id', (req, res) => {
+  app.delete('/api/accounts/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT']), async (req, res) => {
     try {
       const { id } = req.params;
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const acc = db.getAccounts().find((a) => a.id === id);
       if (!acc) return res.status(404).json({ error: 'الحساب غير موجود' });
       if (acc.isSystem) return res.status(400).json({ error: 'لا يمكن حذف حساب نظام جوهري' });
@@ -988,6 +1051,17 @@ async function startServer() {
       }
 
       db.deleteAccount(id);
+
+      await logAuditEvent({
+        companyId: compId,
+        userId: (req as any).user?.userId || (req as any).user?.username,
+        action: 'DELETE',
+        tableName: 'accounts',
+        recordId: id,
+        oldData: { code: acc.code, nameAr: acc.nameAr, deletedBy: (req as any).user?.username },
+        ipAddress: req.ip,
+      });
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -995,7 +1069,7 @@ async function startServer() {
   });
 
   // 2. Journal Entries
-  app.get('/api/journals', (req, res) => {
+  app.get('/api/journals', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
       const journals = db.getJournals().sort((a, b) => b.date.localeCompare(a.date));
       res.json(journals);
@@ -1004,10 +1078,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/journals', (req, res) => {
+  app.post('/api/journals', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
       const { date, reference, description, lines, status, companyId } = req.body;
-      const targetCompanyId = (companyId || req.headers['x-company-id']) as string | undefined;
+      const targetCompanyId = (companyId || (req as any).authorizedCompanyId || req.headers['x-company-id']) as string | undefined;
 
       // Strict validation of entry balance & lines
       const validation = AccountingEngine.validateJournalEntry({ lines });
@@ -1056,7 +1130,7 @@ async function startServer() {
   });
 
   // Edit / Update Journal Entry (e.g. Opening Balance Entry or Manual Journal)
-  app.put('/api/journals/:id', (req, res) => {
+  app.put('/api/journals/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
       const { id } = req.params;
       const updated = AccountingEngine.updateJournal(id, req.body);
@@ -1066,9 +1140,11 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/journals/:id', async (req, res) => {
+  app.delete('/api/journals/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT']), async (req, res) => {
     try {
       const { id } = req.params;
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      const existingJ = db.getJournals().find((j) => j.id === id);
       const success = AccountingEngine.deleteJournal(id);
       db.addTombstone('journals', id);
 
@@ -1081,6 +1157,21 @@ async function startServer() {
           console.warn('Server Supabase journal purge note:', sbErr);
         }
       }
+
+      await logAuditEvent({
+        companyId: compId,
+        userId: (req as any).user?.userId || (req as any).user?.username,
+        action: 'DELETE',
+        tableName: 'journal_entries',
+        recordId: id,
+        oldData: {
+          entryNumber: existingJ?.entryNumber,
+          description: existingJ?.description,
+          totalDebit: existingJ?.totalDebit,
+          deletedBy: (req as any).user?.username,
+        },
+        ipAddress: req.ip,
+      });
 
       if (!success) return res.status(404).json({ error: 'القيد غير موجود' });
       res.json({ success: true, isPurged: true });
@@ -1253,7 +1344,7 @@ async function startServer() {
   });
 
   // 3. General Ledger & Trial Balance
-  app.get('/api/ledger/:accountId', (req, res) => {
+  app.get('/api/ledger/:accountId', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
       const { accountId } = req.params;
       const startDate = req.query.startDate as string;
@@ -1266,7 +1357,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/trial-balance', (req, res) => {
+  app.get('/api/trial-balance', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
       const asOfDate = req.query.asOfDate as string;
       const report = AccountingEngine.getTrialBalance(asOfDate);
@@ -1277,7 +1368,7 @@ async function startServer() {
   });
 
   // 4. Financial Statements (P&L, Balance Sheet, Cash Flow)
-  app.get('/api/financial-statements/pnl', (req, res) => {
+  app.get('/api/financial-statements/pnl', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
@@ -1288,7 +1379,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/financial-statements/balance-sheet', (req, res) => {
+  app.get('/api/financial-statements/balance-sheet', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
       const asOfDate = req.query.asOfDate as string;
       const report = AccountingEngine.getBalanceSheet(asOfDate);
@@ -1298,7 +1389,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/financial-statements/cash-flow', (req, res) => {
+  app.get('/api/financial-statements/cash-flow', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
@@ -1887,11 +1978,11 @@ async function startServer() {
   });
 
   // Users Management
-  app.get('/api/users', (req, res) => {
+  app.get('/api/users', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER']), (req, res) => {
     res.json(db.getUsers());
   });
 
-  app.post('/api/users', (req, res) => {
+  app.post('/api/users', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN']), (req, res) => {
     try {
       const { name, username, email, role, roleTitleAr, pinCode } = req.body;
       if (!name || !username || !role) {
@@ -1914,7 +2005,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/users/:id', (req, res) => {
+  app.put('/api/users/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN']), (req, res) => {
     try {
       const { id } = req.params;
       db.updateUser(id, req.body);
@@ -1924,7 +2015,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/users/:id', (req, res) => {
+  app.delete('/api/users/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN']), (req, res) => {
     try {
       const { id } = req.params;
       const success = db.deleteUser(id);
@@ -2143,7 +2234,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/invoices/:id', requireCompanyAccess, async (req, res) => {
+  app.delete('/api/invoices/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), async (req, res) => {
     try {
       const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
@@ -2184,13 +2275,28 @@ async function startServer() {
         }
       }
 
+      await logAuditEvent({
+        companyId: compId,
+        userId: (req as any).user?.userId || (req as any).user?.username,
+        action: 'DELETE',
+        tableName: 'invoices',
+        recordId: id,
+        oldData: {
+          invoiceNumber: inv.invoiceNumber,
+          type: inv.type,
+          grandTotal: inv.grandTotal,
+          deletedBy: (req as any).user?.username,
+        },
+        ipAddress: req.ip,
+      });
+
       res.json({ success: true, isDeleted: true, isPurged: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post('/api/invoices/:id/revert', requireCompanyAccess, (req, res) => {
+  app.post('/api/invoices/:id/revert', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
       const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
@@ -2204,7 +2310,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/invoices/:id/cancel', requireCompanyAccess, (req, res) => {
+  app.post('/api/invoices/:id/cancel', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
       const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
       const { id } = req.params;
