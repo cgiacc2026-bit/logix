@@ -1080,7 +1080,7 @@ async function startServer() {
 
   app.post('/api/journals', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
-      const { date, reference, description, lines, status, companyId } = req.body;
+      const { id: reqId, entryNumber: reqEntryNumber, date, reference, description, lines, status, companyId } = req.body;
       const targetCompanyId = (companyId || (req as any).authorizedCompanyId || req.headers['x-company-id']) as string | undefined;
 
       // Strict validation of entry balance & lines
@@ -1097,10 +1097,11 @@ async function startServer() {
       });
 
       const entryCount = db.getJournals().length + 1;
-      const entryNumber = `JV-${new Date().getFullYear()}-${String(entryCount).padStart(4, '0')}`;
+      const entryNumber = reqEntryNumber || `JV-${new Date().getFullYear()}-${String(entryCount).padStart(4, '0')}`;
+      const journalId = reqId || ('jv-' + Math.random().toString(36).substr(2, 9));
 
       const newJournal: JournalEntry = {
-        id: 'jv-' + Math.random().toString(36).substr(2, 9),
+        id: journalId,
         companyId: targetCompanyId,
         entryNumber,
         date: date || new Date().toISOString().split('T')[0],

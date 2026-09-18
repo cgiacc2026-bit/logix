@@ -57,7 +57,7 @@ class DatabaseStore {
     units: JSON.parse(JSON.stringify(INITIAL_UNITS)),
     productionOrders: [],
     tombstones: {
-      journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'],
+      journals: [],
     },
   };
 
@@ -85,17 +85,11 @@ class DatabaseStore {
         }
         if (!this.data.tombstones) {
           this.data.tombstones = {
-            journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'],
+            journals: [],
           };
         }
         if (!Array.isArray(this.data.tombstones.journals)) {
-          this.data.tombstones.journals = ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'];
-        } else {
-          for (const tid of ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004']) {
-            if (!this.data.tombstones.journals.includes(tid)) {
-              this.data.tombstones.journals.push(tid);
-            }
-          }
+          this.data.tombstones.journals = [];
         }
         const badJv = new Set(this.data.tombstones.journals);
         if (Array.isArray(this.data.journals)) {
@@ -244,14 +238,14 @@ class DatabaseStore {
 
   public getAllTombstones(): Record<string, string[]> {
     if (!this.data.tombstones) {
-      this.data.tombstones = { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] };
+      this.data.tombstones = { journals: [] };
     }
     return this.data.tombstones;
   }
 
   public getTombstones(type: string = 'journals'): string[] {
     if (!this.data.tombstones) {
-      this.data.tombstones = { journals: ['jv-2026-0001', 'jv-2026-0002', 'jv-2026-0003', 'jv-2026-0004'] };
+      this.data.tombstones = { journals: [] };
     }
     if (!Array.isArray(this.data.tombstones[type])) {
       this.data.tombstones[type] = [];

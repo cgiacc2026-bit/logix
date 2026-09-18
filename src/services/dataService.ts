@@ -2234,6 +2234,46 @@ export class DataService {
   }
 
   // Journals
+  public static async getNextJournalNumber(targetCompanyId?: string): Promise<string> {
+    const compId = targetCompanyId || localDataStore.getEffectiveCompanyId();
+    const year = new Date().getFullYear();
+    const prefix = `JV-${year}-`;
+
+    let maxNum = 0;
+
+    // Scan local journals
+    const localJournals = localDataStore.getJournals();
+    for (const j of localJournals) {
+      const en = (j.entryNumber || '').trim().toUpperCase();
+      const m = en.match(/JV-(?:20\d\d-)?(\d+)/i);
+      if (m && m[1]) {
+        const parsed = parseInt(m[1], 10);
+        if (!isNaN(parsed) && parsed > maxNum) {
+          maxNum = parsed;
+        }
+      }
+    }
+
+    // If Supabase configured, query remote max
+    if (isSupabaseConfigured) {
+      try {
+        const remoteCandidate = await SupabaseDataService.getNextUniqueJournalNumber(compId);
+        const m = remoteCandidate.match(/JV-(?:20\d\d-)?(\d+)/i);
+        if (m && m[1]) {
+          const parsed = parseInt(m[1], 10);
+          if (!isNaN(parsed) && parsed > maxNum) {
+            maxNum = parsed;
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching next remote journal number:', err);
+      }
+    }
+
+    const nextNum = Math.max(maxNum, localJournals.length) + 1;
+    return `${prefix}${String(nextNum).padStart(4, '0')}`;
+  }
+
   public static async getJournals(): Promise<JournalEntry[]> {
     await this.syncServerTombstones();
     const tombstones = localDataStore.getTombstones('journals');
@@ -2249,8 +2289,18 @@ export class DataService {
             Promise.all(remoteTombstoned.map((j) => SupabaseDataService.deleteJournal(j.id))).catch((err) => notifyCloudSyncError("CloudSync", err));
           }
           const validSupabase = fromSupabase.filter((j) => !tombstones.has(j.id));
-          localDataStore.saveJournals(validSupabase);
-          return validSupabase.sort((a, b) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime());
+
+          // Protect newly created local entries (within last 60 seconds) so they never vanish during sync
+          const now = Date.now();
+          const recentLocals = localJournals.filter((lj) => {
+            const ageMs = now - new Date(lj.createdAt || 0).getTime();
+            const existsInRemote = validSupabase.some((rj) => rj.id === lj.id || (lj.entryNumber && rj.entryNumber === lj.entryNumber));
+            return !existsInRemote && ageMs < 60000;
+          });
+
+          const merged = [...recentLocals, ...validSupabase];
+          localDataStore.saveJournals(merged);
+          return merged.sort((a, b) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime());
         }
       } catch (e) {
         console.warn('Supabase getJournals notice:', e);
@@ -2327,10 +2377,16 @@ export class DataService {
 
     const compId = localDataStore.getEffectiveCompanyId();
     const journals = isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals();
-    const entryNumber = `JV-${new Date().getFullYear()}-${String(journals.length + 1).padStart(4, '0')}`;
+    
+    // Determine unique entryNumber
+    let entryNumber = (data.entryNumber || '').trim();
+    const isNumberTaken = entryNumber && journals.some(j => (j.entryNumber || '').trim().toUpperCase() === entryNumber.toUpperCase());
+    if (!entryNumber || isNumberTaken) {
+      entryNumber = await this.getNextJournalNumber(compId);
+    }
 
     const newJournal: JournalEntry = {
-      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'jv-' + Math.random().toString(36).substr(2, 9),
+      id: data.id || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'jv-' + Math.random().toString(36).substr(2, 9)),
       companyId: compId,
       entryNumber,
       date: data.date || new Date().toISOString().split('T')[0],
@@ -2354,21 +2410,34 @@ export class DataService {
     };
 
     localDataStore.removeTombstone('journals', newJournal.id);
+    if (newJournal.entryNumber) {
+      localDataStore.removeTombstone('journals', newJournal.entryNumber);
+    }
     journals.unshift(newJournal);
     localDataStore.saveJournals(journals);
-    try {
-      await SupabaseDataService.saveJournal(newJournal);
-    } catch (e) {
-      console.warn('Supabase saveJournal notice:', e);
+
+    if (isSupabaseConfigured) {
+      try {
+        await SupabaseDataService.saveJournal(newJournal);
+      } catch (e: any) {
+        console.error('Supabase saveJournal failed in createJournal:', e);
+        throw e;
+      }
     }
-    await safeApiFetch('/api/journals', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-company-id': compId || '',
-      },
-      body: JSON.stringify({ ...data, companyId: compId, lines: newJournal.lines }),
-    });
+
+    try {
+      await safeApiFetch('/api/journals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-company-id': compId || '',
+        },
+        body: JSON.stringify({ ...data, id: newJournal.id, entryNumber: newJournal.entryNumber, companyId: compId, lines: newJournal.lines }),
+      });
+    } catch (apiErr) {
+      console.warn('Server API saveJournal notice:', apiErr);
+    }
+
     return newJournal;
   }
 
@@ -2803,10 +2872,36 @@ export class DataService {
       ? String(data.invoiceNumber).trim()
       : await this.getNextInvoiceNumber(resolvedDocType, data.companyId || data.company_id);
     
-    const lines = (data.lines || data.items || []).map((item: any, i: number) => {
+    const rawLines = data.lines || data.items || [];
+    if (!rawLines || rawLines.length === 0) {
+      throw new Error('خطأ تدقيق رقابي: لا يمكن إنشاء فاتورة بدون بنود أصناف معتمدة.');
+    }
+
+    const lines = rawLines.map((item: any, i: number) => {
+      let resolvedItemId = item.base_item_id || item.baseItemId || item.itemId;
+      let matchedInv = inventory.find((inv) => inv.id === resolvedItemId);
+
+      if (!matchedInv) {
+        matchedInv = inventory.find((inv) =>
+          (item.itemSku && inv.sku === item.itemSku) ||
+          (item.barcode && inv.barcode === item.barcode) ||
+          (item.itemNameAr && inv.nameAr === item.itemNameAr.trim()) ||
+          (item.nameAr && inv.nameAr === item.nameAr.trim())
+        );
+        if (matchedInv) {
+          resolvedItemId = matchedInv.id;
+        }
+      }
+
+      if (!resolvedItemId || !matchedInv) {
+        throw new Error(
+          `خطأ تدقيق محاسبي ورقابي: البند رقم ${i + 1} (${item.itemNameAr || item.nameAr || 'غير محدد'}) غير مرتبط بأي صنف مسجل في دليل الأصناف المعتمدة للمنشأة (item_id مفقود).`
+        );
+      }
+
       const q = Number(item.quantity) || 1;
       const p = Number(item.unitPrice) || 0;
-      const unitsPerPack = Number(item.unitsPerPack) > 0 ? Number(item.unitsPerPack) : 1;
+      const unitsPerPack = Number(item.unitsPerPack) > 0 ? Number(item.unitsPerPack) : (matchedInv.unitsPerPack || 1);
       const packQuantity = item.packQuantity !== undefined ? Number(item.packQuantity) : (unitsPerPack > 1 ? Math.floor(q / unitsPerPack) : 0);
       
       const dType: 'PERCENT' | 'FIXED' = item.discountType === 'PERCENT' ? 'PERCENT' : 'FIXED';
@@ -2839,11 +2934,11 @@ export class DataService {
 
       return {
         id: item.id || `item-${i + 1}`,
-        itemId: item.base_item_id || item.baseItemId || item.itemId || `inv-item-${i + 1}`,
-        itemSku: item.itemSku || item.sku || '',
-        barcode: item.barcode || '',
-        itemNameAr: item.itemNameAr || item.nameAr || 'صنف',
-        unit: item.unit || 'حبة',
+        itemId: matchedInv.id,
+        itemSku: item.itemSku || item.sku || matchedInv.sku || '',
+        barcode: item.barcode || matchedInv.barcode || '',
+        itemNameAr: matchedInv.nameAr,
+        unit: item.unit || matchedInv.unit || 'حبة',
         unitsPerPack,
         packQuantity,
         quantity: finalQuantity,
@@ -4020,10 +4115,36 @@ export class DataService {
     const isPurchaseReturn = (data.type || original.type) === 'PURCHASE_RETURN';
 
     const sourceLines = data.lines !== undefined ? data.lines : (data.items !== undefined ? data.items : original.lines);
+    if (!sourceLines || sourceLines.length === 0) {
+      throw new Error('خطأ تدقيق رقابي: لا يمكن تحديث الفاتورة بدون بنود أصناف معتمدة.');
+    }
+
+    const currentInventory = localDataStore.getInventory();
     const updatedLines = (sourceLines || []).map((item: any, i: number) => {
+      let resolvedItemId = item.base_item_id || item.baseItemId || item.itemId;
+      let matchedInv = currentInventory.find((inv) => inv.id === resolvedItemId);
+
+      if (!matchedInv) {
+        matchedInv = currentInventory.find((inv) =>
+          (item.itemSku && inv.sku === item.itemSku) ||
+          (item.barcode && inv.barcode === item.barcode) ||
+          (item.itemNameAr && inv.nameAr === item.itemNameAr.trim()) ||
+          (item.nameAr && inv.nameAr === item.nameAr.trim())
+        );
+        if (matchedInv) {
+          resolvedItemId = matchedInv.id;
+        }
+      }
+
+      if (!resolvedItemId || !matchedInv) {
+        throw new Error(
+          `خطأ تدقيق محاسبي ورقابي: البند رقم ${i + 1} (${item.itemNameAr || item.nameAr || 'غير محدد'}) غير مرتبط بأي صنف مسجل في دليل الأصناف المعتمدة للمنشأة.`
+        );
+      }
+
       const q = Number(item.quantity) || 1;
       const p = Number(item.unitPrice) || 0;
-      const unitsPerPack = Number(item.unitsPerPack) > 0 ? Number(item.unitsPerPack) : 1;
+      const unitsPerPack = Number(item.unitsPerPack) > 0 ? Number(item.unitsPerPack) : (matchedInv.unitsPerPack || 1);
       const packQuantity = item.packQuantity !== undefined ? Number(item.packQuantity) : (unitsPerPack > 1 ? Math.floor(q / unitsPerPack) : 0);
       const dType: 'PERCENT' | 'FIXED' = item.discountType === 'PERCENT' ? 'PERCENT' : 'FIXED';
       const dVal = Number(item.discountValue) || Number(item.discount) || 0;
@@ -4039,11 +4160,11 @@ export class DataService {
 
       return {
         id: item.id || `item-${i + 1}`,
-        itemId: item.itemId || `inv-item-${i + 1}`,
-        itemSku: item.itemSku || item.sku || '',
-        barcode: item.barcode || '',
-        itemNameAr: item.itemNameAr || item.nameAr || 'صنف',
-        unit: item.unit || 'حبة',
+        itemId: matchedInv.id,
+        itemSku: item.itemSku || item.sku || matchedInv.sku || '',
+        barcode: item.barcode || matchedInv.barcode || '',
+        itemNameAr: matchedInv.nameAr,
+        unit: item.unit || matchedInv.unit || 'حبة',
         unitsPerPack,
         packQuantity,
         quantity: q,

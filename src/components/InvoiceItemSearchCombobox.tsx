@@ -294,20 +294,11 @@ export const InvoiceItemSearchCombobox: React.FC<InvoiceItemSearchComboboxProps>
           {filteredItems.length === 0 ? (
             <div className="p-4 text-center">
               <p className="text-xs font-bold text-neutral-600">لا يوجد صنف يطابق: &ldquo;{query}&rdquo;</p>
-              {query.trim() && (
-                <div className="mt-2.5">
-                  <p className="text-[11px] text-neutral-500 mb-2">
-                    يمكنك اعتماد هذا الاسم كبند مخصص أو خدمة في الفاتورة الحالية:
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleCustomItemSelect}
-                    className="w-full py-2 px-3 bg-amber-50 hover:bg-amber-100 border border-[#D4AF37] text-[#8C6D1F] rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <span>+ اعتماد &ldquo;{query}&rdquo; كبند مخصص للفاتورة</span>
-                  </button>
-                </div>
-              )}
+              <div className="mt-2.5 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-right">
+                <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                  ⚠️ <strong>تنبيه رقابي ومحاسبي:</strong> يجب اختيار صنف مسجل مسبقاً في دليل الأصناف. لا يُسمح بإصدار فواتير بأصناف مجهولة لضمان دقة حركة المخزون وحساب تكلفة البضاعة المباعة (COGS).
+                </p>
+              </div>
             </div>
           ) : (
             filteredItems.map((item, idx) => {

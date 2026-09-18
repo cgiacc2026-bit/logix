@@ -698,11 +698,17 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     allowNegative: boolean = false,
     reason: string = ''
   ) => {
-    const validLines = invLines.filter(
-      (l) => l.itemId || l.unitPrice > 0 || (l.itemNameAr && l.itemNameAr.trim())
-    );
-    const processedLines = validLines.map((l) => {
+    // Strictly require every line to have a valid itemId that exists in inventory
+    const unlinkedLine = invLines.find((l) => !l.itemId || !inventory.some((i) => i.id === l.itemId));
+    if (unlinkedLine) {
+      throw new Error(`خطأ رقابي حرج: البند (${unlinkedLine.itemNameAr || 'صنف غير محدد'}) غير مرتبط بأي صنف معتمد في سجل المخزون. تم حظر الحفظ.`);
+    }
+
+    const processedLines = invLines.map((l) => {
       const item = inventory.find((i) => i.id === l.itemId);
+      if (!item) {
+        throw new Error(`خطأ رقابي حرج: الصنف (${l.itemId}) غير موجود في سجل المخزون.`);
+      }
       const actualQty = Number(l.quantity) > 0 ? Number(l.quantity) : 1;
       const lineGross = actualQty * Number(l.unitPrice);
       const lineDiscAmt =
@@ -711,12 +717,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
           : Math.min(lineGross, Number(l.discountValue) || 0);
 
       return {
-        itemId: l.itemId || `custom-item-${Date.now()}`,
-        itemSku: item?.sku || l.itemSku || '',
-        barcode: item?.barcode || l.barcode || '',
-        itemNameAr: item?.nameAr || (l.itemNameAr && l.itemNameAr.trim()) || 'منتج/خدمة',
-        unit: l.unit || item?.unit || 'حبة',
-        unitsPerPack: Number(l.unitsPerPack) || Number(item?.unitsPerPack) || 1,
+        itemId: item.id,
+        itemSku: item.sku || l.itemSku || '',
+        barcode: item.barcode || l.barcode || '',
+        itemNameAr: item.nameAr,
+        unit: l.unit || item.unit || 'حبة',
+        unitsPerPack: Number(l.unitsPerPack) || Number(item.unitsPerPack) || 1,
         quantity: actualQty,
         packQuantity: Number(l.packQuantity) || 0,
         unitPrice: Number(l.unitPrice) || 0,
@@ -870,9 +876,27 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     }
     
     // Check if at least one valid item is selected
-    const validLines = invLines.filter((l) => l.itemId || l.unitPrice > 0);
+    const validLines = invLines.filter((l) => l.itemId || l.unitPrice > 0 || (l.itemNameAr && l.itemNameAr.trim()));
     if (validLines.length === 0) {
       return alert('الرجاء إضافة صنف واحد على الأقل في الفاتورة');
+    }
+
+    // STRICT REGULATORY AUDIT: Verify every line is strictly linked to a registered item in inventory
+    for (let i = 0; i < validLines.length; i++) {
+      const line = validLines[i];
+      if (!line.itemId || !line.itemId.trim()) {
+        alert(`خطأ تدقيق محاسبي ورقابي (البند رقم ${i + 1}): يرجى اختيار صنف معتمد ومسجل في دليل الأصناف بدلاً من إدخال اسم حر (${line.itemNameAr || 'صنف غير محدد'}). لا يُسمح بإصدار فواتير بأصناف مجهولة المصدر لضمان تكامل حسابات المخزون وتكلفة المبيعات (COGS).`);
+        return;
+      }
+      const itemExists = inventory.some((invItem) => invItem.id === line.itemId);
+      if (!itemExists) {
+        alert(`خطأ تدقيق محاسبي ورقابي (البند رقم ${i + 1}): معرف الصنف المحدد (${line.itemId}) غير موجود في سجل الأصناف المعتمدة للمنشأة. يرجى إعادة تحديد الصنف من القائمة.`);
+        return;
+      }
+      if (Number(line.quantity) <= 0) {
+        alert(`خطأ تدقيق محاسبي ورقابي (البند رقم ${i + 1} - ${line.itemNameAr}): يجب أن تكون كمية الصنف أكبر من الصفر.`);
+        return;
+      }
     }
 
     // Check for negative stock on Sales invoices

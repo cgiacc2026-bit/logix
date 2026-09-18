@@ -2308,11 +2308,6 @@
   ],
   "productionOrders": [],
   "tombstones": {
-    "journals": [
-      "jv-2026-0001",
-      "jv-2026-0002",
-      "jv-2026-0003",
-      "jv-2026-0004"
-    ]
+    "journals": []
   }
 }

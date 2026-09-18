@@ -1967,14 +1967,14 @@ export class SupabaseDataService {
     if (invoiceItemRows.length > 0) {
       try {
         await supabase.from('invoice_items').delete().eq('invoice_id', insertedRow.id);
-        let { error: itemErr } = await supabase.from('invoice_items').insert(invoiceItemRows);
-        if (itemErr && (itemErr.message.includes('foreign key') || itemErr.message.includes('fkey') || itemErr.code === '23503')) {
-          console.warn('[Supabase saveInvoice] item_id foreign key failed, retrying with item_id null...');
-          const safeRows = invoiceItemRows.map((r) => ({ ...r, id: generateUUID(), item_id: null }));
-          await supabase.from('invoice_items').insert(safeRows);
+        const { error: itemErr } = await supabase.from('invoice_items').insert(invoiceItemRows);
+        if (itemErr) {
+          console.error('[Supabase saveInvoice] invoice_items insert error:', itemErr);
+          throw new Error(`فشل حفظ بنود الفاتورة في قاعدة البيانات السحابية: ${itemErr.message}`);
         }
       } catch (itemEx) {
-        console.warn('[Supabase saveInvoice] invoice_items write warning:', itemEx);
+        console.error('[Supabase saveInvoice] invoice_items write failure:', itemEx);
+        throw itemEx;
       }
     }
 
@@ -2722,6 +2722,42 @@ export class SupabaseDataService {
     }
   }
 
+  public static async getNextUniqueJournalNumber(targetCompanyId?: string): Promise<string> {
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    const year = new Date().getFullYear();
+    const prefix = `JV-${year}-`;
+
+    if (!isSupabaseConfigured || !companyId) {
+      return `${prefix}${Date.now().toString().slice(-4)}`;
+    }
+
+    try {
+      const { data: rows } = await supabase
+        .from('journal_entries')
+        .select('entry_number')
+        .eq('company_id', companyId);
+
+      let maxNum = 0;
+      if (Array.isArray(rows)) {
+        for (const r of rows) {
+          const en = (r.entry_number || '').trim().toUpperCase();
+          const m = en.match(/JV-(?:20\d\d-)?(\d+)/i);
+          if (m && m[1]) {
+            const parsed = parseInt(m[1], 10);
+            if (!isNaN(parsed) && parsed > maxNum) {
+              maxNum = parsed;
+            }
+          }
+        }
+      }
+      return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
+    } catch (err) {
+      console.warn('getNextUniqueJournalNumber exception:', err);
+      return `${prefix}${Date.now().toString().slice(-4)}`;
+    }
+  }
+
   public static async saveJournal(j: JournalEntry, targetCompanyId?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || j.companyId || (j as any).company_id || getCurrentCompanyId();
@@ -2778,37 +2814,59 @@ export class SupabaseDataService {
       }
 
       const entryId = toValidUUID(j.id);
-      const { error } = await supabase
+      let activeEntryNumber = j.entryNumber;
+
+      // Auto-assign unique entryNumber if empty
+      if (!activeEntryNumber || !activeEntryNumber.trim()) {
+        activeEntryNumber = await this.getNextUniqueJournalNumber(companyId);
+        j.entryNumber = activeEntryNumber;
+      }
+
+      const upsertPayload = {
+        id: entryId,
+        company_id: companyId,
+        entry_number: activeEntryNumber,
+        date: j.date,
+        description: j.description,
+        status: j.status,
+        reference: j.reference || null,
+        reference_type: j.sourceModule || null,
+        reference_id: j.reference || j.sourceId || null,
+        source_module: j.sourceModule || null,
+        source_id: j.sourceId || null,
+        total_debit: j.totalDebit,
+        total_credit: j.totalCredit,
+        lines: j.lines,
+        raw_data: {
+          ...j,
+          id: j.id,
+          entryNumber: activeEntryNumber,
+          companyId,
+        },
+        created_at: j.createdAt || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      let { error } = await supabase
         .from('journal_entries')
-        .upsert([
-          {
-            id: entryId,
-            company_id: companyId,
-            entry_number: j.entryNumber,
-            date: j.date,
-            description: j.description,
-            status: j.status,
-            reference: j.reference || null,
-            reference_type: j.sourceModule || null,
-            reference_id: j.reference || j.sourceId || null,
-            source_module: j.sourceModule || null,
-            source_id: j.sourceId || null,
-            total_debit: j.totalDebit,
-            total_credit: j.totalCredit,
-            lines: j.lines,
-            raw_data: {
-              ...j,
-              id: j.id,
-              companyId,
-            },
-            created_at: j.createdAt || new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ]);
+        .upsert([upsertPayload]);
+
+      // Self-healing for unique entry_number collision (uq_journals_number_company / 23505)
+      if (error && (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('entry_number'))) {
+        console.warn(`[Supabase saveJournal] Collision on entryNumber ${activeEntryNumber}. Regenerating fresh sequence...`);
+        const freshNumber = await this.getNextUniqueJournalNumber(companyId);
+        j.entryNumber = freshNumber;
+        activeEntryNumber = freshNumber;
+        upsertPayload.entry_number = freshNumber;
+        (upsertPayload.raw_data as any).entryNumber = freshNumber;
+
+        const retryRes = await supabase.from('journal_entries').upsert([upsertPayload]);
+        error = retryRes.error;
+      }
 
       if (error) {
-        console.warn('Supabase saveJournal error:', error.message);
-        return false;
+        console.error('Supabase saveJournal fatal error:', error.message);
+        throw new Error(`فشل حفظ القيد المحاسبي في قاعدة البيانات السحابية: ${error.message}`);
       }
 
       // Sync lines to relational table journal_entry_lines for strict GL queries and SQL functions
@@ -2823,7 +2881,7 @@ export class SupabaseDataService {
             company_id: companyId,
             journal_entry_id: entryId,
             journal_id: entryId,
-            account_id: l.accountId ? toValidUUID(l.accountId) : null,
+            account_id: l.accountId || null,
             account_code: l.accountCode || '',
             account_name: l.accountName || l.accountNameAr || '',
             account_name_ar: l.accountNameAr || l.accountName || '',
@@ -2846,8 +2904,8 @@ export class SupabaseDataService {
       if (err?.message?.includes('[CPA Parent Guard]') || err?.message?.includes('[CPA Balance Guard]')) {
         throw err;
       }
-      console.warn('Supabase saveJournal exception:', err?.message);
-      return false;
+      console.error('Supabase saveJournal exception:', err?.message);
+      throw err;
     }
   }
 
