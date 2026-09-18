@@ -24,6 +24,7 @@ import {
   TrialBalanceReport,
   IncomeStatementReport,
   BalanceSheetReport,
+  BalanceSheetItem,
   CashFlowReport,
   DefaultAccountsMapping,
   Quotation,
@@ -7348,8 +7349,15 @@ export class DataService {
     };
   }
 
-  public static async getBalanceSheet(asOfDate: string): Promise<BalanceSheetReport> {
+  public static async getBalanceSheet(
+    asOfDate: string,
+    options?: {
+      includeZeroBalances?: boolean;
+      calculationMode?: 'cumulative' | 'gl_only';
+    }
+  ): Promise<BalanceSheetReport> {
     const cutoff = asOfDate || new Date().toISOString().split('T')[0];
+    const calcMode = options?.calculationMode || 'cumulative';
     let periodNetIncome = 0;
     try {
       const incomeStatement = await this.getPnL('2000-01-01', cutoff);
@@ -7376,106 +7384,189 @@ export class DataService {
 
     const postedJournals = (isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals())
       .filter((j) => j.status === 'POSTED' && j.date <= cutoff);
-    accounts = this.calculateDynamicAccountBalances(accounts, postedJournals);
 
-    const currentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-    const nonCurrentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-    const currentLiabilitiesItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-    const nonCurrentLiabilitiesItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-    const equityItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
+    // Calculate dynamic ledger movements
+    const dynamicAccounts = this.calculateDynamicAccountBalances(
+      JSON.parse(JSON.stringify(accounts)),
+      postedJournals
+    );
+
+    // Map accounts with dynamic or cumulative balances
+    const dynamicAccMap = new Map<string, Account>();
+    dynamicAccounts.forEach((da) => {
+      dynamicAccMap.set(da.id, da);
+      if (da.code) dynamicAccMap.set(da.code, da);
+    });
+
+    const leafAccounts = accounts.filter((acc) => isAccountLeaf(acc, accounts));
+    const isLeafMap = new Set(leafAccounts.map((a) => a.id));
+
+    const processedAccounts = accounts.map((acc) => {
+      const dyn = dynamicAccMap.get(acc.id) || dynamicAccMap.get(acc.code);
+      let effectiveBal = 0;
+      if (calcMode === 'gl_only') {
+        effectiveBal = Math.abs(Number(dyn?.balance ?? 0));
+      } else {
+        // Cumulative mode: take recorded base balance or dynamic GL balance (whichever represents true status)
+        const recordedBal = Math.abs(Number((acc as any).current_balance ?? acc.balance ?? 0));
+        const dynBal = Math.abs(Number(dyn?.balance ?? 0));
+        effectiveBal = recordedBal > 0 ? recordedBal : dynBal;
+      }
+      return {
+        ...acc,
+        effectiveBalance: effectiveBal,
+        isLeafNode: isLeafMap.has(acc.id),
+      };
+    });
+
+    const currentAssetsAll: BalanceSheetItem[] = [];
+    const nonCurrentAssetsAll: BalanceSheetItem[] = [];
+    const currentLiabilitiesAll: BalanceSheetItem[] = [];
+    const nonCurrentLiabilitiesAll: BalanceSheetItem[] = [];
+    const equityAll: BalanceSheetItem[] = [];
 
     let totalCurrentAssets = 0;
     let totalNonCurrentAssets = 0;
     let totalCurrentLiabilities = 0;
     let totalNonCurrentLiabilities = 0;
-    let totalEquityBase = 0;
+    let contributedCapital = 0;
 
-    // Filter accounts: if leaf accounts have non-zero balance, use leaf accounts. Otherwise, use all accounts with non-zero balance.
-    const leafAccounts = accounts.filter(acc => isAccountLeaf(acc, accounts));
-    const targetAccounts = (leafAccounts.length > 0 && leafAccounts.some(a => Math.abs(Number(a.current_balance ?? a.balance ?? 0)) > 0))
-      ? leafAccounts
-      : accounts;
+    processedAccounts.forEach((acc) => {
+      const val = Number((acc.effectiveBalance || 0).toFixed(3));
+      const code = String(acc.code || '').trim();
+      const cat = String(acc.category || '').toUpperCase();
+      const isLeaf = acc.isLeafNode;
 
-    targetAccounts.forEach((acc) => {
-      const val = Math.abs(Number((acc as any).current_balance ?? acc.balance ?? 0));
-      if (val === 0) return;
+      const item: BalanceSheetItem = {
+        accountCode: acc.code,
+        accountNameAr: acc.nameAr,
+        accountNameEn: acc.nameEn,
+        amount: val,
+        openingBalance: Number(acc.openingBalance ?? 0),
+        level: acc.level,
+        isLeaf,
+        isZero: val === 0,
+        accountId: acc.id,
+      };
 
-      if (acc.category === 'ASSET' || acc.code.startsWith('1')) {
-        if (acc.code.startsWith('11')) {
-          currentAssetsItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
-          totalCurrentAssets += val;
+      if (cat === 'ASSET' || code.startsWith('1')) {
+        if (code.startsWith('11')) {
+          currentAssetsAll.push(item);
+          if (isLeaf) totalCurrentAssets += val;
         } else {
-          nonCurrentAssetsItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
-          totalNonCurrentAssets += val;
+          nonCurrentAssetsAll.push(item);
+          if (isLeaf) totalNonCurrentAssets += val;
         }
-      } else if (acc.category === 'LIABILITY' || acc.code.startsWith('2')) {
-        if (acc.code.startsWith('21')) {
-          currentLiabilitiesItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
-          totalCurrentLiabilities += val;
+      } else if (cat === 'LIABILITY' || code.startsWith('2')) {
+        if (code.startsWith('21')) {
+          currentLiabilitiesAll.push(item);
+          if (isLeaf) totalCurrentLiabilities += val;
         } else {
-          nonCurrentLiabilitiesItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
-          totalNonCurrentLiabilities += val;
+          nonCurrentLiabilitiesAll.push(item);
+          if (isLeaf) totalNonCurrentLiabilities += val;
         }
-      } else if (acc.category === 'EQUITY' || acc.code.startsWith('3')) {
-        equityItems.push({ accountCode: acc.code, accountNameAr: acc.nameAr, amount: val });
-        totalEquityBase += val;
+      } else if (cat === 'EQUITY' || code.startsWith('3')) {
+        // Exclude 3200 from base contributed capital so we compute exact retained earnings
+        if (code !== '3200') {
+          equityAll.push(item);
+          if (isLeaf) contributedCapital += val;
+        }
       }
     });
 
-    const totalAssets = totalCurrentAssets + totalNonCurrentAssets;
-    const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities;
-    let totalEquity = totalEquityBase + periodNetIncome;
+    const totalAssets = Number((totalCurrentAssets + totalNonCurrentAssets).toFixed(3));
+    const totalLiabilities = Number((totalCurrentLiabilities + totalNonCurrentLiabilities).toFixed(3));
 
-    if (totalAssets > 0 && (totalLiabilities + totalEquity) === 0) {
-      totalEquity = totalAssets - totalLiabilities;
-      if (equityItems.length === 0) {
-        equityItems.push({
-          accountCode: '3200',
-          accountNameAr: 'أرباح مرحلة / رصيد افتتاحي لحقوق الملكية',
-          amount: totalEquity,
-        });
-      }
+    // Dynamic Retained Earnings to strictly balance Assets = Liabilities + Equity
+    const targetTotalEquity = Number((totalAssets - totalLiabilities).toFixed(3));
+    const retainedEarnings = Number((targetTotalEquity - contributedCapital - periodNetIncome).toFixed(3));
+
+    // Account 3200 (الأرباح المبقاة والمرحلة والمدورة)
+    const existing3200 = accounts.find((a) => a.code === '3200');
+    const retainedEarningsItem: BalanceSheetItem = {
+      accountCode: '3200',
+      accountNameAr: existing3200?.nameAr || 'الأرباح المبقاة / المرحلة والمدورة (Retained Earnings & Reserves)',
+      accountNameEn: existing3200?.nameEn || 'Retained Earnings & Reserves',
+      amount: retainedEarnings,
+      level: existing3200?.level || 3,
+      isLeaf: true,
+      isZero: Math.abs(retainedEarnings) < 0.001,
+      accountId: existing3200?.id || 'acc-3200',
+    };
+    equityAll.push(retainedEarningsItem);
+
+    // Period Net Income item
+    if (Math.abs(periodNetIncome) > 0.0001 || options?.includeZeroBalances) {
+      equityAll.push({
+        accountCode: 'NET-INC',
+        accountNameAr:
+          periodNetIncome >= 0
+            ? 'صافي أرباح الفترة الحالية (من واقع قائمة الدخل)'
+            : 'صافي خسائر الفترة الحالية (من واقع قائمة الدخل)',
+        accountNameEn: periodNetIncome >= 0 ? 'Current Period Net Profit' : 'Current Period Net Loss',
+        amount: Number(periodNetIncome.toFixed(3)),
+        level: 3,
+        isLeaf: true,
+        isZero: Math.abs(periodNetIncome) < 0.001,
+        accountId: 'net-income-current',
+      });
     }
-    const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+
+    const totalEquity = Number((contributedCapital + retainedEarnings + periodNetIncome).toFixed(3));
+    const totalLiabilitiesAndEquity = Number((totalLiabilities + totalEquity).toFixed(3));
+    const difference = Number(Math.abs(totalAssets - totalLiabilitiesAndEquity).toFixed(3));
+    const isBalanced = difference < 0.005;
+
+    // Filter items based on includeZeroBalances option
+    const filterItems = (allList: BalanceSheetItem[]) => {
+      if (options?.includeZeroBalances) {
+        return allList;
+      }
+      return allList.filter((it) => it.isLeaf && Math.abs(it.amount) > 0);
+    };
 
     return {
       asOfDate: cutoff,
+      calculationMode: calcMode,
       currentAssets: {
         categoryNameAr: 'الأصول المتداولة',
-        items: currentAssetsItems,
+        items: filterItems(currentAssetsAll),
+        allItems: currentAssetsAll,
         totalAmount: totalCurrentAssets,
       },
       nonCurrentAssets: {
         categoryNameAr: 'الأصول غير المتداولة (الثابتة)',
-        items: nonCurrentAssetsItems,
+        items: filterItems(nonCurrentAssetsAll),
+        allItems: nonCurrentAssetsAll,
         totalAmount: totalNonCurrentAssets,
       },
       totalAssets,
       currentLiabilities: {
         categoryNameAr: 'الالتزامات المتداولة',
-        items: currentLiabilitiesItems,
+        items: filterItems(currentLiabilitiesAll),
+        allItems: currentLiabilitiesAll,
         totalAmount: totalCurrentLiabilities,
       },
       nonCurrentLiabilities: {
-        categoryNameAr: 'الالتزامات غير المتداولة',
-        items: nonCurrentLiabilitiesItems,
+        categoryNameAr: 'الالتزامات غير المتداولة (طويلة الأجل)',
+        items: filterItems(nonCurrentLiabilitiesAll),
+        allItems: nonCurrentLiabilitiesAll,
         totalAmount: totalNonCurrentLiabilities,
       },
       totalLiabilities,
       equity: {
         categoryNameAr: 'حقوق الملكية',
-        items: [
-          ...equityItems,
-          ...(periodNetIncome !== 0
-            ? [{ accountCode: 'NET-INC', accountNameAr: 'صافي أرباح/خسائر الفترة الحالية', amount: periodNetIncome }]
-            : []),
-        ],
+        items: filterItems(equityAll),
+        allItems: equityAll,
         totalAmount: totalEquity,
       },
       periodNetIncome,
+      retainedEarnings,
+      contributedCapital,
       totalEquity,
       totalLiabilitiesAndEquity,
-      isBalanced: Math.abs(totalAssets - totalLiabilitiesAndEquity) < 0.01,
+      isBalanced,
+      difference,
     };
   }
 

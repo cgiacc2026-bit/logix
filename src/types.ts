@@ -136,13 +136,24 @@ export interface IncomeStatementReport {
   netIncome: number;
 }
 
+export interface BalanceSheetItem {
+  accountCode: string;
+  accountNameAr: string;
+  accountNameEn?: string;
+  amount: number;
+  openingBalance?: number;
+  movementDebit?: number;
+  movementCredit?: number;
+  level?: number;
+  isLeaf?: boolean;
+  isZero?: boolean;
+  accountId?: string;
+}
+
 export interface BalanceSheetSection {
   categoryNameAr: string;
-  items: {
-    accountCode: string;
-    accountNameAr: string;
-    amount: number;
-  }[];
+  items: BalanceSheetItem[];
+  allItems?: BalanceSheetItem[];
   totalAmount: number;
 }
 
@@ -156,9 +167,13 @@ export interface BalanceSheetReport {
   totalLiabilities: number;
   equity: BalanceSheetSection;
   periodNetIncome: number;
+  retainedEarnings?: number;
+  contributedCapital?: number;
   totalEquity: number;
   totalLiabilitiesAndEquity: number;
   isBalanced: boolean;
+  difference?: number;
+  calculationMode?: 'cumulative' | 'gl_only';
 }
 
 export interface CashFlowReport {

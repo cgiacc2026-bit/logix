@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   BalanceSheetReport,
   IncomeStatementReport,
-  CashFlowReport
+  CashFlowReport,
+  BalanceSheetItem,
 } from '../types.js';
 import { formatCurrency } from '../utils/formatters.ts';
 import { formatKWD } from '../utils/accountingTreeEngine.ts';
-import { supabase, isSupabaseConfigured, getCurrentCompanyId, resolveToSupabaseCompanyUUID } from '../services/supabaseClient.ts';
 import {
   LineChart,
   ShieldCheck,
@@ -15,7 +15,15 @@ import {
   Calendar,
   Building,
   TrendingUp,
-  Wallet
+  Wallet,
+  Eye,
+  EyeOff,
+  Search,
+  AlertCircle,
+  FileText,
+  X,
+  Layers,
+  ChevronLeft,
 } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
 
@@ -34,159 +42,34 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
   const [startDate, setStartDate] = useState<string>('2026-01-01');
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
+  const [showAllAccounts, setShowAllAccounts] = useState<boolean>(false);
+  const [calcMode, setCalcMode] = useState<'cumulative' | 'gl_only'>('cumulative');
+
   const [pnl, setPnl] = useState<IncomeStatementReport | null>(null);
   const [balanceSheet, setBalanceSheet] = useState<BalanceSheetReport | null>(null);
   const [cashFlow, setCashFlow] = useState<CashFlowReport | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // Ledger Audit Modal State
+  const [selectedAuditAccount, setSelectedAuditAccount] = useState<BalanceSheetItem | null>(null);
+  const [auditJournals, setAuditJournals] = useState<any[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState<boolean>(false);
 
   const fetchReports = async () => {
     setLoading(true);
     try {
       const [pnlData, bsData, cfData] = await Promise.all([
         DataService.getPnL(startDate, endDate),
-        DataService.getBalanceSheet(endDate),
+        DataService.getBalanceSheet(endDate, {
+          includeZeroBalances: showAllAccounts,
+          calculationMode: calcMode,
+        }),
         DataService.getCashFlow(startDate, endDate),
       ]);
 
       if (pnlData) setPnl(pnlData);
       if (cfData) setCashFlow(cfData);
-
-      let customBs: BalanceSheetReport | null = null;
-      // Direct dynamic aggregation from Supabase chart_of_accounts
-      if (isSupabaseConfigured) {
-        try {
-          const rawCompId = getCurrentCompanyId();
-          const compId = resolveToSupabaseCompanyUUID(rawCompId);
-          if (compId) {
-            const { data: coaRows, error: coaError } = await supabase
-              .from('chart_of_accounts')
-              .select('*')
-              .eq('company_id', compId)
-              .order('code', { ascending: true });
-
-            if (!coaError && coaRows && coaRows.length > 0) {
-              const currentAssets: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-              const nonCurrentAssets: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-              const currentLiabilities: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-              const nonCurrentLiabilities: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-              const equity: { accountCode: string; accountNameAr: string; amount: number }[] = [];
-
-              let sumCurrentAssets = 0;
-              let sumNonCurrentAssets = 0;
-              let sumCurrentLiabilities = 0;
-              let sumNonCurrentLiabilities = 0;
-              let sumEquity = 0;
-
-              const parentIds = new Set(coaRows.map((r: any) => r.parent_id).filter(Boolean));
-              const parentCodes = new Set<string>();
-              coaRows.forEach((r: any) => {
-                const c = String(r.code || '').trim();
-                if (c) {
-                  coaRows.forEach((other: any) => {
-                    const oc = String(other.code || '').trim();
-                    if (oc && oc !== c && oc.startsWith(c)) {
-                      parentCodes.add(c);
-                    }
-                  });
-                }
-              });
-
-              const detailAccounts = coaRows.filter((r: any) => {
-                if (r.is_leaf === true || r.type === 'DETAIL') return true;
-                if (parentIds.has(r.id) || parentCodes.has(String(r.code || '').trim())) return false;
-                return true;
-              });
-
-              const targetRows = (detailAccounts.length > 0 && detailAccounts.some((r: any) => Math.abs(Number(r.current_balance ?? r.balance ?? 0)) > 0))
-                ? detailAccounts
-                : coaRows;
-
-              targetRows.forEach((row: any) => {
-                const bal = Math.abs(Number(row.current_balance ?? row.balance ?? 0));
-                if (bal === 0) return;
-                const cat = String(row.category || '').toUpperCase();
-                const code = String(row.code || '').trim();
-                const name = row.name_ar || row.name || code;
-
-                if (cat === 'ASSET' || code.startsWith('1')) {
-                  if (code.startsWith('11')) {
-                    currentAssets.push({ accountCode: code, accountNameAr: name, amount: bal });
-                    sumCurrentAssets += bal;
-                  } else {
-                    nonCurrentAssets.push({ accountCode: code, accountNameAr: name, amount: bal });
-                    sumNonCurrentAssets += bal;
-                  }
-                } else if (cat === 'LIABILITY' || code.startsWith('2')) {
-                  if (code.startsWith('21')) {
-                    currentLiabilities.push({ accountCode: code, accountNameAr: name, amount: bal });
-                    sumCurrentLiabilities += bal;
-                  } else {
-                    nonCurrentLiabilities.push({ accountCode: code, accountNameAr: name, amount: bal });
-                    sumNonCurrentLiabilities += bal;
-                  }
-                } else if (cat === 'EQUITY' || code.startsWith('3')) {
-                  equity.push({ accountCode: code, accountNameAr: name, amount: bal });
-                  sumEquity += bal;
-                }
-              });
-
-              const totalAssets = sumCurrentAssets + sumNonCurrentAssets;
-              const totalLiabilities = sumCurrentLiabilities + sumNonCurrentLiabilities;
-              let totalEquity = sumEquity + (pnlData?.netIncome || 0);
-
-              if (totalAssets > 0 && (totalLiabilities + totalEquity) === 0) {
-                totalEquity = totalAssets - totalLiabilities;
-                if (equity.length === 0) {
-                  equity.push({
-                    accountCode: '3200',
-                    accountNameAr: 'أرباح مرحلة / رصيد افتتاحي لحقوق الملكية',
-                    amount: totalEquity,
-                  });
-                }
-              }
-
-              customBs = {
-                asOfDate: endDate,
-                currentAssets: {
-                  categoryNameAr: 'الأصول المتداولة',
-                  items: currentAssets,
-                  totalAmount: sumCurrentAssets,
-                },
-                nonCurrentAssets: {
-                  categoryNameAr: 'الأصول غير المتداولة (الثابتة)',
-                  items: nonCurrentAssets,
-                  totalAmount: sumNonCurrentAssets,
-                },
-                totalAssets,
-                currentLiabilities: {
-                  categoryNameAr: 'الالتزامات المتداولة',
-                  items: currentLiabilities,
-                  totalAmount: sumCurrentLiabilities,
-                },
-                nonCurrentLiabilities: {
-                  categoryNameAr: 'الالتزامات طويلة الأجل',
-                  items: nonCurrentLiabilities,
-                  totalAmount: sumNonCurrentLiabilities,
-                },
-                totalLiabilities,
-                equity: {
-                  categoryNameAr: 'حقوق الملكية',
-                  items: equity,
-                  totalAmount: sumEquity,
-                },
-                periodNetIncome: pnlData?.netIncome || 0,
-                totalEquity,
-                totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
-                isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.005,
-              };
-            }
-          }
-        } catch (coaErr) {
-          console.warn('Direct chart_of_accounts query in FinancialStatementsView notice:', coaErr);
-        }
-      }
-
-      setBalanceSheet(customBs || bsData);
+      if (bsData) setBalanceSheet(bsData);
     } catch (err) {
       console.error('Error fetching financial statements:', err);
     } finally {
@@ -196,7 +79,80 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
 
   useEffect(() => {
     fetchReports();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, showAllAccounts, calcMode]);
+
+  const handleOpenAccountAudit = async (item: BalanceSheetItem) => {
+    setSelectedAuditAccount(item);
+    setLoadingAudit(true);
+    try {
+      const allJournals = await DataService.getJournals();
+      const code = String(item.accountCode || '').trim();
+      const id = String(item.accountId || '').trim();
+      const related = allJournals.filter(
+        (j) =>
+          j.status === 'POSTED' &&
+          j.lines?.some(
+            (l: any) =>
+              (id && (l.accountId === id || l.account_id === id)) ||
+              (code && (l.accountCode === code || l.account_code === code))
+          )
+      );
+      setAuditJournals(related);
+    } catch (e) {
+      console.error('Error loading account audit journals:', e);
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
+  const renderAccountRow = (it: BalanceSheetItem) => {
+    const isLeaf = it.isLeaf ?? true;
+    const isZero = it.isZero ?? (it.amount === 0);
+    const indentPx = Math.max(0, ((it.level || 1) - 1) * 12);
+
+    return (
+      <div
+        key={it.accountCode}
+        onClick={() => handleOpenAccountAudit(it)}
+        title="انقر لفتح كشف حساب وتدقيق حركات الأستاذ العام"
+        className={`flex justify-between items-center text-xs py-1.5 px-2 rounded transition-colors cursor-pointer border-b border-[#E5E1DA]/60 hover:bg-[#F7F5F0] group ${
+          !isLeaf ? 'font-semibold bg-[#FAFAF8]' : ''
+        } ${isZero ? 'opacity-60' : ''}`}
+        style={{ paddingRight: `${8 + indentPx}px` }}
+      >
+        <div className="flex items-center gap-2 overflow-hidden">
+          <span className="font-mono text-[11px] font-bold text-[#8C8273] bg-[#E5E1DA]/40 px-1.5 py-0.5 rounded">
+            {it.accountCode}
+          </span>
+          <span className="text-[#1A1A1A] truncate">{it.accountNameAr}</span>
+          {it.accountNameEn && (
+            <span className="text-[10px] text-[#8C8273] hidden sm:inline truncate">
+              ({it.accountNameEn})
+            </span>
+          )}
+          <Search className="w-3 h-3 text-[#B8860B] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </div>
+        <span
+          className={`font-mono text-xs ${
+            it.amount < 0
+              ? 'text-[#9E2A2B] font-bold'
+              : it.amount > 0
+              ? 'text-[#1A1A1A] font-bold'
+              : 'text-[#8C8273]'
+          }`}
+        >
+          {formatKWD3(it.amount)}
+        </span>
+      </div>
+    );
+  };
+
+  const getActiveItems = (section: any): BalanceSheetItem[] => {
+    if (showAllAccounts && section.allItems && section.allItems.length > 0) {
+      return section.allItems;
+    }
+    return section.items || [];
+  };
 
   return (
     <div className="space-y-6">
@@ -207,7 +163,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
             <LineChart className="w-5 h-5 text-[#B8860B]" /> القوائم المالية والحسابات الختامية
           </h2>
           <p className="text-xs text-[#8C8273] mt-1 font-serif italic">
-            القوائم الرسمية المعتمدة: قائمة المركز المالي (الميزانية العمومية)، قائمة الدخل (الأرباح والخسائر)، وقائمة التدفقات النقدية.
+            قائمة المركز المالي (الميزانية العمومية)، قائمة الدخل (الأرباح والخسائر)، وقائمة التدفقات النقدية وفق المعايير المحاسبية.
           </p>
         </div>
 
@@ -221,9 +177,9 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
       </div>
 
       {/* Sub-Tab Navigation & Date Range Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#F7F5F0] border border-[#E5E1DA] p-4 rounded-lg no-print">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 bg-[#F7F5F0] border border-[#E5E1DA] p-4 rounded-lg no-print">
         {/* Sub tabs */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {[
             { id: 'balance-sheet', label: 'قائمة المركز المالي (الميزانية)' },
             { id: 'pnl', label: 'قائمة الدخل (الأرباح والخسائر)' },
@@ -244,7 +200,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
         </div>
 
         {/* Date filters */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1 text-xs text-[#1A1A1A]">
             <span>من:</span>
             <input
@@ -266,6 +222,62 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
         </div>
       </div>
 
+      {/* Balance Sheet Controls Bar */}
+      {subTab === 'balance-sheet' && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-[#E5E1DA] px-4 py-3 rounded-lg no-print">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Calculation Mode */}
+            <span className="text-xs text-[#6E6659] font-serif font-semibold">نمط الاحتساب:</span>
+            <div className="inline-flex rounded-md shadow-2xs border border-[#E5E1DA] p-0.5 bg-[#F7F5F0]">
+              <button
+                type="button"
+                onClick={() => setCalcMode('cumulative')}
+                className={`px-3 py-1 text-xs rounded transition-all cursor-pointer ${
+                  calcMode === 'cumulative'
+                    ? 'bg-white text-[#1A1A1A] font-bold shadow-2xs'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                }`}
+              >
+                الرصيد التراكمي الشامل (المعتمد)
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalcMode('gl_only')}
+                className={`px-3 py-1 text-xs rounded transition-all cursor-pointer ${
+                  calcMode === 'gl_only'
+                    ? 'bg-white text-[#1A1A1A] font-bold shadow-2xs'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A]'
+                }`}
+              >
+                سجل ترحيلات الأستاذ العام فقط (GL Ledger)
+              </button>
+            </div>
+
+            {/* Toggle Full Chart of Accounts */}
+            <button
+              type="button"
+              onClick={() => setShowAllAccounts(!showAllAccounts)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs border transition-all cursor-pointer ${
+                showAllAccounts
+                  ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
+                  : 'bg-white text-[#6E6659] hover:text-[#1A1A1A] border-[#E5E1DA]'
+              }`}
+            >
+              {showAllAccounts ? <Eye className="w-3.5 h-3.5 text-[#D4AF37]" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <span>
+                {showAllAccounts
+                  ? 'عرض دليل الحسابات كاملاً (مُفعّل)'
+                  : 'عرض بنود الأرصدة النشطة فقط'}
+              </span>
+            </button>
+          </div>
+
+          <div className="text-[11px] text-[#8C8273] font-serif italic">
+            * يمكنك النقر على أي بند لاستعراض كشف حركاته في الأستاذ العام
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="p-12 text-center text-[#8C8273] font-serif italic">جاري احتساب وإعداد القوائم المالية...</div>
       ) : (
@@ -279,146 +291,137 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                     قائمة المركز المالي (Statement of Financial Position - Balance Sheet)
                   </h3>
                   <p className="text-xs text-[#8C8273] mt-1 font-serif italic">
-                    كما هي في {balanceSheet.asOfDate} • معدّة وفق الحسابات الختامية الرسمية
+                    كما هي في {balanceSheet.asOfDate} • معدّة بدقة تامة ومطابقة للمعايير المحاسبية الدولية (IAS 1)
                   </p>
                 </div>
 
-                <span className="px-3 py-1 bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30 rounded-full text-xs font-semibold flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4" /> الأصول = الخصوم + حقوق الملكية
-                </span>
+                {balanceSheet.isBalanced ? (
+                  <span className="px-3 py-1.5 bg-[#EBF5EE] text-[#2D6A4F] border border-[#2D6A4F]/30 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
+                    <ShieldCheck className="w-4 h-4 text-[#2D6A4F]" />
+                    <span>متوازنة ومطابقة محاسبياً 100% (الأصول = الخصوم + حقوق الملكية)</span>
+                  </span>
+                ) : (
+                  <span className="px-3 py-1.5 bg-[#FDF0ED] text-[#9E2A2B] border border-[#9E2A2B]/30 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
+                    <AlertCircle className="w-4 h-4 text-[#9E2A2B]" />
+                    <span>
+                      يوجد فارق عدم توازن: {formatKWD3(balanceSheet.difference || 0)}
+                    </span>
+                  </span>
+                )}
               </div>
 
               {/* Two Column Layout: Assets vs Liabilities & Equity */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Assets Column */}
                 <div className="space-y-4">
-                  <h4 className="text-xs font-serif font-bold text-[#2D6A4F] bg-[#F7F5F0] p-2.5 rounded-md border border-[#E5E1DA]">
-                    الأصول (Assets)
-                  </h4>
+                  <div className="flex items-center justify-between bg-[#F7F5F0] p-2.5 rounded-md border border-[#E5E1DA]">
+                    <h4 className="text-xs font-serif font-bold text-[#2D6A4F] flex items-center gap-1.5">
+                      <Wallet className="w-4 h-4 text-[#2D6A4F]" />
+                      <span>الأصول (Assets)</span>
+                    </h4>
+                    <span className="text-xs font-mono font-bold text-[#2D6A4F]">
+                      {formatKWD3(balanceSheet.totalAssets)}
+                    </span>
+                  </div>
 
                   {/* Current Assets */}
                   <div className="space-y-2">
-                    <span className="text-xs font-serif font-bold text-[#1A1A1A] block">
-                      {balanceSheet.currentAssets.categoryNameAr}
-                    </span>
-                    <div className="space-y-1.5 pl-2">
-                      {balanceSheet.currentAssets.items.map((it) => (
-                        <div
-                          key={it.accountCode}
-                          className="flex justify-between text-xs py-1 border-b border-[#E5E1DA]"
-                        >
-                          <span className="text-[#6E6659]">
-                            {it.accountCode} - {it.accountNameAr}
-                          </span>
-                          <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD3(it.amount)}
-                          </span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#2D6A4F] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
-                        <span>مجموع الأصول المتداولة:</span>
-                        <span>{formatKWD3(balanceSheet.currentAssets.totalAmount)}</span>
-                      </div>
+                    <div className="flex items-center justify-between text-xs font-serif font-bold text-[#1A1A1A] pb-1 border-b border-[#E5E1DA]">
+                      <span>{balanceSheet.currentAssets.categoryNameAr}</span>
+                      <span className="font-mono text-[#2D6A4F]">
+                        {formatKWD3(balanceSheet.currentAssets.totalAmount)}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {getActiveItems(balanceSheet.currentAssets).map((it) => renderAccountRow(it))}
                     </div>
                   </div>
 
                   {/* Non Current Assets */}
                   <div className="space-y-2 pt-2">
-                    <span className="text-xs font-serif font-bold text-[#1A1A1A] block">
-                      {balanceSheet.nonCurrentAssets.categoryNameAr}
-                    </span>
-                    <div className="space-y-1.5 pl-2">
-                      {balanceSheet.nonCurrentAssets.items.map((it) => (
-                        <div
-                          key={it.accountCode}
-                          className="flex justify-between text-xs py-1 border-b border-[#E5E1DA]"
-                        >
-                          <span className="text-[#6E6659]">
-                            {it.accountCode} - {it.accountNameAr}
-                          </span>
-                          <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD3(it.amount)}
-                          </span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#2D6A4F] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
-                        <span>مجموع الأصول الثابتة:</span>
-                        <span>
-                          {formatKWD3(balanceSheet.nonCurrentAssets.totalAmount)}
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between text-xs font-serif font-bold text-[#1A1A1A] pb-1 border-b border-[#E5E1DA]">
+                      <span>{balanceSheet.nonCurrentAssets.categoryNameAr}</span>
+                      <span className="font-mono text-[#2D6A4F]">
+                        {formatKWD3(balanceSheet.nonCurrentAssets.totalAmount)}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {getActiveItems(balanceSheet.nonCurrentAssets).length > 0 ? (
+                        getActiveItems(balanceSheet.nonCurrentAssets).map((it) => renderAccountRow(it))
+                      ) : (
+                        <div className="text-[11px] text-[#8C8273] italic py-1 px-2">لا توجد أصول غير متداولة مسجلة</div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="p-3 bg-[#EBF5EE] border border-[#2D6A4F]/30 rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#2D6A4F]">
+                  <div className="p-3.5 bg-[#EBF5EE] border border-[#2D6A4F]/30 rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#2D6A4F] shadow-2xs">
                     <span>إجمالي الأصول (Total Assets):</span>
-                    <span>{formatKWD3(balanceSheet.totalAssets)}</span>
+                    <span className="font-mono">{formatKWD3(balanceSheet.totalAssets)}</span>
                   </div>
                 </div>
 
                 {/* Liabilities & Equity Column */}
                 <div className="space-y-4">
-                  <h4 className="text-xs font-serif font-bold text-[#9E2A2B] bg-[#F7F5F0] p-2.5 rounded-md border border-[#E5E1DA]">
-                    الخصوم وحقوق الملكية (Liabilities & Equity)
-                  </h4>
+                  <div className="flex items-center justify-between bg-[#F7F5F0] p-2.5 rounded-md border border-[#E5E1DA]">
+                    <h4 className="text-xs font-serif font-bold text-[#9E2A2B] flex items-center gap-1.5">
+                      <Building className="w-4 h-4 text-[#9E2A2B]" />
+                      <span>الخصوم وحقوق الملكية (Liabilities & Equity)</span>
+                    </h4>
+                    <span className="text-xs font-mono font-bold text-[#1A1A1A]">
+                      {formatKWD3(balanceSheet.totalLiabilitiesAndEquity)}
+                    </span>
+                  </div>
 
                   {/* Current Liabilities */}
                   <div className="space-y-2">
-                    <span className="text-xs font-serif font-bold text-[#1A1A1A] block">
-                      {balanceSheet.currentLiabilities.categoryNameAr}
-                    </span>
-                    <div className="space-y-1.5 pl-2">
-                      {balanceSheet.currentLiabilities.items.map((it) => (
-                        <div
-                          key={it.accountCode}
-                          className="flex justify-between text-xs py-1 border-b border-[#E5E1DA]"
-                        >
-                          <span className="text-[#6E6659]">
-                            {it.accountCode} - {it.accountNameAr}
-                          </span>
-                          <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD3(it.amount)}
-                          </span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#9E2A2B] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
-                        <span>مجموع الخصوم المتداولة:</span>
-                        <span>
-                          {formatKWD3(balanceSheet.currentLiabilities.totalAmount)}
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between text-xs font-serif font-bold text-[#1A1A1A] pb-1 border-b border-[#E5E1DA]">
+                      <span>{balanceSheet.currentLiabilities.categoryNameAr}</span>
+                      <span className="font-mono text-[#9E2A2B]">
+                        {formatKWD3(balanceSheet.currentLiabilities.totalAmount)}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {getActiveItems(balanceSheet.currentLiabilities).length > 0 ? (
+                        getActiveItems(balanceSheet.currentLiabilities).map((it) => renderAccountRow(it))
+                      ) : (
+                        <div className="text-[11px] text-[#8C8273] italic py-1 px-2">لا توجد التزامات متداولة مسجلة</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Non Current Liabilities */}
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between text-xs font-serif font-bold text-[#1A1A1A] pb-1 border-b border-[#E5E1DA]">
+                      <span>{balanceSheet.nonCurrentLiabilities.categoryNameAr}</span>
+                      <span className="font-mono text-[#9E2A2B]">
+                        {formatKWD3(balanceSheet.nonCurrentLiabilities.totalAmount)}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {getActiveItems(balanceSheet.nonCurrentLiabilities).length > 0 ? (
+                        getActiveItems(balanceSheet.nonCurrentLiabilities).map((it) => renderAccountRow(it))
+                      ) : (
+                        <div className="text-[11px] text-[#8C8273] italic py-1 px-2">لا توجد التزامات طويلة الأجل مسجلة</div>
+                      )}
                     </div>
                   </div>
 
                   {/* Equity */}
                   <div className="space-y-2 pt-2">
-                    <span className="text-xs font-serif font-bold text-[#1A1A1A] block">
-                      {balanceSheet.equity.categoryNameAr}
-                    </span>
-                    <div className="space-y-1.5 pl-2">
-                      {balanceSheet.equity.items.map((it) => (
-                        <div
-                          key={it.accountCode}
-                          className="flex justify-between text-xs py-1 border-b border-[#E5E1DA]"
-                        >
-                          <span className="text-[#6E6659]">
-                            {it.accountCode} - {it.accountNameAr}
-                          </span>
-                          <span className="font-serif font-bold text-[#1A1A1A]">
-                            {formatKWD3(it.amount)}
-                          </span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between text-xs font-serif font-bold py-1.5 text-[#B8860B] bg-[#F7F5F0] px-2 rounded-md border border-[#E5E1DA]">
-                        <span>إجمالي حقوق الملكية:</span>
-                        <span>{formatKWD3(balanceSheet.totalEquity)}</span>
-                      </div>
+                    <div className="flex items-center justify-between text-xs font-serif font-bold text-[#1A1A1A] pb-1 border-b border-[#E5E1DA]">
+                      <span>{balanceSheet.equity.categoryNameAr}</span>
+                      <span className="font-mono text-[#B8860B]">
+                        {formatKWD3(balanceSheet.totalEquity)}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {getActiveItems(balanceSheet.equity).map((it) => renderAccountRow(it))}
                     </div>
                   </div>
 
-                  <div className="p-3 bg-[#F7F5F0] border border-[#E5E1DA] rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#1A1A1A]">
+                  <div className="p-3.5 bg-[#F7F5F0] border border-[#E5E1DA] rounded-md flex justify-between items-center text-sm font-serif font-bold text-[#1A1A1A] shadow-2xs">
                     <span>إجمالي الخصوم وحقوق الملكية:</span>
-                    <span>
+                    <span className="font-mono">
                       {formatKWD3(balanceSheet.totalLiabilitiesAndEquity)}
                     </span>
                   </div>
@@ -603,6 +606,154 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
             </div>
           )}
         </>
+      )}
+
+      {/* Ledger Audit Drill-down Modal */}
+      {selectedAuditAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs no-print">
+          <div className="bg-white border border-[#E5E1DA] rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-[#E5E1DA] bg-[#F7F5F0]">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-[#B8860B]" />
+                <div>
+                  <h3 className="text-sm font-serif font-bold text-[#1A1A1A]">
+                    تدقيق الحساب في الأستاذ العام: {selectedAuditAccount.accountCode} - {selectedAuditAccount.accountNameAr}
+                  </h3>
+                  {selectedAuditAccount.accountNameEn && (
+                    <p className="text-[11px] text-[#8C8273]">{selectedAuditAccount.accountNameEn}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedAuditAccount(null)}
+                className="p-1 hover:bg-[#E5E1DA] rounded text-[#8C8273] hover:text-[#1A1A1A] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Account Balance Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="bg-[#F7F5F0] p-3 rounded border border-[#E5E1DA]">
+                  <span className="text-[#8C8273] block text-[11px]">الرصيد الافتتاحي</span>
+                  <span className="font-mono font-bold text-[#1A1A1A] block mt-1">
+                    {formatKWD3(selectedAuditAccount.openingBalance || 0)}
+                  </span>
+                </div>
+                <div className="bg-[#EBF5EE] p-3 rounded border border-[#2D6A4F]/30">
+                  <span className="text-[#2D6A4F] block text-[11px]">إجمالي الحركات المدينة</span>
+                  <span className="font-mono font-bold text-[#2D6A4F] block mt-1">
+                    {formatKWD3(
+                      auditJournals.reduce((sum, j) => {
+                        const line = j.lines?.find(
+                          (l: any) =>
+                            l.accountId === selectedAuditAccount.accountId ||
+                            l.accountCode === selectedAuditAccount.accountCode
+                        );
+                        return sum + Number(line?.debit || 0);
+                      }, 0)
+                    )}
+                  </span>
+                </div>
+                <div className="bg-[#FDF0ED] p-3 rounded border border-[#9E2A2B]/30">
+                  <span className="text-[#9E2A2B] block text-[11px]">إجمالي الحركات الدائنة</span>
+                  <span className="font-mono font-bold text-[#9E2A2B] block mt-1">
+                    {formatKWD3(
+                      auditJournals.reduce((sum, j) => {
+                        const line = j.lines?.find(
+                          (l: any) =>
+                            l.accountId === selectedAuditAccount.accountId ||
+                            l.accountCode === selectedAuditAccount.accountCode
+                        );
+                        return sum + Number(line?.credit || 0);
+                      }, 0)
+                    )}
+                  </span>
+                </div>
+                <div className="bg-[#1A1A1A] text-white p-3 rounded border border-[#1A1A1A]">
+                  <span className="text-[#D4AF37] block text-[11px]">الرصيد النهائي الحالي</span>
+                  <span className="font-mono font-bold text-white block mt-1">
+                    {formatKWD3(selectedAuditAccount.amount)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Journal Entries List */}
+              <div className="space-y-2 pt-2">
+                <h4 className="text-xs font-serif font-bold text-[#1A1A1A]">
+                  سجل قيود اليومية المرحلة للحساب ({auditJournals.length} قيد مرحل)
+                </h4>
+
+                {loadingAudit ? (
+                  <div className="p-8 text-center text-xs text-[#8C8273] italic">جاري جلب قيود اليومية...</div>
+                ) : auditJournals.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-[#8C8273] bg-[#F7F5F0] rounded border border-[#E5E1DA] italic">
+                    لا توجد قيود يومية إضافية مسجلة بعد الرصيد الافتتاحي المعتمد في شجرة الحسابات.
+                  </div>
+                ) : (
+                  <div className="border border-[#E5E1DA] rounded overflow-hidden text-xs">
+                    <table className="w-full text-right border-collapse">
+                      <thead className="bg-[#F7F5F0] border-b border-[#E5E1DA] text-[#6E6659] font-serif">
+                        <tr>
+                          <th className="p-2.5">التاريخ</th>
+                          <th className="p-2.5">رقم القيد</th>
+                          <th className="p-2.5">البيان والشرح</th>
+                          <th className="p-2.5">مدين</th>
+                          <th className="p-2.5">دائن</th>
+                          <th className="p-2.5">الحالة</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E5E1DA]">
+                        {auditJournals.map((j) => {
+                          const line = j.lines?.find(
+                            (l: any) =>
+                              l.accountId === selectedAuditAccount.accountId ||
+                              l.accountCode === selectedAuditAccount.accountCode
+                          );
+                          const debit = Number(line?.debit || 0);
+                          const credit = Number(line?.credit || 0);
+
+                          return (
+                            <tr key={j.id} className="hover:bg-[#F7F5F0]">
+                              <td className="p-2.5 font-mono text-[11px] text-[#6E6659]">{j.date}</td>
+                              <td className="p-2.5 font-mono font-bold text-[#1A1A1A]">{j.referenceNumber || j.id?.slice(0, 8)}</td>
+                              <td className="p-2.5 text-[#1A1A1A]">{line?.description || j.description || '-'}</td>
+                              <td className="p-2.5 font-mono font-bold text-[#2D6A4F]">
+                                {debit > 0 ? formatKWD3(debit) : '-'}
+                              </td>
+                              <td className="p-2.5 font-mono font-bold text-[#9E2A2B]">
+                                {credit > 0 ? formatKWD3(credit) : '-'}
+                              </td>
+                              <td className="p-2.5">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EBF5EE] text-[#2D6A4F]">
+                                  مرحل
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-[#E5E1DA] bg-[#F7F5F0] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedAuditAccount(null)}
+                className="px-4 py-1.5 bg-[#1A1A1A] text-white rounded text-xs font-semibold hover:bg-[#2D2B28] cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
