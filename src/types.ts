@@ -895,6 +895,7 @@ export interface StockMovement {
   unit: string;
   unitCost: number;
   totalCostValue: number;
+  balanceValue?: number;
   warehouse?: string;
   notes?: string;
   createdBy?: string;

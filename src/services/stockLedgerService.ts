@@ -27,12 +27,45 @@ export class StockLedgerService {
 
     // A. Opening Balances
     inventory.forEach((item) => {
-      const initialQty =
-        item.initialQuantity !== undefined && item.initialQuantity !== null
-          ? Number(item.initialQuantity)
-          : Number(item.quantityOnHand || 0);
+      let initialQty = 0;
+      if (item.initialQuantity !== undefined && item.initialQuantity !== null && Number(item.initialQuantity) > 0) {
+        initialQty = Number(item.initialQuantity);
+      } else if ((item as any).openingBalance !== undefined && (item as any).openingBalance !== null && Number((item as any).openingBalance) > 0) {
+        initialQty = Number((item as any).openingBalance);
+      }
+
+      // Check if storedMovements contains adjustments or records for this item that imply an opening balance
+      const itemStoredMvs = storedMovements.filter(
+        (m) => m.itemId === item.id || (item.sku && m.itemSku === item.sku)
+      );
+
+      if (initialQty <= 0 && itemStoredMvs.length > 0) {
+        // Find the earliest recorded movement for this item
+        const sortedItemMvs = [...itemStoredMvs].sort((a, b) => {
+          const dtA = `${a.date} ${a.time || '00:00'}`;
+          const dtB = `${b.date} ${b.time || '00:00'}`;
+          return dtA.localeCompare(dtB);
+        });
+        const firstMv = sortedItemMvs[0];
+        const qIn = Number(firstMv.quantityIn ?? (firstMv as any).qty_in ?? 0);
+        const qOut = Number(firstMv.quantityOut ?? (firstMv as any).qty_out ?? 0);
+        const balAfter = Number(firstMv.balanceAfter ?? 0);
+
+        // Previous balance before earliest adjustment:
+        // balAfter = prev + (qIn - qOut) => prev = balAfter - (qIn - qOut)
+        const impliedPrev = balAfter - (qIn - qOut);
+        if (impliedPrev > 0) {
+          initialQty = impliedPrev;
+        }
+      }
+
+      // Fallback: if initialQty is still 0 but item.quantityOnHand > 0 and no stored movements exist
+      if (initialQty <= 0 && itemStoredMvs.length === 0 && Number(item.quantityOnHand || 0) > 0) {
+        initialQty = Number(item.quantityOnHand);
+      }
 
       if (initialQty > 0) {
+        const unitCost = Number(item.purchasePrice || item.costPrice || 0);
         generatedMovements.push({
           id: `mv-open-${item.id}`,
           date: '2026-01-01',
@@ -50,8 +83,9 @@ export class StockLedgerService {
           qty_out: 0,
           balanceAfter: initialQty,
           unit: item.unit || 'حبة',
-          unitCost: item.purchasePrice || item.costPrice || 0,
-          totalCostValue: initialQty * (item.purchasePrice || item.costPrice || 0),
+          unitCost: unitCost,
+          totalCostValue: Number((initialQty * unitCost).toFixed(3)),
+          balanceValue: Number((initialQty * unitCost).toFixed(3)),
           warehouse: 'المستودع الرئيسي',
           notes: 'إثبات رصيد المخزون التأسيسي الأولي',
         });
@@ -219,10 +253,39 @@ export class StockLedgerService {
     // Merge stored and generated
     const allMovements = [...generatedMovements, ...storedMovements];
 
-    // Sort chronologically
-    allMovements.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // Comprehensive multi-criteria chronological sorting
+    allMovements.sort((a, b) => {
+      // 1. Date comparison
+      const dateA = a.date || '2000-01-01';
+      const dateB = b.date || '2000-01-01';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
 
-    // Calculate running balance per item
+      // 2. Time comparison
+      const timeA = a.time || '00:00';
+      const timeB = b.time || '00:00';
+      if (timeA !== timeB) return timeA.localeCompare(timeB);
+
+      // 3. Opening balances strictly come first on that date
+      if (a.type === 'OPENING' && b.type !== 'OPENING') return -1;
+      if (b.type === 'OPENING' && a.type !== 'OPENING') return 1;
+
+      // 4. Inbound movements (+ / توريد / فائض) strictly precede Outbound movements (- / صرف / عجز)
+      // This guarantees stock balance does not dip below zero when inflow and outflow share the same minute
+      const aIn = Number(a.quantityIn ?? (a as any).qty_in ?? 0);
+      const bIn = Number(b.quantityIn ?? (b as any).qty_in ?? 0);
+      const aIsInbound = aIn > 0 ? 1 : 0;
+      const bIsInbound = bIn > 0 ? 1 : 0;
+      if (aIsInbound !== bIsInbound) {
+        return bIsInbound - aIsInbound;
+      }
+
+      // 5. Tie-breaker by referenceDocNumber or id
+      const refA = a.referenceDocNumber || a.id || '';
+      const refB = b.referenceDocNumber || b.id || '';
+      return refA.localeCompare(refB);
+    });
+
+    // Calculate running balance per item with exact valuation
     const itemBalances: Record<string, number> = {};
 
     return allMovements.map((mv) => {
@@ -231,12 +294,16 @@ export class StockLedgerService {
       const qOut = Number(mv.quantityOut ?? (mv as any).qty_out ?? 0);
       let updated = current + (qIn - qOut);
 
-      // If this movement is a stock adjustment that calibrated the actual count, anchor the running balance
-      if (mv.type === 'STOCK_ADJUSTMENT' && mv.balanceAfter !== undefined && mv.balanceAfter !== null) {
-        updated = Number(mv.balanceAfter);
-      }
+      // Inventory quantity cannot physically dip below 0
+      updated = Math.max(0, updated);
 
       itemBalances[mv.itemId] = updated;
+
+      const unitCost = Number(mv.unitCost || 0);
+      const movementQty = qIn > 0 ? qIn : qOut;
+      const movementCostValue = Number((movementQty * unitCost).toFixed(3));
+      const balanceVal = Number((updated * unitCost).toFixed(3));
+
       return {
         ...mv,
         quantityIn: qIn,
@@ -244,6 +311,8 @@ export class StockLedgerService {
         qty_in: qIn,
         qty_out: qOut,
         balanceAfter: updated,
+        totalCostValue: movementCostValue,
+        balanceValue: balanceVal,
       };
     });
   }
@@ -361,6 +430,7 @@ export class StockLedgerService {
       unit: item.unit || 'حبة',
       unitCost: unitCost,
       totalCostValue: totalCostValue,
+      balanceValue: Number((targetBalance * unitCost).toFixed(3)),
       warehouse: 'المستودع الرئيسي',
       notes: `${reason || 'تسوية فروقات الجرد الدوري'} [الرصيد الدفتري السابق: ${currentBookQty} | الرصيد المعتمد الجديد: ${targetBalance} | الفارق: ${diff > 0 ? `+${diff}` : diff}] - المنفذ: ${operatorName}`,
       createdBy: operatorName,

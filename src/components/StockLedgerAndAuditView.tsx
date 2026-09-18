@@ -64,6 +64,10 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'LOW' | 'OUT' | 'SAFE' | 'EXCESS'>('ALL');
   const [movementTypeFilter, setMovementTypeFilter] = useState<string>('ALL');
+  const [ledgerItemIdFilter, setLedgerItemIdFilter] = useState<string>('ALL');
+  const [ledgerSearchTerm, setLedgerSearchTerm] = useState<string>('');
+  const [ledgerDateFrom, setLedgerDateFrom] = useState<string>('');
+  const [ledgerDateTo, setLedgerDateTo] = useState<string>('');
   const [inspectedItem, setInspectedItem] = useState<InventoryItem | null>(null);
 
   // Item Card State
@@ -199,19 +203,51 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
     });
   }, [inventory, searchTerm, selectedCategory, statusFilter, getItemLiveBalance]);
 
-  // 4. Filtered Movements
+  // 4. Filtered Movements with item, search, movement type, and date filters
   const filteredMovements = useMemo(() => {
     return movements.filter((mv) => {
+      // Search term (either ledger-specific or global)
+      const term = (ledgerSearchTerm || (activeSubTab === 'ledger' ? '' : searchTerm)).trim().toLowerCase();
       const matchesSearch =
-        mv.itemNameAr.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        mv.itemSku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        mv.referenceDocNumber.toLowerCase().includes(searchTerm.toLowerCase());
+        !term ||
+        mv.itemNameAr.toLowerCase().includes(term) ||
+        mv.itemSku.toLowerCase().includes(term) ||
+        mv.referenceDocNumber.toLowerCase().includes(term) ||
+        (mv.notes && mv.notes.toLowerCase().includes(term));
 
+      // Movement Type Filter
       const matchesType = movementTypeFilter === 'ALL' || mv.type === movementTypeFilter;
 
-      return matchesSearch && matchesType;
+      // Item Filter
+      const matchesItem = ledgerItemIdFilter === 'ALL' || mv.itemId === ledgerItemIdFilter;
+
+      // Date Range Filter
+      let matchesDate = true;
+      if (ledgerDateFrom && mv.date < ledgerDateFrom) matchesDate = false;
+      if (ledgerDateTo && mv.date > ledgerDateTo) matchesDate = false;
+
+      return matchesSearch && matchesType && matchesItem && matchesDate;
     });
-  }, [movements, searchTerm, movementTypeFilter]);
+  }, [movements, searchTerm, ledgerSearchTerm, movementTypeFilter, ledgerItemIdFilter, ledgerDateFrom, ledgerDateTo, activeSubTab]);
+
+  // Ledger Aggregations Summary
+  const ledgerSummary = useMemo(() => {
+    let totalQtyIn = 0;
+    let totalQtyOut = 0;
+    let totalMovementValue = 0;
+    filteredMovements.forEach((m) => {
+      totalQtyIn += Number(m.quantityIn || 0);
+      totalQtyOut += Number(m.quantityOut || 0);
+      totalMovementValue += Number(m.totalCostValue || 0);
+    });
+    return {
+      count: filteredMovements.length,
+      totalQtyIn,
+      totalQtyOut,
+      netQtyChange: totalQtyIn - totalQtyOut,
+      totalMovementValue,
+    };
+  }, [filteredMovements]);
 
   // Categories list
   const categories = useMemo(() => {
@@ -259,18 +295,37 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
 
   // Export Ledger to CSV
   const handleExportCSV = () => {
-    const headers = ['التاريخ', 'نوع الحركة', 'رقم المستند', 'الصنف', 'رمز الصنف', 'وارد', 'منصرف', 'الرصيد اللحظي', 'التكلفة', 'القيمة'];
+    const headers = [
+      'التاريخ',
+      'الوقت',
+      'نوع الحركة',
+      'رقم المستند',
+      'رمز الصنف (SKU)',
+      'اسم الصنف',
+      'الوحدة',
+      'وارد (+)',
+      'منصرف (-)',
+      'الرصيد التراكمي',
+      'متوسط التكلفة',
+      'قيمة الحركة',
+      'إجمالي قيمة الرصيد',
+      'ملاحظات المستودع',
+    ];
     const rows = filteredMovements.map((m) => [
       m.date,
-      m.typeTitleAr,
+      m.time || '',
+      `"${m.typeTitleAr}"`,
       m.referenceDocNumber,
+      `"${m.itemSku}"`,
       `"${m.itemNameAr}"`,
-      m.itemSku,
-      m.quantityIn,
-      m.quantityOut,
-      m.balanceAfter,
-      m.unitCost,
-      m.totalCostValue,
+      m.unit || 'حبة',
+      m.quantityIn || 0,
+      m.quantityOut || 0,
+      m.balanceAfter || 0,
+      m.unitCost || 0,
+      m.totalCostValue || 0,
+      m.balanceValue ?? (m.balanceAfter * m.unitCost),
+      `"${(m.notes || '').replace(/"/g, '""')}"`,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -580,31 +635,18 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
       {/* VIEW 2: STOCK LEDGER */}
       {activeSubTab === 'ledger' && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div className="space-y-1">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <ClipboardList className="w-4 h-4 text-amber-500" />
                 دفتر أستاذ المخزون التراكمي (Chronological Stock Ledger)
               </h3>
               <p className="text-xs text-slate-500">
-                سجل إلكتروني يوثق كل إضافة وصرف وتسوية جردية مع الرصيد اللحظي التراكمي
+                سجل تسلسلي زمني دقيق يوثق الرصيد الافتتاحي، الوارد، المنصرف، والتسويات الجردية مع إثبات الرصيد اللحظي التراكمي وقيمته المخزنية الفعلية
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={movementTypeFilter}
-                onChange={(e) => setMovementTypeFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none"
-              >
-                <option value="ALL">جميع أنواع الحركات ({movements.length})</option>
-                <option value="OPENING">أرصدة افتتاحية</option>
-                <option value="SALES_ISSUE">فواتير مبيعات (صرف)</option>
-                <option value="PRODUCTION_IN">إنتاج مطحنة تام الصنع (توريد)</option>
-                <option value="PRODUCTION_OUT">استهلاك مواد أولية (طحن)</option>
-                <option value="STOCK_ADJUSTMENT">تسويات جردية</option>
-              </select>
-
               <button
                 onClick={handleExportCSV}
                 className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -615,62 +657,245 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
             </div>
           </div>
 
+          {/* Filters Bar */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex flex-wrap items-center gap-3">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={ledgerSearchTerm}
+                onChange={(e) => setLedgerSearchTerm(e.target.value)}
+                placeholder="بحث باسم الصنف، الباركود، رقم المستند..."
+                className="w-full bg-white border border-slate-200 pl-3 pr-8 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+              />
+            </div>
+
+            {/* Filter by Item */}
+            <div className="min-w-[200px]">
+              <select
+                value={ledgerItemIdFilter}
+                onChange={(e) => setLedgerItemIdFilter(e.target.value)}
+                className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+              >
+                <option value="ALL">جميع الأصناف المخزنية ({inventory.length})</option>
+                {inventory.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    [{item.sku || 'بدون رمز'}] {item.nameAr}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filter by Movement Type */}
+            <div className="min-w-[170px]">
+              <select
+                value={movementTypeFilter}
+                onChange={(e) => setMovementTypeFilter(e.target.value)}
+                className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+              >
+                <option value="ALL">جميع أنواع الحركات ({movements.length})</option>
+                <option value="OPENING">أرصدة افتتاحية (أول المدة)</option>
+                <option value="SALES_ISSUE">فواتير مبيعات (صرف)</option>
+                <option value="PURCHASE_RECEIPT">فواتير مشتريات (توريد)</option>
+                <option value="PRODUCTION_IN">إنتاج مطحنة تام الصنع (توريد)</option>
+                <option value="PRODUCTION_OUT">استهلاك مواد أولية (طحن)</option>
+                <option value="STOCK_ADJUSTMENT">تسويات جردية (عجز/فائض)</option>
+              </select>
+            </div>
+
+            {/* Date From */}
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-slate-500 font-bold">من:</span>
+              <input
+                type="date"
+                value={ledgerDateFrom}
+                onChange={(e) => setLedgerDateFrom(e.target.value)}
+                className="bg-white border border-slate-200 px-2 py-1.5 rounded-lg text-xs text-slate-800 outline-none focus:border-amber-500"
+              />
+            </div>
+
+            {/* Date To */}
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-slate-500 font-bold">إلى:</span>
+              <input
+                type="date"
+                value={ledgerDateTo}
+                onChange={(e) => setLedgerDateTo(e.target.value)}
+                className="bg-white border border-slate-200 px-2 py-1.5 rounded-lg text-xs text-slate-800 outline-none focus:border-amber-500"
+              />
+            </div>
+
+            {/* Reset Filters */}
+            {(ledgerSearchTerm || ledgerItemIdFilter !== 'ALL' || movementTypeFilter !== 'ALL' || ledgerDateFrom || ledgerDateTo) && (
+              <button
+                onClick={() => {
+                  setLedgerSearchTerm('');
+                  setLedgerItemIdFilter('ALL');
+                  setMovementTypeFilter('ALL');
+                  setLedgerDateFrom('');
+                  setLedgerDateTo('');
+                }}
+                className="px-2.5 py-1.5 text-xs text-rose-600 hover:text-rose-800 font-bold hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+              >
+                إلغاء التصفية
+              </button>
+            )}
+          </div>
+
+          {/* Quick Metrics Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-900 text-white p-3 rounded-xl text-xs">
+            <div>
+              <span className="text-slate-400 block text-[10px]">عدد الحركات المعروضة</span>
+              <span className="font-bold font-mono text-sm text-amber-400">{ledgerSummary.count} حركة</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px]">إجمالي الوارد (+)</span>
+              <span className="font-bold font-mono text-sm text-emerald-400">
+                +{ledgerSummary.totalQtyIn.toLocaleString()}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px]">إجمالي المنصرف (-)</span>
+              <span className="font-bold font-mono text-sm text-rose-400">
+                -{ledgerSummary.totalQtyOut.toLocaleString()}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px]">صافي حركة الفترة</span>
+              <span
+                className={`font-bold font-mono text-sm ${
+                  ledgerSummary.netQtyChange >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                }`}
+              >
+                {ledgerSummary.netQtyChange > 0 ? `+${ledgerSummary.netQtyChange.toLocaleString()}` : ledgerSummary.netQtyChange.toLocaleString()}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px]">إجمالي تكلفة الحركات</span>
+              <span className="font-bold font-mono text-sm text-white">
+                {formatCurrency(ledgerSummary.totalMovementValue, currency)}
+              </span>
+            </div>
+          </div>
+
+          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs">
-              <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+              <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-3">التاريخ والوقت</th>
-                  <th className="py-3 px-3">نوع الحركة</th>
-                  <th className="py-3 px-3">رقم المستند</th>
-                  <th className="py-3 px-3">رمز الصنف</th>
-                  <th className="py-3 px-3">اسم الصنف والمنتج</th>
-                  <th className="py-3 px-3 text-center text-emerald-700">وارد (+)</th>
-                  <th className="py-3 px-3 text-center text-rose-700">منصرف (-)</th>
-                  <th className="py-3 px-3 text-center font-black">الرصيد التراكمي</th>
-                  <th className="py-3 px-3">متوسط التكلفة</th>
-                  <th className="py-3 px-3">إجمالي القيمة</th>
+                  <th className="py-3 px-3 whitespace-nowrap">التاريخ والوقت</th>
+                  <th className="py-3 px-3 whitespace-nowrap">نوع الحركة</th>
+                  <th className="py-3 px-3 whitespace-nowrap">رقم المستند</th>
+                  <th className="py-3 px-3 whitespace-nowrap">رمز الصنف</th>
+                  <th className="py-3 px-3 whitespace-nowrap">اسم الصنف والمنتج</th>
+                  <th className="py-3 px-3 text-center text-emerald-800 whitespace-nowrap">وارد (+)</th>
+                  <th className="py-3 px-3 text-center text-rose-800 whitespace-nowrap">منصرف (-)</th>
+                  <th className="py-3 px-3 text-center font-black bg-slate-200/70 whitespace-nowrap">الرصيد التراكمي</th>
+                  <th className="py-3 px-3 whitespace-nowrap">متوسط التكلفة</th>
+                  <th className="py-3 px-3 whitespace-nowrap text-slate-800">قيمة الحركة</th>
+                  <th className="py-3 px-3 whitespace-nowrap font-black text-emerald-900 bg-emerald-100/60">إجمالي قيمة الرصيد</th>
                   <th className="py-3 px-3">ملاحظات المستودع</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
-                {filteredMovements.map((mv) => (
-                  <tr key={mv.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
-                      {mv.date} {mv.time && <span className="text-[10px] text-slate-400">({mv.time})</span>}
-                    </td>
-                    <td className="py-2.5 px-3 font-sans font-bold">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] ${
-                          mv.quantityIn > 0
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border border-rose-200'
-                        }`}
-                      >
-                        {mv.typeTitleAr}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 font-bold text-indigo-700 whitespace-nowrap">
-                      {mv.referenceDocNumber}
-                    </td>
-                    <td className="py-2.5 px-3 text-amber-700 font-bold">{mv.itemSku}</td>
-                    <td className="py-2.5 px-3 font-sans font-bold text-slate-900">{mv.itemNameAr}</td>
-                    <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
-                      {mv.quantityIn > 0 ? `+${mv.quantityIn} ${mv.unit}` : '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-bold text-rose-600">
-                      {mv.quantityOut > 0 ? `-${mv.quantityOut} ${mv.unit}` : '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-black text-slate-900 bg-slate-50/50">
-                      {mv.balanceAfter} {mv.unit}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-700">{formatCurrency(mv.unitCost, currency)}</td>
-                    <td className="py-2.5 px-3 font-bold text-emerald-800">{formatCurrency(mv.totalCostValue, currency)}</td>
-                    <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px] max-w-xs truncate">
-                      {mv.notes || '-'}
+                {filteredMovements.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="py-8 text-center text-slate-400 font-sans">
+                      لا توجد حركات مخزنية مطابقة لشروط البحث والتصفية المحددة.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredMovements.map((mv) => {
+                    const balanceVal = mv.balanceValue ?? Number((mv.balanceAfter * mv.unitCost).toFixed(3));
+                    return (
+                      <tr key={mv.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
+                          {mv.date} {mv.time && <span className="text-[10px] text-slate-400">({mv.time})</span>}
+                        </td>
+                        <td className="py-2.5 px-3 font-sans font-bold">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[11px] ${
+                              mv.type === 'OPENING'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : mv.quantityIn > 0
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}
+                          >
+                            {mv.typeTitleAr}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-indigo-700 whitespace-nowrap">
+                          {mv.referenceDocNumber}
+                        </td>
+                        <td className="py-2.5 px-3 text-amber-700 font-bold">{mv.itemSku}</td>
+                        <td className="py-2.5 px-3 font-sans font-bold text-slate-900">{mv.itemNameAr}</td>
+                        <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
+                          {mv.quantityIn > 0 ? (
+                            <span className="inline-flex items-center gap-0.5">
+                              <span dir="ltr">+{mv.quantityIn.toLocaleString()}</span>
+                              <span className="text-[10px] font-normal">{mv.unit}</span>
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-bold text-rose-600">
+                          {mv.quantityOut > 0 ? (
+                            <span className="inline-flex items-center gap-0.5">
+                              <span dir="ltr">-{mv.quantityOut.toLocaleString()}</span>
+                              <span className="text-[10px] font-normal">{mv.unit}</span>
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-black text-slate-900 bg-slate-50/70 border-x border-slate-100">
+                          <span className="inline-flex items-center gap-1 font-mono text-sm">
+                            <span>{mv.balanceAfter.toLocaleString()}</span>
+                            <span className="text-[10px] text-slate-500 font-normal">{mv.unit}</span>
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700">{formatCurrency(mv.unitCost, currency)}</td>
+                        <td className="py-2.5 px-3 font-bold text-slate-800">
+                          {formatCurrency(mv.totalCostValue, currency)}
+                        </td>
+                        <td className="py-2.5 px-3 font-black text-emerald-800 bg-emerald-50/40">
+                          {formatCurrency(balanceVal, currency)}
+                        </td>
+                        <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px] max-w-xs truncate" title={mv.notes}>
+                          {mv.notes || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
+              {filteredMovements.length > 0 && (
+                <tfoot className="bg-slate-100/90 font-bold border-t-2 border-slate-200 font-mono">
+                  <tr>
+                    <td colSpan={5} className="py-3 px-3 text-slate-800 font-sans">
+                      المجموع الإجمالي للحركات المعروضة
+                    </td>
+                    <td className="py-3 px-3 text-center text-emerald-800">
+                      +{ledgerSummary.totalQtyIn.toLocaleString()}
+                    </td>
+                    <td className="py-3 px-3 text-center text-rose-800">
+                      -{ledgerSummary.totalQtyOut.toLocaleString()}
+                    </td>
+                    <td className="py-3 px-3 text-center text-slate-900 bg-slate-200/50">
+                      صافي: {ledgerSummary.netQtyChange > 0 ? `+${ledgerSummary.netQtyChange.toLocaleString()}` : ledgerSummary.netQtyChange.toLocaleString()}
+                    </td>
+                    <td className="py-3 px-3">-</td>
+                    <td className="py-3 px-3 text-slate-900">
+                      {formatCurrency(ledgerSummary.totalMovementValue, currency)}
+                    </td>
+                    <td className="py-3 px-3 bg-emerald-100/40 text-emerald-950">-</td>
+                    <td className="py-3 px-3">-</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
@@ -723,8 +948,8 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
               const currentItem = inventory.find((i) => i.id === selectedCardItemId) || inventory[0];
               if (!currentItem) return null;
 
-              // Filter movements for this specific item (matching by ID, SKU, or linked offer parent/child)
-              const itemMvs = movements.filter(
+              // Filter movements for this specific item (preserving strict chronological sort from getStockMovements)
+              const sortedMvs = movements.filter(
                 (m) =>
                   m.itemId === currentItem.id ||
                   (m as any).originalItemId === currentItem.id ||
@@ -732,33 +957,11 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                   (currentItem.base_item_id && m.itemId === currentItem.base_item_id)
               );
 
-              // Chronological sort ascending to guarantee strict sequential integrity
-              const sortedMvs = [...itemMvs].sort(
-                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-              );
-
-              // Determine opening balance:
-              // If an OPENING movement exists in the array, cumulative accumulation starts at 0.
-              // Otherwise, start from item's opening balance.
-              const hasOpeningMovement = sortedMvs.some((m) => m.type === 'OPENING');
-              const openingBalance = hasOpeningMovement
-                ? 0
-                : Number(currentItem.initialQuantity ?? currentItem.quantityOnHand ?? 0);
-
-              // 1. Cumulative reduce calculation exactly as required by formula:
-              const liveBalance = sortedMvs.length > 0
-                ? sortedMvs.reduce((acc, row) => {
-                    const qtyIn = Number(row.qty_in ?? row.quantityIn ?? 0);
-                    const qtyOut = Number(row.qty_out ?? row.quantityOut ?? 0);
-                    return acc + qtyIn - qtyOut;
-                  }, openingBalance)
-                : Number(currentItem.quantityOnHand || 0);
-
-              // 2. Final running balance from the last chronological movement row:
+              // Running balance strictly from the latest chronological movement, fallback to quantityOnHand
               const finalRunningBalance =
                 sortedMvs.length > 0 && sortedMvs[sortedMvs.length - 1].balanceAfter !== undefined
                   ? sortedMvs[sortedMvs.length - 1].balanceAfter
-                  : liveBalance;
+                  : Number(currentItem.quantityOnHand || 0);
 
               // Total In & Out
               const totalIn = sortedMvs.reduce((acc, m) => acc + Number(m.qty_in ?? m.quantityIn ?? 0), 0);
@@ -836,58 +1039,77 @@ export const StockLedgerAndAuditView: React.FC<StockLedgerAndAuditViewProps> = (
                       <table className="w-full text-right text-xs">
                         <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
-                            <th className="py-2.5 px-3">التاريخ</th>
+                            <th className="py-2.5 px-3">التاريخ والوقت</th>
                             <th className="py-2.5 px-3">نوع الحركة</th>
                             <th className="py-2.5 px-3">رقم المستند</th>
                             <th className="py-2.5 px-3 text-center text-emerald-700">وارد (+)</th>
                             <th className="py-2.5 px-3 text-center text-rose-700">منصرف (-)</th>
                             <th className="py-2.5 px-3 text-center font-black bg-slate-200/50">الرصيد التراكمي</th>
-                            <th className="py-2.5 px-3">سعر الوحدة</th>
-                            <th className="py-2.5 px-3">إجمالي القيمة</th>
+                            <th className="py-2.5 px-3">متوسط التكلفة</th>
+                            <th className="py-2.5 px-3">قيمة الحركة</th>
+                            <th className="py-2.5 px-3 font-black text-emerald-800 bg-emerald-50/50">إجمالي قيمة الرصيد</th>
                             <th className="py-2.5 px-3">البيان والملاحظات</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-mono">
                           {sortedMvs.length === 0 ? (
                             <tr>
-                              <td colSpan={9} className="p-6 text-center text-slate-400 font-sans font-bold">
+                              <td colSpan={10} className="p-6 text-center text-slate-400 font-sans font-bold">
                                 لا توجد حركات مسجلة لهذا الصنف حتى الآن.
                               </td>
                             </tr>
                           ) : (
-                            sortedMvs.map((m) => (
-                              <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{m.date}</td>
-                                <td className="py-2.5 px-3 font-sans">
-                                  <span
-                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                      (m.qty_in ?? m.quantityIn) > 0
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                        : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                    }`}
-                                  >
-                                    {m.typeTitleAr}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-3 text-indigo-700 font-bold whitespace-nowrap">
-                                  {m.referenceDocNumber}
-                                </td>
-                                <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
-                                  {(m.qty_in ?? m.quantityIn) > 0 ? `+${m.qty_in ?? m.quantityIn}` : '-'}
-                                </td>
-                                <td className="py-2.5 px-3 text-center font-bold text-rose-600">
-                                  {(m.qty_out ?? m.quantityOut) > 0 ? `-${m.qty_out ?? m.quantityOut}` : '-'}
-                                </td>
-                                <td className="py-2.5 px-3 text-center font-black text-slate-900 bg-slate-50">
-                                  {m.balanceAfter} {m.unit}
-                                </td>
-                                <td className="py-2.5 px-3 text-slate-600">{formatCurrency(m.unitCost, currency)}</td>
-                                <td className="py-2.5 px-3 font-bold text-slate-800">
-                                  {formatCurrency(m.totalCostValue, currency)}
-                                </td>
-                                <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px]">{m.notes || '-'}</td>
-                              </tr>
-                            ))
+                            sortedMvs.map((m) => {
+                              const balanceVal = m.balanceValue ?? Number((m.balanceAfter * m.unitCost).toFixed(3));
+                              return (
+                                <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                                  <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                                    {m.date} {m.time && <span className="text-[10px] text-slate-400">({m.time})</span>}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-sans">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                        m.type === 'OPENING'
+                                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                          : (m.qty_in ?? m.quantityIn) > 0
+                                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                      }`}
+                                    >
+                                      {m.typeTitleAr}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-indigo-700 font-bold whitespace-nowrap">
+                                    {m.referenceDocNumber}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
+                                    {(m.qty_in ?? m.quantityIn) > 0 ? (
+                                      <span dir="ltr">+{m.qty_in ?? m.quantityIn} {m.unit}</span>
+                                    ) : (
+                                      '-'
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-bold text-rose-600">
+                                    {(m.qty_out ?? m.quantityOut) > 0 ? (
+                                      <span dir="ltr">-{m.qty_out ?? m.quantityOut} {m.unit}</span>
+                                    ) : (
+                                      '-'
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-black text-slate-900 bg-slate-50">
+                                    {m.balanceAfter} {m.unit}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-600">{formatCurrency(m.unitCost, currency)}</td>
+                                  <td className="py-2.5 px-3 font-bold text-slate-800">
+                                    {formatCurrency(m.totalCostValue, currency)}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-black text-emerald-800 bg-emerald-50/40">
+                                    {formatCurrency(balanceVal, currency)}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px]">{m.notes || '-'}</td>
+                                </tr>
+                              );
+                            })
                           )}
                         </tbody>
                       </table>
