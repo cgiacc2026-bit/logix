@@ -1218,6 +1218,18 @@ class LocalDataStore {
         if (item.costPrice && !existing.costPrice) existing.costPrice = item.costPrice;
         if (item.barcode && !existing.barcode) existing.barcode = item.barcode;
         if (item.sku && !existing.sku) existing.sku = item.sku;
+        if (item.offer_enabled !== undefined) existing.offer_enabled = item.offer_enabled;
+        if (item.offerEnabled !== undefined) existing.offerEnabled = item.offerEnabled;
+        if (item.offer_quantity !== undefined) existing.offer_quantity = item.offer_quantity;
+        if (item.offerQuantity !== undefined) existing.offerQuantity = item.offerQuantity;
+        if (item.offer_price !== undefined) existing.offer_price = item.offer_price;
+        if (item.offerPrice !== undefined) existing.offerPrice = item.offerPrice;
+        if (item.offer_barcode !== undefined) existing.offer_barcode = item.offer_barcode;
+        if (item.offerBarcode !== undefined) existing.offerBarcode = item.offerBarcode;
+        if (item.base_item_id !== undefined) existing.base_item_id = item.base_item_id;
+        if (item.baseItemId !== undefined) existing.baseItemId = item.baseItemId;
+        if (item.base_item_name !== undefined) existing.base_item_name = item.base_item_name;
+        if (item.baseItemName !== undefined) existing.baseItemName = item.baseItemName;
       } else {
         result.push(item);
         if (id) seen.set(`ID_${id}`, item);
@@ -6552,6 +6564,12 @@ export class DataService {
     const valuationChanged = (newCost !== oldCost) || (newOpeningQty !== oldOpeningQty);
 
     list[idx] = { ...list[idx], ...data };
+    if (data.base_item_id === null || data.base_item_id === '') {
+      delete list[idx].base_item_id;
+      delete (list[idx] as any).baseItemId;
+      delete (list[idx] as any).base_item_name;
+      delete (list[idx] as any).baseItemName;
+    }
     localDataStore.saveInventory(list);
 
     if (valuationChanged) {
@@ -8564,6 +8582,72 @@ export class DataService {
           };
           changed = true;
           count++;
+        }
+      }
+
+      // 3. Automatically link all promotional offer items ("عرض" / "2 حبة عرض") to their base items
+      const normalize = (s: string) =>
+        (s || '')
+          .replace(/الوليد/g, '')
+          .replace(/2\s*حبة/g, '')
+          .replace(/عرض/g, '')
+          .replace(/\s+/g, '')
+          .trim();
+
+      for (let i = 0; i < inv.length; i++) {
+        const item = inv[i];
+        if (!item || !item.nameAr) continue;
+        if (item.nameAr.includes('عرض') || item.nameAr.includes('حبة عرض')) {
+          let needsUpdate = false;
+          let baseId = item.base_item_id || item.baseItemId;
+          let baseName = item.base_item_name || item.baseItemName;
+
+          if (!baseId) {
+            const offNorm = normalize(item.nameAr);
+            let matchedBase = inv.find(
+              (b) => b.id !== item.id && !b.nameAr.includes('عرض') && normalize(b.nameAr) === offNorm
+            );
+
+            if (!matchedBase) {
+              if (item.nameAr.includes('عدس')) {
+                matchedBase = inv.find((b) => b.nameAr.includes('عدس احمر مجروش 400 جم'));
+              } else if (item.nameAr.includes('كشمش')) {
+                matchedBase = inv.find((b) => b.nameAr.includes('كشمش ذهبي 450 جم'));
+              } else if (item.nameAr.includes('ماش')) {
+                matchedBase = inv.find((b) => b.nameAr.includes('ماش اخضر مجروش 450 جم'));
+              }
+            }
+
+            if (matchedBase) {
+              baseId = matchedBase.id;
+              baseName = matchedBase.nameAr;
+              needsUpdate = true;
+            }
+          }
+
+          if (!item.offer_enabled && !item.offerEnabled) {
+            needsUpdate = true;
+          }
+
+          if (needsUpdate) {
+            inv[i] = {
+              ...item,
+              offer_enabled: true,
+              offerEnabled: true,
+              offer_quantity: Number(item.offer_quantity || item.offerQuantity) || 2,
+              offerQuantity: Number(item.offer_quantity || item.offerQuantity) || 2,
+              offer_price: Number(item.offer_price || item.offerPrice || item.salePrice) || 0,
+              offerPrice: Number(item.offer_price || item.offerPrice || item.salePrice) || 0,
+              offer_barcode: item.offer_barcode || item.offerBarcode || item.barcode || item.sku || '',
+              offerBarcode: item.offer_barcode || item.offerBarcode || item.barcode || item.sku || '',
+              base_item_id: baseId || item.base_item_id || item.baseItemId,
+              baseItemId: baseId || item.base_item_id || item.baseItemId,
+              base_item_name: baseName || item.base_item_name || item.baseItemName,
+              baseItemName: baseName || item.base_item_name || item.baseItemName,
+            };
+            changed = true;
+            count++;
+          }
         }
       }
 

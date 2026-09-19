@@ -567,7 +567,15 @@ export class SupabaseDataService {
 
         const mapped = data.map((row: any) => {
           const raw = row.raw_data || {};
+          const hasOffer = Boolean(row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false);
+          const offerQty = Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2);
+          const offerPrice = Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0);
+          const offerBarcode = row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '';
+          const baseId = raw.base_item_id || raw.baseItemId || row.base_item_id || undefined;
+          const baseName = raw.base_item_name || raw.baseItemName || undefined;
+
           return {
+            ...raw,
             id: raw.id || row.id,
             sku: row.code || raw.sku || raw.code || row.id,
             barcode: row.barcode || raw.barcode || '',
@@ -581,19 +589,18 @@ export class SupabaseDataService {
             costPrice: Number(row.cost_price ?? raw.costPrice ?? raw.purchasePrice ?? 0),
             salePrice: Number(row.selling_price ?? row.sale_price ?? raw.salePrice ?? 0),
             isActive: raw.isActive ?? row.is_active ?? true,
-            offer_enabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
-            offer_quantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
-            offer_price: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
-            offer_barcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
-            offerEnabled: row.offer_enabled ?? raw.offer_enabled ?? raw.offerEnabled ?? false,
-            offerQuantity: Number(row.offer_quantity ?? raw.offer_quantity ?? raw.offerQuantity ?? 2),
-            offerPrice: Number(row.offer_price ?? raw.offer_price ?? raw.offerPrice ?? 0),
-            offerBarcode: row.offer_barcode || raw.offer_barcode || raw.offerBarcode || '',
-            base_item_id: raw.base_item_id || raw.baseItemId || undefined,
-            baseItemId: raw.base_item_id || raw.baseItemId || undefined,
-            base_item_name: raw.base_item_name || raw.baseItemName || undefined,
-            baseItemName: raw.base_item_name || raw.baseItemName || undefined,
-            ...raw,
+            offer_enabled: hasOffer,
+            offerEnabled: hasOffer,
+            offer_quantity: offerQty,
+            offerQuantity: offerQty,
+            offer_price: offerPrice,
+            offerPrice: offerPrice,
+            offer_barcode: offerBarcode,
+            offerBarcode: offerBarcode,
+            base_item_id: baseId,
+            baseItemId: baseId,
+            base_item_name: baseName,
+            baseItemName: baseName,
             quantityOnHand: Number(row.current_balance ?? row.qty_on_hand ?? raw.quantityOnHand ?? 0),
           };
         });
@@ -630,6 +637,8 @@ export class SupabaseDataService {
       const offerQty = Number(item.offer_quantity ?? item.offerQuantity ?? 2);
       const offerPrice = Number(item.offer_price ?? item.offerPrice ?? 0);
       const offerBarcode = item.offer_barcode || item.offerBarcode || '';
+      const baseItemId = item.base_item_id || item.baseItemId || null;
+      const baseItemName = item.base_item_name || item.baseItemName || null;
 
       const record: any = {
         id: targetId,
@@ -660,10 +669,10 @@ export class SupabaseDataService {
           offerPrice: offerPrice,
           offer_barcode: offerBarcode,
           offerBarcode: offerBarcode,
-          base_item_id: item.base_item_id || item.baseItemId || null,
-          baseItemId: item.base_item_id || item.baseItemId || null,
-          base_item_name: item.base_item_name || item.baseItemName || null,
-          baseItemName: item.base_item_name || item.baseItemName || null,
+          base_item_id: baseItemId,
+          baseItemId: baseItemId,
+          base_item_name: baseItemName,
+          baseItemName: baseItemName,
         },
         created_at: new Date().toISOString(),
       };
@@ -691,6 +700,7 @@ export class SupabaseDataService {
         console.warn('Supabase saveItem error:', error.message);
         return false;
       }
+      CacheAndThrottleService.invalidate('items_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveItem exception:', err?.message);
@@ -771,37 +781,77 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
-      const rows = items.map((item) => ({
-        id: toValidUUID(item.id),
-        company_id: companyId,
-        code: item.sku || (item as any).code || item.id,
-        name: item.nameAr || (item as any).name || 'صنف',
-        item_name: item.nameAr || (item as any).name || 'صنف',
-        name_ar: item.nameAr,
-        name_en: item.nameEn || '',
-        category: item.category || 'عام',
-        unit: item.unit || 'حبة',
-        cost_price: item.purchasePrice || (item as any).costPrice || 0,
-        sale_price: item.salePrice || 0,
-        selling_price: item.salePrice || 0,
-        current_balance: item.quantityOnHand || 0,
-        qty_on_hand: item.quantityOnHand || 0,
-        min_limit: item.minQuantityAlert || 0,
-        raw_data: {
-          ...item,
-          id: item.id,
-          companyId,
-        },
-        created_at: new Date().toISOString(),
-      }));
+      const rows = items.map((item) => {
+        const hasOffer = Boolean(item.offer_enabled ?? item.offerEnabled);
+        const offerQty = Number(item.offer_quantity ?? item.offerQuantity ?? 2);
+        const offerPrice = Number(item.offer_price ?? item.offerPrice ?? 0);
+        const offerBarcode = item.offer_barcode || item.offerBarcode || '';
+        const baseItemId = item.base_item_id || item.baseItemId || null;
+        const baseItemName = item.base_item_name || item.baseItemName || null;
+
+        const row: any = {
+          id: toValidUUID(item.id),
+          company_id: companyId,
+          code: item.sku || (item as any).code || item.id,
+          name: item.nameAr || (item as any).name || 'صنف',
+          item_name: item.nameAr || (item as any).name || 'صنف',
+          name_ar: item.nameAr,
+          name_en: item.nameEn || '',
+          category: item.category || 'عام',
+          unit: item.unit || 'حبة',
+          cost_price: item.purchasePrice || (item as any).costPrice || 0,
+          sale_price: item.salePrice || 0,
+          selling_price: item.salePrice || 0,
+          current_balance: item.quantityOnHand || 0,
+          qty_on_hand: item.quantityOnHand || 0,
+          min_limit: item.minQuantityAlert || 0,
+          offer_enabled: hasOffer,
+          offer_quantity: offerQty,
+          offer_price: offerPrice,
+          offer_barcode: offerBarcode,
+          raw_data: {
+            ...item,
+            id: item.id,
+            companyId,
+            offer_enabled: hasOffer,
+            offerEnabled: hasOffer,
+            offer_quantity: offerQty,
+            offerQuantity: offerQty,
+            offer_price: offerPrice,
+            offerPrice: offerPrice,
+            offer_barcode: offerBarcode,
+            offerBarcode: offerBarcode,
+            base_item_id: baseItemId,
+            baseItemId: baseItemId,
+            base_item_name: baseItemName,
+            baseItemName: baseItemName,
+          },
+          created_at: new Date().toISOString(),
+        };
+        return row;
+      });
 
       for (let i = 0; i < rows.length; i += 50) {
         const batch = rows.slice(i, i + 50);
-        const { error } = await supabase.from('items').upsert(batch);
+        let { error } = await supabase.from('items').upsert(batch);
+        if (error && error.message && (error.message.includes('offer_') || error.message.includes('column'))) {
+          // Retry without offer columns if column error
+          const cleanBatch = batch.map((r: any) => {
+            const copy = { ...r };
+            delete copy.offer_enabled;
+            delete copy.offer_quantity;
+            delete copy.offer_price;
+            delete copy.offer_barcode;
+            return copy;
+          });
+          const retry = await supabase.from('items').upsert(cleanBatch);
+          error = retry.error;
+        }
         if (error) {
           console.warn('Supabase saveItems batch error:', error.message);
         }
       }
+      CacheAndThrottleService.invalidate('items_');
       return true;
     } catch (err: any) {
       console.warn('Supabase saveItems exception:', err?.message);
@@ -826,6 +876,7 @@ export class SupabaseDataService {
         .eq('company_id', companyId)
         .or(`id.eq.${itemUuid},code.eq.${id}`);
 
+      CacheAndThrottleService.invalidate('items_');
       return !error;
     } catch (err: any) {
       console.warn('Supabase deleteItem exception:', err?.message);

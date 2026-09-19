@@ -1107,7 +1107,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setIsItemModalOpen(true);
   };
 
-  const openEditItemModal = (item: InventoryItem) => {
+  const openEditItemModal = (item: InventoryItem, forceOfferOpen?: boolean) => {
     setEditingItem(item);
     setItemSku(item.sku);
     setItemBarcode(item.barcode || '');
@@ -1120,14 +1120,36 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setItemSale(item.salePrice);
     setItemQty(item.quantityOnHand);
     setItemMinAlert(item.minQuantityAlert || 5);
-    setItemOfferEnabled(Boolean(item.offer_enabled ?? item.offerEnabled ?? false));
+    const hasOffer = forceOfferOpen || Boolean(item.offer_enabled ?? item.offerEnabled) || item.nameAr.includes('عرض');
+    setItemOfferEnabled(hasOffer);
     setItemOfferQuantity(Number(item.offer_quantity ?? item.offerQuantity ?? 2));
-    setItemOfferPrice(Number(item.offer_price ?? item.offerPrice ?? (item.salePrice ? Number((item.salePrice * 1.6).toFixed(3)) : 0)));
-    setItemOfferBarcode(item.offer_barcode || item.offerBarcode || '');
-    const linkedBaseId = item.base_item_id || item.baseItemId || '';
+    setItemOfferPrice(Number(item.offer_price ?? item.offerPrice ?? (item.salePrice || 0)));
+    setItemOfferBarcode(item.offer_barcode || item.offerBarcode || item.barcode || item.sku || '');
+    let linkedBaseId = item.base_item_id || item.baseItemId || '';
+    let linkedBaseName = item.base_item_name || item.baseItemName || '';
+    if (!linkedBaseId && item.nameAr.includes('عرض')) {
+      const normalize = (s: string) =>
+        (s || '')
+          .replace(/الوليد/g, '')
+          .replace(/2\s*حبة/g, '')
+          .replace(/عرض/g, '')
+          .replace(/\s+/g, '')
+          .trim();
+      const norm = normalize(item.nameAr);
+      const found = scopedInventory.find((i) => i.id !== item.id && !i.nameAr.includes('عرض') && normalize(i.nameAr) === norm) ||
+                    scopedInventory.find((i) => i.id !== item.id && !i.nameAr.includes('عرض') && (
+                      (item.nameAr.includes('عدس') && i.nameAr.includes('عدس')) ||
+                      (item.nameAr.includes('كشمش') && i.nameAr.includes('كشمش')) ||
+                      (item.nameAr.includes('ماش') && i.nameAr.includes('ماش'))
+                    ));
+      if (found) {
+        linkedBaseId = found.id;
+        linkedBaseName = found.nameAr;
+      }
+    }
     setItemBaseItemId(linkedBaseId);
     const linkedBase = scopedInventory.find((i) => i.id === linkedBaseId);
-    setItemBaseItemName(linkedBase ? linkedBase.nameAr : (item.base_item_name || item.baseItemName || ''));
+    setItemBaseItemName(linkedBase ? linkedBase.nameAr : linkedBaseName);
     setIsBaseItemSearchOpen(false);
     setBaseItemSearchQuery('');
     setIsItemModalOpen(true);
@@ -1155,12 +1177,12 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         offerQuantity: itemOfferEnabled ? (Number(itemOfferQuantity) || 2) : 2,
         offer_price: itemOfferEnabled ? (Number(itemOfferPrice) || 0) : 0,
         offerPrice: itemOfferEnabled ? (Number(itemOfferPrice) || 0) : 0,
-        offer_barcode: itemOfferEnabled ? itemOfferBarcode.trim() : '',
-        offerBarcode: itemOfferEnabled ? itemOfferBarcode.trim() : '',
-        base_item_id: itemBaseItemId || undefined,
-        baseItemId: itemBaseItemId || undefined,
-        base_item_name: itemBaseItemName || undefined,
-        baseItemName: itemBaseItemName || undefined,
+        offer_barcode: itemOfferEnabled ? (itemOfferBarcode.trim() || itemBarcode.trim() || itemSku.trim()) : '',
+        offerBarcode: itemOfferEnabled ? (itemOfferBarcode.trim() || itemBarcode.trim() || itemSku.trim()) : '',
+        base_item_id: itemOfferEnabled && itemBaseItemId ? itemBaseItemId : null,
+        baseItemId: itemOfferEnabled && itemBaseItemId ? itemBaseItemId : null,
+        base_item_name: itemOfferEnabled && itemBaseItemId ? itemBaseItemName : null,
+        baseItemName: itemOfferEnabled && itemBaseItemId ? itemBaseItemName : null,
       };
 
       if (editingItem && onUpdateInventoryItem) {
@@ -2972,7 +2994,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => openEditItemModal(item)}
+                            onClick={() => openEditItemModal(item, true)}
                             className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                               (item.offer_enabled || item.offerEnabled)
                                 ? 'text-amber-700 bg-amber-100 hover:bg-amber-200 border border-amber-300 shadow-2xs'
