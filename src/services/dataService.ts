@@ -1083,9 +1083,9 @@ class LocalDataStore {
   public getCustomers(): Customer[] {
     const list = this.getLocal<Customer[] | null>(this.getKey(STORAGE_KEYS.CUSTOMERS), null);
     const tombstones = this.getTombstones('customers');
-    if (list === null) {
+    if (list === null || (this.isAlWaleedActive() && (!list || list.length === 0))) {
       if (this.isAlWaleedActive()) {
-        const alwaleedCustomers = JSON.parse(JSON.stringify(ALWALEED_MILL_PRESET_BACKUP?.data?.customers || INITIAL_CUSTOMERS)).filter((c: any) => !tombstones.has(c.id));
+        const alwaleedCustomers = JSON.parse(JSON.stringify(INITIAL_CUSTOMERS)).filter((c: any) => !tombstones.has(c.id));
         this.saveCustomers(alwaleedCustomers);
         return this.deduplicateCustomers(alwaleedCustomers);
       }
@@ -1168,8 +1168,8 @@ class LocalDataStore {
 
   public getInventory(): InventoryItem[] {
     const list = this.getLocal<InventoryItem[] | null>(this.getKey(STORAGE_KEYS.INVENTORY), null);
-    if (list === null) {
-      if (this.isTenantInitialized()) {
+    if (list === null || (this.isAlWaleedActive() && (!list || list.length === 0))) {
+      if (this.isTenantInitialized() && !this.isAlWaleedActive()) {
         return [];
       }
       if (this.isAlWaleedActive()) {
@@ -5594,7 +5594,7 @@ export class DataService {
   public static async getCustomers(): Promise<Customer[]> {
     if (isSupabaseConfigured) {
       const fromSupabase = await SupabaseDataService.getCustomers();
-      if (Array.isArray(fromSupabase)) {
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
         const tombstones = localDataStore.getTombstones('customers');
         const validSupabase = fromSupabase.filter((c) => !tombstones.has(c.id));
         localDataStore.saveCustomers(validSupabase);
@@ -6250,7 +6250,7 @@ export class DataService {
   public static async getInventory(): Promise<InventoryItem[]> {
     if (isSupabaseConfigured) {
       const fromSupabase = await SupabaseDataService.getItems();
-      if (Array.isArray(fromSupabase)) {
+      if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
         const tombstones = localDataStore.getTombstones('inventory');
         const validSupabase = fromSupabase.filter((i) => !tombstones.has(i.id));
         localDataStore.saveInventory(validSupabase);

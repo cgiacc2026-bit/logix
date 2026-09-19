@@ -47,7 +47,10 @@ const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfVFctb1hPdG93UllWVzU2UVpYZmx3QV9WNGlEMW11SQ
 
 export const getSupabaseConfig = () => {
   let envUrl = getEnvVar('VITE_SUPABASE_URL');
-  // Disconnect and purge old deprecated Supabase project URL if cached in localStorage
+  let envKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
+  let envSec = getEnvVar('SUPABASE_SERVICE_ROLE_KEY');
+
+  // Disconnect and purge old deprecated Supabase project URL and keys (e.g. gzoncsbxfdnfellspgke)
   if (envUrl && envUrl.includes('gzoncsbxfdnfellspgke')) {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -57,10 +60,22 @@ export const getSupabaseConfig = () => {
     } catch {}
     envUrl = '';
   }
+  if (envKey && (envKey.includes('byqbhrpY1GEhRJlHF9vKVg') || envKey.startsWith('sb_publishable'))) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('VITE_SUPABASE_ANON_KEY');
+      }
+    } catch {}
+    envKey = '';
+  }
+  if (envSec && envSec.includes('gzoncsbxfdnfellspgke')) {
+    envSec = '';
+  }
+
   const url = envUrl || 'https://exupcqbzfngpbsjrzhjw.supabase.co';
-  const key = getEnvVar('VITE_SUPABASE_ANON_KEY') || _decodeCloudKey(_ENC_PUB);
-  const secret = getEnvVar('SUPABASE_SERVICE_ROLE_KEY') || _decodeCloudKey(_ENC_SEC);
-  return { url, key, secret };
+  const key = envKey || _decodeCloudKey(_ENC_PUB);
+  const secret = (envSec && envSec.startsWith('eyJ') && !envSec.includes('gzoncsbxfdnfellspgke')) ? envSec : key;
+  return { url, key, secret, anonKey: key };
 };
 
 export const checkIsSupabaseConfigured = (): boolean => {
@@ -103,8 +118,8 @@ const fallbackMockClient = createClient(
 );
 
 export const getActiveSupabaseClient = (): SupabaseClient => {
-  const { url, key, secret } = getSupabaseConfig();
-  const effectiveKey = (typeof window === 'undefined' && secret) ? secret : key;
+  const { url, key } = getSupabaseConfig();
+  const effectiveKey = key;
   const currentTenant = typeof window !== 'undefined' ? window.localStorage.getItem('activeCompanyId') || '' : '';
   
   if (checkIsSupabaseConfigured()) {

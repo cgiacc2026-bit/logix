@@ -554,7 +554,7 @@ export class SupabaseDataService {
       try {
         let { data, error } = await supabase
           .from('items')
-          .select('id, company_id, code, barcode, name_ar, name_en, category, unit, cost_price, selling_price, current_balance, is_active, offer_enabled, offer_quantity, offer_price, offer_barcode, base_item_id, base_item_name, raw_data')
+          .select('*')
           .eq('company_id', companyId)
           .order('created_at', { ascending: true });
 
@@ -852,7 +852,7 @@ export class SupabaseDataService {
       try {
         let { data, error } = await supabase
           .from('customers')
-          .select('id, company_id, code, name, name_ar, name_en, phone, address, city, balance, current_balance, opening_balance, is_active, master_price_list_id, raw_data')
+          .select('*')
           .eq('company_id', companyId)
           .order('created_at', { ascending: true });
 
