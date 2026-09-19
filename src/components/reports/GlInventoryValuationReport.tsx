@@ -52,6 +52,7 @@ export const GlInventoryValuationReport: React.FC<GlInventoryValuationReportProp
   currency,
   onViewStockCard,
 }) => {
+  const currencySym = company?.currencySymbol || (currency === 'KWD' ? 'د.ك' : currency === 'SAR' ? 'ر.س' : currency) || 'د.ك';
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'DEFICIT' | 'ZERO'>('ALL');
@@ -112,10 +113,10 @@ export const GlInventoryValuationReport: React.FC<GlInventoryValuationReportProp
       'التصنيف',
       'وحدة القياس',
       'الكمية اللحظية بالمستودع',
-      'متوسط التكلفة المرجح (د.ك)',
-      'سعر البيع الافتراضي (د.ك)',
-      'إجمالي القيمة الدفترية (د.ك)',
-      'تكلفة المنصرف لحساب 5100 (د.ك)',
+      `متوسط التكلفة المرجح (${currencySym})`,
+      `سعر البيع الافتراضي (${currencySym})`,
+      `إجمالي القيمة الدفترية (${currencySym})`,
+      `تكلفة المنصرف لحساب 5100 (${currencySym})`,
       'حالة المخزون',
       'حالة المطابقة مع ح/ 1130',
     ];
@@ -308,7 +309,7 @@ export const GlInventoryValuationReport: React.FC<GlInventoryValuationReportProp
                   متوسط التكلفة المرجح (WAC)
                 </th>
                 <th className="py-2.5 px-3 text-center font-black bg-slate-200/70 text-slate-900">
-                  إجمالي القيمة الدفترية (د.ك)
+                  إجمالي القيمة الدفترية ({currencySym})
                 </th>
                 <th className="py-2.5 px-3 text-center text-amber-800">
                   تكلفة المنصرف ح/ 5100
@@ -443,7 +444,7 @@ export const GlInventoryValuationReport: React.FC<GlInventoryValuationReportProp
             align: 'center',
           },
           {
-            header: 'إجمالي القيمة الدفترية (د.ك)',
+            header: `إجمالي القيمة الدفترية (${currencySym})`,
             render: (r) => (
               <strong style={{ color: '#000000' }}>
                 {formatCurrency(r.totalBookValuation, '')}

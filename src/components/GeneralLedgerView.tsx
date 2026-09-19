@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Account, GeneralLedgerReport } from '../types.js';
-import { getCategoryBadgeClass, getCategoryLabelAr } from '../utils/formatters.ts';
+import { getCategoryBadgeClass, getCategoryLabelAr, formatCurrency, getCanonicalCurrencySymbol } from '../utils/formatters.ts';
 import { isAccountLeaf } from '../utils/accountingTreeEngine.ts';
 import { BookOpen, Printer, Search, Layers, RefreshCw, FileSpreadsheet, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
@@ -15,10 +15,10 @@ interface GeneralLedgerProps {
   onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
 }
 
-const formatKWD3 = (val: number | string | null | undefined): string => {
+const formatKWD3 = (val: number | string | null | undefined, currency?: string): string => {
   const num = typeof val === 'number' ? val : Number(val || 0);
   const safe = isNaN(num) ? 0 : num;
-  return `${safe.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} د.ك`;
+  return formatCurrency(safe, currency);
 };
 
 export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
@@ -179,6 +179,7 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
   const handleExportExcel = () => {
     const wb = XLSX.utils.book_new();
     const rows: any[] = [];
+    const currencySym = getCanonicalCurrencySymbol(currency);
 
     const reportsToExport = currentAccountId === 'ALL'
       ? (allReports.length > 0 ? allReports : [])
@@ -196,9 +197,9 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
         'التاريخ': rep.startDate,
         'رقم المرجع': '--',
         'البيان والتفاصيل': 'الرصيد الافتتاحي السابق للفترة',
-        'الطرف المدين (د.ك)': 0,
-        'الطرف الدائن (د.ك)': 0,
-        'الرصيد التراكمي (د.ك)': rep.openingBalance,
+        [`الطرف المدين (${currencySym})`]: 0,
+        [`الطرف الدائن (${currencySym})`]: 0,
+        [`الرصيد التراكمي (${currencySym})`]: rep.openingBalance,
       });
 
       rep.movements.forEach((m) => {
@@ -211,9 +212,9 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
           'التاريخ': m.date,
           'رقم المرجع': m.reference || '',
           'البيان والتفاصيل': m.description,
-          'الطرف المدين (د.ك)': m.debit,
-          'الطرف الدائن (د.ك)': m.credit,
-          'الرصيد التراكمي (د.ك)': m.cumulative_balance ?? m.runningBalance,
+          [`الطرف المدين (${currencySym})`]: m.debit,
+          [`الطرف الدائن (${currencySym})`]: m.credit,
+          [`الرصيد التراكمي (${currencySym})`]: m.cumulative_balance ?? m.runningBalance,
         });
       });
 
@@ -226,10 +227,10 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
         'رقم القيد': 'ختامي',
         'التاريخ': rep.endDate,
         'رقم المرجع': '--',
-        'البيان والتفاصيل': `إجمالي المدين: ${formatKWD3(rep.totalDebit)} | إجمالي الدائن: ${formatKWD3(rep.totalCredit)}`,
-        'الطرف المدين (د.ك)': rep.totalDebit,
-        'الطرف الدائن (د.ك)': rep.totalCredit,
-        'الرصيد التراكمي (د.ك)': rep.closingBalance,
+        'البيان والتفاصيل': `إجمالي المدين: ${formatKWD3(rep.totalDebit, currency)} | إجمالي الدائن: ${formatKWD3(rep.totalCredit, currency)}`,
+        [`الطرف المدين (${currencySym})`]: rep.totalDebit,
+        [`الطرف الدائن (${currencySym})`]: rep.totalCredit,
+        [`الرصيد التراكمي (${currencySym})`]: rep.closingBalance,
       });
       // Blank separator row
       rows.push({});

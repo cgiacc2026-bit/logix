@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Account, AccountCategory, JournalEntry } from '../types.js';
-import { getCategoryBadgeClass, getCategoryLabelAr, formatCurrency } from '../utils/formatters.ts';
+import { getCategoryBadgeClass, getCategoryLabelAr, formatCurrency, getCanonicalCurrencySymbol } from '../utils/formatters.ts';
 import { useCompany } from '../contexts/CompanyContext.tsx';
 import {
   aggregateChartOfAccountsTree,
@@ -70,7 +70,8 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
 }) => {
   const companyContext = useCompany();
   const currentCompany = companyContext?.currentCompany;
-  const effectiveCurrencySymbol = currentCompany?.currencySymbol || currentCompany?.currency_symbol || currentCompany?.currency || currency || 'د.ك';
+  const effectiveCurrency = currentCompany?.functionalCurrency || currentCompany?.currency || currency || 'KWD';
+  const effectiveCurrencySymbol = currentCompany?.currencySymbol || getCanonicalCurrencySymbol(effectiveCurrency);
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');

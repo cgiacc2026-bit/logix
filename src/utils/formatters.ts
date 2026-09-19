@@ -9,6 +9,38 @@ interface ActiveCompanyFinancialConfig {
   decimals: number;
 }
 
+export function isSymbolMatchingCurrency(symbol: string | undefined | null, currencyCode: string): boolean {
+  if (!symbol) return false;
+  const c = (currencyCode || '').trim().toUpperCase();
+  const s = symbol.trim();
+  if (c === 'KWD') return s === 'د.ك' || s === 'KWD';
+  if (c === 'SAR') return s === 'ر.س' || s === 'SAR';
+  if (c === 'AED') return s === 'د.إ' || s === 'AED';
+  if (c === 'BHD') return s === 'د.ب' || s === 'BHD';
+  if (c === 'OMR') return s === 'ر.ع' || s === 'OMR';
+  if (c === 'QAR') return s === 'ر.ق' || s === 'QAR';
+  if (c === 'JOD') return s === 'د.أ' || s === 'JOD';
+  if (c === 'EGP') return s === 'ج.م' || s === 'EGP';
+  if (c === 'USD') return s === '$' || s === 'USD';
+  if (c === 'EUR') return s === '€' || s === 'EUR';
+  return s === c;
+}
+
+export function getCanonicalCurrencySymbol(currencyCode: string): string {
+  const c = (currencyCode || 'KWD').trim().toUpperCase();
+  if (c === 'KWD' || c === 'د.ك' || c.includes('كويتي')) return 'د.ك';
+  if (c === 'SAR' || c === 'ر.س' || c.includes('سعودي')) return 'ر.س';
+  if (c === 'AED' || c === 'د.إ' || c.includes('إماراتي')) return 'د.إ';
+  if (c === 'BHD' || c === 'د.ب' || c.includes('بحريني')) return 'د.ب';
+  if (c === 'OMR' || c === 'ر.ع' || c.includes('عماني')) return 'ر.ع';
+  if (c === 'QAR' || c === 'ر.ق' || c.includes('قطري')) return 'ر.ق';
+  if (c === 'JOD' || c === 'د.أ' || c.includes('أردني')) return 'د.أ';
+  if (c === 'EGP' || c === 'ج.م' || c.includes('مصري')) return 'ج.م';
+  if (c === 'USD' || c === '$') return '$';
+  if (c === 'EUR' || c === '€') return '€';
+  return c;
+}
+
 // In-memory reactive config initialized from local storage or defaults
 let activeCompanyConfig: ActiveCompanyFinancialConfig = (() => {
   try {
@@ -18,7 +50,8 @@ let activeCompanyConfig: ActiveCompanyFinancialConfig = (() => {
         const parsed = JSON.parse(raw);
         const p = parsed.profile_data || parsed;
         const curr = (parsed.functional_currency || parsed.currency || p.functionalCurrency || p.currency || 'KWD').trim().toUpperCase();
-        const sym = parsed.currency_symbol || p.currencySymbol || (curr === 'KWD' ? 'د.ك' : curr === 'SAR' ? 'ر.س' : curr === 'AED' ? 'د.إ' : curr);
+        const candSym = parsed.currency_symbol || p.currencySymbol;
+        const sym = (candSym && isSymbolMatchingCurrency(candSym, curr)) ? candSym : getCanonicalCurrencySymbol(curr);
         const dec = parsed.decimal_places ?? p.decimalPlaces ?? (curr === 'KWD' || curr === 'BHD' || curr === 'OMR' || curr === 'JOD' ? 3 : 2);
         return { currency: curr, symbol: sym, decimals: dec };
       }
@@ -35,7 +68,8 @@ if (typeof window !== 'undefined') {
       const comp = e.detail;
       if (comp) {
         const curr = (comp.functionalCurrency || comp.currency || 'KWD').trim().toUpperCase();
-        const sym = comp.currencySymbol || (curr === 'KWD' ? 'د.ك' : curr === 'SAR' ? 'ر.س' : curr === 'AED' ? 'د.إ' : curr);
+        const candSym = comp.currencySymbol;
+        const sym = (candSym && isSymbolMatchingCurrency(candSym, curr)) ? candSym : getCanonicalCurrencySymbol(curr);
         const dec = comp.decimalPlaces !== undefined ? comp.decimalPlaces : (curr === 'KWD' || curr === 'BHD' || curr === 'OMR' || curr === 'JOD' ? 3 : 2);
         setActiveCompanyConfig({ currency: curr, symbol: sym, decimals: dec });
       }
@@ -122,31 +156,9 @@ export function formatCurrency(
     decimals = 2;
   }
 
-  let symbol = 'د.ك';
-  if (effectiveCurrency === companyCurr && company?.currencySymbol) {
+  let symbol = getCanonicalCurrencySymbol(effectiveCurrency);
+  if (effectiveCurrency === companyCurr && company?.currencySymbol && isSymbolMatchingCurrency(company.currencySymbol, effectiveCurrency)) {
     symbol = company.currencySymbol;
-  } else if (effectiveCurrency === 'KWD' || effectiveCurrency === 'د.ك' || effectiveCurrency.includes('كويتي') || effectiveCurrency.includes('KWD')) {
-    symbol = 'د.ك';
-  } else if (effectiveCurrency === 'SAR' || effectiveCurrency.includes('سعودي')) {
-    symbol = 'ر.س';
-  } else if (effectiveCurrency === 'USD' || effectiveCurrency === '$') {
-    symbol = '$';
-  } else if (effectiveCurrency === 'AED' || effectiveCurrency.includes('إماراتي')) {
-    symbol = 'د.إ';
-  } else if (effectiveCurrency === 'EUR' || effectiveCurrency === '€') {
-    symbol = '€';
-  } else if (effectiveCurrency === 'EGP' || effectiveCurrency.includes('مصري')) {
-    symbol = 'ج.م';
-  } else if (effectiveCurrency === 'BHD' || effectiveCurrency.includes('بحريني')) {
-    symbol = 'د.ب';
-  } else if (effectiveCurrency === 'OMR' || effectiveCurrency.includes('عماني')) {
-    symbol = 'ر.ع';
-  } else if (effectiveCurrency === 'QAR' || effectiveCurrency.includes('قطري')) {
-    symbol = 'ر.ق';
-  } else if (effectiveCurrency === 'JOD' || effectiveCurrency.includes('أردني')) {
-    symbol = 'د.أ';
-  } else {
-    symbol = effectiveCurrency;
   }
 
   const formatted = Math.abs(val).toLocaleString('en-US', {
@@ -178,13 +190,13 @@ export function formatNumber(amount: number, decimals: number = 3): string {
 }
 
 /**
- * Standard Central Global Financial Formatter for Kuwaiti Dinar
- * Strict Single Global Currency Injection: 3 decimal places with د.ك
+ * Standard Central Global Financial Formatter
+ * Automatically adapts to company functional currency and settings
  */
 export const formatKWD = (val: number | string | null | undefined): string => {
   const num = typeof val === 'number' ? val : Number(val || 0);
   const safeNum = isNaN(num) ? 0 : num;
-  return `${safeNum.toFixed(3)} د.ك`;
+  return formatCurrency(safeNum);
 };
 
 export function getCategoryLabelAr(category: string): string {

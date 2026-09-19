@@ -103,13 +103,34 @@ export function getCanonicalDecimals(currencyCode: string, preferredDecimals?: n
   return 2;
 }
 
+export function isSymbolMatchingCurrency(symbol: string | undefined | null, currencyCode: string): boolean {
+  if (!symbol) return false;
+  const c = (currencyCode || '').trim().toUpperCase();
+  const s = symbol.trim();
+  if (c === 'KWD') return s === 'د.ك' || s === 'KWD';
+  if (c === 'SAR') return s === 'ر.س' || s === 'SAR';
+  if (c === 'AED') return s === 'د.إ' || s === 'AED';
+  if (c === 'BHD') return s === 'د.ب' || s === 'BHD';
+  if (c === 'OMR') return s === 'ر.ع' || s === 'OMR';
+  if (c === 'QAR') return s === 'ر.ق' || s === 'QAR';
+  if (c === 'JOD') return s === 'د.أ' || s === 'JOD';
+  if (c === 'EGP') return s === 'ج.م' || s === 'EGP';
+  if (c === 'USD') return s === '$' || s === 'USD';
+  if (c === 'EUR') return s === '€' || s === 'EUR';
+  return s === c;
+}
+
 export function normalizeActiveCompany(raw: any, fallbackId?: string): ActiveCompanyData {
   const profile = raw?.profile_data || raw || {};
   const effectiveId = raw?.id || profile?.id || fallbackId || getCurrentCompanyId() || DEFAULT_ACTIVE_COMPANY.id;
   const nameAr = raw?.company_name || raw?.name_ar || profile?.nameAr || profile?.name || DEFAULT_ACTIVE_COMPANY.nameAr;
   const rawCurrency = raw?.functional_currency || raw?.currency || profile?.functionalCurrency || profile?.currency || 'KWD';
   const currency = rawCurrency.trim().toUpperCase();
-  const currencySymbol = raw?.currency_symbol || profile?.currencySymbol || getCanonicalCurrencySymbol(currency);
+  const canonicalSymbol = getCanonicalCurrencySymbol(currency);
+  const candidateSymbol = raw?.currency_symbol || profile?.currencySymbol;
+  const currencySymbol = (candidateSymbol && isSymbolMatchingCurrency(candidateSymbol, currency))
+    ? candidateSymbol
+    : canonicalSymbol;
   const rawDecimals = raw?.decimal_places ?? profile?.decimalPlaces;
   const decimalPlaces = getCanonicalDecimals(currency, rawDecimals);
 
@@ -284,7 +305,10 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
     const activeCompanyId = resolveToSupabaseCompanyUUID(updated.id || currentCompany.id || getCurrentCompanyId());
 
     const newCurrency = (updated.functionalCurrency || updated.currency || currentCompany.currency || 'KWD').trim().toUpperCase();
-    const newSymbol = updated.currencySymbol || getCanonicalCurrencySymbol(newCurrency);
+    const canonicalSymbol = getCanonicalCurrencySymbol(newCurrency);
+    const newSymbol = (updated.currencySymbol && isSymbolMatchingCurrency(updated.currencySymbol, newCurrency))
+      ? updated.currencySymbol
+      : canonicalSymbol;
     const newDecimals = updated.decimalPlaces !== undefined ? updated.decimalPlaces : getCanonicalDecimals(newCurrency);
 
     const mergedProfile: CompanyProfile = {

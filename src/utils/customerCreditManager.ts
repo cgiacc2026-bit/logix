@@ -1,4 +1,5 @@
 import { Customer, CustomerCreditEvaluation } from '../types.js';
+import { formatCurrency } from './formatters.ts';
 
 /**
  * Smart Customer Profile & Credit Risk Engine
@@ -6,7 +7,8 @@ import { Customer, CustomerCreditEvaluation } from '../types.js';
  */
 export function evaluateCustomerCredit(
   customer: Customer | null | undefined,
-  newTransactionAmount: number = 0
+  newTransactionAmount: number = 0,
+  currency?: string
 ): CustomerCreditEvaluation {
   if (!customer) {
     return {
@@ -60,7 +62,7 @@ export function evaluateCustomerCredit(
       availableCredit: 0,
       utilizationRate,
       requiresSupervisorOverride: true,
-      message: `تجاوز السقف الائتماني بمقدار ${excess.toFixed(3)} د.ك (السقف: ${creditLimit.toFixed(3)} د.ك - الرصيد الحالي: ${currentBalance.toFixed(3)} د.ك). يلزم إذن المشرف.`,
+      message: `تجاوز السقف الائتماني بمقدار ${formatCurrency(excess, currency)} (السقف: ${formatCurrency(creditLimit, currency)} - الرصيد الحالي: ${formatCurrency(currentBalance, currency)}). يلزم إذن المشرف.`,
     };
   }
 
@@ -83,6 +85,6 @@ export function evaluateCustomerCredit(
     availableCredit: creditLimit - potentialTotal,
     utilizationRate,
     requiresSupervisorOverride: false,
-    message: `الوضع الائتماني سليم (المتاح: ${(creditLimit - potentialTotal).toFixed(3)} د.ك)`,
+    message: `الوضع الائتماني سليم (المتاح: ${formatCurrency(creditLimit - potentialTotal, currency)})`,
   };
 }

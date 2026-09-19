@@ -2069,7 +2069,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                           {inv.discountTotal > 0 ? formatCurrency(inv.discountTotal, currency) : '-'}
                         </td>
                         <td className="py-3 px-4 text-left font-mono font-bold text-[#2D6A4F]">
-                          <span>{dueAmount.toFixed(3)} د.ك</span>
+                          <span>{formatCurrency(dueAmount, currency)}</span>
                         </td>
                         <td className="py-3 px-4 text-center">
                           {invoice.status === 'CANCELLED' ? (
@@ -2091,10 +2091,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                           ) : (
                             <div className="inline-flex flex-col items-center">
                               <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
-                                مسدد جزئياً ({invPaid.toFixed(3)} د.ك)
+                                مسدد جزئياً ({formatCurrency(invPaid, currency)})
                               </span>
                               <span className="text-[9px] text-neutral-500 font-mono mt-0.5">
-                                المتبقي: {dueAmount.toFixed(3)} د.ك
+                                المتبقي: {formatCurrency(dueAmount, currency)}
                               </span>
                             </div>
                           )}
@@ -2906,10 +2906,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                           {(item.offer_enabled || item.offerEnabled) && (
                             <span
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs"
-                              title={`عرض ترويجي مفعل: ${item.offer_quantity || item.offerQuantity || 2} حبة بسعر ${(Number(item.offer_price || item.offerPrice || 0)).toFixed(3)} ${currency}${item.offer_barcode || item.offerBarcode ? ` - باركود العرض: ${item.offer_barcode || item.offerBarcode}` : ''}`}
+                              title={`عرض ترويجي مفعل: ${item.offer_quantity || item.offerQuantity || 2} حبة بسعر ${formatCurrency(item.offer_price || item.offerPrice || 0, currency)}${item.offer_barcode || item.offerBarcode ? ` - باركود العرض: ${item.offer_barcode || item.offerBarcode}` : ''}`}
                             >
                               <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
-                              <span>عرض: {item.offer_quantity || item.offerQuantity || 2} حبة بـ {(Number(item.offer_price || item.offerPrice || 0)).toFixed(3)} {currency}</span>
+                              <span>عرض: {item.offer_quantity || item.offerQuantity || 2} حبة بـ {formatCurrency(item.offer_price || item.offerPrice || 0, currency)}</span>
                             </span>
                           )}
                           {(item.base_item_id || item.baseItemId) && (

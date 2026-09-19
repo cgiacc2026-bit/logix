@@ -27,10 +27,10 @@ import {
 } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
 
-const formatKWD3 = (val: number | string | null | undefined): string => {
+const formatKWD3 = (val: number | string | null | undefined, currency?: string): string => {
   const num = typeof val === 'number' ? val : Number(val || 0);
   const safe = isNaN(num) ? 0 : num;
-  return `${safe.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} د.ك`;
+  return formatCurrency(safe, currency);
 };
 
 interface FinancialStatementsProps {

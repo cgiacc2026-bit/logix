@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { GLReportsService, GlCustomerBalancesSummary } from '../../services/glReportsService.ts';
 import { localDataStore } from '../../services/dataService.ts';
+import { getCanonicalCurrencySymbol } from '../../utils/formatters.ts';
 import {
   Users,
   Search,
@@ -46,7 +47,7 @@ export default function CustomerBalancesMaster({
   invoices = [],
   vouchers = [],
   creditNotes = [],
-  currency = 'د.ك',
+  currency = 'KWD',
   onViewAccountStatement,
 }: CustomerBalancesMasterProps) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -123,7 +124,8 @@ export default function CustomerBalancesMaster({
 
   // Export CSV
   const handleExportCSV = () => {
-    let csv = '\uFEFFكود العميل,اسم العميل / الجمعية,الرصيد الافتتاحي,إجمالي المدين (فواتير),إجمالي الدائن (تحصيلات ومرتجعات),صافي الرصيد المستحق (د.ك),عدد الحركات\n';
+    const sym = getCanonicalCurrencySymbol(currency);
+    let csv = `\uFEFFكود العميل,اسم العميل / الجمعية,الرصيد الافتتاحي,إجمالي المدين (فواتير),إجمالي الدائن (تحصيلات ومرتجعات),صافي الرصيد المستحق (${sym}),عدد الحركات\n`;
     filteredRows.forEach((r) => {
       csv += `"${r.customerCode}","${r.customerNameAr}",${r.openingBalance.toFixed(3)},${r.totalDebit.toFixed(3)},${r.totalCredit.toFixed(3)},${r.netBalance.toFixed(3)},${r.movementsCount}\n`;
     });

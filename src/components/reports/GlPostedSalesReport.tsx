@@ -44,6 +44,7 @@ export const GlPostedSalesReport: React.FC<GlPostedSalesReportProps> = ({
   currency,
   onViewInvoice,
 }) => {
+  const currencySym = company?.currencySymbol || (currency === 'KWD' ? 'د.ك' : currency === 'SAR' ? 'ر.س' : currency) || 'د.ك';
   // Date filter presets
   const today = new Date().toISOString().split('T')[0];
   const firstDayOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
@@ -99,9 +100,9 @@ export const GlPostedSalesReport: React.FC<GlPostedSalesReportProps> = ({
       'رقم الفاتورة / المرجع',
       'اسم العميل / البيان',
       'نوع الحركة',
-      'دائن - إيرادات مبيعات (د.ك)',
-      'مدين - مردودات ومسموحات (د.ك)',
-      'صافي الإيراد المحقق (د.ك)',
+      `دائن - إيرادات مبيعات (${currencySym})`,
+      `مدين - مردودات ومسموحات (${currencySym})`,
+      `صافي الإيراد المحقق (${currencySym})`,
       'حالة الترحيل بالأستاذ',
     ];
 
@@ -326,7 +327,7 @@ export const GlPostedSalesReport: React.FC<GlPostedSalesReportProps> = ({
                 <th className="py-2.5 px-3 text-center text-emerald-700">دائن (إيراد +)</th>
                 <th className="py-2.5 px-3 text-center text-rose-700">مدين (مردود -)</th>
                 <th className="py-2.5 px-3 text-center font-black bg-slate-200/60 text-slate-900">
-                  صافي الإيراد (د.ك)
+                  صافي الإيراد ({currencySym})
                 </th>
                 <th className="py-2.5 px-3 text-center">حالة القيد</th>
               </tr>
@@ -473,7 +474,7 @@ export const GlPostedSalesReport: React.FC<GlPostedSalesReportProps> = ({
             align: 'center',
           },
           {
-            header: 'صافي الإيراد (د.ك)',
+            header: `صافي الإيراد (${currencySym})`,
             render: (r) => (
               <strong style={{ color: '#000000' }}>
                 {formatCurrency(r.netRevenue, '')}

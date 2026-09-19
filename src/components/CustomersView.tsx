@@ -28,7 +28,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   vouchers = [],
   journals = [],
   creditNotes = [],
-  currency = 'د.ك',
+  currency = 'KWD',
   onSelectCustomer,
   onOpenStatement,
   onCreateCustomer,

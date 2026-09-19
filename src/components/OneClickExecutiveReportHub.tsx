@@ -85,6 +85,8 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
   onViewAccountStatement,
   onViewInvoice,
 }) => {
+  const currencySym = company?.currencySymbol || (currency === 'KWD' ? 'د.ك' : currency === 'SAR' ? 'ر.س' : currency) || 'د.ك';
+  const currencyName = company?.functionalCurrency || currency || 'KWD';
   // Selected Report
   const [activeReport, setActiveReport] = useState<ExecutiveReportTab>('customer-society-sales');
 
@@ -1438,7 +1440,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
                     كشف مبيعات وأرصدة الجمعيات التعاونية والعملاء (التقرير المدمج والموحد)
                   </h1>
                   <p className="text-[11px] text-slate-600 mt-1">
-                    الفترة: {datePreset === 'ALL' ? 'كافة الفترات المالية المسجلة' : `من ${startDate} إلى ${endDate}`} | العملة: دينار كويتي (د.ك) | عدد السجلات المعتمدة: {customerSalesAggregated.length} جهة
+                    الفترة: {datePreset === 'ALL' ? 'كافة الفترات المالية المسجلة' : `من ${startDate} إلى ${endDate}`} | العملة: {currencyName} ({currencySym}) | عدد السجلات المعتمدة: {customerSalesAggregated.length} جهة
                   </p>
                 </div>
 
@@ -1591,7 +1593,7 @@ export const OneClickExecutiveReportHub: React.FC<OneClickExecutiveReportHubProp
             كشف مبيعات وأرصدة الجمعيات التعاونية والعملاء (التقرير المدمج والموحد)
           </h1>
           <p className="text-[10px] text-slate-600 mt-0.5">
-            الفترة: {datePreset === 'ALL' ? 'كافة الفترات المالية المعتمدة' : `من ${startDate} إلى ${endDate}`} | العملة: دينار كويتي (د.ك)
+            الفترة: {datePreset === 'ALL' ? 'كافة الفترات المالية المعتمدة' : `من ${startDate} إلى ${endDate}`} | العملة: {currencyName} ({currencySym})
           </p>
         </div>
 
