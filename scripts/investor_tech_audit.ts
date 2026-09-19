@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gzoncsbxfdnfellspgke.supabase.co';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://exupcqbzfngpbsjrzhjw.supabase.co';
 const _ENC_SEC = 'c2Jfc2VjcmV0X3pCY2tDWUQ0bTNKMmZ5UXJsZUFEdndfNFBZdUoyOXk=';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || Buffer.from(_ENC_SEC, 'base64').toString('utf-8');
 const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_byqbhrpY1GEhRJlHF9vKVg_Eup35Pd6';

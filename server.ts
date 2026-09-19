@@ -18,10 +18,10 @@ const _decodeCloudKey = (b64: string): string => {
   }
 };
 
-const _ENC_PUB = 'c2JfcHVibGlzaGFibGVfYnlxYmhycFkxR0VoUkpsSEY5dktWZ19FdXAzNVBkNg==';
-const _ENC_SEC = 'c2Jfc2VjcmV0X3pCY2tDWUQ0bTNKMmZ5UXJsZUFEdndfNFBZdUoyOXk=';
+const _ENC_PUB = 'ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1WNGRYQmpjV0o2Wm01bmNHSnphbko2YUdwM0lpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RrM01qQTNNRGtzSW1WNGNDSTZNakV3TlRJNU5qY3dPWDAueXNfZTdMdGczM2xjRUxHbFB4dWlOa3ZDTEJyUm1ieVdhOXBhMzI2MXU0RQ==';
+const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfVFctb1hPdG93UllWVzU2UVpYZmx3QV9WNGlEMW11SQ==';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gzoncsbxfdnfellspgke.supabase.co';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://exupcqbzfngpbsjrzhjw.supabase.co';
 const SUPABASE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||

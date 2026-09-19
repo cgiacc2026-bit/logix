@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- LOGIX CLOUD ERP - PRODUCTION DATABASE RESTORATION & SCHEMA SCRIPT
--- Project: gzoncsbxfdnfellspgke
+-- Project: exupcqbzfngpbsjrzhjw
 -- Run in Supabase Dashboard SQL Editor (Ctrl + Enter)
 -- ==============================================================================
 

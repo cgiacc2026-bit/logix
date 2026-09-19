@@ -83,6 +83,32 @@ CREATE TABLE IF NOT EXISTS public.suppliers (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
+-- ضمان وجود كافة الأعمدة في حال كانت الجداول موجودة مسبقاً (Defensive column upgrades)
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name_ar TEXT;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS balance NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS name_ar TEXT;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS tax_number TEXT DEFAULT '';
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS balance NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
 CREATE TABLE IF NOT EXISTS public.items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -106,6 +132,24 @@ CREATE TABLE IF NOT EXISTS public.items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
+
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS item_name TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_ar TEXT;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'بهارات';
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'حبة';
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS cost_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS selling_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS sale_price NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS current_balance NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS qty_on_hand NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS min_limit NUMERIC(18, 4) DEFAULT 10;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
 
 CREATE TABLE IF NOT EXISTS public.invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

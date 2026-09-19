@@ -75,7 +75,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
 
   // Cloud DB Modal state
   const [showCloudModal, setShowCloudModal] = useState<boolean>(false);
-  const [cloudUrl, setCloudUrl] = useState<string>(getSupabaseConfig().url || 'https://gzoncsbxfdnfellspgke.supabase.co');
+  const [cloudUrl, setCloudUrl] = useState<string>(getSupabaseConfig().url || 'https://exupcqbzfngpbsjrzhjw.supabase.co');
   const [cloudKey, setCloudKey] = useState<string>(getSupabaseConfig().key || '');
   const [isTestingCloud, setIsTestingCloud] = useState<boolean>(false);
   const [cloudTestResult, setCloudTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -801,7 +801,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                 <span>طريقة الحصول على المفتاح في دقيقة واحدة (بدون خبرة برمجية):</span>
               </div>
               <ol className="list-decimal list-inside space-y-1 text-[11px] text-blue-800 leading-relaxed">
-                <li>افتح لوحة مشروعك في Supabase (المشروع: <strong className="font-mono text-slate-900">gzoncsbxfdnfellspgke</strong>).</li>
+                <li>افتح لوحة مشروعك في Supabase (المشروع: <strong className="font-mono text-slate-900">exupcqbzfngpbsjrzhjw</strong>).</li>
                 <li>من القائمة الجانبية اليسرى، اضغط على <strong>Project Settings ⚙️</strong> ثم اختر <strong>API</strong>.</li>
                 <li>انسخ القيمة الموجودة تحت خانة <strong>Project API keys (anon / public)</strong>.</li>
                 <li>الصق المفتاح في الحقل أدناه واضغط <strong>"فحص وحفظ السحابة"</strong>.</li>
@@ -815,7 +815,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                   type="text"
                   value={cloudUrl}
                   onChange={(e) => setCloudUrl(e.target.value)}
-                  placeholder="https://gzoncsbxfdnfellspgke.supabase.co"
+                  placeholder="https://exupcqbzfngpbsjrzhjw.supabase.co"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 dir-ltr text-left"
                 />
               </div>

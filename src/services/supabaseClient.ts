@@ -41,12 +41,23 @@ const _decodeCloudKey = (b64: string): string => {
   return '';
 };
 
-// Supabase cloud credentials (Stored securely encoded)
-const _ENC_PUB = 'c2JfcHVibGlzaGFibGVfYnlxYmhycFkxR0VoUkpsSEY5dktWZ19FdXAzNVBkNg==';
-const _ENC_SEC = 'c2Jfc2VjcmV0X3pCY2tDWUQ0bTNKMmZ5UXJsZUFEdndfNFBZdUoyOXk=';
+// Supabase cloud credentials (Stored securely encoded for project exupcqbzfngpbsjrzhjw)
+const _ENC_PUB = 'ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1WNGRYQmpjV0o2Wm01bmNHSnphbko2YUdwM0lpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RrM01qQTNNRGtzSW1WNGNDSTZNakV3TlRJNU5qY3dPWDAueXNfZTdMdGczM2xjRUxHbFB4dWlOa3ZDTEJyUm1ieVdhOXBhMzI2MXU0RQ==';
+const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfVFctb1hPdG93UllWVzU2UVpYZmx3QV9WNGlEMW11SQ==';
 
 export const getSupabaseConfig = () => {
-  const url = getEnvVar('VITE_SUPABASE_URL') || 'https://gzoncsbxfdnfellspgke.supabase.co';
+  let envUrl = getEnvVar('VITE_SUPABASE_URL');
+  // Disconnect and purge old deprecated Supabase project URL if cached in localStorage
+  if (envUrl && envUrl.includes('gzoncsbxfdnfellspgke')) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('VITE_SUPABASE_URL');
+        window.localStorage.removeItem('VITE_SUPABASE_ANON_KEY');
+      }
+    } catch {}
+    envUrl = '';
+  }
+  const url = envUrl || 'https://exupcqbzfngpbsjrzhjw.supabase.co';
   const key = getEnvVar('VITE_SUPABASE_ANON_KEY') || _decodeCloudKey(_ENC_PUB);
   const secret = getEnvVar('SUPABASE_SERVICE_ROLE_KEY') || _decodeCloudKey(_ENC_SEC);
   return { url, key, secret };

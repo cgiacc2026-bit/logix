@@ -41,9 +41,7 @@
     "showDigitalStamp": true,
     "defaultAccounts": {},
     "themeColor": "blue",
-    "themeMode": "light",
-    "allowNegativeInventory": false,
-    "allow_negative_stock": false
+    "themeMode": "light"
   },
   "users": [
     {
@@ -120,14 +118,11 @@
       "parentId": null,
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 9129.035811399997,
       "description": "إجمالي أصول المنشأة",
       "totalDebitMovement": 17126.9198114,
       "totalCreditMovement": 7997.884,
-      "movementCount": 88,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 88
     },
     {
       "id": "acc-1100",
@@ -141,14 +136,11 @@
       "parentId": "acc-1000",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 9129.035811399997,
       "description": "",
       "totalDebitMovement": 17126.9198114,
       "totalCreditMovement": 7997.884,
-      "movementCount": 88,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 88
     },
     {
       "id": "acc-1110",
@@ -162,14 +154,11 @@
       "parentId": "acc-1100",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 7997.884,
       "description": "",
       "totalDebitMovement": 7997.884,
       "totalCreditMovement": 0,
-      "movementCount": 9,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 9
     },
     {
       "id": "acc-1111",
@@ -183,14 +172,11 @@
       "parentId": "acc-1110",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 7997.884,
       "description": "",
       "totalDebitMovement": 7997.884,
       "totalCreditMovement": 0,
-      "movementCount": 9,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 9
     },
     {
       "id": "acc-1112",
@@ -208,10 +194,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-1113",
@@ -229,10 +212,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-1120",
@@ -246,14 +226,11 @@
       "parentId": "acc-1100",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 438.74056139999794,
       "description": "",
       "totalDebitMovement": 8436.6245614,
       "totalCreditMovement": 7997.884,
-      "movementCount": 63,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 63
     },
     {
       "id": "acc-1130",
@@ -267,14 +244,11 @@
       "parentId": "acc-1100",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 692.41125,
       "description": "",
       "totalDebitMovement": 692.41125,
       "totalCreditMovement": 0,
-      "movementCount": 16,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 16
     },
     {
       "id": "acc-1200",
@@ -292,10 +266,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-1210",
@@ -313,10 +284,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-1220",
@@ -334,10 +302,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-2000",
@@ -351,14 +316,11 @@
       "parentId": null,
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 692.41125,
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 692.41125,
-      "movementCount": 16,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 16
     },
     {
       "id": "acc-2100",
@@ -372,14 +334,11 @@
       "parentId": "acc-2000",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 692.41125,
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 692.41125,
-      "movementCount": 16,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 16
     },
     {
       "id": "acc-2110",
@@ -393,14 +352,11 @@
       "parentId": "acc-2100",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 692.41125,
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 692.41125,
-      "movementCount": 16,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 16
     },
     {
       "id": "acc-3000",
@@ -418,10 +374,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-3100",
@@ -439,10 +392,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-3200",
@@ -460,10 +410,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-4000",
@@ -477,14 +424,11 @@
       "parentId": null,
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 8356.6245614,
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 8356.6245614,
-      "movementCount": 53,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 53
     },
     {
       "id": "acc-4100",
@@ -498,14 +442,11 @@
       "parentId": "acc-4000",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": 8356.6245614,
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 8356.6245614,
-      "movementCount": 53,
-      "nature": "CREDIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 53
     },
     {
       "id": "acc-5000",
@@ -519,14 +460,11 @@
       "parentId": null,
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": -80,
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 80,
-      "movementCount": 1,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 1
     },
     {
       "id": "acc-5100",
@@ -544,10 +482,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     },
     {
       "id": "acc-5200",
@@ -561,14 +496,11 @@
       "parentId": "acc-5000",
       "isSystem": true,
       "isActive": true,
-      "balance": 0,
+      "balance": -80,
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 80,
-      "movementCount": 1,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 1
     },
     {
       "id": "acc-5210",
@@ -586,10 +518,7 @@
       "description": "",
       "totalDebitMovement": 0,
       "totalCreditMovement": 0,
-      "movementCount": 0,
-      "nature": "DEBIT",
-      "currentBalance": 0,
-      "openingBalance": 0
+      "movementCount": 0
     }
   ],
   "customers": [
@@ -904,66 +833,6 @@
       "governorate": "القيروان",
       "currentBalance": 0,
       "openingBalanceDate": "2026-07-31"
-    },
-    {
-      "id": "cust-6gg0omjh9",
-      "companyId": "56d50f7b-8a3a-4efa-bc69-8b516a339e90",
-      "company_id": "56d50f7b-8a3a-4efa-bc69-8b516a339e90",
-      "code": "101",
-      "nameAr": "مؤسسة أفق الخليج (عميل النورس)",
-      "nameEn": "مؤسسة أفق الخليج (عميل النورس)",
-      "phone": "+965 22334455",
-      "governorate": "",
-      "city": "الكويت",
-      "balance": 0,
-      "openingBalance": 0,
-      "openingBalanceDate": "2026-07-01",
-      "branches": [],
-      "priceListId": "standard",
-      "priceListName": "",
-      "customPrices": [],
-      "defaultDiscountRate": 0,
-      "currentBalance": 0
-    },
-    {
-      "id": "cust-0ig7k3i25",
-      "companyId": "e3fb8f84-51dc-43e7-a490-6d45ec479688",
-      "company_id": "e3fb8f84-51dc-43e7-a490-6d45ec479688",
-      "code": "101",
-      "nameAr": "مؤسسة أفق الخليج (عميل النورس)",
-      "nameEn": "مؤسسة أفق الخليج (عميل النورس)",
-      "phone": "+965 22334455",
-      "governorate": "",
-      "city": "الكويت",
-      "balance": 0,
-      "openingBalance": 0,
-      "openingBalanceDate": "2026-07-01",
-      "branches": [],
-      "priceListId": "standard",
-      "priceListName": "",
-      "customPrices": [],
-      "defaultDiscountRate": 0,
-      "currentBalance": 0
-    },
-    {
-      "id": "cust-oi7y6kb3i",
-      "companyId": "3f4f6e68-03ed-4c4b-8c13-2e1e1dbe8f21",
-      "company_id": "3f4f6e68-03ed-4c4b-8c13-2e1e1dbe8f21",
-      "code": "101",
-      "nameAr": "مؤسسة أفق الخليج (عميل النورس)",
-      "nameEn": "مؤسسة أفق الخليج (عميل النورس)",
-      "phone": "+965 22334455",
-      "governorate": "",
-      "city": "الكويت",
-      "balance": 0,
-      "openingBalance": 0,
-      "openingBalanceDate": "2026-07-01",
-      "branches": [],
-      "priceListId": "standard",
-      "priceListName": "",
-      "customPrices": [],
-      "defaultDiscountRate": 0,
-      "currentBalance": 0
     }
   ],
   "suppliers": [
@@ -981,8 +850,7 @@
       "email": "orders@globalspices.kw",
       "taxNumber": "228810",
       "governorate": "الفروانية",
-      "openingBalanceDate": "",
-      "currentBalance": 0
+      "openingBalanceDate": ""
     },
     {
       "id": "supp-001",
@@ -998,8 +866,7 @@
       "email": "info@kfmb.com.kw",
       "taxNumber": "1109823",
       "governorate": "العاصمة",
-      "openingBalanceDate": "",
-      "currentBalance": 0
+      "openingBalanceDate": ""
     }
   ],
   "inventory": [
@@ -1016,11 +883,11 @@
       "purchasePrice": 0.24,
       "costPrice": 0.24,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 547,
       "minQuantityAlert": 50,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 547
     },
     {
       "id": "inv-110",
@@ -1035,11 +902,11 @@
       "purchasePrice": 0.113,
       "costPrice": 0.11,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 50,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-107",
@@ -1054,11 +921,11 @@
       "purchasePrice": 0.105,
       "costPrice": 0.11,
       "salePrice": 0.268,
-      "quantityOnHand": 0,
+      "quantityOnHand": 494,
       "minQuantityAlert": 50,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 494
     },
     {
       "id": "inv-108",
@@ -1073,11 +940,11 @@
       "purchasePrice": 0.064,
       "costPrice": 0.06,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 494,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 494
     },
     {
       "id": "inv-104",
@@ -1092,11 +959,11 @@
       "purchasePrice": 0.225,
       "costPrice": 0.23,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-109",
@@ -1111,11 +978,11 @@
       "purchasePrice": 0.063,
       "costPrice": 0.06,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 244,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 244
     },
     {
       "id": "inv-106",
@@ -1130,11 +997,11 @@
       "purchasePrice": 0.105,
       "costPrice": 0.11,
       "salePrice": 0.268,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 50,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-105",
@@ -1149,11 +1016,11 @@
       "purchasePrice": 0.048,
       "costPrice": 0.05,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 60,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-103",
@@ -1168,11 +1035,11 @@
       "purchasePrice": 0.231,
       "costPrice": 0.23,
       "salePrice": 0.5,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-102",
@@ -1187,11 +1054,11 @@
       "purchasePrice": 0.24,
       "costPrice": 0.24,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 584,
       "minQuantityAlert": 50,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 584
     },
     {
       "id": "inv-118",
@@ -1206,11 +1073,11 @@
       "purchasePrice": 0.024,
       "costPrice": 0.02,
       "salePrice": 0.3,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 25,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-121",
@@ -1225,11 +1092,11 @@
       "purchasePrice": 0.06,
       "costPrice": 0.06,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 334,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 334
     },
     {
       "id": "inv-115",
@@ -1244,11 +1111,11 @@
       "purchasePrice": 0.095,
       "costPrice": 0.1,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 464,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 464
     },
     {
       "id": "inv-113",
@@ -1263,11 +1130,11 @@
       "purchasePrice": 0.075,
       "costPrice": 0.08,
       "salePrice": 0.3,
-      "quantityOnHand": 0,
+      "quantityOnHand": 314,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 314
     },
     {
       "id": "inv-111",
@@ -1282,11 +1149,11 @@
       "purchasePrice": 0.25,
       "costPrice": 0.25,
       "salePrice": 0.55,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-119",
@@ -1301,11 +1168,11 @@
       "purchasePrice": 0.5,
       "costPrice": 0.5,
       "salePrice": 1.8,
-      "quantityOnHand": 0,
+      "quantityOnHand": 182,
       "minQuantityAlert": 15,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 182
     },
     {
       "id": "inv-112",
@@ -1320,11 +1187,11 @@
       "purchasePrice": 0.72,
       "costPrice": 0.72,
       "salePrice": 1,
-      "quantityOnHand": 0,
+      "quantityOnHand": 440,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 440
     },
     {
       "id": "inv-114",
@@ -1339,11 +1206,11 @@
       "purchasePrice": 0.1,
       "costPrice": 0.1,
       "salePrice": 0.5,
-      "quantityOnHand": 0,
+      "quantityOnHand": 554,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 554
     },
     {
       "id": "inv-116",
@@ -1358,11 +1225,11 @@
       "purchasePrice": 1.2,
       "costPrice": 1.2,
       "salePrice": 1.5,
-      "quantityOnHand": 0,
+      "quantityOnHand": 161,
       "minQuantityAlert": 15,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 161
     },
     {
       "id": "inv-117",
@@ -1377,11 +1244,11 @@
       "purchasePrice": 0.09,
       "costPrice": 0.09,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-120",
@@ -1396,11 +1263,11 @@
       "purchasePrice": 0.12,
       "costPrice": 0.12,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 265,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 265
     },
     {
       "id": "inv-122",
@@ -1415,11 +1282,11 @@
       "purchasePrice": 0.15,
       "costPrice": 0.15,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 494,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 494
     },
     {
       "id": "inv-133",
@@ -1434,11 +1301,11 @@
       "purchasePrice": 0.96,
       "costPrice": 0.96,
       "salePrice": 1.3,
-      "quantityOnHand": 0,
+      "quantityOnHand": 165,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 165
     },
     {
       "id": "inv-124",
@@ -1453,11 +1320,11 @@
       "purchasePrice": 0.1,
       "costPrice": 0.1,
       "salePrice": 0.45,
-      "quantityOnHand": 0,
+      "quantityOnHand": 274,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 274
     },
     {
       "id": "inv-125",
@@ -1472,11 +1339,11 @@
       "purchasePrice": 0.1,
       "costPrice": 0.1,
       "salePrice": 0.45,
-      "quantityOnHand": 0,
+      "quantityOnHand": 44,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 44
     },
     {
       "id": "inv-132",
@@ -1491,11 +1358,11 @@
       "purchasePrice": 0.075,
       "costPrice": 0.08,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 494,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 494
     },
     {
       "id": "inv-131",
@@ -1510,11 +1377,11 @@
       "purchasePrice": 0.042,
       "costPrice": 0.04,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 164,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 164
     },
     {
       "id": "inv-128",
@@ -1529,11 +1396,11 @@
       "purchasePrice": 0.042,
       "costPrice": 0.04,
       "salePrice": 0.25,
-      "quantityOnHand": 0,
+      "quantityOnHand": 464,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 464
     },
     {
       "id": "inv-129",
@@ -1548,11 +1415,11 @@
       "purchasePrice": 0.042,
       "costPrice": 0.04,
       "salePrice": 0.25,
-      "quantityOnHand": 0,
+      "quantityOnHand": 494,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 494
     },
     {
       "id": "inv-134",
@@ -1567,11 +1434,11 @@
       "purchasePrice": 0.96,
       "costPrice": 0.96,
       "salePrice": 1.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 139,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 139
     },
     {
       "id": "inv-127",
@@ -1586,11 +1453,11 @@
       "purchasePrice": 0.144,
       "costPrice": 0.14,
       "salePrice": 0.4,
-      "quantityOnHand": 0,
+      "quantityOnHand": 156,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 156
     },
     {
       "id": "inv-130",
@@ -1605,11 +1472,11 @@
       "purchasePrice": 0.08,
       "costPrice": 0.08,
       "salePrice": 0.9,
-      "quantityOnHand": 0,
+      "quantityOnHand": 366,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 366
     },
     {
       "id": "inv-126",
@@ -1624,11 +1491,11 @@
       "purchasePrice": 0.27,
       "costPrice": 0.27,
       "salePrice": 0.45,
-      "quantityOnHand": 0,
+      "quantityOnHand": 494,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 494
     },
     {
       "id": "inv-136",
@@ -1643,11 +1510,11 @@
       "purchasePrice": 2.4,
       "costPrice": 2.4,
       "salePrice": 3,
-      "quantityOnHand": 0,
+      "quantityOnHand": 134,
       "minQuantityAlert": 15,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 134
     },
     {
       "id": "inv-123",
@@ -1662,11 +1529,11 @@
       "purchasePrice": 0.09,
       "costPrice": 0.09,
       "salePrice": 0.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-135",
@@ -1681,11 +1548,11 @@
       "purchasePrice": 0.9,
       "costPrice": 0.9,
       "salePrice": 1.2,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 25,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-137",
@@ -1700,11 +1567,11 @@
       "purchasePrice": 0.144,
       "costPrice": 0.14,
       "salePrice": 0.268,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-139",
@@ -1719,11 +1586,11 @@
       "purchasePrice": 0.16,
       "costPrice": 0.16,
       "salePrice": 0.45,
-      "quantityOnHand": 0,
+      "quantityOnHand": 494,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 494
     },
     {
       "id": "inv-140",
@@ -1738,11 +1605,11 @@
       "purchasePrice": 0.047,
       "costPrice": 0.05,
       "salePrice": 0.175,
-      "quantityOnHand": 0,
+      "quantityOnHand": 197,
       "minQuantityAlert": 50,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 197
     },
     {
       "id": "inv-144",
@@ -1757,11 +1624,11 @@
       "purchasePrice": 0.133,
       "costPrice": 0.13,
       "salePrice": 0.33,
-      "quantityOnHand": 0,
+      "quantityOnHand": 384,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 384
     },
     {
       "id": "inv-147",
@@ -1776,11 +1643,11 @@
       "purchasePrice": 0.16,
       "costPrice": 0.16,
       "salePrice": 0.35,
-      "quantityOnHand": 0,
+      "quantityOnHand": 414,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 414
     },
     {
       "id": "inv-145",
@@ -1795,11 +1662,11 @@
       "purchasePrice": 0.36,
       "costPrice": 0.36,
       "salePrice": 0.6,
-      "quantityOnHand": 0,
+      "quantityOnHand": 129,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 129
     },
     {
       "id": "inv-143",
@@ -1814,11 +1681,11 @@
       "purchasePrice": 0.133,
       "costPrice": 0.13,
       "salePrice": 0.3,
-      "quantityOnHand": 0,
+      "quantityOnHand": 405,
       "minQuantityAlert": 40,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 405
     },
     {
       "id": "inv-142",
@@ -1833,11 +1700,11 @@
       "purchasePrice": 0.36,
       "costPrice": 0.36,
       "salePrice": 0.5,
-      "quantityOnHand": 0,
+      "quantityOnHand": 114,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 114
     },
     {
       "id": "inv-146",
@@ -1852,11 +1719,11 @@
       "purchasePrice": 0.16,
       "costPrice": 0.16,
       "salePrice": 0.3,
-      "quantityOnHand": 0,
+      "quantityOnHand": 444,
       "minQuantityAlert": 50,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 444
     },
     {
       "id": "inv-141",
@@ -1871,11 +1738,11 @@
       "purchasePrice": 0.36,
       "costPrice": 0.36,
       "salePrice": 0.54,
-      "quantityOnHand": 0,
+      "quantityOnHand": 189,
       "minQuantityAlert": 30,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 189
     },
     {
       "id": "inv-148",
@@ -1890,11 +1757,11 @@
       "purchasePrice": 0.48,
       "costPrice": 0.48,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-138",
@@ -1909,11 +1776,11 @@
       "purchasePrice": 0.12,
       "costPrice": 0.12,
       "salePrice": 0.5,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-152",
@@ -1928,11 +1795,11 @@
       "purchasePrice": 0.462,
       "costPrice": 0.46,
       "salePrice": 0.9,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 15,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-151",
@@ -1947,11 +1814,11 @@
       "purchasePrice": 0.21,
       "costPrice": 0.21,
       "salePrice": 0.45,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-150",
@@ -1966,11 +1833,11 @@
       "purchasePrice": 0.21,
       "costPrice": 0.21,
       "salePrice": 0.45,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-153",
@@ -1985,11 +1852,11 @@
       "purchasePrice": 0.126,
       "costPrice": 0.13,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 123,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 123
     },
     {
       "id": "inv-149",
@@ -2004,11 +1871,11 @@
       "purchasePrice": 0.48,
       "costPrice": 0.48,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-156",
@@ -2023,11 +1890,11 @@
       "purchasePrice": 0.2,
       "costPrice": 0.2,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-155",
@@ -2042,11 +1909,11 @@
       "purchasePrice": 0.3,
       "costPrice": 0.3,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 454,
       "minQuantityAlert": 15,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 454
     },
     {
       "id": "inv-154",
@@ -2061,11 +1928,11 @@
       "purchasePrice": 0.225,
       "costPrice": 0.23,
       "salePrice": 0.35,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 25,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-157",
@@ -2080,11 +1947,11 @@
       "purchasePrice": 1.44,
       "costPrice": 1.44,
       "salePrice": 1.5,
-      "quantityOnHand": 0,
+      "quantityOnHand": 155,
       "minQuantityAlert": 15,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 155
     },
     {
       "id": "inv-158",
@@ -2099,11 +1966,11 @@
       "purchasePrice": 0.32,
       "costPrice": 0.32,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-162",
@@ -2118,11 +1985,11 @@
       "purchasePrice": 0.45,
       "costPrice": 0.45,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-160",
@@ -2137,11 +2004,11 @@
       "purchasePrice": 0.18,
       "costPrice": 0.18,
       "salePrice": 0.35,
-      "quantityOnHand": 0,
+      "quantityOnHand": 404,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 404
     },
     {
       "id": "inv-159",
@@ -2156,11 +2023,11 @@
       "purchasePrice": 0.54,
       "costPrice": 0.54,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 15,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     },
     {
       "id": "inv-gc1h6msyv",
@@ -2175,11 +2042,11 @@
       "purchasePrice": 0.35,
       "costPrice": 0.35,
       "salePrice": 0.7,
-      "quantityOnHand": 0,
+      "quantityOnHand": 44,
       "minQuantityAlert": 5,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 44
     },
     {
       "id": "inv-r0y08gal3",
@@ -2194,11 +2061,11 @@
       "purchasePrice": 0.125,
       "costPrice": 0.13,
       "salePrice": 0.25,
-      "quantityOnHand": 0,
+      "quantityOnHand": 44,
       "minQuantityAlert": 5,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 44
     },
     {
       "id": "inv-161",
@@ -2213,11 +2080,11 @@
       "purchasePrice": 0.15,
       "costPrice": 0.15,
       "salePrice": 0.35,
-      "quantityOnHand": 0,
+      "quantityOnHand": 434,
       "minQuantityAlert": 20,
       "isActive": true,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "openingBalance": 0
+      "currentBalance": 434
     }
   ],
   "journals": [],
@@ -2306,8 +2173,5 @@
       "description": "طن متري (1000 كجم)"
     }
   ],
-  "productionOrders": [],
-  "tombstones": {
-    "journals": []
-  }
+  "productionOrders": []
 }
