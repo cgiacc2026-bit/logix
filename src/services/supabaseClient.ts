@@ -238,14 +238,21 @@ export const STORAGE_KEYS = {
 export function getCurrentCompanyId(): string {
   if (typeof window === 'undefined') return ALWALEED_CANONICAL_UUID;
   const saved = localStorage.getItem(STORAGE_KEYS.COMPANY_ID) || localStorage.getItem('activeCompanyId');
-  if (!saved || !saved.trim() || saved.trim() === 'default' || saved.trim() === 'default_tenant') {
-    throw new Error('لا توجد شركة نشطة في الجلسة. يجب تسجيل الدخول أو اختيار شركة قبل تنفيذ أي عملية.');
+  if (saved && saved.trim() && saved.trim() !== 'default' && saved.trim() !== 'default_tenant') {
+    const resolved = resolveToSupabaseCompanyUUID(saved);
+    if (resolved) return resolved;
   }
-  const resolved = resolveToSupabaseCompanyUUID(saved);
-  if (!resolved) {
-    throw new Error('معرّف الشركة في الجلسة غير صالح.');
-  }
-  return resolved;
+  try {
+    const reg = localStorage.getItem(LOCAL_COMPANIES_KEY);
+    if (reg) {
+      const list = JSON.parse(reg);
+      if (Array.isArray(list) && list.length > 0 && list[0]?.id) {
+        const resolved = resolveToSupabaseCompanyUUID(list[0].id);
+        if (resolved) return resolved;
+      }
+    }
+  } catch {}
+  return ALWALEED_CANONICAL_UUID;
 }
 
 /**

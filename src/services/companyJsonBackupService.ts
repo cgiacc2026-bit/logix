@@ -94,13 +94,14 @@ export class CompanyJsonBackupService {
       version: "2.0.0",
       company,
       users,
-      accounts: accounts.data || [],
-      customers: customers.data || [],
-      suppliers: suppliers.data || [],
-      inventory: inventory.data || [],
-      journals: journals.data || [],
-      invoices: invoices.data || [],
-      vouchers: vouchers.data || [],
+      accounts: (accounts.data && accounts.data.length > 0) ? accounts.data : localDataStore.getAccounts(),
+      customers: (customers.data && customers.data.length > 0) ? customers.data : localDataStore.getCustomers(),
+      suppliers: (suppliers.data && suppliers.data.length > 0) ? suppliers.data : localDataStore.getSuppliers(),
+      inventory: (inventory.data && inventory.data.length > 0) ? inventory.data : localDataStore.getInventory(),
+      journals: (journals.data && journals.data.length > 0) ? journals.data : localDataStore.getJournals(),
+      invoices: (invoices.data && invoices.data.length > 0) ? invoices.data : localDataStore.getInvoices(),
+      vouchers: (vouchers.data && vouchers.data.length > 0) ? vouchers.data : localDataStore.getVouchers(),
+      warehouses: localDataStore.getWarehouses(),
       units
     };
 

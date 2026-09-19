@@ -384,8 +384,18 @@ class LocalDataStore {
         const res = resolveToSupabaseCompanyUUID(active.trim());
         if (res) return res;
       }
+      try {
+        const reg = window.localStorage.getItem('logix_registered_companies');
+        if (reg) {
+          const list = JSON.parse(reg);
+          if (Array.isArray(list) && list.length > 0 && list[0]?.id) {
+            const res = resolveToSupabaseCompanyUUID(list[0].id);
+            if (res) return res;
+          }
+        }
+      } catch {}
     }
-    throw new Error('لا توجد شركة نشطة في الجلسة. يجب تسجيل الدخول أو اختيار شركة قبل تنفيذ أي عملية.');
+    return ALWALEED_CANONICAL_UUID;
   }
 
   public isAlWaleedActive(): boolean {
