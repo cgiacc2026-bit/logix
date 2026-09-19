@@ -26,27 +26,18 @@ export function evaluateCustomerCredit(
   const creditLimit = Number(customer.creditLimit) || 0;
   const potentialTotal = currentBalance + newTransactionAmount;
 
-  // If customer has no credit limit specified (0 or undefined), default to cash only or warning if unpaid balance
+  // If customer has no credit limit specified (0 or undefined), allow credit sales (open credit)
   if (creditLimit <= 0) {
-    if (newTransactionAmount > 0) {
-      return {
-        status: 'WARNING',
-        currentBalance,
-        creditLimit: 0,
-        availableCredit: 0,
-        utilizationRate: 100,
-        requiresSupervisorOverride: true,
-        message: 'العميل ليس لديه سقف ائتماني محدد (البيع الآجل يتطلب موافقة المشرف)',
-      };
-    }
     return {
       status: 'NORMAL',
       currentBalance,
       creditLimit: 0,
-      availableCredit: 0,
+      availableCredit: 999999,
       utilizationRate: 0,
       requiresSupervisorOverride: false,
-      message: 'عميل نقدي معتمد',
+      message: newTransactionAmount > 0
+        ? 'البيع الآجل مسموح (سقف ائتماني غير محدد / مفتوح)'
+        : 'عميل معتمد (سقف ائتماني غير مقيّد)',
     };
   }
 

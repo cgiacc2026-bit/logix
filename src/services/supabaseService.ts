@@ -1233,7 +1233,7 @@ export class SupabaseDataService {
       try {
         let { data, error } = await supabase
           .from('suppliers')
-          .select('id, company_id, code, name_ar, name_en, phone, address, city, tax_number, is_active, current_balance, balance, raw_data')
+          .select('id, company_id, code, name_ar, name_en, phone, address, city, is_active, current_balance, balance, opening_balance, raw_data')
           .eq('company_id', companyId)
           .order('created_at', { ascending: true });
 
@@ -1254,9 +1254,9 @@ export class SupabaseDataService {
             phone: row.phone || raw.phone || '',
             address: row.address || raw.address || '',
             city: row.city || raw.city || 'الرياض',
-            taxNumber: row.tax_number || raw.taxNumber || '',
-            openingBalance: raw.openingBalance ?? 0,
-            isActive: raw.isActive ?? true,
+            taxNumber: row.tax_number || raw.taxNumber || raw.tax_number || '',
+            openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? raw.opening_balance ?? 0),
+            isActive: row.is_active ?? raw.isActive ?? true,
             ...raw,
             current_balance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
             currentBalance: Number(row.current_balance ?? row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
@@ -1280,6 +1280,7 @@ export class SupabaseDataService {
     if (!companyId) return false;
     try {
       const supUuid = toValidUUID(supp.id);
+      const openingBal = Number(supp.openingBalance ?? (supp as any).opening_balance ?? 0);
       const { error } = await supabase
         .from('suppliers')
         .upsert([
@@ -1294,9 +1295,12 @@ export class SupabaseDataService {
             city: supp.city || '',
             balance: supp.balance || 0,
             current_balance: supp.balance || 0,
+            opening_balance: openingBal,
+            is_active: supp.isActive !== false,
             raw_data: {
               ...supp,
               id: supp.id,
+              openingBalance: openingBal,
               companyId,
             },
             created_at: new Date().toISOString(),
@@ -1321,24 +1325,30 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
-      const rows = suppliers.map((s) => ({
-        id: toValidUUID(s.id),
-        company_id: companyId,
-        code: s.code || s.id,
-        name_ar: s.nameAr,
-        name_en: s.nameEn || '',
-        phone: s.phone || '',
-        address: s.address || '',
-        city: s.city || '',
-        balance: s.balance || 0,
-        current_balance: s.balance || 0,
-        raw_data: {
-          ...s,
-          id: s.id,
-          companyId,
-        },
-        created_at: new Date().toISOString(),
-      }));
+      const rows = suppliers.map((s) => {
+        const openingBal = Number(s.openingBalance ?? (s as any).opening_balance ?? 0);
+        return {
+          id: toValidUUID(s.id),
+          company_id: companyId,
+          code: s.code || s.id,
+          name_ar: s.nameAr,
+          name_en: s.nameEn || '',
+          phone: s.phone || '',
+          address: s.address || '',
+          city: s.city || '',
+          balance: s.balance || 0,
+          current_balance: s.balance || 0,
+          opening_balance: openingBal,
+          is_active: s.isActive !== false,
+          raw_data: {
+            ...s,
+            id: s.id,
+            openingBalance: openingBal,
+            companyId,
+          },
+          created_at: new Date().toISOString(),
+        };
+      });
 
       for (let i = 0; i < rows.length; i += 50) {
         const batch = rows.slice(i, i + 50);
@@ -1398,10 +1408,10 @@ export class SupabaseDataService {
 
     return CacheAndThrottleService.deduplicate<Invoice[]>(cacheKey, async () => {
       try {
-        // 1. Single Source of Truth: Query 'invoices' table with targeted columns & range pagination
+        // 1. Single Source of Truth: Query 'invoices' table with verified columns & range pagination
         const { data: invTableData, error: invErr } = await supabase
           .from('invoices')
-          .select('id, company_id, invoice_number, doc_type, date, issue_date, due_date, customer_id, customer_name, subtotal, tax_amount, discount_amount, total_amount, total, paid_amount, remaining_amount, status, payment_type, notes, created_at, updated_at, warehouse_id, rep_id, raw_data')
+          .select('id, company_id, invoice_number, date, customer_id, customer_name, subtotal, tax_amount, total_amount, paid_amount, status, created_at, updated_at, raw_data')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1);

@@ -465,17 +465,34 @@ export class StockLedgerService {
     try {
       const resolved = DataService.getResolvedAccounts();
       const accounts = localDataStore.getAccounts();
-      const varianceRevenueAcc = accounts.find((a) => a.code === '4200' || a.category === 'REVENUE') || resolved.sales;
-      const varianceExpenseAcc = accounts.find((a) => a.code === '5200' || a.category === 'EXPENSE') || resolved.cogs;
+      const isLeaf = (acc: any) => acc && !accounts.some((a) => a.parentId === acc.id);
 
-      if (totalCostValue > 0) {
+      let invAcc = resolved.inventory;
+      if (!isLeaf(invAcc)) {
+        invAcc = accounts.find((a) => a.parentId === invAcc.id && isLeaf(a)) ||
+                 accounts.find((a) => a.code.startsWith('113') && isLeaf(a)) || invAcc;
+      }
+
+      let varianceRevenueAcc = accounts.find((a) => (a.code === '4200' || a.code === '4101' || a.code === '4201') && isLeaf(a)) ||
+                               accounts.find((a) => a.category === 'REVENUE' && isLeaf(a)) || resolved.sales;
+      if (!isLeaf(varianceRevenueAcc)) {
+        varianceRevenueAcc = accounts.find((a) => a.category === 'REVENUE' && isLeaf(a)) || varianceRevenueAcc;
+      }
+
+      let varianceExpenseAcc = accounts.find((a) => (a.code === '5200' || a.code === '5101' || a.code === '5201') && isLeaf(a)) ||
+                               accounts.find((a) => a.category === 'EXPENSE' && isLeaf(a)) || resolved.cogs;
+      if (!isLeaf(varianceExpenseAcc)) {
+        varianceExpenseAcc = accounts.find((a) => a.category === 'EXPENSE' && isLeaf(a)) || varianceExpenseAcc;
+      }
+
+      if (totalCostValue > 0 && isLeaf(invAcc) && (isSurplus ? isLeaf(varianceRevenueAcc) : isLeaf(varianceExpenseAcc))) {
         const jLines = isSurplus
           ? [
               {
                 id: 'jl-adj-1',
-                accountId: resolved.inventory.id,
-                accountCode: resolved.inventory.code,
-                accountNameAr: resolved.inventory.nameAr,
+                accountId: invAcc.id,
+                accountCode: invAcc.code,
+                accountNameAr: invAcc.nameAr,
                 debit: totalCostValue,
                 credit: 0,
                 memo: `إثبات زيادة وفائض جرد مخزني - محضر ${adjustmentMovement.referenceDocNumber} (${item.nameAr})`,
@@ -502,9 +519,9 @@ export class StockLedgerService {
               },
               {
                 id: 'jl-adj-2',
-                accountId: resolved.inventory.id,
-                accountCode: resolved.inventory.code,
-                accountNameAr: resolved.inventory.nameAr,
+                accountId: invAcc.id,
+                accountCode: invAcc.code,
+                accountNameAr: invAcc.nameAr,
                 debit: 0,
                 credit: totalCostValue,
                 memo: `تخفيض المخزون بعجز الجرد - صنف ${item.nameAr}`,
