@@ -41,17 +41,17 @@ const _decodeCloudKey = (b64: string): string => {
   return '';
 };
 
-// Supabase cloud credentials (Stored securely encoded for project exupcqbzfngpbsjrzhjw)
-const _ENC_PUB = 'ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1WNGRYQmpjV0o2Wm01bmNHSnphbko2YUdwM0lpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RrM01qQTNNRGtzSW1WNGNDSTZNakV3TlRJNU5qY3dPWDAueXNfZTdMdGczM2xjRUxHbFB4dWlOa3ZDTEJyUm1ieVdhOXBhMzI2MXU0RQ==';
-const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfVFctb1hPdG93UllWVzU2UVpYZmx3QV9WNGlEMW11SQ==';
+// Supabase cloud credentials (Stored securely encoded for project tshcwdieqlldkygkcytr)
+const _ENC_PUB = 'ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW5SemFHTjNaR2xsY1d4c1pHdDVaMnRqZVhSeUlpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RrNU16TTVPVFVzSW1WNGNDSTZNakV3TlRVd09UazVOWDAuSjJWWDF6Y0VHanJyS21LcXkybll6aWk3WGJkOXVPLUZLOTBEV2lBOHVFaw==';
+const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfRC04eE9kVnVES1d3WlhuREJlM2NHd19MUnRPeFVVUQ==';
 
 export const getSupabaseConfig = () => {
   let envUrl = getEnvVar('VITE_SUPABASE_URL');
   let envKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
   let envSec = getEnvVar('SUPABASE_SERVICE_ROLE_KEY');
 
-  // Disconnect and purge old deprecated Supabase project URL and keys (e.g. gzoncsbxfdnfellspgke)
-  if (envUrl && envUrl.includes('gzoncsbxfdnfellspgke')) {
+  // Disconnect and purge old deprecated Supabase project URL and keys (e.g. gzoncsbxfdnfellspgke, exupcqbzfngpbsjrzhjw)
+  if (envUrl && (envUrl.includes('gzoncsbxfdnfellspgke') || envUrl.includes('exupcqbzfngpbsjrzhjw'))) {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.removeItem('VITE_SUPABASE_URL');
@@ -60,7 +60,7 @@ export const getSupabaseConfig = () => {
     } catch {}
     envUrl = '';
   }
-  if (envKey && (envKey.includes('byqbhrpY1GEhRJlHF9vKVg') || envKey.startsWith('sb_publishable'))) {
+  if (envKey && (envKey.includes('byqbhrpY1GEhRJlHF9vKVg') || envKey.includes('ys_e7Ltg33lcELGlPxuiNkvCLBrRmbyWa9pa3261u4E') || envKey.startsWith('sb_publishable'))) {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.removeItem('VITE_SUPABASE_ANON_KEY');
@@ -68,13 +68,13 @@ export const getSupabaseConfig = () => {
     } catch {}
     envKey = '';
   }
-  if (envSec && envSec.includes('gzoncsbxfdnfellspgke')) {
+  if (envSec && (envSec.includes('gzoncsbxfdnfellspgke') || envSec.includes('exupcqbzfngpbsjrzhjw'))) {
     envSec = '';
   }
 
-  const url = envUrl || 'https://exupcqbzfngpbsjrzhjw.supabase.co';
+  const url = envUrl || 'https://tshcwdieqlldkygkcytr.supabase.co';
   const key = envKey || _decodeCloudKey(_ENC_PUB);
-  const secret = (envSec && envSec.startsWith('eyJ') && !envSec.includes('gzoncsbxfdnfellspgke')) ? envSec : key;
+  const secret = (envSec && envSec.startsWith('eyJ') && !envSec.includes('gzoncsbxfdnfellspgke') && !envSec.includes('exupcqbzfngpbsjrzhjw')) ? envSec : key;
   return { url, key, secret, anonKey: key };
 };
 

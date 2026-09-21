@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://exupcqbzfngpbsjrzhjw.supabase.co';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://tshcwdieqlldkygkcytr.supabase.co';
 const _ENC_SEC = 'c2Jfc2VjcmV0X3pCY2tDWUQ0bTNKMmZ5UXJsZUFEdndfNFBZdUoyOXk=';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || Buffer.from(_ENC_SEC, 'base64').toString('utf-8');
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);

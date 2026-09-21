@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://exupcqbzfngpbsjrzhjw.supabase.co';
+const SUPABASE_URL = 'https://tshcwdieqlldkygkcytr.supabase.co';
 const key = Buffer.from('c2Jfc2VjcmV0X3pCY2tDWUQ0bTNKMmZ5UXJsZUFEdndfNFBZdUoyOXk=', 'base64').toString('utf-8');
 const client = createClient(SUPABASE_URL, key);
 

@@ -18,14 +18,13 @@ const _decodeCloudKey = (b64: string): string => {
   }
 };
 
-const _ENC_PUB = 'ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1WNGRYQmpjV0o2Wm01bmNHSnphbko2YUdwM0lpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RrM01qQTNNRGtzSW1WNGNDSTZNakV3TlRJNU5qY3dPWDAueXNfZTdMdGczM2xjRUxHbFB4dWlOa3ZDTEJyUm1ieVdhOXBhMzI2MXU0RQ==';
-const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfVFctb1hPdG93UllWVzU2UVpYZmx3QV9WNGlEMW11SQ==';
+const _ENC_PUB = 'ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW5SemFHTjNaR2xsY1d4c1pHdDVaMnRqZVhSeUlpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RrNU16TTVPVFVzSW1WNGNDSTZNakV3TlRVd09UazVOWDAuSjJWWDF6Y0VHanJyS21LcXkybll6aWk3WGJkOXVPLUZLOTBEV2lBOHVFaw==';
+const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfRC04eE9kVnVES1d3WlhuREJlM2NHd19MUnRPeFVVUQ==';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://exupcqbzfngpbsjrzhjw.supabase.co';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://tshcwdieqlldkygkcytr.supabase.co';
 const SUPABASE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  _decodeCloudKey(_ENC_SEC) ||
+  (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY.startsWith('eyJ')) ? process.env.SUPABASE_SERVICE_ROLE_KEY :
+  (process.env.VITE_SUPABASE_ANON_KEY && process.env.VITE_SUPABASE_ANON_KEY.startsWith('eyJ')) ? process.env.VITE_SUPABASE_ANON_KEY :
   _decodeCloudKey(_ENC_PUB);
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY);

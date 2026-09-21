@@ -1,4 +1,18 @@
 -- ==============================================================================
+-- 🏛️ LOGIX CLOUD ERP - MASTER DATABASE SCHEMA & SEED SCRIPT
+-- Project ID: tshcwdieqlldkygkcytr
+-- Project URL: https://tshcwdieqlldkygkcytr.supabase.co
+-- Company: شركة مطحنة الوليد المتحدة (ذ.م.م)
+-- Tenant UUID: 20000000-0000-0000-0000-000000000001
+--
+-- تعليمات التشغيل السريع:
+-- 1. افتح لوحة تحكم مشروعك الجديد في سوبابيز:
+--    https://supabase.com/dashboard/project/tshcwdieqlldkygkcytr/sql/new
+-- 2. انسخ كامل محتوى هذا السكربت والصقه في محرر SQL (SQL Editor)
+-- 3. اضغط على الزر الأخضر (Run) أو (Ctrl + Enter)
+-- ==============================================================================
+
+-- ==============================================================================
 -- LOGIX CLOUD ERP - سكربت SQL الشامل والمتوافق 100% مع Supabase و PostgreSQL
 -- شركة مطحنة الوليد المتحدة ذ.م.م (Al-Waleed United Mill & Food Industries)
 -- المعرف السحابي (Tenant UUID): 20000000-0000-0000-0000-000000000001
@@ -16,16 +30,84 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE IF NOT EXISTS public.companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_name TEXT NOT NULL,
+    company_name TEXT NOT NULL DEFAULT 'شركة جديدة',
+    name_ar TEXT DEFAULT '',
+    name_en TEXT DEFAULT '',
     login_code TEXT,
     owner_email TEXT DEFAULT 'alwaleed.mill@logixerp.com',
     status TEXT DEFAULT 'active',
     logo_url TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    tax_number TEXT DEFAULT '',
+    commercial_register TEXT DEFAULT '',
+    functional_currency TEXT DEFAULT 'KWD',
+    currency TEXT DEFAULT 'KWD',
+    currency_symbol TEXT DEFAULT 'د.ك',
+    decimal_places INT DEFAULT 3,
+    cash_account_id UUID,
+    bank_account_id UUID,
+    receivable_account_id UUID,
+    payable_account_id UUID,
+    sales_account_id UUID,
+    cogs_account_id UUID,
+    inventory_account_id UUID,
+    pnl_account_id UUID,
+    retained_earnings_account_id UUID,
+    default_cash_account_id UUID,
+    default_bank_account_id UUID,
+    default_receivable_account_id UUID,
+    default_payable_account_id UUID,
+    default_sales_account_id UUID,
+    default_cogs_account_id UUID,
+    default_inventory_account_id UUID,
+    default_retained_earnings_account_id UUID,
+    default_vat_account_id UUID,
     default_accounts JSONB DEFAULT '{}'::jsonb,
     profile_data JSONB DEFAULT '{}'::jsonb,
+    raw_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
+
+-- ترقية وضمان وجود كافة أعمدة جدول الشركات لتجنب أي تعارض في التحديثات
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS company_name TEXT DEFAULT 'شركة جديدة';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS name_ar TEXT DEFAULT 'شركة جديدة';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS login_code TEXT;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS owner_email TEXT DEFAULT 'alwaleed.mill@logixerp.com';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS tax_number TEXT DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS commercial_register TEXT DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS functional_currency TEXT DEFAULT 'KWD';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'KWD';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS currency_symbol TEXT DEFAULT 'د.ك';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS decimal_places INT DEFAULT 3;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS cash_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS bank_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS receivable_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS payable_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS sales_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS cogs_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS inventory_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS pnl_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS retained_earnings_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_cash_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_bank_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_receivable_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_payable_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_sales_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_cogs_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_inventory_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_retained_earnings_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_vat_account_id UUID;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS default_accounts JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS profile_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS raw_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
 
 CREATE TABLE IF NOT EXISTS public.chart_of_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -224,6 +306,307 @@ CREATE TABLE IF NOT EXISTS public.payment_vouchers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
+
+
+-- ==============================================================================
+-- 🏛️ الجداول والوظائف الإضافية للشركات، المستخدمين، الإنتاج والمستودعات
+-- ==============================================================================
+
+-- جدول إعدادات الحسابات الافتراضية (company_accounting_settings)
+CREATE TABLE IF NOT EXISTS public.company_accounting_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL UNIQUE REFERENCES public.companies(id) ON DELETE CASCADE,
+    cash_account_id UUID,
+    bank_account_id UUID,
+    receivable_account_id UUID,
+    payable_account_id UUID,
+    inventory_account_id UUID,
+    sales_account_id UUID,
+    cogs_account_id UUID,
+    retained_earnings_account_id UUID,
+    vat_account_id UUID,
+    default_cash_account_id UUID,
+    default_bank_account_id UUID,
+    default_receivable_account_id UUID,
+    default_payable_account_id UUID,
+    default_inventory_account_id UUID,
+    default_sales_account_id UUID,
+    default_cogs_account_id UUID,
+    default_retained_earnings_account_id UUID,
+    default_vat_account_id UUID,
+    settings_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_comp_acc_settings_comp UNIQUE (company_id)
+);
+
+-- جدول إعدادات الشركة المتوافقة (company_settings)
+CREATE TABLE IF NOT EXISTS public.company_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL UNIQUE REFERENCES public.companies(id) ON DELETE CASCADE,
+    default_cash_account_id UUID,
+    default_bank_account_id UUID,
+    default_receivable_account_id UUID,
+    default_payable_account_id UUID,
+    default_sales_account_id UUID,
+    default_cogs_account_id UUID,
+    default_inventory_account_id UUID,
+    default_retained_earnings_account_id UUID,
+    default_vat_account_id UUID,
+    settings_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_company_settings_comp UNIQUE (company_id)
+);
+
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS cash_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS bank_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS receivable_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS payable_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS inventory_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS sales_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS cogs_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS retained_earnings_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS vat_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_cash_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_bank_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_receivable_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_payable_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_inventory_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_sales_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_cogs_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_retained_earnings_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS default_vat_account_id UUID;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS settings_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.company_accounting_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_cash_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_bank_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_receivable_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_payable_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_sales_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_cogs_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_inventory_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_retained_earnings_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS default_vat_account_id UUID;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS settings_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.company_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS account_id UUID;
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS account_id UUID;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS cogs_account_id UUID;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS sales_account_id UUID;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS inventory_account_id UUID;
+ALTER TABLE public.payment_vouchers ADD COLUMN IF NOT EXISTS account_id UUID;
+
+
+-- جدول قوائم الأسعار الرئيسية (master_price_lists)
+CREATE TABLE IF NOT EXISTS public.master_price_lists (
+    id TEXT PRIMARY KEY DEFAULT ('pl-' || substring(replace(gen_random_uuid()::text, '-', ''), 1, 9)),
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    name_ar TEXT NOT NULL,
+    name_en TEXT DEFAULT '',
+    currency TEXT NOT NULL DEFAULT 'KWD',
+    is_default BOOLEAN DEFAULT false,
+    default_discount_percent NUMERIC(5, 2) DEFAULT 0,
+    valid_from DATE DEFAULT CURRENT_DATE,
+    valid_to DATE,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_price_list_code UNIQUE (company_id, code)
+);
+
+-- دالة تنفيذ استعلامات SQL الإدارية عن بعد (Remote Exec SQL RPC)
+CREATE OR REPLACE FUNCTION public.exec_sql(query text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    EXECUTE query;
+    RETURN jsonb_build_object('success', true);
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.exec_sql(text) TO anon, authenticated, service_role;
+
+-- جدول مستخدمي الشركات (company_users)
+CREATE TABLE IF NOT EXISTS public.company_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    email TEXT,
+    full_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'STAFF',
+    role_title_ar TEXT,
+    pin_hash TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    is_platform_admin BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_company_username UNIQUE (company_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_comp_users_comp_user ON public.company_users(company_id, username);
+
+-- جدول المستودعات (warehouses)
+CREATE TABLE IF NOT EXISTS public.warehouses (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    location TEXT,
+    is_default BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- جدول مندوبي المبيعات (sales_reps)
+CREATE TABLE IF NOT EXISTS public.sales_reps (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    phone TEXT,
+    commission_rate NUMERIC(5, 2) DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- جدول أوامر التصنيع والتشغيل (production_orders)
+CREATE TABLE IF NOT EXISTS public.production_orders (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    order_number TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    product_name TEXT,
+    quantity NUMERIC(12, 3) NOT NULL,
+    status TEXT DEFAULT 'COMPLETED',
+    date DATE DEFAULT CURRENT_DATE,
+    raw_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- جدول إعدادات التصنيع (manufacturing_settings)
+CREATE TABLE IF NOT EXISTS public.manufacturing_settings (
+    company_id UUID PRIMARY KEY REFERENCES public.companies(id) ON DELETE CASCADE,
+    settings_data JSONB DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc', now())
+);
+
+-- جدول فروع الجمعيات والعملاء (customer_branches)
+CREATE TABLE IF NOT EXISTS public.customer_branches (
+    id TEXT PRIMARY KEY,
+    customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    name_ar TEXT NOT NULL,
+    name_en TEXT DEFAULT '',
+    city TEXT DEFAULT 'الكويت',
+    address TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    is_default BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- جدول بنود قيود اليومية المنفصلة (journal_entry_lines)
+CREATE TABLE IF NOT EXISTS public.journal_entry_lines (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    journal_entry_id UUID REFERENCES public.journal_entries(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    account_id UUID,
+    account_code TEXT,
+    account_name_ar TEXT,
+    debit NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    credit NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    memo TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- وحدات القياس وعروض الأسعار
+CREATE TABLE IF NOT EXISTS public.item_units (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    item_id UUID REFERENCES public.items(id) ON DELETE CASCADE,
+    unit_name TEXT NOT NULL,
+    conversion_factor NUMERIC(12, 4) DEFAULT 1,
+    selling_price NUMERIC(18, 4),
+    barcode TEXT,
+    is_base BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+CREATE TABLE IF NOT EXISTS public.item_offers (
+    id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    item_id UUID REFERENCES public.items(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    offer_type TEXT NOT NULL,
+    min_quantity NUMERIC(12, 4) DEFAULT 1,
+    discount_percentage NUMERIC(5, 2) DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    start_date DATE,
+    end_date DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID,
+    user_id TEXT,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- تفعيل RLS للجداول الإضافية
+ALTER TABLE public.company_accounting_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.company_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.master_price_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.company_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.warehouses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sales_reps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.production_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.manufacturing_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_branches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.journal_entry_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.item_units ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.item_offers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "comp_acc_settings_full_access" ON public.company_accounting_settings;
+    CREATE POLICY "comp_acc_settings_full_access" ON public.company_accounting_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "company_settings_full_access" ON public.company_settings;
+    CREATE POLICY "company_settings_full_access" ON public.company_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "master_price_lists_full_access" ON public.master_price_lists;
+    CREATE POLICY "master_price_lists_full_access" ON public.master_price_lists FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "comp_users_full_access" ON public.company_users;
+    CREATE POLICY "comp_users_full_access" ON public.company_users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "warehouses_full_access" ON public.warehouses;
+    CREATE POLICY "warehouses_full_access" ON public.warehouses FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "sales_reps_full_access" ON public.sales_reps;
+    CREATE POLICY "sales_reps_full_access" ON public.sales_reps FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "prod_orders_full_access" ON public.production_orders;
+    CREATE POLICY "prod_orders_full_access" ON public.production_orders FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "mfg_settings_full_access" ON public.manufacturing_settings;
+    CREATE POLICY "mfg_settings_full_access" ON public.manufacturing_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "branches_full_access" ON public.customer_branches;
+    CREATE POLICY "branches_full_access" ON public.customer_branches FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "jrn_lines_full_access" ON public.journal_entry_lines;
+    CREATE POLICY "jrn_lines_full_access" ON public.journal_entry_lines FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "item_units_full_access" ON public.item_units;
+    CREATE POLICY "item_units_full_access" ON public.item_units FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "item_offers_full_access" ON public.item_offers;
+    CREATE POLICY "item_offers_full_access" ON public.item_offers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS "audit_logs_full_access" ON public.audit_logs;
+    CREATE POLICY "audit_logs_full_access" ON public.audit_logs FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- سياسات الأمان RLS
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
@@ -476,245 +859,76 @@ ON CONFLICT (id) DO UPDATE SET
 -- ==============================================================================
 -- 2.1 تنظيف استباقي شامل ومعزول تماماً لنفس المنشأة (Prevent All Duplicate Key & FK Errors)
 -- ==============================================================================
--- يتم تفكيك جميع العلاقات وحذف السجلات السابقة في كتل معزولة ومحمية لمنع توقف السكربت إطلاقاً
+-- يتم تفكيك جميع العلاقات وحذف السجلات السابقة بديناميكية تامة لمنع أي توقف في حال عدم وجود بعض الجداول
 DO $$
 DECLARE
     v_comp_id TEXT := '20000000-0000-0000-0000-000000000001';
     v_comp_uuid UUID := '20000000-0000-0000-0000-000000000001'::uuid;
+    t_name TEXT;
+    tables_to_clean TEXT[] := ARRAY[
+        'sales_details', 'sales_order_lines', 'purchase_order_lines', 'stock_transfer_lines',
+        'item_warehouse_stocks', 'invoice_items', 'journal_entry_lines', 'customer_branches',
+        'item_units', 'item_offers', 'production_orders', 'stock_transfers', 'sales_orders',
+        'purchase_orders', 'sales_master', 'payment_vouchers', 'vouchers', 'invoices',
+        'journal_entries', 'items', 'suppliers', 'customers', 'company_accounting_settings',
+        'company_settings'
+    ];
 BEGIN
-    
-    -- تعطيل محفزات الفواتير والسندات مؤقتاً لمنع أي تعارض أثناء استيراد البيانات الشاملة
-    BEGIN
-        ALTER TABLE public.invoices DISABLE TRIGGER USER;
-        ALTER TABLE public.payment_vouchers DISABLE TRIGGER USER;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+    -- تعطيل محفزات الفواتير والسندات مؤقتاً إن وجدت لمنع أي تعارض أثناء استيراد البيانات
+    IF to_regclass('public.invoices') IS NOT NULL THEN
+        BEGIN EXECUTE 'ALTER TABLE public.invoices DISABLE TRIGGER USER'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.payment_vouchers') IS NOT NULL THEN
+        BEGIN EXECUTE 'ALTER TABLE public.payment_vouchers DISABLE TRIGGER USER'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
 
--- 1. فك ارتباط الحسابات في جميع الجداول لتجنب أي تعارض مفاتيح أجنبية (Foreign Keys)
-    BEGIN
-        UPDATE public.chart_of_accounts SET parent_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+    -- 1. فك ارتباط الحسابات لتجنب أي تعارض مفاتيح أجنبية (Foreign Keys)
+    IF to_regclass('public.chart_of_accounts') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.chart_of_accounts SET parent_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.company_accounting_settings') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.company_accounting_settings SET cash_account_id = NULL, bank_account_id = NULL, receivable_account_id = NULL, payable_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL, cogs_account_id = NULL, vat_account_id = NULL, retained_earnings_account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.company_settings') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.company_settings SET default_bank_account_id = NULL, default_receivable_account_id = NULL, default_payable_account_id = NULL, default_sales_account_id = NULL, default_inventory_account_id = NULL, default_cogs_account_id = NULL, default_vat_account_id = NULL, default_retained_earnings_account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.manufacturing_settings') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.manufacturing_settings SET wip_account_id = NULL, labor_expense_account_id = NULL, overhead_expense_account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.customers') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.customers SET account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.suppliers') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.suppliers SET account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.items') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.items SET cogs_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.payment_vouchers') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.payment_vouchers SET account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+    IF to_regclass('public.vouchers') IS NOT NULL THEN
+        BEGIN EXECUTE 'UPDATE public.vouchers SET account_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id; EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
 
-    BEGIN
-        UPDATE public.company_accounting_settings 
-        SET cash_account_id = NULL, bank_account_id = NULL, receivable_account_id = NULL, 
-            payable_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL, 
-            cogs_account_id = NULL, vat_account_id = NULL, retained_earnings_account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+    -- 2. تفريغ الجداول التابعة والرئيسية بأمان وديناميكية تامة
+    FOREACH t_name IN ARRAY tables_to_clean LOOP
+        IF to_regclass('public.' || t_name) IS NOT NULL THEN
+            BEGIN
+                EXECUTE 'DELETE FROM public.' || quote_ident(t_name) || ' WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END;
+        END IF;
+    END LOOP;
 
-    BEGIN
-        UPDATE public.company_settings 
-        SET default_bank_account_id = NULL, default_receivable_account_id = NULL, 
-            default_payable_account_id = NULL, default_sales_account_id = NULL, 
-            default_inventory_account_id = NULL, default_cogs_account_id = NULL, 
-            default_vat_account_id = NULL, default_retained_earnings_account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        UPDATE public.manufacturing_settings 
-        SET wip_account_id = NULL, labor_expense_account_id = NULL, overhead_expense_account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        UPDATE public.customers SET account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        UPDATE public.suppliers SET account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        UPDATE public.items 
-        SET cogs_account_id = NULL, sales_account_id = NULL, inventory_account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        UPDATE public.payment_vouchers SET account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        UPDATE public.vouchers SET account_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    -- 2. حذف الجداول التفصيلية والتابعة (Child Tables)
-    BEGIN
-        DELETE FROM public.invoice_items 
-        WHERE invoice_id IN (SELECT id FROM public.invoices WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.invoice_items 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.sales_details 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.journal_entry_lines 
-        WHERE journal_entry_id IN (SELECT id FROM public.journal_entries WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.journal_entry_lines 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.sales_order_lines 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.purchase_order_lines 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.stock_transfer_lines 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.customer_branches 
-        WHERE customer_id IN (SELECT id FROM public.customers WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id);
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.customer_branches 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.item_warehouse_stocks 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    -- 3. حذف الحركات التشغيلية الرئيسية (Operational Parents)
-    BEGIN
-        DELETE FROM public.invoices 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.sales_master 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.payment_vouchers 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.vouchers 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.journal_entries 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.production_orders 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.stock_transfers 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.sales_orders 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.purchase_orders 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    -- 4. حذف سجلات البيانات الرئيسية (Master Records)
-    BEGIN
-        DELETE FROM public.customers 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.suppliers 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.items 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.company_accounting_settings 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    BEGIN
-        DELETE FROM public.company_settings 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
-
-    -- 5. تفريغ وحذف شجرة الحسابات القديمة لنفس الشركة (Clear Old Chart of Accounts)
-    BEGIN
-        UPDATE public.chart_of_accounts SET parent_id = NULL 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-        DELETE FROM public.chart_of_accounts 
-        WHERE company_id = v_comp_uuid OR company_id::text = v_comp_id;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+    -- 3. تفريغ شجرة الحسابات القديمة لنفس الشركة
+    IF to_regclass('public.chart_of_accounts') IS NOT NULL THEN
+        BEGIN
+            EXECUTE 'UPDATE public.chart_of_accounts SET parent_id = NULL WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id;
+            EXECUTE 'DELETE FROM public.chart_of_accounts WHERE company_id = $1 OR company_id::text = $2' USING v_comp_uuid, v_comp_id;
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
+    END IF;
 END $$;
 
 -- ==============================================================================
@@ -1219,6 +1433,78 @@ BEGIN
     ALTER TABLE public.payment_vouchers ENABLE TRIGGER USER;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+
+-- ==============================================================================
+-- 🏛️ تهيئة المستخدمين والمستودعات والمندوبين
+-- ==============================================================================
+
+-- مستخدمو مطحنة الوليد
+INSERT INTO public.company_users (company_id, username, email, full_name, role, role_title_ar, pin_hash, is_platform_admin)
+VALUES
+(
+    '20000000-0000-0000-0000-000000000001'::uuid, 
+    'cgiacc2026', 
+    'cgiacc2026@gmail.com', 
+    'المشرف العام', 
+    'ADMIN', 
+    'المشرف العام والمالك', 
+    crypt('1234', gen_salt('bf')), 
+    true
+),
+(
+    '20000000-0000-0000-0000-000000000001'::uuid, 
+    'alwaleed', 
+    'alwaleed.mill@logixerp.com', 
+    'مطحنة الوليد المتحده', 
+    'ADMIN', 
+    'المدير التنفيذي والمالك', 
+    crypt('1234', gen_salt('bf')), 
+    false
+),
+(
+    '20000000-0000-0000-0000-000000000001'::uuid, 
+    'adein', 
+    'adein@alwaleedmill.com', 
+    'د. خالد السليمان', 
+    'EXECUTIVE', 
+    'المدير التنفيذي', 
+    crypt('1234', gen_salt('bf')), 
+    false
+),
+(
+    '20000000-0000-0000-0000-000000000001'::uuid, 
+    'chief_acc', 
+    'chief@alwaleedmill.com', 
+    'أ. محمد الشمري', 
+    'CHIEF_ACCOUNTANT', 
+    'المدير المالي والمحاسب الرئيسي', 
+    crypt('1234', gen_salt('bf')), 
+    false
+)
+ON CONFLICT (company_id, username) DO UPDATE
+SET role = EXCLUDED.role, is_platform_admin = EXCLUDED.is_platform_admin;
+
+-- المستودعات الرئيسية لمطحنة الوليد
+INSERT INTO public.warehouses (id, company_id, code, name, location, is_default)
+VALUES 
+('wh-main', '20000000-0000-0000-0000-000000000001'::uuid, 'WH-01', 'مستودع الشويخ الرئيسي', 'الشويخ الصناعية', true),
+('wh-prod', '20000000-0000-0000-0000-000000000001'::uuid, 'WH-02', 'مستودع التعبئة والإنتاج', 'الري الصناعية', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- مندوبو المبيعات
+INSERT INTO public.sales_reps (id, company_id, code, name, phone, commission_rate)
+VALUES
+('rep-01', '20000000-0000-0000-0000-000000000001'::uuid, 'REP-01', 'مندوب توزيع الجمعيات (أحمد العلي)', '+965 9988 7711', 1.5),
+('rep-02', '20000000-0000-0000-0000-000000000001'::uuid, 'REP-02', 'مندوب الجملة والأسواق (سالم المطيري)', '+965 9988 7722', 2.0)
+ON CONFLICT (id) DO NOTHING;
+
+-- تصفير رصيد كافة أصناف المخزون لضمان مطابقة الجرد الفعلي والدخول والخروج الجديد
+UPDATE public.items 
+SET current_balance = 0, 
+    qty_on_hand = 0, 
+    raw_data = jsonb_set(raw_data, '{quantityOnHand}', '0'::jsonb)
+WHERE company_id = '20000000-0000-0000-0000-000000000001'::uuid;
 
 -- 10. تأكيد ومراجعة اكتمال البيانات المستوردة
 -- ==============================================================================
