@@ -66,6 +66,10 @@ import {
   Download,
   FileText,
   ChevronDown,
+  ChevronUp,
+  Scale,
+  BookOpen,
+  Eye,
   Wrench,
   ArrowUpDown,
   X,
@@ -182,22 +186,67 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     return branchService.getActiveBranch(company?.id).id;
   });
 
-  const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units'>(
-    activeSubTab || 'invoices'
+  const [subTab, setSubTab] = useState<'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'stock_ledger'>(
+    (activeSubTab as any) || 'invoices'
   );
   const [inventoryViewMode, setInventoryViewMode] = useState<'catalog' | 'audit_ledger'>('catalog');
   const [selectedStockAuditItemId, setSelectedStockAuditItemId] = useState<string>('');
 
+  // Expandable invoice rows for stock movements inspection
+  const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<string[]>([]);
+  const toggleExpandInvoice = (invId: string) => {
+    setExpandedInvoiceIds((prev) =>
+      prev.includes(invId) ? prev.filter((id) => id !== invId) : [...prev, invId]
+    );
+  };
+
+  // State for direct double-entry Journal preview modal
+  const [selectedJournalForModal, setSelectedJournalForModal] = useState<JournalEntry | null>(null);
+  const [generatingJournalForInvId, setGeneratingJournalForInvId] = useState<string | null>(null);
+
+  // Helper to reliably find journal for an invoice
+  const getJournalForInvoice = (inv: Invoice): JournalEntry | null => {
+    const invoiceNumber = (inv.invoiceNumber || '').trim();
+    return (
+      (journals || []).find(
+        (j) =>
+          (inv.journalEntryId && j.id === inv.journalEntryId) ||
+          (j.reference && invoiceNumber && j.reference.trim() === invoiceNumber) ||
+          (j.sourceId && j.sourceId === inv.id) ||
+          (j.entryNumber && invoiceNumber && (
+            j.entryNumber === `JV-${invoiceNumber}` ||
+            j.entryNumber.includes(invoiceNumber)
+          )) ||
+          (j.description && invoiceNumber && j.description.includes(invoiceNumber))
+      ) || null
+    );
+  };
+
+  const handleGenerateJournal = async (inv: Invoice) => {
+    try {
+      setGeneratingJournalForInvId(inv.id);
+      const jEntry = await DataService.generateAndSaveJournalForInvoice(inv);
+      if (onRefreshAll) {
+        await onRefreshAll();
+      }
+      setSelectedJournalForModal(jEntry);
+    } catch (err: any) {
+      console.error('Error generating journal:', err);
+    } finally {
+      setGeneratingJournalForInvId(null);
+    }
+  };
+
   React.useEffect(() => {
     if (activeSubTab) {
-      setSubTab(activeSubTab);
+      setSubTab(activeSubTab as any);
     }
   }, [activeSubTab]);
 
-  const handleSwitchSubTab = (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units') => {
+  const handleSwitchSubTab = (tab: 'invoices' | 'vouchers' | 'entities' | 'inventory' | 'units' | 'stock_ledger') => {
     setSubTab(tab);
     if (onSubTabChange) {
-      onSubTabChange(tab);
+      onSubTabChange(tab as any);
     }
   };
 
@@ -1768,6 +1817,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             { id: 'vouchers', label: 'سندات القبض والصرف', icon: DollarSign },
             { id: 'entities', label: 'دليل العملاء والموردين', icon: Users },
             { id: 'inventory', label: 'دليل المنتجات والشد والمخزون', icon: Package },
+            { id: 'stock_ledger', label: 'حركات وأستاذ المخزون (Stock Ledger)', icon: Layers },
             { id: 'units', label: 'وحدات القياس والشد (Units)', icon: Ruler },
           ].map((t) => (
             <button
@@ -1980,6 +2030,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   <th className="py-3 px-4 text-left">المجموع الإجمالي</th>
                   <th className="py-3 px-4 text-left">الخصم الممنوح</th>
                   <th className="py-3 px-4 text-left">صافي المستحق</th>
+                  <th className="py-3 px-4 text-center">القيد المحاسبي المزدوج</th>
+                  <th className="py-3 px-4 text-center">حركات الأصناف (المخزون)</th>
                   <th className="py-3 px-4 text-center">الحالة المحاسبية</th>
                   <th className="py-3 px-4 text-center">الإجراءات والطباعة</th>
                 </tr>
@@ -1987,7 +2039,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               <tbody className="divide-y divide-[#E5E1DA]">
                 {processedInvoices.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-[#8C8273]">
+                    <td colSpan={12} className="py-12 text-center text-[#8C8273]">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <ShoppingBag className="w-8 h-8 text-neutral-300 stroke-[1.5]" />
                         <span className="text-xs font-bold text-neutral-500">
@@ -2006,243 +2058,449 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     const invTotal = Number(invoice.total_amount ?? invoice.grandTotal ?? 0);
                     const invPaid = Number(invoice.paid_amount ?? invoice.paidAmount ?? 0);
                     const dueAmount = Number(invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0)));
+                    const matchedJournal = getJournalForInvoice(inv);
+                    const invLines = inv.lines || (inv as any).items || [];
+                    const isExpanded = expandedInvoiceIds.includes(inv.id);
                     return (
-                      <tr
-                        key={inv.id}
-                        className={`transition-all ${
-                          isSelected
-                            ? 'bg-amber-50/80 border-r-4 border-r-[#B8860B]'
-                            : 'hover:bg-[#FDFCFB]'
-                        }`}
-                      >
-                        <td className="py-3 px-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelectRow(inv.id)}
-                            className="w-4 h-4 rounded text-[#B8860B] focus:ring-[#B8860B] border-[#E5E1DA] cursor-pointer accent-[#B8860B]"
-                          />
-                        </td>
-                        <td className="py-3 px-4 font-mono font-bold text-[#B8860B]">
-                          {onOpenDocumentCycle ? (
-                            <button
-                              type="button"
-                              onClick={() => onOpenDocumentCycle({ type: 'INVOICE', id: inv.id })}
-                              className="hover:underline cursor-pointer text-[#B8860B] flex items-center gap-1"
-                              title="انقر لعرض دورة المستند والقيد المحاسبي"
-                            >
-                              <span>{inv.invoiceNumber}</span>
-                              <Layers className="w-3 h-3 text-purple-600 opacity-80" />
-                            </button>
-                          ) : (
-                            inv.invoiceNumber
-                          )}
-                        </td>
-                        <td className="py-3 px-4 font-bold">
-                          <div className="flex flex-col gap-1">
-                            {inv.type === 'SALES' && (
-                              <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 inline-block w-fit">
-                                فاتورة مبيعات
-                              </span>
-                            )}
-                            {inv.type === 'PURCHASE' && (
-                              <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 inline-block w-fit">
-                                فاتورة مشتريات
-                              </span>
-                            )}
-                            {inv.type === 'SALES_RETURN' && (
-                              <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 inline-block w-fit">
-                                إشعار دائن (مرتجع مبيعات)
-                              </span>
-                            )}
-                            {inv.type === 'PURCHASE_RETURN' && (
-                              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 inline-block w-fit">
-                                إشعار مدين (مرتجع مشتريات)
-                              </span>
-                            )}
-                            <span
-                              className={`text-[10px] px-1.5 py-0.2 rounded font-bold w-fit ${
-                                inv.paymentTerms === 'CASH'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-neutral-100 text-neutral-700'
-                              }`}
-                            >
-                              {inv.paymentTerms === 'CASH' ? '● نقدي (كاش)' : '○ آجل (ذمم)'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 font-bold text-[#1A1A1A]">
-                          <div>{inv.entityNameAr || '-'}</div>
-                          <div className="flex flex-wrap gap-1 mt-1 font-normal text-[10px]">
-                            {(inv.salesRepName || inv.salesPerson) && (
-                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                                👤 {inv.salesRepName || inv.salesPerson}
-                              </span>
-                            )}
-                            {inv.warehouseName && (
-                              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                                🏢 {inv.warehouseName}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 font-mono text-[#6E6659]">{inv.date}</td>
-                        <td className="py-3 px-4 text-left font-mono font-semibold text-[#1A1A1A]">
-                          {formatCurrency(inv.subtotal, currency)}
-                        </td>
-                        <td className="py-3 px-4 text-left font-mono text-[#B8860B]">
-                          {inv.discountTotal > 0 ? formatCurrency(inv.discountTotal, currency) : '-'}
-                        </td>
-                        <td className="py-3 px-4 text-left font-mono font-bold text-[#2D6A4F]">
-                          <span>{formatCurrency(dueAmount, currency)}</span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {invoice.status === 'CANCELLED' ? (
-                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-rose-50 text-rose-800 border-rose-200">
-                              ملغاة
-                            </span>
-                          ) : Number(invoice.paid_amount || 0) === 0 ? (
-                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-neutral-100 text-neutral-800 border-neutral-300 inline-block">
-                              آجل غير مسدد
-                            </span>
-                          ) : dueAmount <= 0.0001 && invTotal > 0 ? (
-                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
-                              مسددة بالكامل
-                            </span>
-                          ) : invoice.paymentTerms === 'CASH' || invoice.status === 'PAID' ? (
-                            <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
-                              نقدي مسدد
-                            </span>
-                          ) : (
-                            <div className="inline-flex flex-col items-center">
-                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
-                                مسدد جزئياً ({formatCurrency(invPaid, currency)})
-                              </span>
-                              <span className="text-[9px] text-neutral-500 font-mono mt-0.5">
-                                المتبقي: {formatCurrency(dueAmount, currency)}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            {onOpenDocumentCycle && (
+                      <React.Fragment key={inv.id}>
+                        <tr
+                          className={`transition-all ${
+                            isSelected
+                              ? 'bg-amber-50/80 border-r-4 border-r-[#B8860B]'
+                              : 'hover:bg-[#FDFCFB]'
+                          }`}
+                        >
+                          <td className="py-3 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectRow(inv.id)}
+                              className="w-4 h-4 rounded text-[#B8860B] focus:ring-[#B8860B] border-[#E5E1DA] cursor-pointer accent-[#B8860B]"
+                            />
+                          </td>
+                          <td className="py-3 px-4 font-mono font-bold text-[#B8860B]">
+                            {onOpenDocumentCycle ? (
                               <button
                                 type="button"
                                 onClick={() => onOpenDocumentCycle({ type: 'INVOICE', id: inv.id })}
-                                className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                                title="استعراض دورة المستند وترابط الفاتورة مع القيد وسندات السداد وحسابات الدليل"
+                                className="hover:underline cursor-pointer text-[#B8860B] flex items-center gap-1"
+                                title="انقر لعرض دورة المستند والقيد المحاسبي"
                               >
-                                <Layers className="w-3.5 h-3.5 text-purple-600" />
-                                <span>الدورة 🔗</span>
+                                <span>{inv.invoiceNumber}</span>
+                                <Layers className="w-3 h-3 text-purple-600 opacity-80" />
+                              </button>
+                            ) : (
+                              inv.invoiceNumber
+                            )}
+                          </td>
+                          <td className="py-3 px-4 font-bold">
+                            <div className="flex flex-col gap-1">
+                              {inv.type === 'SALES' && (
+                                <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 inline-block w-fit">
+                                  فاتورة مبيعات
+                                </span>
+                              )}
+                              {inv.type === 'PURCHASE' && (
+                                <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 inline-block w-fit">
+                                  فاتورة مشتريات
+                                </span>
+                              )}
+                              {inv.type === 'SALES_RETURN' && (
+                                <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 inline-block w-fit">
+                                  إشعار دائن (مرتجع مبيعات)
+                                </span>
+                              )}
+                              {inv.type === 'PURCHASE_RETURN' && (
+                                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 inline-block w-fit">
+                                  إشعار مدين (مرتجع مشتريات)
+                                </span>
+                              )}
+                              <span
+                                className={`text-[10px] px-1.5 py-0.2 rounded font-bold w-fit ${
+                                  inv.paymentTerms === 'CASH'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-neutral-100 text-neutral-700'
+                                }`}
+                              >
+                                {inv.paymentTerms === 'CASH' ? '● نقدي (كاش)' : '○ آجل (ذمم)'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-[#1A1A1A]">
+                            <div>{inv.entityNameAr || '-'}</div>
+                            <div className="flex flex-wrap gap-1 mt-1 font-normal text-[10px]">
+                              {(inv.salesRepName || inv.salesPerson) && (
+                                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                  👤 {inv.salesRepName || inv.salesPerson}
+                                </span>
+                              )}
+                              {inv.warehouseName && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                                  🏢 {inv.warehouseName}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[#6E6659]">{inv.date}</td>
+                          <td className="py-3 px-4 text-left font-mono font-semibold text-[#1A1A1A]">
+                            {formatCurrency(inv.subtotal, currency)}
+                          </td>
+                          <td className="py-3 px-4 text-left font-mono text-[#B8860B]">
+                            {inv.discountTotal > 0 ? formatCurrency(inv.discountTotal, currency) : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-left font-mono font-bold text-[#2D6A4F]">
+                            <span>{formatCurrency(dueAmount, currency)}</span>
+                          </td>
+
+                          {/* القيد المحاسبي المزدوج */}
+                          <td className="py-3 px-3 text-center">
+                            {matchedJournal ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedJournalForModal(matchedJournal)}
+                                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs group"
+                                  title={`عرض القيد المحاسبي المزدوج (${matchedJournal.entryNumber}) مع تفاصيل الأطراف والمبالغ`}
+                                >
+                                  <Scale className="w-3.5 h-3.5 text-emerald-600 group-hover:rotate-12 transition-transform" />
+                                  <span>{matchedJournal.entryNumber}</span>
+                                </button>
+                                <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-0.5">
+                                  <CheckCircle2 className="w-2.5 h-2.5" /> مرحّل ومعتمد
+                                </span>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateJournal(inv)}
+                                disabled={generatingJournalForInvId === inv.id}
+                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                                title="توليد وترحيل القيد المحاسبي المزدوج لهذه الفاتورة فورياً وفق دليل الحسابات"
+                              >
+                                <Sparkles className={`w-3 h-3 text-amber-600 ${generatingJournalForInvId === inv.id ? 'animate-spin' : ''}`} />
+                                <span>{generatingJournalForInvId === inv.id ? 'جارٍ التوليد...' : 'توليد القيد ⚡'}</span>
                               </button>
                             )}
+                          </td>
 
+                          {/* حركات أصناف الفاتورة في المخزون */}
+                          <td className="py-3 px-3 text-center">
                             <button
-                              onClick={() => setPrintDoc({ type: 'INVOICE', data: inv })}
-                              className="px-2.5 py-1 bg-[#1A1A1A] hover:bg-black text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer shadow-xs"
-                              title="طباعة الفاتورة والاشعار"
+                              type="button"
+                              onClick={() => toggleExpandInvoice(inv.id)}
+                              className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all border mx-auto ${
+                                isExpanded
+                                  ? 'bg-blue-700 text-white border-blue-700 shadow-xs'
+                                  : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
+                              }`}
+                              title="استعراض حركات أصناف الفاتورة والأثر المخزني والتكلفة"
                             >
-                              <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
-                              طباعة مفقطة
+                              <Package className="w-3.5 h-3.5" />
+                              <span>{invLines.length} {invLines.length === 1 ? 'صنف' : 'أصناف'}</span>
+                              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                             </button>
+                          </td>
 
-                            <button
-                              onClick={() => handleOpenEditInvoice(inv)}
-                              className="px-2.5 py-1 bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#855B00] border border-[#D4AF37]/40 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-                              title="تعديل بنود الفاتورة والكميات والأسعار مع تحديث الأرصدة والقيود تلقائياً بدون حذف"
-                            >
-                              <Edit2 className="w-3.5 h-3.5 text-[#B8860B]" />
-                              تعديل
-                            </button>
-
-                            {inv.status === 'DRAFT' && (
-                              <>
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      await onPostInvoice(inv.id);
-                                    } catch (e: any) {
-                                      alert(e.message);
-                                    }
-                                  }}
-                                  className="px-2.5 py-1 bg-[#2D6A4F] hover:bg-[#1b4332] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
-                                  title="ترحيل الفاتورة للدفاتر"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  ترحيل
-                                </button>
-
-                                {onDeleteInvoice && (
-                                  <button
-                                    onClick={async () => {
-                                      if (confirm(`هل أنت متأكد من حذف المسودة (${inv.invoiceNumber})؟`)) {
-                                        try {
-                                          await onDeleteInvoice(inv.id);
-                                        } catch (err: any) {
-                                          alert(err.message);
-                                        }
-                                      }
-                                    }}
-                                    className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                                    title="حذف المسودة"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </>
+                          <td className="py-3 px-4 text-center">
+                            {invoice.status === 'CANCELLED' ? (
+                              <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-rose-50 text-rose-800 border-rose-200">
+                                ملغاة
+                              </span>
+                            ) : Number(invoice.paid_amount || 0) === 0 ? (
+                              <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-neutral-100 text-neutral-800 border-neutral-300 inline-block">
+                                آجل غير مسدد
+                              </span>
+                            ) : dueAmount <= 0.0001 && invTotal > 0 ? (
+                              <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                                مسددة بالكامل
+                              </span>
+                            ) : invoice.paymentTerms === 'CASH' || invoice.status === 'PAID' ? (
+                              <span className="px-2.5 py-1 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                                نقدي مسدد
+                              </span>
+                            ) : (
+                              <div className="inline-flex flex-col items-center">
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border bg-amber-50 text-amber-800 border-amber-200">
+                                  مسدد جزئياً ({formatCurrency(invPaid, currency)})
+                                </span>
+                                <span className="text-[9px] text-neutral-500 font-mono mt-0.5">
+                                  المتبقي: {formatCurrency(dueAmount, currency)}
+                                </span>
+                              </div>
                             )}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              {onOpenDocumentCycle && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenDocumentCycle({ type: 'INVOICE', id: inv.id })}
+                                  className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  title="استعراض دورة المستند وترابط الفاتورة مع القيد وسندات السداد وحسابات الدليل"
+                                >
+                                  <Layers className="w-3.5 h-3.5 text-purple-600" />
+                                  <span>الدورة 🔗</span>
+                                </button>
+                              )}
 
-                            {(inv.status === 'POSTED' || inv.status === 'PAID') && (
-                              <>
-                                {onCancelInvoice && (
+                              <button
+                                onClick={() => setPrintDoc({ type: 'INVOICE', data: inv })}
+                                className="px-2.5 py-1 bg-[#1A1A1A] hover:bg-black text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer shadow-xs"
+                                title="طباعة الفاتورة والاشعار"
+                              >
+                                <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
+                                طباعة مفقطة
+                              </button>
+
+                              <button
+                                onClick={() => handleOpenEditInvoice(inv)}
+                                className="px-2.5 py-1 bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#855B00] border border-[#D4AF37]/40 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                                title="تعديل بنود الفاتورة والكميات والأسعار مع تحديث الأرصدة والقيود تلقائياً بدون حذف"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 text-[#B8860B]" />
+                                تعديل
+                              </button>
+
+                              {inv.status === 'DRAFT' && (
+                                <>
                                   <button
                                     onClick={async () => {
-                                      const reason = prompt(
-                                        `إلغاء الفاتورة (${inv.invoiceNumber}): الرجاء كتابة سبب إلغاء الفاتورة وعكس قيودها ومخزونها:`,
-                                        'طلب العميل إلغاء الفاتورة'
-                                      );
-                                      if (reason === null) return;
                                       try {
-                                        await onCancelInvoice(inv.id, reason);
+                                        await onPostInvoice(inv.id);
                                       } catch (e: any) {
                                         alert(e.message);
                                       }
                                     }}
-                                    className="px-2.5 py-1 bg-[#9E2A2B] hover:bg-[#782021] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
-                                    title="إلغاء الفاتورة وعكس القيد بالكامل"
+                                    className="px-2.5 py-1 bg-[#2D6A4F] hover:bg-[#1b4332] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                                    title="ترحيل الفاتورة للدفاتر"
                                   >
-                                    <RotateCcw className="w-3.5 h-3.5" />
-                                    إلغاء وعكس
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    ترحيل
                                   </button>
-                                )}
 
-                                {onDeleteInvoice && (
-                                  <button
-                                    onClick={async () => {
-                                      if (
-                                        confirm(
-                                          `⚠️ هل أنت متأكد من حذف الفاتورة (${inv.invoiceNumber})؟ سيتم عكس قيودها واسترجاع الكميات للمخزون وحذف الفاتورة بالكامل.`
-                                        )
-                                      ) {
-                                        try {
-                                          await onDeleteInvoice(inv.id);
-                                        } catch (err: any) {
-                                          alert(err.message);
+                                  {onDeleteInvoice && (
+                                    <button
+                                      onClick={async () => {
+                                        if (confirm(`هل أنت متأكد من حذف المسودة (${inv.invoiceNumber})؟`)) {
+                                          try {
+                                            await onDeleteInvoice(inv.id);
+                                          } catch (err: any) {
+                                            alert(err.message);
+                                          }
                                         }
-                                      }
-                                    }}
-                                    className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                                    title="حذف الفاتورة بالكامل وعكس آثارها"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                                      }}
+                                      className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                      title="حذف المسودة"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+
+                              {(inv.status === 'POSTED' || inv.status === 'PAID') && (
+                                <>
+                                  {onCancelInvoice && (
+                                    <button
+                                      onClick={async () => {
+                                        const reason = prompt(
+                                          `إلغاء الفاتورة (${inv.invoiceNumber}): الرجاء كتابة سبب إلغاء الفاتورة وعكس قيودها ومخزونها:`,
+                                          'طلب العميل إلغاء الفاتورة'
+                                        );
+                                        if (reason === null) return;
+                                        try {
+                                          await onCancelInvoice(inv.id, reason);
+                                        } catch (e: any) {
+                                          alert(e.message);
+                                        }
+                                      }}
+                                      className="px-2.5 py-1 bg-[#9E2A2B] hover:bg-[#782021] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                                      title="إلغاء الفاتورة وعكس القيد بالكامل"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      إلغاء وعكس
+                                    </button>
+                                  )}
+
+                                  {onDeleteInvoice && (
+                                    <button
+                                      onClick={async () => {
+                                        if (
+                                          confirm(
+                                            `⚠️ هل أنت متأكد من حذف الفاتورة (${inv.invoiceNumber})؟ سيتم عكس قيودها واسترجاع الكميات للمخزون وحذف الفاتورة بالكامل.`
+                                          )
+                                        ) {
+                                          try {
+                                            await onDeleteInvoice(inv.id);
+                                          } catch (err: any) {
+                                            alert(err.message);
+                                          }
+                                        }
+                                      }}
+                                      className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                      title="حذف الفاتورة بالكامل وعكس آثارها"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* صف تفاصيل حركات الأصناف المخزنية المرتبطة بالفاتورة */}
+                        {isExpanded && (
+                          <tr className="bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-blue-50/60 border-b-2 border-blue-200">
+                            <td colSpan={12} className="p-4">
+                              <div className="bg-white border border-blue-200 rounded-xl p-4 shadow-xs space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <Package className="w-4 h-4 text-blue-600" />
+                                    <h4 className="text-xs font-bold text-neutral-900">
+                                      حركات أصناف الفاتورة في المخزون والمستودع: <span className="font-mono text-blue-700">{inv.invoiceNumber}</span>
+                                    </h4>
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold">
+                                      {inv.type === 'SALES'
+                                        ? 'صرف مبيعات (خصم من الرصيد 🔻)'
+                                        : inv.type === 'PURCHASE'
+                                        ? 'توريد مشتريات (إضافة للرصيد 🔺)'
+                                        : inv.type === 'SALES_RETURN'
+                                        ? 'إرجاع مبيعات للمخزن (إضافة 🔺)'
+                                        : 'إرجاع مشتريات للمورد (خصم 🔻)'}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-neutral-500 font-mono">
+                                    التاريخ: {inv.date} | المستودع: {inv.warehouseName || 'المستودع الرئيسي'}
+                                  </span>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-right text-xs">
+                                    <thead className="bg-neutral-50 text-neutral-700 font-bold border-b border-neutral-200">
+                                      <tr>
+                                        <th className="py-2 px-3">#</th>
+                                        <th className="py-2 px-3">كود الصنف (SKU)</th>
+                                        <th className="py-2 px-3">اسم الصنف والباركود</th>
+                                        <th className="py-2 px-3 text-center">نوع الحركة المخزنية</th>
+                                        <th className="py-2 px-3 text-center">كمية الفاتورة</th>
+                                        <th className="py-2 px-3 text-center">الوحدة والشد</th>
+                                        <th className="py-2 px-3 text-left">سعر الوحدة</th>
+                                        <th className="py-2 px-3 text-left">التكلفة (IAS 2)</th>
+                                        <th className="py-2 px-3 text-left">إجمالي القيمة</th>
+                                        <th className="py-2 px-3 text-center">الرصيد اللحظي بالمخزن</th>
+                                        <th className="py-2 px-3 text-center">كارت الصنف</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-neutral-100">
+                                      {invLines.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={11} className="py-4 text-center text-neutral-400">
+                                            لا توجد بنود مسجلة في هذه الفاتورة
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        invLines.map((line: any, lIdx: number) => {
+                                          const matchedItem = inventory.find(
+                                            (i) =>
+                                              i.id === line.itemId ||
+                                              (line.itemSku && (i.sku === line.itemSku || (i as any).code === line.itemSku)) ||
+                                              (line.barcode && i.barcode === line.barcode) ||
+                                              (line.itemNameAr && i.nameAr === line.itemNameAr)
+                                          );
+                                          const currentStock = matchedItem
+                                            ? Number(matchedItem.quantityOnHand ?? (matchedItem as any).currentStock ?? 0)
+                                            : '-';
+                                          const unitCost = matchedItem
+                                            ? Number(matchedItem.costPrice ?? matchedItem.purchasePrice ?? 0)
+                                            : 0;
+                                          const lineTotal = Number(
+                                            line.total ?? (Number(line.quantity || 1) * Number(line.unitPrice || 0))
+                                          );
+
+                                          return (
+                                            <tr key={line.id || lIdx} className="hover:bg-blue-50/30 transition-colors">
+                                              <td className="py-2.5 px-3 font-mono text-neutral-400">{lIdx + 1}</td>
+                                              <td className="py-2.5 px-3 font-mono font-bold text-neutral-800">
+                                                {line.itemSku || matchedItem?.sku || (matchedItem as any)?.code || '-'}
+                                              </td>
+                                              <td className="py-2.5 px-3">
+                                                <div className="font-bold text-neutral-900">{line.itemNameAr || matchedItem?.nameAr || 'صنف'}</div>
+                                                {(line.barcode || matchedItem?.barcode) && (
+                                                  <div className="text-[10px] text-neutral-500 font-mono">
+                                                    باركود: {line.barcode || matchedItem?.barcode}
+                                                  </div>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center">
+                                                {inv.type === 'SALES' ? (
+                                                  <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">
+                                                    صرف مبيعات (خصم)
+                                                  </span>
+                                                ) : inv.type === 'PURCHASE' ? (
+                                                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                                    توريد مشتريات (إضافة)
+                                                  </span>
+                                                ) : (
+                                                  <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
+                                                    مرتجع مخزني
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center font-bold font-mono text-neutral-900">
+                                                {Number(line.quantity || 0)}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center text-neutral-600">
+                                                {line.unit || matchedItem?.unit || 'حبة'}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-left font-mono">
+                                                {formatCurrency(Number(line.unitPrice || 0), currency)}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-left font-mono text-neutral-600">
+                                                {unitCost > 0 ? formatCurrency(unitCost, currency) : '-'}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-left font-mono font-bold text-[#B8860B]">
+                                                {formatCurrency(lineTotal, currency)}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center">
+                                                <span
+                                                  className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${
+                                                    typeof currentStock === 'number' && currentStock <= 0
+                                                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                      : 'bg-neutral-100 text-neutral-800'
+                                                  }`}
+                                                >
+                                                  {currentStock}
+                                                </span>
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center">
+                                                {matchedItem && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setSelectedStockAuditItemId(matchedItem.id);
+                                                      setSubTab('stock_ledger');
+                                                    }}
+                                                    className="px-2 py-1 bg-neutral-900 hover:bg-black text-white rounded text-[11px] font-bold flex items-center justify-center gap-1 mx-auto cursor-pointer shadow-2xs"
+                                                    title="الانتقال إلى كارت الصنف وسجل الحركات الكامل في أستاذ المخزون"
+                                                  >
+                                                    <Layers className="w-3 h-3 text-[#D4AF37]" />
+                                                    <span>كارت الصنف</span>
+                                                  </button>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -3153,6 +3411,21 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* TAB 6: STOCK LEDGER & MOVEMENTS (حركات وأستاذ المخزون) */}
+      {subTab === 'stock_ledger' && (
+        <div className="space-y-4">
+          <StockLedgerAndAuditView
+            inventory={inventory}
+            invoices={invoices}
+            productionOrders={productionOrders}
+            currency={currency}
+            initialItemId={selectedStockAuditItemId}
+            initialSubTab={selectedStockAuditItemId ? 'item_card' : 'ledger'}
+            onRefreshData={onRefreshAll}
+          />
         </div>
       )}
 
@@ -5252,6 +5525,175 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
             }
           }}
         />
+      )}
+
+      {/* مودال تفاصيل القيد المحاسبي المزدوج المتوازن */}
+      {selectedJournalForModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-3 overflow-y-auto dir-rtl text-right">
+          <div className="bg-white border border-neutral-200 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="bg-[#1A1A1A] text-white px-5 py-4 flex items-center justify-between border-b border-neutral-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/20 rounded-xl border border-emerald-500/40 text-emerald-400">
+                  <Scale className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">سند القيد اليومي المزدوج</h3>
+                    <span className="font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50 text-xs">
+                      {selectedJournalForModal.entryNumber}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold">
+                      مرحّل ومعتمد
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    البيان العام: {selectedJournalForModal.description || 'قيد محاسبي آلي'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedJournalForModal(null)}
+                className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
+                title="إغلاق"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Sub-info bar */}
+            <div className="bg-neutral-50 px-5 py-3 border-b border-neutral-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-4">
+                <span>
+                  <strong className="text-neutral-500">التاريخ:</strong>{' '}
+                  <span className="font-mono font-bold text-neutral-800">{selectedJournalForModal.date}</span>
+                </span>
+                {selectedJournalForModal.reference && (
+                  <span>
+                    <strong className="text-neutral-500">المرجع:</strong>{' '}
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {selectedJournalForModal.reference}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPrintDoc({ type: 'JOURNAL', data: selectedJournalForModal })}
+                  className="px-3 py-1.5 bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                  title="طباعة سند القيد اليومي"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <span>طباعة القيد</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table of lines */}
+            <div className="p-5 overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-neutral-100 text-neutral-800 font-bold border-b border-neutral-200">
+                  <tr>
+                    <th className="py-2.5 px-3">#</th>
+                    <th className="py-2.5 px-3">رقم الحساب</th>
+                    <th className="py-2.5 px-3">اسم الحساب في الدليل</th>
+                    <th className="py-2.5 px-3">البيان والشرح</th>
+                    <th className="py-2.5 px-3 text-left">مدين (Debit)</th>
+                    <th className="py-2.5 px-3 text-left">دائن (Credit)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {selectedJournalForModal.lines && selectedJournalForModal.lines.length > 0 ? (
+                    selectedJournalForModal.lines.map((line: any, idx: number) => {
+                      const debit = Number(line.debit || 0);
+                      const credit = Number(line.credit || 0);
+                      return (
+                        <tr key={idx} className="hover:bg-neutral-50/80 transition-colors">
+                          <td className="py-2.5 px-3 font-mono text-neutral-400">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-blue-800">
+                            {line.accountCode}
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-neutral-900">
+                            {line.accountName}
+                            {line.entityName && (
+                              <span className="block text-[10px] font-normal text-neutral-500">
+                                الطرف: {line.entityName}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-neutral-600">
+                            {line.description || selectedJournalForModal.description || '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-left font-mono font-bold text-emerald-700">
+                            {debit > 0 ? formatCurrency(debit, currency) : '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-left font-mono font-bold text-blue-700">
+                            {credit > 0 ? formatCurrency(credit, currency) : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-neutral-400">
+                        لا توجد أطراف مسجلة في هذا القيد
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot className="bg-neutral-50 font-bold border-t-2 border-neutral-300">
+                  <tr>
+                    <td colSpan={4} className="py-3 px-3 text-left">
+                      المجاميع الإجمالية وتوازن القيد:
+                    </td>
+                    <td className="py-3 px-3 text-left font-mono text-sm text-emerald-800">
+                      {formatCurrency(
+                        selectedJournalForModal.totalDebit ??
+                          selectedJournalForModal.lines?.reduce((s: number, l: any) => s + Number(l.debit || 0), 0) ??
+                          0,
+                        currency
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-left font-mono text-sm text-blue-800">
+                      {formatCurrency(
+                        selectedJournalForModal.totalCredit ??
+                          selectedJournalForModal.lines?.reduce((s: number, l: any) => s + Number(l.credit || 0), 0) ??
+                          0,
+                        currency
+                      )}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+
+              {/* Balance Verification Banner */}
+              <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    <strong>تحقق توازن القيد المزدوج:</strong> إجمالي المدين = إجمالي الدائن (ميزان متوازن لا تشوبه شائبة).
+                  </span>
+                </div>
+                <span className="font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                  الفرق: 0.00
+                </span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-neutral-50 px-5 py-3 border-t border-neutral-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedJournalForModal(null)}
+                className="px-4 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

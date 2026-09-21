@@ -2193,7 +2193,7 @@ export class SupabaseDataService {
           .from('journal_entries')
           .select('*')
           .eq('company_id', companyId)
-          .or(`source_id.eq.${actualInvId},reference.eq.${invoiceNumber}`);
+          .eq('reference', invoiceNumber);
 
         if (jRows && jRows.length > 0) {
           origJournal = jRows[0];
@@ -2248,8 +2248,6 @@ export class SupabaseDataService {
             status: 'POSTED',
             total_debit: reversalJournalEntry.totalDebit,
             total_credit: reversalJournalEntry.totalCredit,
-            source_module: 'INVOICE_REVERSAL',
-            source_id: actualInvId,
             lines: reversedLines,
             raw_data: reversalJournalEntry,
             created_at: new Date().toISOString(),
@@ -2335,8 +2333,6 @@ export class SupabaseDataService {
               status: 'POSTED',
               total_debit: totalAmount,
               total_credit: totalAmount,
-              source_module: 'INVOICE_REVERSAL',
-              source_id: actualInvId,
               lines,
               raw_data: reversalJournalEntry,
               created_at: new Date().toISOString(),
@@ -2751,7 +2747,7 @@ export class SupabaseDataService {
       try {
         let { data, error } = await supabase
           .from('journal_entries')
-          .select('id, company_id, entry_number, date, reference, reference_id, description, status, total_debit, total_credit, source_module, source_id, lines, created_at, updated_at')
+          .select('id, company_id, entry_number, date, reference, description, status, total_debit, total_credit, lines, raw_data, created_at, updated_at')
           .eq('company_id', companyId)
           .order('date', { ascending: false })
           .range(offset, offset + limit - 1);
@@ -2996,10 +2992,6 @@ export class SupabaseDataService {
         description: j.description,
         status: j.status,
         reference: j.reference || null,
-        reference_type: j.sourceModule || null,
-        reference_id: j.reference || j.sourceId || null,
-        source_module: j.sourceModule || null,
-        source_id: j.sourceId || null,
         total_debit: j.totalDebit,
         total_credit: j.totalCredit,
         lines: j.lines,
@@ -3008,6 +3000,8 @@ export class SupabaseDataService {
           id: j.id,
           entryNumber: activeEntryNumber,
           companyId,
+          sourceModule: j.sourceModule,
+          sourceId: j.sourceId,
         },
         created_at: j.createdAt || new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -3110,10 +3104,6 @@ export class SupabaseDataService {
         description: j.description,
         status: j.status,
         reference: j.reference || null,
-        reference_type: j.sourceModule || null,
-        reference_id: j.reference || j.sourceId || null,
-        source_module: j.sourceModule || null,
-        source_id: j.sourceId || null,
         total_debit: j.totalDebit,
         total_credit: j.totalCredit,
         lines: j.lines,
@@ -3121,6 +3111,8 @@ export class SupabaseDataService {
           ...j,
           id: j.id,
           companyId,
+          sourceModule: j.sourceModule,
+          sourceId: j.sourceId,
         },
         created_at: j.createdAt || new Date().toISOString(),
         updated_at: new Date().toISOString(),

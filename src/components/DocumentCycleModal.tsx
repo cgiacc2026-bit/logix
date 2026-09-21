@@ -96,12 +96,17 @@ export const DocumentCycleModal: React.FC<DocumentCycleModalProps> = ({
     if (targetDoc.type === 'INVOICE') {
       matchedInvoice = invoices.find((i) => i.id === targetDoc.id || i.invoiceNumber === targetDoc.id) || null;
       if (matchedInvoice) {
-        // Find journal by journalEntryId or reference
+        // Find journal by journalEntryId, reference, or entryNumber
         matchedJournal = journals.find(
           (j) => j.id === matchedInvoice!.journalEntryId ||
                  j.sourceId === matchedInvoice!.id ||
-                 j.reference === matchedInvoice!.invoiceNumber ||
-                 j.entryNumber === `JV-${matchedInvoice!.invoiceNumber}`
+                 (j.reference && matchedInvoice!.invoiceNumber && j.reference.trim() === matchedInvoice!.invoiceNumber.trim()) ||
+                 (j.reference && matchedInvoice!.id && j.reference.trim() === matchedInvoice!.id.trim()) ||
+                 (j.entryNumber && (
+                   j.entryNumber === `JV-${matchedInvoice!.invoiceNumber}` ||
+                   j.entryNumber.includes(matchedInvoice!.invoiceNumber)
+                 )) ||
+                 (j.description && matchedInvoice!.invoiceNumber && j.description.includes(matchedInvoice!.invoiceNumber))
         ) || null;
         // Find vouchers
         matchedVouchers = vouchers.filter(

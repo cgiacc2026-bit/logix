@@ -3605,6 +3605,238 @@ export class DataService {
   }
 
   /**
+   * Generates, balances, links, and persists a journal entry for a registered invoice
+   */
+  public static async generateAndSaveJournalForInvoice(inv: Invoice): Promise<JournalEntry> {
+    const activeCompanyId = inv.companyId || localDataStore.getEffectiveCompanyId();
+    const resolved = this.getResolvedAccounts();
+    const isSales = inv.type === 'SALES' || !inv.type;
+    const isSalesReturn = inv.type === 'SALES_RETURN';
+    const isPurchase = inv.type === 'PURCHASE';
+    const isPurchaseReturn = inv.type === 'PURCHASE_RETURN';
+    const grandTotal = Number(inv.grandTotal || (inv as any).totalAmount || 0);
+    const vatTotal = Number(inv.vatTotal || (inv as any).vatAmount || 0);
+    const netRevenue = Math.max(0, grandTotal - vatTotal);
+    const paid = Number(inv.paidAmount || 0);
+    const due = Math.max(0, grandTotal - paid);
+    const entityNameAr = inv.entityNameAr || '';
+
+    const lines: JournalLine[] = [];
+    let idx = 1;
+
+    if (isSales) {
+      if (paid > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.cash.id,
+          accountCode: resolved.cash.code,
+          accountNameAr: resolved.cash.nameAr,
+          debit: paid,
+          credit: 0,
+          memo: `تحصيل نقدي - فاتورة مبيعات رقم ${inv.invoiceNumber}`,
+        });
+      }
+      if (due > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.receivable.id,
+          accountCode: resolved.receivable.code,
+          accountNameAr: resolved.receivable.nameAr,
+          debit: due,
+          credit: 0,
+          memo: `مستحق آجل على العميل ${entityNameAr} - فاتورة ${inv.invoiceNumber}`,
+          entityType: 'CUSTOMER',
+          entityId: inv.entityId,
+          entityNameAr,
+        });
+      }
+      lines.push({
+        id: `jl-${idx++}`,
+        accountId: resolved.sales.id,
+        accountCode: resolved.sales.code,
+        accountNameAr: resolved.sales.nameAr,
+        debit: 0,
+        credit: netRevenue,
+        memo: `إيراد مبيعات فاتورة رقم ${inv.invoiceNumber}`,
+      });
+      if (vatTotal > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.vat.id,
+          accountCode: resolved.vat.code,
+          accountNameAr: resolved.vat.nameAr,
+          debit: 0,
+          credit: vatTotal,
+          memo: `ضريبة القيمة المضافة - فاتورة ${inv.invoiceNumber}`,
+        });
+      }
+    } else if (isPurchase) {
+      lines.push({
+        id: `jl-${idx++}`,
+        accountId: resolved.inventory.id,
+        accountCode: resolved.inventory.code,
+        accountNameAr: resolved.inventory.nameAr,
+        debit: netRevenue,
+        credit: 0,
+        memo: `مخزون بضاعة - فاتورة شراء رقم ${inv.invoiceNumber}`,
+      });
+      if (vatTotal > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.vat.id,
+          accountCode: resolved.vat.code,
+          accountNameAr: resolved.vat.nameAr,
+          debit: vatTotal,
+          credit: 0,
+          memo: `ضريبة مشتريات مستردة - فاتورة ${inv.invoiceNumber}`,
+        });
+      }
+      if (paid > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.cash.id,
+          accountCode: resolved.cash.code,
+          accountNameAr: resolved.cash.nameAr,
+          debit: 0,
+          credit: paid,
+          memo: `سداد نقدي - فاتورة مشتريات ${inv.invoiceNumber}`,
+        });
+      }
+      if (due > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.payable.id,
+          accountCode: resolved.payable.code,
+          accountNameAr: resolved.payable.nameAr,
+          debit: 0,
+          credit: due,
+          memo: `مستحق للمورد ${entityNameAr} - فاتورة ${inv.invoiceNumber}`,
+          entityType: 'SUPPLIER',
+          entityId: inv.entityId,
+          entityNameAr,
+        });
+      }
+    } else if (isSalesReturn) {
+      lines.push({
+        id: `jl-${idx++}`,
+        accountId: resolved.sales.id,
+        accountCode: resolved.sales.code,
+        accountNameAr: resolved.sales.nameAr,
+        debit: netRevenue,
+        credit: 0,
+        memo: `مردودات مبيعات - إشعار دائن رقم ${inv.invoiceNumber}`,
+      });
+      if (vatTotal > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.vat.id,
+          accountCode: resolved.vat.code,
+          accountNameAr: resolved.vat.nameAr,
+          debit: vatTotal,
+          credit: 0,
+          memo: `عكس ضريبة مبيعات - إشعار دائن ${inv.invoiceNumber}`,
+        });
+      }
+      lines.push({
+        id: `jl-${idx++}`,
+        accountId: resolved.receivable.id,
+        accountCode: resolved.receivable.code,
+        accountNameAr: resolved.receivable.nameAr,
+        debit: 0,
+        credit: grandTotal,
+        memo: `تخفيض مديونية العميل ${entityNameAr} - إشعار دائن ${inv.invoiceNumber}`,
+        entityType: 'CUSTOMER',
+        entityId: inv.entityId,
+        entityNameAr,
+      });
+    } else if (isPurchaseReturn) {
+      lines.push({
+        id: `jl-${idx++}`,
+        accountId: resolved.payable.id,
+        accountCode: resolved.payable.code,
+        accountNameAr: resolved.payable.nameAr,
+        debit: grandTotal,
+        credit: 0,
+        memo: `تخفيض مستحقات المورد ${entityNameAr} - إشعار مدين ${inv.invoiceNumber}`,
+        entityType: 'SUPPLIER',
+        entityId: inv.entityId,
+        entityNameAr,
+      });
+      lines.push({
+        id: `jl-${idx++}`,
+        accountId: resolved.inventory.id,
+        accountCode: resolved.inventory.code,
+        accountNameAr: resolved.inventory.nameAr,
+        debit: 0,
+        credit: netRevenue,
+        memo: `تخفيض مخزون بضاعة - إشعار مدين ${inv.invoiceNumber}`,
+      });
+      if (vatTotal > 0) {
+        lines.push({
+          id: `jl-${idx++}`,
+          accountId: resolved.vat.id,
+          accountCode: resolved.vat.code,
+          accountNameAr: resolved.vat.nameAr,
+          debit: 0,
+          credit: vatTotal,
+          memo: `عكس ضريبة مشتريات - إشعار مدين ${inv.invoiceNumber}`,
+        });
+      }
+    }
+
+    const totalDeb = lines.reduce((s, l) => s + (l.debit || 0), 0);
+    const totalCred = lines.reduce((s, l) => s + (l.credit || 0), 0);
+
+    const jEntry: JournalEntry = {
+      id: 'jv-' + Math.random().toString(36).substr(2, 9),
+      entryNumber: `JV-${inv.invoiceNumber}`,
+      date: inv.date,
+      reference: inv.invoiceNumber,
+      description: `قيد ترحيل آلي لفاتورة ${isSales ? 'مبيعات' : isPurchase ? 'مشتريات' : 'مرتجع'} رقم (${inv.invoiceNumber}) - ${entityNameAr}`,
+      status: 'POSTED',
+      lines,
+      totalDebit: totalDeb,
+      totalCredit: totalCred,
+      createdAt: new Date().toISOString(),
+      postedAt: new Date().toISOString(),
+      isAutoGenerated: true,
+      sourceModule: isSales ? 'SALES_INVOICE' : isPurchase ? 'PURCHASE_INVOICE' : 'SALES_INVOICE',
+      sourceId: inv.id,
+    };
+
+    const journals = localDataStore.getJournals();
+    const existingIdx = journals.findIndex(
+      (j) => j.entryNumber === jEntry.entryNumber || j.reference === inv.invoiceNumber || j.id === inv.journalEntryId
+    );
+    if (existingIdx >= 0) {
+      journals[existingIdx] = jEntry;
+    } else {
+      journals.unshift(jEntry);
+    }
+    localDataStore.saveJournals(journals);
+
+    // Update invoice
+    inv.journalEntryId = jEntry.id;
+    const invoices = localDataStore.getInvoices();
+    const invIdx = invoices.findIndex((i) => i.id === inv.id);
+    if (invIdx >= 0) {
+      invoices[invIdx].journalEntryId = jEntry.id;
+      localDataStore.saveInvoices(invoices);
+    }
+
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.saveJournal(jEntry, activeCompanyId).catch((err) =>
+        console.warn('Supabase direct saveJournal notice:', err)
+      );
+      await SupabaseDataService.saveInvoice(inv, activeCompanyId).catch((err) =>
+        console.warn('Supabase direct saveInvoice notice:', err)
+      );
+    }
+
+    return jEntry;
+  }
+
+  /**
    * Reconciles and links document cycles: Invoices <-> Journals <-> Vouchers <-> Accounts
    * Ensures complete traceability for enterprise audit and cycle transparency
    */
