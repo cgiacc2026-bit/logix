@@ -1903,6 +1903,12 @@ export class SupabaseDataService {
       customer_snapshot: customerSnapshot,
       items: formattedItems,
       lines: formattedItems,
+      price_list_applied: inv.priceListApplied || (inv as any).price_list_applied || null,
+      notes: inv.notes || null,
+      sales_rep_id: effectiveSalesRepId || null,
+      sales_person: effectiveSalesPerson || null,
+      branch_id: inv.branchId || (inv as any).branch_id || 'branch-main-01',
+      warehouse_name: effectiveWarehouseName || null,
       raw_data: {
         ...inv,
         id: invUuid,

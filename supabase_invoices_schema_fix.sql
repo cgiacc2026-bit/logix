@@ -63,6 +63,13 @@ ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS price_list_id TEXT;
 ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_type TEXT DEFAULT 'SALES';
 ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS lines JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS price_list_applied JSONB;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS price_list_name TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS sales_rep_id TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS sales_person TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS branch_id TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS warehouse_name TEXT;
 ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT timezone('utc', now());
 ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
 
