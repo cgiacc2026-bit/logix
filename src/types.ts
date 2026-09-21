@@ -368,6 +368,19 @@ export interface InventoryItem {
   baseItemId?: string;
   base_item_name?: string;
   baseItemName?: string;
+
+  // الربط المحاسبي التام بشجرة الحسابات (Chart of Accounts Integration)
+  accountId?: string;
+  accountCode?: string;
+  inventoryAccountId?: string;
+  inventoryAccountCode?: string;
+  inventoryAccountNameAr?: string;
+  cogsAccountId?: string;
+  cogsAccountCode?: string;
+  cogsAccountNameAr?: string;
+  salesAccountId?: string;
+  salesAccountCode?: string;
+  salesAccountNameAr?: string;
 }
 
 export interface ItemOffer {

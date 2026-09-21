@@ -331,8 +331,8 @@ export class StockLedgerService {
 
     inventory.forEach((item) => {
       const qty = item.quantityOnHand || 0;
-      const cost = item.purchasePrice || 0;
-      const sale = item.salePrice || 0;
+      const cost = Number(item.costPrice ?? item.purchasePrice ?? 0);
+      const sale = Number(item.salePrice || 0);
       const minAlert = item.minQuantityAlert || 10;
 
       totalUnits += qty;

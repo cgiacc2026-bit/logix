@@ -341,11 +341,30 @@ export function generateCleanChartOfAccounts(companyId?: string): Account[] {
 
 /**
  * Automatically determine default accounting mapping based on active company's chart of accounts
+ * Strictly prioritizes leaf accounts to ensure all automated journals post to leaf nodes.
  */
 export function getDefaultMappingForAccounts(accounts: Account[]): DefaultAccountsMapping {
-  const findId = (code: string, keywords: string[]): string | undefined => {
-    const byCode = accounts.find((a) => a.code === code);
-    if (byCode) return byCode.id;
+  const findId = (preferredCodes: string[], keywords: string[]): string | undefined => {
+    // 1. Try preferred codes, prioritizing leaf accounts
+    for (const code of preferredCodes) {
+      const byCode = accounts.find((a) => a.code === code && isAccountLeaf(a, accounts));
+      if (byCode) return byCode.id;
+    }
+    // 2. Try preferred codes even if parent header (will be resolved down to child leaf)
+    for (const code of preferredCodes) {
+      const byCode = accounts.find((a) => a.code === code);
+      if (byCode) return byCode.id;
+    }
+    // 3. Try keywords on leaf accounts first
+    const byKwLeaf = accounts.find((a) => {
+      if (!isAccountLeaf(a, accounts)) return false;
+      const ar = a.nameAr || '';
+      const en = (a.nameEn || '').toLowerCase();
+      return keywords.some((k) => ar.includes(k) || en.includes(k.toLowerCase()));
+    });
+    if (byKwLeaf) return byKwLeaf.id;
+
+    // 4. Try keywords on any account
     const byKw = accounts.find((a) => {
       const ar = a.nameAr || '';
       const en = (a.nameEn || '').toLowerCase();
@@ -355,15 +374,67 @@ export function getDefaultMappingForAccounts(accounts: Account[]): DefaultAccoun
   };
 
   return {
-    cashAccountId: findId('1113', ['صندوق', 'خزينة', 'cash']),
-    bankAccountId: findId('1111', ['بنك', 'bank']),
-    receivableAccountId: findId('1120', ['عملاء', 'مدينون', 'receivable']),
-    payableAccountId: findId('2110', ['موردين', 'دائنون', 'payable']),
-    inventoryAccountId: findId('1130', ['مخزون', 'بضائع', 'inventory']),
-    salesAccountId: findId('4101', ['إيرادات المبيعات', 'مبيعات', 'إيراد', 'sales', 'revenue']) || findId('4100', ['مبيعات', 'إيراد', 'sales', 'revenue']),
-    cogsAccountId: findId('5101', ['تكلفة البضاعة', 'تكلفة', 'cogs', 'cost of goods']) || findId('5100', ['تكلفة', 'cogs', 'cost of goods']),
-    retainedEarningsAccountId: findId('3200', ['أرباح مبقاة', 'أرباح مرحلة', 'retained earnings']),
-    vatAccountId: findId('2120', ['ضريبة', 'vat', 'tax']),
+    cashAccountId: findId(['1113', '1114', '1112'], ['صندوق', 'خزينة', 'cash']),
+    bankAccountId: findId(['1111', '1112', '1110'], ['بنك', 'bank']),
+    receivableAccountId: findId(['1121', '1120', '1122'], ['عملاء الجمعيات', 'عملاء', 'مدينون', 'receivable']),
+    payableAccountId: findId(['2111', '2110', '2112'], ['موردو المواد', 'موردين', 'دائنون', 'payable']),
+    inventoryAccountId: findId(['1131', '1130', '1132'], ['مخزون المنتجات', 'مخزون البضائع', 'مخزون', 'inventory']),
+    salesAccountId: findId(['4110', '4101', '4100', '4120'], ['إيرادات مبيعات الجمعيات', 'إيرادات المبيعات', 'مبيعات', 'إيراد', 'sales', 'revenue']),
+    cogsAccountId: findId(['5110', '5101', '5100', '5120'], ['تكلفة المواد الأولية', 'تكلفة البضاعة', 'تكلفة', 'cogs', 'cost of goods']),
+    retainedEarningsAccountId: findId(['3200', '3210'], ['أرباح مبقاة', 'أرباح مرحلة', 'retained earnings']),
+    vatAccountId: findId(['2120', '2121'], ['ضريبة', 'أمانات الضريبة', 'vat', 'tax']),
+  };
+}
+
+/**
+ * Automatically binds inventory items to their proper Chart of Accounts nodes
+ * based on category and specifications, ensuring 100% accounting linkage.
+ */
+export function linkItemToAccounts(item: InventoryItem, accounts?: Account[]): InventoryItem {
+  if (!item) return item;
+  const accs = accounts && accounts.length > 0 ? accounts : (typeof localDataStore !== 'undefined' ? localDataStore.getAccounts() : []);
+  const cat = (item.category || '').trim();
+
+  // Determine target codes based on item category
+  let defaultInvCode = '1131'; // Finished Goods Spices (مخزون المنتجات التامة والبهارات المعبأة)
+  let defaultCogsCode = '5110'; // Raw materials / cogs (تكلفة المواد الأولية المستهلكة)
+  let defaultSalesCode = '4110'; // Sales to coops (إيرادات مبيعات الجمعيات التعاونية)
+
+  if (cat.includes('خام') || cat.includes('حبوب') || cat.includes('توابل غير مطحونة')) {
+    defaultInvCode = '1132'; // مخزون المواد الأولية والخامات والحبوب
+    defaultCogsCode = '5110';
+    defaultSalesCode = '4120'; // مبيعات جملة
+  } else if (cat.includes('تعبئة') || cat.includes('تغليف') || cat.includes('كرتون') || cat.includes('أكياس')) {
+    defaultInvCode = '1133'; // مخزون مواد التعبئة والتغليف
+    defaultCogsCode = '5120'; // تكلفة مواد التعبئة والتغليف
+    defaultSalesCode = '4110';
+  }
+
+  const invAcc = (item.inventoryAccountId && accs.find((a) => a.id === item.inventoryAccountId)) ||
+                 accs.find((a) => a.code === (item.inventoryAccountCode || defaultInvCode)) ||
+                 accs.find((a) => a.code === defaultInvCode);
+
+  const cogsAcc = (item.cogsAccountId && accs.find((a) => a.id === item.cogsAccountId)) ||
+                  accs.find((a) => a.code === (item.cogsAccountCode || defaultCogsCode)) ||
+                  accs.find((a) => a.code === defaultCogsCode);
+
+  const salesAcc = (item.salesAccountId && accs.find((a) => a.id === item.salesAccountId)) ||
+                   accs.find((a) => a.code === (item.salesAccountCode || defaultSalesCode)) ||
+                   accs.find((a) => a.code === defaultSalesCode);
+
+  return {
+    ...item,
+    accountId: invAcc?.id || item.accountId || 'acc-1131',
+    accountCode: invAcc?.code || item.accountCode || defaultInvCode,
+    inventoryAccountId: invAcc?.id || item.inventoryAccountId || 'acc-1131',
+    inventoryAccountCode: invAcc?.code || item.inventoryAccountCode || defaultInvCode,
+    inventoryAccountNameAr: invAcc?.nameAr || 'مخزون المنتجات التامة الصنع والبهارات المعبأة',
+    cogsAccountId: cogsAcc?.id || item.cogsAccountId || 'acc-5110',
+    cogsAccountCode: cogsAcc?.code || item.cogsAccountCode || defaultCogsCode,
+    cogsAccountNameAr: cogsAcc?.nameAr || 'تكلفة المواد الأولية والخامات والحبوب المستهلكة',
+    salesAccountId: salesAcc?.id || item.salesAccountId || 'acc-4110',
+    salesAccountCode: salesAcc?.code || item.salesAccountCode || defaultSalesCode,
+    salesAccountNameAr: salesAcc?.nameAr || 'إيرادات مبيعات الجمعيات التعاونية',
   };
 }
 
@@ -1182,7 +1253,7 @@ class LocalDataStore {
         return [];
       }
       if (this.isAlWaleedActive()) {
-        const alwaleedInventory = JSON.parse(JSON.stringify(INITIAL_INVENTORY));
+        const alwaleedInventory = JSON.parse(JSON.stringify(INITIAL_INVENTORY)).map((i: InventoryItem) => linkItemToAccounts(i));
         this.saveInventory(alwaleedInventory);
         this.markTenantInitialized();
         return alwaleedInventory;
@@ -1191,13 +1262,13 @@ class LocalDataStore {
       return [];
     }
     const tombstones = this.getTombstones('inventory');
-    if (tombstones.size > 0) {
-      return this.deduplicateInventory(list.filter((item) => !tombstones.has(item.id)));
-    }
-    return this.deduplicateInventory(list);
+    const validList = tombstones.size > 0 ? list.filter((item) => !tombstones.has(item.id)) : list;
+    const deduped = this.deduplicateInventory(validList);
+    return deduped.map((item) => linkItemToAccounts(item));
   }
   public saveInventory(inv: InventoryItem[]): void {
-    const deduped = this.deduplicateInventory(inv);
+    const linked = (inv || []).map((item) => linkItemToAccounts(item));
+    const deduped = this.deduplicateInventory(linked);
     this.setLocal(this.getKey(STORAGE_KEYS.INVENTORY), deduped);
     this.markTenantInitialized();
   }
@@ -1239,6 +1310,16 @@ class LocalDataStore {
         if (item.baseItemId !== undefined) existing.baseItemId = item.baseItemId;
         if (item.base_item_name !== undefined) existing.base_item_name = item.base_item_name;
         if (item.baseItemName !== undefined) existing.baseItemName = item.baseItemName;
+        // Preserve Chart of Accounts Linkage
+        if (item.inventoryAccountId && !existing.inventoryAccountId) existing.inventoryAccountId = item.inventoryAccountId;
+        if (item.inventoryAccountCode && !existing.inventoryAccountCode) existing.inventoryAccountCode = item.inventoryAccountCode;
+        if (item.inventoryAccountNameAr && !existing.inventoryAccountNameAr) existing.inventoryAccountNameAr = item.inventoryAccountNameAr;
+        if (item.cogsAccountId && !existing.cogsAccountId) existing.cogsAccountId = item.cogsAccountId;
+        if (item.cogsAccountCode && !existing.cogsAccountCode) existing.cogsAccountCode = item.cogsAccountCode;
+        if (item.cogsAccountNameAr && !existing.cogsAccountNameAr) existing.cogsAccountNameAr = item.cogsAccountNameAr;
+        if (item.salesAccountId && !existing.salesAccountId) existing.salesAccountId = item.salesAccountId;
+        if (item.salesAccountCode && !existing.salesAccountCode) existing.salesAccountCode = item.salesAccountCode;
+        if (item.salesAccountNameAr && !existing.salesAccountNameAr) existing.salesAccountNameAr = item.salesAccountNameAr;
       } else {
         result.push(item);
         if (id) seen.set(`ID_${id}`, item);
@@ -2052,44 +2133,50 @@ export class DataService {
       };
     };
 
+    const ensureLeaf = (acc: Account): Account => {
+      if (!acc) return acc;
+      if (isAccountLeaf(acc, accounts)) return acc;
+      const childLeaf = accounts.find((a) => a.parentId === acc.id && isAccountLeaf(a, accounts));
+      if (childLeaf) return childLeaf;
+      const descendantLeaf = accounts.find((a) => a.code && acc.code && a.code.startsWith(acc.code) && a.code !== acc.code && isAccountLeaf(a, accounts));
+      if (descendantLeaf) return descendantLeaf;
+      return acc;
+    };
+
     return {
-      cash: resolveAccount(mapping.cashAccountId, '1113', ['صندوق', 'خزينة', 'نقد']),
-      bank: resolveAccount(mapping.bankAccountId, '1111', ['بنك', 'مصرف', 'bank']),
+      cash: ensureLeaf(resolveAccount(mapping.cashAccountId, '1113', ['صندوق', 'خزينة', 'نقد'])),
+      bank: ensureLeaf(resolveAccount(mapping.bankAccountId, '1111', ['بنك', 'مصرف', 'bank'])),
       receivable: (() => {
-        const acc = resolveAccount(mapping.receivableAccountId, '1120', ['عملاء', 'مدينون', 'ذمم مدينة', 'receivable']);
-        if (acc && acc.nameAr && (acc.nameAr.includes('البنك') || acc.nameAr.includes('بنك'))) {
+        const raw = resolveAccount(mapping.receivableAccountId, '1121', ['عملاء الجمعيات', 'عملاء', 'مدينون', 'ذمم مدينة', 'receivable']) ||
+                    resolveAccount(undefined, '1120', ['عملاء', 'مدينون', 'receivable']);
+        const leaf = ensureLeaf(raw);
+        if (leaf && leaf.nameAr && (leaf.nameAr.includes('البنك') || leaf.nameAr.includes('بنك'))) {
           return {
-            ...acc,
-            nameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
+            ...leaf,
+            nameAr: 'عملاء الجمعيات التعاونية والذمم المدينة',
             nameEn: 'Accounts Receivable (Coops)',
           };
         }
-        return acc;
+        return leaf;
       })(),
-      payable: resolveAccount(mapping.payableAccountId, '2110', ['موردين', 'دائنون', 'ذمم دائنة', 'payable']),
-      inventory: resolveAccount(mapping.inventoryAccountId, '1130', ['مخزون', 'بضائع', 'inventory']),
+      payable: ensureLeaf(resolveAccount(mapping.payableAccountId, '2111', ['موردو المواد', 'موردين', 'دائنون', 'ذمم دائنة', 'payable']) ||
+                          resolveAccount(undefined, '2110', ['موردين', 'دائنون', 'payable'])),
+      inventory: ensureLeaf(resolveAccount(mapping.inventoryAccountId, '1131', ['مخزون المنتجات', 'مخزون البضائع', 'مخزون', 'inventory']) ||
+                            resolveAccount(undefined, '1130', ['مخزون', 'بضائع', 'inventory'])),
       sales: (() => {
-        const acc = resolveAccount(mapping.salesAccountId, '4101', ['إيرادات المبيعات', 'مبيعات', 'إيراد', 'sales', 'revenue']) ||
+        const acc = resolveAccount(mapping.salesAccountId, '4110', ['إيرادات مبيعات الجمعيات', 'إيرادات المبيعات', 'مبيعات', 'إيراد', 'sales', 'revenue']) ||
+                    resolveAccount(undefined, '4101', ['إيرادات المبيعات', 'مبيعات', 'إيراد', 'sales', 'revenue']) ||
                     resolveAccount(undefined, '4100', ['مبيعات', 'إيراد', 'sales', 'revenue']);
-        if (acc && !isAccountLeaf(acc, accounts)) {
-          const childLeaf = accounts.find((a) => a.parentId === acc.id && isAccountLeaf(a, accounts)) ||
-                            accounts.find((a) => a.code === '4101' && isAccountLeaf(a, accounts));
-          if (childLeaf) return childLeaf;
-        }
-        return acc;
+        return ensureLeaf(acc);
       })(),
       cogs: (() => {
-        const acc = resolveAccount(mapping.cogsAccountId, '5101', ['تكلفة البضاعة', 'تكلفة', 'cogs', 'cost of goods']) ||
+        const acc = resolveAccount(mapping.cogsAccountId, '5110', ['تكلفة المواد الأولية', 'تكلفة البضاعة', 'تكلفة', 'cogs', 'cost of goods']) ||
+                    resolveAccount(undefined, '5101', ['تكلفة البضاعة', 'تكلفة', 'cogs', 'cost of goods']) ||
                     resolveAccount(undefined, '5100', ['تكلفة', 'cogs', 'cost of goods']);
-        if (acc && !isAccountLeaf(acc, accounts)) {
-          const childLeaf = accounts.find((a) => a.parentId === acc.id && isAccountLeaf(a, accounts)) ||
-                            accounts.find((a) => a.code === '5101' && isAccountLeaf(a, accounts));
-          if (childLeaf) return childLeaf;
-        }
-        return acc;
+        return ensureLeaf(acc);
       })(),
       retainedEarnings: resolveAccount(mapping.retainedEarningsAccountId, '3200', ['أرباح مبقاة', 'أرباح مرحلة', 'retained earnings']),
-      vat: resolveAccount(mapping.vatAccountId, '2120', ['ضريبة', 'أمانات الضريبة', 'vat', 'tax']),
+      vat: ensureLeaf(resolveAccount(mapping.vatAccountId, '2120', ['ضريبة', 'أمانات الضريبة', 'vat', 'tax'])),
       mapping,
     };
   }

@@ -480,6 +480,11 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [isBaseItemSearchOpen, setIsBaseItemSearchOpen] = useState<boolean>(false);
   const [baseItemSearchQuery, setBaseItemSearchQuery] = useState<string>('');
 
+  // Chart of Accounts Linkage State (ربط الصنف المحاسبي التام بشجرة الحسابات)
+  const [itemInvAccount, setItemInvAccount] = useState<string>('1131');
+  const [itemCogsAccount, setItemCogsAccount] = useState<string>('5110');
+  const [itemSalesAccount, setItemSalesAccount] = useState<string>('4110');
+
   // Invoices line handlers
   const [isOfferPickerModalOpen, setIsOfferPickerModalOpen] = useState(false);
 
@@ -1104,6 +1109,9 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setItemBaseItemName('');
     setIsBaseItemSearchOpen(false);
     setBaseItemSearchQuery('');
+    setItemInvAccount('1131');
+    setItemCogsAccount('5110');
+    setItemSalesAccount('4110');
     setIsItemModalOpen(true);
   };
 
@@ -1120,6 +1128,9 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setItemSale(item.salePrice);
     setItemQty(item.quantityOnHand);
     setItemMinAlert(item.minQuantityAlert || 5);
+    setItemInvAccount(item.inventoryAccountCode || '1131');
+    setItemCogsAccount(item.cogsAccountCode || '5110');
+    setItemSalesAccount(item.salesAccountCode || '4110');
     const hasOffer = forceOfferOpen || Boolean(item.offer_enabled ?? item.offerEnabled) || item.nameAr.includes('عرض');
     setItemOfferEnabled(hasOffer);
     setItemOfferQuantity(Number(item.offer_quantity ?? item.offerQuantity ?? 2));
@@ -1159,6 +1170,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     e.preventDefault();
     if (!itemNameAr) return;
     try {
+      const invAccObj = accounts?.find((a) => a.code === itemInvAccount);
+      const cogsAccObj = accounts?.find((a) => a.code === itemCogsAccount);
+      const salesAccObj = accounts?.find((a) => a.code === itemSalesAccount);
+
       const payload = {
         sku: itemSku,
         barcode: itemBarcode,
@@ -1183,6 +1198,16 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         baseItemId: itemOfferEnabled && itemBaseItemId ? itemBaseItemId : null,
         base_item_name: itemOfferEnabled && itemBaseItemId ? itemBaseItemName : null,
         baseItemName: itemOfferEnabled && itemBaseItemId ? itemBaseItemName : null,
+        // Chart of Accounts Linkage
+        inventoryAccountCode: itemInvAccount,
+        inventoryAccountId: invAccObj?.id || `acc-${itemInvAccount}`,
+        inventoryAccountNameAr: invAccObj?.nameAr || 'مخزون المنتجات التامة',
+        cogsAccountCode: itemCogsAccount,
+        cogsAccountId: cogsAccObj?.id || `acc-${itemCogsAccount}`,
+        cogsAccountNameAr: cogsAccObj?.nameAr || 'تكلفة المواد الأولية',
+        salesAccountCode: itemSalesAccount,
+        salesAccountId: salesAccObj?.id || `acc-${itemSalesAccount}`,
+        salesAccountNameAr: salesAccObj?.nameAr || 'إيرادات مبيعات الجمعيات',
       };
 
       if (editingItem && onUpdateInventoryItem) {
@@ -2934,9 +2959,17 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 bg-[#F7F5F0] text-[#6E6659] rounded-md font-semibold text-[11px] border">
-                          {item.category || 'عام'}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="px-2 py-0.5 bg-[#F7F5F0] text-[#6E6659] rounded-md font-semibold text-[11px] border">
+                            {item.category || 'عام'}
+                          </span>
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                            title={`الحساب المحاسبي المرتبط في الدليل: ${item.inventoryAccountNameAr || 'مخزون المنتجات التامة والبهارات'} (${item.inventoryAccountCode || '1131'})`}
+                          >
+                            <span>حـ/ {item.inventoryAccountCode || '1131'}</span>
+                          </span>
+                        </div>
                       </td>
 
                       <td className="py-3 px-4 text-center font-semibold">
@@ -4751,6 +4784,68 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Chart of Accounts Linkage Section */}
+              <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span className="font-bold text-xs text-emerald-950">الربط المحاسبي التام مع دليل وشجرة الحسابات</span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300">
+                    IFRS القيود المحاسبية التلقائية
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                      حساب المخزون (الأصل)
+                    </label>
+                    <select
+                      value={itemInvAccount}
+                      onChange={(e) => setItemInvAccount(e.target.value)}
+                      className="w-full bg-white border border-emerald-300 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    >
+                      <option value="1131">1131 - مخزون المنتجات التامة والبهارات</option>
+                      <option value="1132">1132 - مخزون المواد الأولية والخامات</option>
+                      <option value="1133">1133 - مخزون مواد التعبئة والتغليف</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                      حساب تكلفة المبيعات (COGS)
+                    </label>
+                    <select
+                      value={itemCogsAccount}
+                      onChange={(e) => setItemCogsAccount(e.target.value)}
+                      className="w-full bg-white border border-emerald-300 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    >
+                      <option value="5110">5110 - تكلفة المواد الأولية والخامات</option>
+                      <option value="5120">5120 - تكلفة مواد التعبئة والتغليف</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                      حساب الإيرادات (المبيعات)
+                    </label>
+                    <select
+                      value={itemSalesAccount}
+                      onChange={(e) => setItemSalesAccount(e.target.value)}
+                      className="w-full bg-white border border-emerald-300 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    >
+                      <option value="4110">4110 - إيرادات مبيعات الجمعيات التعاونية</option>
+                      <option value="4120">4120 - إيرادات مبيعات الجملة</option>
+                      <option value="4130">4130 - إيرادات مبيعات التجزئة والمعارض</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[10px] text-emerald-800">
+                  * يتم توجيه قيود اليومية آلياً عند إصدار الفواتير أو المشتريات إلى هذه الحسابات التحليلية المحددة في شجرة الحسابات دون ترحيل لحسابات رئيسية.
+                </p>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E1DA]">

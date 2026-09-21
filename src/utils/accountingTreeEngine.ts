@@ -279,12 +279,13 @@ export function aggregateChartOfAccountsTree(
     const cred = leafCreditMap.get(acc.id) || 0;
     const count = leafCountMap.get(acc.id) || 0;
 
+    const openingBal = Number(acc.openingBalance ?? (acc as any).initialBalance ?? 0);
     let balance = 0;
     if (isLeaf) {
       if (acc.normalBalance === 'DEBIT') {
-        balance = deb - cred;
+        balance = openingBal + (deb - cred);
       } else {
-        balance = cred - deb;
+        balance = openingBal + (cred - deb);
       }
     }
 
@@ -360,11 +361,18 @@ export function aggregateChartOfAccountsTree(
 
   finalLeaves.forEach((leaf) => {
     const bal = Number(leaf.balance) || 0;
-    if (leaf.category === 'ASSET') totalAssets += bal;
-    if (leaf.category === 'LIABILITY') totalLiabilities += bal;
-    if (leaf.category === 'EQUITY') totalEquity += bal;
-    if (leaf.category === 'REVENUE') totalRevenues += bal;
-    if (leaf.category === 'EXPENSE') totalExpenses += bal;
+    // Positive contribution if normal balance aligns with category nature; subtract if contra-account
+    if (leaf.category === 'ASSET') {
+      totalAssets += leaf.normalBalance === 'DEBIT' ? bal : -bal;
+    } else if (leaf.category === 'LIABILITY') {
+      totalLiabilities += leaf.normalBalance === 'CREDIT' ? bal : -bal;
+    } else if (leaf.category === 'EQUITY') {
+      totalEquity += leaf.normalBalance === 'CREDIT' ? bal : -bal;
+    } else if (leaf.category === 'REVENUE') {
+      totalRevenues += leaf.normalBalance === 'CREDIT' ? bal : -bal;
+    } else if (leaf.category === 'EXPENSE') {
+      totalExpenses += leaf.normalBalance === 'DEBIT' ? bal : -bal;
+    }
 
     totalSystemDebit += leaf.totalDebitMovement || 0;
     totalSystemCredit += leaf.totalCreditMovement || 0;
