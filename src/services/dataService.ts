@@ -1072,6 +1072,15 @@ class LocalDataStore {
     }
     const tombstones = this.getTombstones('accounts');
     const filtered = tombstones.size > 0 ? list.filter((a) => !tombstones.has(a.id)) : list;
+    const existingCodes = new Set(filtered.map((a) => String(a.code || '').trim()));
+    const missingStandard = INITIAL_ACCOUNTS.filter(
+      (a) => !existingCodes.has(String(a.code || '').trim()) && !tombstones.has(a.id)
+    );
+    if (missingStandard.length > 0) {
+      const merged = this.deduplicateAccounts([...filtered, ...missingStandard.map((a) => ({ ...a, balance: 0 }))]);
+      this.saveAccounts(merged);
+      return merged;
+    }
     return this.deduplicateAccounts(filtered);
   }
   public saveAccounts(accounts: Account[]): void {
@@ -2142,11 +2151,59 @@ export class DataService {
       }
     }
 
+    // Ensure all standard accounts from COMPLETE_EXPERT_CHART_OF_ACCOUNTS exist
+    const existingCodes = new Set((accounts || []).map((a) => String(a.code || '').trim()));
+    const missingStandard = INITIAL_ACCOUNTS.filter(
+      (a) => !existingCodes.has(String(a.code || '').trim()) && !tombstones.has(a.id)
+    );
+    if (missingStandard.length > 0) {
+      accounts = [...(accounts || []), ...missingStandard.map((a) => ({ ...a, balance: 0 }))];
+      localDataStore.saveAccounts(accounts);
+      if (isSupabaseConfigured) {
+        SupabaseDataService.saveAccounts(accounts).catch((err) => notifyCloudSyncError("CloudSync", err));
+      }
+    }
+
     const journals = await this.getJournals();
     const withBalances = this.calculateDynamicAccountBalances(accounts || [], journals);
     const deduped = localDataStore.deduplicateAccounts(withBalances);
     localDataStore.saveAccounts(deduped);
     return deduped;
+  }
+
+  /**
+   * تثبيت واعتماد دليل الحسابات المحاسبي الشجري الكامل فورا
+   */
+  public static async installCompleteChartOfAccounts(targetCompanyId?: string): Promise<{ success: boolean; totalAccounts: number; addedCount: number }> {
+    const current = localDataStore.getAccounts();
+    const existingCodes = new Set(current.map((a) => String(a.code || '').trim()));
+    const missing = INITIAL_ACCOUNTS.filter((std) => !existingCodes.has(String(std.code || '').trim()));
+
+    const merged = [
+      ...current,
+      ...missing.map((a) => ({
+        ...a,
+        balance: 0,
+        isActive: true,
+      })),
+    ];
+
+    const deduped = localDataStore.deduplicateAccounts(merged);
+    localDataStore.saveAccounts(deduped);
+    if (isSupabaseConfigured) {
+      await SupabaseDataService.saveAccounts(deduped, targetCompanyId);
+    }
+    await safeApiFetch('/api/accounts', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accounts: deduped }),
+    }).catch(() => {});
+
+    return {
+      success: true,
+      totalAccounts: deduped.length,
+      addedCount: missing.length,
+    };
   }
 
   public static async createAccount(accData: Partial<Account>): Promise<Account> {
@@ -3643,12 +3700,31 @@ export class DataService {
         }
       }
 
-      // 2. Ensure customer 4640 (جمعية مبارك الكبير) has opening balance
+      // 2. Ensure all 14 cooperatives have accurate opening balances from the audited Excel sheet as of 2026-08-31
+      const AUDITED_OPENING_BALANCES: Record<string, number> = {
+        '4640': 2497.990,
+        '2537': 631.940,
+        '5563': 2397.130,
+        '3124': 2487.840,
+        '7575': 1001.870,
+        '1804': 702.189,
+        '2035': 905.940,
+        '301': 3047.530,
+        '875': 839.813,
+        '9407': 2359.780,
+        '3900': 1508.050,
+        '4568': 1702.393,
+        'CUST-014': 76.930,
+        '3764': 843.150,
+      };
+
       const customers = localDataStore.getCustomers();
-      const c4640 = customers.find((c) => c.code === '4640' || c.id === 'cust-4640');
-      if (c4640 && (Number(c4640.openingBalance) === 0 || c4640.openingBalance !== 2497.990)) {
-        c4640.openingBalance = 2497.990;
-        c4640.openingBalanceDate = '2026-08-31';
+      for (const c of customers) {
+        const code = (c.code || '').trim();
+        if (AUDITED_OPENING_BALANCES[code] !== undefined) {
+          c.openingBalance = AUDITED_OPENING_BALANCES[code];
+          c.openingBalanceDate = '2026-08-31';
+        }
       }
 
       // 3. Cancel REV-JV-2026-0037 and ensure adjustment journal JV-2026-0037 is dated 2026-08-30 and POSTED

@@ -1362,6 +1362,7 @@ export function AppContent() {
               onAddAccount={handleAddAccount}
               onUpdateAccount={handleUpdateAccount}
               onDeleteAccount={handleDeleteAccount}
+              onRefreshAccounts={refreshAllData}
               onSelectAccountLedger={(accId) => {
                 setSelectedLedgerAccountId(accId);
                 navigateToTab('ledger' as any);

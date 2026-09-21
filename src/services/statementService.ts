@@ -879,8 +879,29 @@ export function getAccountStatement(
   // ============================================================================
   // خطوة 2: احتساب الرصيد الافتتاحي الدقيق (Opening Balance)
   // ============================================================================
-  // الرصيد الافتتاحي هو مجموع رصيد أول المدة بناءً على آخر تعديل + جميع الحركات الفريدة السابقة لتاريخ البداية (date < cleanStartDate)
-  let calculatedOpeningBalance = entityInitialOpeningBalance;
+  // التحقق مما إذا كان هناك قيد افتتاحي مسجل صراحة في دفتر اليومية لهذا الكيان
+  const isOpeningMovement = (m: any) => {
+    if (m.docType !== 'JOURNAL_ENTRY') return false;
+    const desc = (m.description || '').toLowerCase();
+    const ref = (m.reference || '').toLowerCase();
+    const docNum = (m.docNumber || '').toUpperCase();
+    return (
+      desc.includes('افتتاح') ||
+      ref.includes('افتتاح') ||
+      ref.includes('ob-') ||
+      docNum.startsWith('JV-OP-') ||
+      /^JV-2026-00(0[1-9]|1[0-4])$/.test(docNum)
+    );
+  };
+
+  const hasOpeningJournalMovement = sortedRawMovements.some(
+    (m) => m.status !== 'CANCELLED' && isOpeningMovement(m)
+  );
+
+  // إذا وجد قيد افتتاحي صريح في القيود اليومية لهذا الكيان، فإن القيد هو الحامل الفعلي للرصيد الافتتاحي،
+  // لذلك نبدأ بـ 0 لمنع ازدواجية الرصيد الافتتاحي بين بطاقة العميل والقيد.
+  // أما إذا لم يوجد قيد افتتاحي، فنعتمد على الرصيد الافتتاحي المسجل في بطاقة الحساب (entityInitialOpeningBalance).
+  let calculatedOpeningBalance = hasOpeningJournalMovement ? 0 : entityInitialOpeningBalance;
 
   // جمع الحركات الفريدة التي تمت قبل تاريخ البداية
   for (const move of sortedRawMovements) {

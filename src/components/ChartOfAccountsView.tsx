@@ -8,6 +8,7 @@ import {
   EnrichedAccount,
   getDescendantLeaves,
 } from '../utils/accountingTreeEngine.ts';
+import { DataService } from '../services/dataService.ts';
 import {
   FolderTree,
   Plus,
@@ -31,6 +32,7 @@ import {
   Clock,
   BookOpen,
   AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 
 interface ChartOfAccountsProps {
@@ -42,6 +44,7 @@ interface ChartOfAccountsProps {
   onDeleteAccount?: (id: string) => Promise<void>;
   onSelectAccountLedger: (accountId: string) => void;
   onOpenDocumentCycle?: (target: { type: 'INVOICE' | 'JOURNAL' | 'VOUCHER' | 'QUOTATION' | 'ACCOUNT'; id: string }) => void;
+  onRefreshAccounts?: () => Promise<void> | void;
 }
 
 interface AccountMovementDetail {
@@ -67,6 +70,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   onDeleteAccount,
   onSelectAccountLedger,
   onOpenDocumentCycle,
+  onRefreshAccounts,
 }) => {
   const companyContext = useCompany();
   const currentCompany = companyContext?.currentCompany;
@@ -84,6 +88,48 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
     'acc-4000': true,
     'acc-5000': true,
   });
+
+  // Complete COA installer state
+  const [isInstallingCOA, setIsInstallingCOA] = useState(false);
+  const [coaSuccessMsg, setCoaSuccessMsg] = useState<string | null>(null);
+
+  const handleInstallCompleteCOA = async () => {
+    setIsInstallingCOA(true);
+    setCoaSuccessMsg(null);
+    try {
+      const res = await DataService.installCompleteChartOfAccounts(currentCompany?.id);
+      setCoaSuccessMsg(`تم بنجاح تثبيت وتحديث دليل الحسابات المعتمد بالكامل (${res.totalAccounts} حساب محاسبي).`);
+      if (onRefreshAccounts) {
+        await onRefreshAccounts();
+      }
+      setTimeout(() => setCoaSuccessMsg(null), 6000);
+    } catch (e: any) {
+      console.error('Failed to install complete COA:', e);
+      alert('حدث خطأ أثناء تثبيت دليل الحسابات: ' + (e.message || 'خطأ غير معروف'));
+    } finally {
+      setIsInstallingCOA(false);
+    }
+  };
+
+  const handleToggleExpandAll = () => {
+    const allIds = accounts.map((a) => a.id);
+    const someCollapsed = allIds.some((id) => !expandedNodes[id]);
+    if (someCollapsed) {
+      const all: Record<string, boolean> = {};
+      allIds.forEach((id) => {
+        all[id] = true;
+      });
+      setExpandedNodes(all);
+    } else {
+      setExpandedNodes({
+        'acc-1000': true,
+        'acc-2000': true,
+        'acc-3000': true,
+        'acc-4000': true,
+        'acc-5000': true,
+      });
+    }
+  };
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -318,7 +364,26 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            id="btn-install-complete-coa"
+            onClick={handleInstallCompleteCOA}
+            disabled={isInstallingCOA}
+            className="px-4 py-2.5 bg-[#FAF8F5] hover:bg-[#F3EFEA] text-[#1A1A1A] rounded-xl text-xs font-black flex items-center gap-2 border border-[#B8860B] shadow-xs transition-all cursor-pointer disabled:opacity-50"
+            title="تثبيت الدليل المحاسبي الشامل المعتمد (114 حساب) المتوافق مع معايير IFRS"
+          >
+            <Sparkles className="w-4 h-4 text-[#B8860B]" />
+            <span>{isInstallingCOA ? 'جاري تثبيت الدليل المعتمد...' : 'تثبيت/تحديث الدليل الشامل (114 حساب)'}</span>
+          </button>
+
+          <button
+            id="btn-toggle-expand-all"
+            onClick={handleToggleExpandAll}
+            className="px-3 py-2.5 bg-white hover:bg-[#FAF8F5] text-[#8C8273] hover:text-[#1A1A1A] rounded-xl text-xs font-bold flex items-center gap-1.5 border border-[#E5E1DA] transition-all cursor-pointer"
+          >
+            <span>توسيع / طي الكل</span>
+          </button>
+
           <button
             onClick={() => handleOpenAddModal()}
             className="px-4 py-2.5 bg-[#1A1A1A] hover:bg-black text-white rounded-xl text-xs font-black flex items-center gap-2 border border-[#1A1A1A] shadow-xs transition-all cursor-pointer"
@@ -328,6 +393,13 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
           </button>
         </div>
       </div>
+
+      {coaSuccessMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold p-4 rounded-xl flex items-center gap-2.5">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span>{coaSuccessMsg}</span>
+        </div>
+      )}
 
       {/* KPI Financial Overview Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
