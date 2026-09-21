@@ -2060,6 +2060,34 @@ export class SupabaseDataService {
       insertedRow = insertResult.data;
     }
 
+    // Retry 3: If onConflict specification error, retry with compound key 'company_id, invoice_number' or standard insert
+    if (invErr && (invErr.message.includes('ON CONFLICT') || invErr.code === '42P10')) {
+      console.warn('[Supabase saveInvoice] ON CONFLICT specification issue detected, trying alternative upsert / insert...', invErr.message);
+      
+      // Try with composite onConflict
+      let altResult = await supabase
+        .from('invoices')
+        .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })
+        .select('id, invoice_number, company_id, created_at')
+        .single();
+      
+      if (altResult.error) {
+        // Direct insert fallback
+        altResult = await supabase
+          .from('invoices')
+          .insert([invoicePayload])
+          .select('id, invoice_number, company_id, created_at')
+          .single();
+      }
+
+      if (!altResult.error && altResult.data) {
+        invErr = null;
+        insertedRow = altResult.data;
+      } else if (altResult.error) {
+        invErr = altResult.error;
+      }
+    }
+
     // ZERO TOLERANCE: If Supabase returned an error, throw it immediately!
     if (invErr) {
       console.error('[Supabase saveInvoice CRITICAL DB ERROR]:', invErr);
