@@ -1445,7 +1445,7 @@ export class SupabaseDataService {
         // 1. Single Source of Truth: Query 'invoices' table with verified columns & range pagination
         const { data: invTableData, error: invErr } = await supabase
           .from('invoices')
-          .select('id, company_id, invoice_number, date, customer_id, customer_name, subtotal, tax_amount, total_amount, paid_amount, status, created_at, updated_at, raw_data')
+          .select('id, company_id, invoice_number, date, invoice_date, customer_id, customer_name, customer_branch_id, customer_branch_name, warehouse_id, price_list_id, invoice_type, subtotal, tax_amount, vat_amount, total_amount, paid_amount, due_amount, payment_status, status, payment_method, customer_snapshot, created_at, updated_at, raw_data')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1);
@@ -1582,6 +1582,12 @@ export class SupabaseDataService {
           warehouseId,
           warehouse_id: warehouseId,
           warehouseName,
+          customerBranchId: inv.customer_branch_id || raw.customerBranchId || raw.customer_branch_id || null,
+          customer_branch_id: inv.customer_branch_id || raw.customerBranchId || raw.customer_branch_id || null,
+          customerBranchName: inv.customer_branch_name || raw.customerBranchName || raw.customer_branch_name || null,
+          customer_branch_name: inv.customer_branch_name || raw.customerBranchName || raw.customer_branch_name || null,
+          priceListId: inv.price_list_id || raw.priceListId || raw.price_list_id || null,
+          price_list_id: inv.price_list_id || raw.priceListId || raw.price_list_id || null,
           salesRepId,
           rep_id: salesRepId,
           sales_rep_id: salesRepId,
@@ -1889,7 +1895,14 @@ export class SupabaseDataService {
       payment_status: paymentStatus,
       status: inv.status || 'POSTED',
       payment_method: inv.paymentTerms || 'CASH',
+      warehouse_id: effectiveWarehouseId || null,
+      customer_branch_id: effectiveCustomerBranchId || null,
+      customer_branch_name: effectiveCustomerBranchName || null,
+      price_list_id: resolvedPriceListId || null,
+      invoice_type: inv.type || 'SALES',
       customer_snapshot: customerSnapshot,
+      items: formattedItems,
+      lines: formattedItems,
       raw_data: {
         ...inv,
         id: invUuid,
