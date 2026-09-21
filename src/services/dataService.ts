@@ -1101,8 +1101,8 @@ class LocalDataStore {
     }
     let hasCustDateFix = false;
     filtered.forEach((c) => {
-      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-07-31') {
-        c.openingBalanceDate = '2026-07-31';
+      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-08-31') {
+        c.openingBalanceDate = '2026-08-31';
         hasCustDateFix = true;
       }
     });
@@ -1546,15 +1546,15 @@ class LocalDataStore {
           hasJournalFix = true;
         }
       }
-      // قيد الأرصدة الافتتاحية للعملاء
+      // قيد الأرصدة الافتتاحية للعملاء (تاريخ البداية الموحد 2026-08-31)
       if (
-        j.entryNumber === 'JV-2026-0001' ||
         j.id === 'jv-ob-2026-07-31' ||
-        j.reference === 'OB-2026-07-31'
+        j.reference === 'OB-2026-07-31' ||
+        (j.id === 'jv-op-4568' && j.date === '2026-07-31')
       ) {
-        if (j.date !== '2026-07-31' || j.reference !== 'OB-2026-07-31') {
-          j.date = '2026-07-31';
-          j.reference = 'OB-2026-07-31';
+        if (j.date !== '2026-08-31') {
+          j.date = '2026-08-31';
+          if (j.reference === 'OB-2026-07-31') j.reference = 'OB-2026-08-31';
           hasJournalFix = true;
         }
       }
@@ -5629,7 +5629,7 @@ export class DataService {
       city: data.city,
       balance: Number(data.openingBalance) || Number(data.balance) || 0,
       openingBalance: Number(data.openingBalance) || 0,
-      openingBalanceDate: data.openingBalanceDate || '2026-07-31',
+      openingBalanceDate: data.openingBalanceDate || '2026-08-31',
       isActive: true,
       branches: data.branches || [],
       priceListId: data.priceListId || 'standard',
@@ -5719,7 +5719,7 @@ export class DataService {
       ...list[idx],
       ...data,
       openingBalance: newOpening,
-      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-07-31'),
+      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-08-31'),
       balance: updatedBalance,
       currentBalance: updatedBalance,
     };
@@ -5955,7 +5955,7 @@ export class DataService {
       city: data.city,
       balance: Number(data.openingBalance) || Number(data.balance) || 0,
       openingBalance: Number(data.openingBalance) || 0,
-      openingBalanceDate: data.openingBalanceDate || '2026-07-31',
+      openingBalanceDate: data.openingBalanceDate || '2026-08-31',
       isActive: true,
     };
     localDataStore.removeTombstone('suppliers', newSupp.id);
@@ -6041,7 +6041,7 @@ export class DataService {
       ...list[idx],
       ...data,
       openingBalance: newOpening,
-      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-07-31'),
+      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-08-31'),
       balance: updatedBalance,
       currentBalance: updatedBalance,
     };
@@ -9304,11 +9304,11 @@ export class DataService {
       }
     });
 
-    // ضمان توافق تواريخ الأرصدة الافتتاحية (31/07/2026) وتاريخ قيد التسوية (30/08/2026)
+    // ضمان توافق تواريخ الأرصدة الافتتاحية (31/08/2026)
     let customersChanged = false;
     customers.forEach((c) => {
-      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-07-31') {
-        c.openingBalanceDate = '2026-07-31';
+      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-08-31') {
+        c.openingBalanceDate = '2026-08-31';
         customersChanged = true;
       }
     });
@@ -9316,19 +9316,17 @@ export class DataService {
       localDataStore.saveCustomers(customers);
     }
 
-    // تحديث قيود اليومية: الأرصدة الافتتاحية 31/07/2026 وقيد التسوية 30/08/2026
+    // تحديث قيود اليومية: الأرصدة الافتتاحية 31/08/2026
     const journals = localDataStore.getJournals();
     let journalsChanged = false;
     journals.forEach((j) => {
       // قيد الأرصدة الافتتاحية
       if (
-        (j.reference === 'OB-2026-08-01' || j.id === 'jv-ob-2026-08-01' || j.id === 'jv-ob-2026-07-31' || j.entryNumber === 'JV-2026-0001') &&
+        (j.reference === 'OB-2026-08-01' || j.id === 'jv-ob-2026-08-01' || j.id === 'jv-ob-2026-07-31' || j.reference === 'OB-2026-0' || j.id === 'jv-op-4568') &&
         (j.description?.includes('افتتاحي') || j.sourceModule === 'OPENING')
       ) {
-        if (j.date !== '2026-07-31') {
-          j.date = '2026-07-31';
-          j.reference = 'OB-2026-07-31';
-          j.description = 'الأرصدة الافتتاحية للجمعيات وحسابات العملاء بتاريخ 2026-07-31';
+        if (j.date !== '2026-08-31') {
+          j.date = '2026-08-31';
           journalsChanged = true;
         }
       }

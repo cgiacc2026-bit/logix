@@ -357,7 +357,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [entityGovernorate, setEntityGovernorate] = useState('');
   const [entityCity, setEntityCity] = useState('الكويت');
   const [entityOpeningBalance, setEntityOpeningBalance] = useState<number | string>(0);
-  const [entityOpeningBalanceDate, setEntityOpeningBalanceDate] = useState('2026-07-31');
+  const [entityOpeningBalanceDate, setEntityOpeningBalanceDate] = useState('2026-08-31');
   const [entitySearch, setEntitySearch] = useState('');
 
   // Unit Form State
@@ -989,7 +989,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setEntityGovernorate('');
     setEntityCity('الكويت');
     setEntityOpeningBalance(0);
-    setEntityOpeningBalanceDate('2026-07-31');
+    setEntityOpeningBalanceDate('2026-08-31');
     setIsEntityModalOpen(true);
   };
 
@@ -1004,7 +1004,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setEntityGovernorate(entity.governorate || '');
     setEntityCity(entity.city || 'الكويت');
     setEntityOpeningBalance(entity.openingBalance || 0);
-    setEntityOpeningBalanceDate(entity.openingBalanceDate || '2026-07-31');
+    setEntityOpeningBalanceDate(entity.openingBalanceDate || '2026-08-31');
     setIsEntityModalOpen(true);
   };
 
@@ -1058,7 +1058,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         governorate: entityGovernorate,
         city: entityCity,
         openingBalance: Number(entityOpeningBalance) || 0,
-        openingBalanceDate: entityOpeningBalanceDate || '2026-07-31',
+        openingBalanceDate: entityOpeningBalanceDate || '2026-08-31',
         balance: computedBalance,
         currentBalance: computedBalance,
       };
@@ -2421,7 +2421,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                               {c.governorate && <span>• {c.governorate}</span>}
                             </div>
                             <div className="text-[10px] text-[#9E2A2B] font-semibold mt-1">
-                              الرصيد الافتتاحي ({c.openingBalanceDate || '2026-07-31'}): {formatCurrency(c.openingBalance || 0, currency)}
+                              الرصيد الافتتاحي ({c.openingBalanceDate || '2026-08-31'}): {formatCurrency(c.openingBalance || 0, currency)}
                             </div>
                             {/* Branches & Price List indicators */}
                             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -2533,7 +2533,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                               <span>• الضريبي: {s.taxNumber || 'غير مدخل'}</span>
                             </div>
                             <div className="text-[10px] text-[#2D6A4F] font-semibold mt-1">
-                              الرصيد الافتتاحي ({s.openingBalanceDate || '2026-07-31'}): {formatCurrency(s.openingBalance || 0, currency)}
+                              الرصيد الافتتاحي ({s.openingBalanceDate || '2026-08-31'}): {formatCurrency(s.openingBalance || 0, currency)}
                             </div>
                           </div>
                           <div className="text-left font-black text-sm text-[#9E2A2B] bg-[#FFF5F5] px-3 py-1.5 rounded-xl border border-[#FFD8D8]">

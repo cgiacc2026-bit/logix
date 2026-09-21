@@ -986,7 +986,7 @@ export function getAccountStatement(
     endDate: cleanEndDate,
     openingBalance: Math.round(calculatedOpeningBalance * 1000) / 1000,
     openingBalanceType: getBalanceNature(calculatedOpeningBalance, entityType),
-    openingBalanceDate: entity?.openingBalanceDate || '2026-07-31',
+    openingBalanceDate: entity?.openingBalanceDate || '2026-08-31',
     transactions: periodTransactions,
     closingBalance,
     closingBalanceType: getBalanceNature(closingBalance, entityType),
