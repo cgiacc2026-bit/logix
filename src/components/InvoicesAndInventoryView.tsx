@@ -670,6 +670,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvDiscountType('FIXED');
     setInvDiscountValue(0);
     setInvPaidAmount(0);
+    const activeBr = branchService.getActiveBranch(company?.id);
+    setInvBranchId(activeBr?.id || (availableBranches.length > 0 ? availableBranches[0].id : 'branch-main-01'));
     setInvWarehouseId(company?.posDefaultWarehouseId || (allWarehouses.length > 0 ? allWarehouses[0].id : 'wh-main-01'));
     setInvLines([
       {
@@ -708,6 +710,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setInvDiscountType(inv.discountType || 'FIXED');
     setInvDiscountValue(Number(inv.discountValue) || 0);
     setInvWarehouseId(inv.warehouseId || company?.posDefaultWarehouseId || (allWarehouses.length > 0 ? allWarehouses[0].id : 'wh-main-01'));
+    setInvBranchId(inv.branchId || (inv as any).branch_id || branchService.getActiveBranch(company?.id)?.id || 'branch-main-01');
     setInvSalesRepId(inv.salesRepId || '');
 
     const mappedLines = (inv.lines && inv.lines.length > 0)
@@ -911,6 +914,13 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         alert('خطأ تدقيق محاسبي رقابي: المورد المحدد غير موجود في سجل الموردين المعتمدين.');
         return;
       }
+    }
+
+    // Auto-resolve Branch if missing
+    let branchId = invBranchId;
+    if (!branchId || !branchId.trim()) {
+      branchId = availableBranches.length > 0 ? availableBranches[0].id : (branchService.getActiveBranch(company?.id)?.id || 'branch-main-01');
+      setInvBranchId(branchId);
     }
 
     // Auto-resolve Warehouse if missing
@@ -3663,7 +3673,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                             <div className="flex items-center justify-between">
                               <label className="text-[11px] font-bold text-[#1A1A1A] flex items-center gap-1">
                                 <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                                <span>فرع وموقع التسليم للعميل:</span>
+                                <span>موقع / فرع تسليم العميل (اختياري):</span>
                               </label>
                               <button
                                 type="button"
@@ -3684,7 +3694,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                 }}
                                 className="w-full bg-white border border-blue-200 rounded-lg p-2 text-xs font-bold text-blue-950 focus:ring-1 focus:ring-blue-500 cursor-pointer"
                               >
-                                <option value="">-- الإدارة العامة / الفرع الرئيسي العام --</option>
+                                <option value="">-- المركز الرئيسي للعميل / الإدارة العامة (الافتراضي) --</option>
                                 {activeCust.branches.map((b) => (
                                   <option key={b.id} value={b.id}>
                                     {b.nameAr} {b.code ? `(${b.code})` : ''} {b.city ? `• ${b.city}` : ''} {b.isDefault ? '★ (الافتراضي)' : ''}
@@ -3692,14 +3702,14 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                 ))}
                               </select>
                             ) : (
-                              <div className="flex items-center justify-between bg-blue-50/60 border border-blue-100 p-2 rounded-lg text-[11px]">
-                                <span className="text-blue-900 font-medium">الفرع الرئيسي العام (لم يتم تحديد أفرع فرعية لهذا العميل بعد)</span>
+                              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 p-2 rounded-lg text-[11px]">
+                                <span className="text-slate-700 font-medium">موقع التسليم: المركز الرئيسي للعميل (تلقائي)</span>
                                 <button
                                   type="button"
                                   onClick={() => setSelectedCustomerForBranchesAndPrices(activeCust)}
-                                  className="text-[11px] font-bold text-blue-700 underline cursor-pointer"
+                                  className="text-[10px] text-blue-600 hover:underline cursor-pointer"
                                 >
-                                  + إضافة أفرع ومواقع تسليم
+                                  + تخصيص فروع إضافية
                                 </button>
                               </div>
                             )}
@@ -3850,7 +3860,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-[#1A1A1A] mb-1">فرع المنشأة المصدر *</label>
+                    <label className="block font-bold text-[#1A1A1A] mb-1">فرع المنشأة (المصدر)</label>
                     <select
                       value={invBranchId}
                       onChange={(e) => setInvBranchId(e.target.value)}

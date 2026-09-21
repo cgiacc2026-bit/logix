@@ -1722,9 +1722,9 @@ export class SupabaseDataService {
               customer_id: customerIdCandidate,
               code: `BR-${Date.now().toString().slice(-4)}`,
               name_ar: effectiveCustomerBranchName || 'فرع العميل',
-              is_active: true,
+              is_default: false,
             };
-            const { error: brInsErr } = await supabase.from('customer_branches').upsert([newBrRow]);
+            const { error: brInsErr } = await supabase.from('customer_branches').upsert([newBrRow], { onConflict: 'id' });
             if (brInsErr) {
               console.warn('[Supabase saveInvoice] Auto-branch upsert notice:', brInsErr.message);
               effectiveCustomerBranchId = null;
@@ -1855,13 +1855,6 @@ export class SupabaseDataService {
       payment_status: paymentStatus,
       status: inv.status || 'POSTED',
       payment_method: inv.paymentTerms || 'CASH',
-      invoice_type: inv.type || 'SALES',
-      warehouse_id: effectiveWarehouseId,
-      customer_branch_id: effectiveCustomerBranchId,
-      customer_branch_name: effectiveCustomerBranchName,
-      price_list_id: resolvedPriceListId,
-      price_list_applied: inv.priceListApplied || (inv as any).price_list_applied || null,
-      items: formattedItems,
       customer_snapshot: customerSnapshot,
       raw_data: {
         ...inv,
@@ -1869,6 +1862,9 @@ export class SupabaseDataService {
         invoiceNumber: finalInvoiceNumber,
         companyId,
         customerSnapshot,
+        branchId: inv.branchId || (inv as any).branch_id || 'branch-main-01',
+        branch_id: inv.branchId || (inv as any).branch_id || 'branch-main-01',
+        branchName: (inv as any).branchName || (inv as any).branch_name || 'الفرع الرئيسي',
         warehouseId: effectiveWarehouseId,
         warehouse_id: effectiveWarehouseId,
         warehouseName: effectiveWarehouseName,
@@ -1876,19 +1872,24 @@ export class SupabaseDataService {
         customer_branch_id: effectiveCustomerBranchId,
         customerBranchName: effectiveCustomerBranchName,
         priceListId: resolvedPriceListId,
+        price_list_id: resolvedPriceListId,
+        priceListApplied: inv.priceListApplied || (inv as any).price_list_applied || null,
         salesRepId: effectiveSalesRepId,
         rep_id: effectiveSalesRepId,
         sales_rep_id: effectiveSalesRepId,
         salesPerson: effectiveSalesPerson,
         salesRepName: effectiveSalesRepName,
+        type: inv.type || 'SALES',
+        invoice_type: inv.type || 'SALES',
         items: formattedItems,
+        lines: formattedItems,
       },
       created_at: inv.createdAt || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
     // Keep track of original values for audit logging in case of FK fallback
-    const originalPriceListId = invoicePayload.price_list_id;
+    const originalPriceListId = resolvedPriceListId;
     const originalCustomerId = invoicePayload.customer_id;
     let fallbackPriceListOccurred = false;
     let fallbackCustomerOccurred = false;
@@ -1926,87 +1927,34 @@ export class SupabaseDataService {
     // --- STRICT DIRECT PERSISTENCE WITH EXPLICIT ERROR HANDLING ---
     let insertResult = await supabase
       .from('invoices')
-      .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })
+      .upsert([invoicePayload], { onConflict: 'id' })
       .select('id, invoice_number, company_id, created_at')
       .single();
 
     let invErr = insertResult.error;
     let insertedRow = insertResult.data;
 
-    // Retry 1: If foreign key constraint failed on any column, apply surgical fallbacks and retry
+    // Retry 1: If foreign key constraint failed on customer_id, apply surgical fallback and retry
     if (invErr && (invErr.message.includes('foreign key') || invErr.message.includes('fkey') || invErr.code === '23503')) {
       console.warn('[Supabase saveInvoice] Foreign key constraint candidate failed in invoices table, applying surgical fallbacks and retrying...', invErr.message);
 
-      if (invErr.message.includes('warehouse_id') || invErr.message.includes('invoices_warehouse_id_fkey')) {
-        invoicePayload.warehouse_id = null;
-      }
-      if (invErr.message.includes('customer_branch_id') || invErr.message.includes('invoices_customer_branch_id_fkey')) {
-        invoicePayload.customer_branch_id = null;
-      }
-      if (invErr.message.includes('price_list_id') || invErr.message.includes('invoices_price_list_id_fkey')) {
-        invoicePayload.price_list_id = null;
-        fallbackPriceListOccurred = true;
-      }
-      if (invErr.message.includes('customer_id') || invErr.message.includes('invoices_customer_id_fkey')) {
+      if (invErr.message.includes('customer_id') || invErr.message.includes('invoices_customer_id_fkey') || invErr.code === '23503') {
         invoicePayload.customer_id = null;
         fallbackCustomerOccurred = true;
       }
-      if (invErr.message.includes('cost_center_id') || invErr.message.includes('invoices_cost_center_id_fkey')) {
-        invoicePayload.cost_center_id = null;
-      }
 
-      // If ambiguous or unrecognized column, clear all optional relational foreign keys safely
-      if (!invErr.message.includes('customer_id') &&
-          !invErr.message.includes('price_list_id') &&
-          !invErr.message.includes('warehouse_id') &&
-          !invErr.message.includes('customer_branch_id') &&
-          !invErr.message.includes('cost_center_id')) {
-        invoicePayload.warehouse_id = null;
-        invoicePayload.customer_branch_id = null;
-        invoicePayload.cost_center_id = null;
-        invoicePayload.price_list_id = null;
-        invoicePayload.customer_id = null;
-        fallbackPriceListOccurred = Boolean(originalPriceListId);
-        fallbackCustomerOccurred = Boolean(originalCustomerId);
-      }
-
-      if (invoicePayload.raw_data) {
-        if (fallbackPriceListOccurred) {
-          invoicePayload.raw_data.priceListFallbackApplied = true;
-          invoicePayload.raw_data.priceListFallbackReason = 'Foreign key constraint violation in invoices_price_list_id_fkey - reverted to standard catalog pricing';
-          invoicePayload.raw_data.originalPriceListId = originalPriceListId;
-        }
-        if (fallbackCustomerOccurred) {
-          invoicePayload.raw_data.customerFallbackApplied = true;
-          invoicePayload.raw_data.originalCustomerId = originalCustomerId;
-        }
+      if (invoicePayload.raw_data && fallbackCustomerOccurred) {
+        invoicePayload.raw_data.customerFallbackApplied = true;
+        invoicePayload.raw_data.originalCustomerId = originalCustomerId;
       }
 
       insertResult = await supabase
         .from('invoices')
-        .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })
+        .upsert([invoicePayload], { onConflict: 'id' })
         .select('id, invoice_number, company_id, created_at')
         .single();
       invErr = insertResult.error;
       insertedRow = insertResult.data;
-
-      // If FK STILL failed on another column, clear ALL optional FKs and retry once more
-      if (invErr && (invErr.message.includes('foreign key') || invErr.message.includes('fkey') || invErr.code === '23503')) {
-        console.warn('[Supabase saveInvoice] Second FK failure, clearing all optional foreign keys and final retry...', invErr.message);
-        invoicePayload.warehouse_id = null;
-        invoicePayload.customer_branch_id = null;
-        invoicePayload.cost_center_id = null;
-        invoicePayload.price_list_id = null;
-        invoicePayload.customer_id = null;
-
-        insertResult = await supabase
-          .from('invoices')
-          .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })
-          .select('id, invoice_number, company_id, created_at')
-          .single();
-        invErr = insertResult.error;
-        insertedRow = insertResult.data;
-      }
 
       // Register fallback action in audit_logs table
       if (!invErr && insertedRow) {
@@ -2014,23 +1962,15 @@ export class SupabaseDataService {
           const auditOldData: Record<string, any> = {
             event: 'FOREIGN_KEY_FALLBACK_APPLIED',
             constraint_error: 'Handled 23503 foreign key violation',
+            original_customer_id: originalCustomerId,
           };
           const auditNewData: Record<string, any> = {
             invoice_number: insertedRow.invoice_number,
             fallback_applied: true,
+            customer_id: null,
+            customer_name: invoicePayload.customer_name,
             timestamp: new Date().toISOString(),
           };
-
-          if (fallbackPriceListOccurred) {
-            auditOldData.original_price_list_id = originalPriceListId;
-            auditNewData.price_list_id = null;
-            auditNewData.fallback_price_list = 'Standard catalog prices applied instead of missing/invalid price_list_id';
-          }
-          if (fallbackCustomerOccurred) {
-            auditOldData.original_customer_id = originalCustomerId;
-            auditNewData.customer_id = null;
-            auditNewData.customer_name = invoicePayload.customer_name;
-          }
 
           await supabase.from('audit_logs').insert([
             {
@@ -2060,7 +2000,7 @@ export class SupabaseDataService {
       }
       insertResult = await supabase
         .from('invoices')
-        .upsert([invoicePayload], { onConflict: 'company_id, invoice_number' })
+        .upsert([invoicePayload], { onConflict: 'id' })
         .select('id, invoice_number, company_id, created_at')
         .single();
       invErr = insertResult.error;
@@ -2086,7 +2026,13 @@ export class SupabaseDataService {
     if (invoiceItemRows.length > 0) {
       try {
         await supabase.from('invoice_items').delete().eq('invoice_id', insertedRow.id);
-        const { error: itemErr } = await supabase.from('invoice_items').insert(invoiceItemRows);
+        let { error: itemErr } = await supabase.from('invoice_items').insert(invoiceItemRows);
+        if (itemErr && (itemErr.message.includes('foreign key') || itemErr.code === '23503' || itemErr.code === '22P02')) {
+          console.warn('[Supabase saveInvoice] invoice_items foreign key/format fallback, retrying with item_id=null:', itemErr.message);
+          const sanitizedItems = invoiceItemRows.map(r => ({ ...r, item_id: null }));
+          const retryRes = await supabase.from('invoice_items').insert(sanitizedItems);
+          itemErr = retryRes.error;
+        }
         if (itemErr) {
           console.error('[Supabase saveInvoice] invoice_items insert error:', itemErr);
           throw new Error(`فشل حفظ بنود الفاتورة في قاعدة البيانات السحابية: ${itemErr.message}`);
@@ -2524,7 +2470,7 @@ export class SupabaseDataService {
       try {
         const { data, error } = await supabase
           .from('payment_vouchers')
-          .select('id, company_id, voucher_number, type, date, amount, payment_method, entity_type, entity_id, entity_name, account_id, reference, description, status, created_at, updated_at, raw_data')
+          .select('id, company_id, voucher_number, type, date, amount, payment_method, entity_type, entity_id, entity_name, notes, account_id, status, raw_data, created_at, updated_at')
           .eq('company_id', companyId)
           .order('date', { ascending: false })
           .range(offset, offset + limit - 1);
@@ -2551,8 +2497,8 @@ export class SupabaseDataService {
             entityId: row.entity_id || raw.entityId || '',
             entityNameAr: row.entity_name || raw.entityNameAr || raw.entityName || '',
             bankAccountId: raw.bankAccountId || row.account_id || '',
-            reference: row.reference || raw.reference || '',
-            notes: raw.notes || row.notes || row.description || '',
+            reference: raw.reference || row.reference || '',
+            notes: row.notes || raw.notes || raw.description || '',
             status: (row.status || raw.status || 'POSTED') as 'POSTED' | 'CANCELLED',
             invoiceId: raw.invoiceId || row.invoice_id || undefined,
             journalEntryId: raw.journalEntryId || undefined,
@@ -2588,8 +2534,7 @@ export class SupabaseDataService {
         entity_id: v.entityId || null,
         entity_name: v.entityNameAr || (v as any).entityName || '',
         account_id: v.bankAccountId || (v as any).accountId || null,
-        reference: v.reference || null,
-        description: v.notes || (v as any).description || '',
+        notes: v.notes || (v as any).description || '',
         status: v.status || 'POSTED',
         raw_data: {
           ...v,
@@ -2634,8 +2579,7 @@ export class SupabaseDataService {
         entity_id: v.entityId || null,
         entity_name: v.entityNameAr || (v as any).entityName || '',
         account_id: v.bankAccountId || (v as any).accountId || null,
-        reference: v.reference || null,
-        description: v.notes || (v as any).description || '',
+        notes: v.notes || (v as any).description || '',
         status: v.status || 'POSTED',
         raw_data: {
           ...v,
