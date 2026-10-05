@@ -76,6 +76,7 @@ import {
   isHistoricalCustomer,
   isHistoricalSupplier,
   isHistoricalItem,
+  isHistoricalAccount,
   isHistoricalRecord,
   assertOperationAllowed,
   SYSTEM_CUTOVER_AT,
@@ -2339,11 +2340,14 @@ export class DataService {
   }
 
   public static async updateAccount(id: string, accData: Partial<Account>): Promise<Account | null> {
-    localDataStore.removeTombstone('accounts', id);
     const accounts = localDataStore.getAccounts();
     const idx = accounts.findIndex((a) => a.id === id);
     if (idx === -1) return null;
     const existing = accounts[idx];
+    if (isHistoricalAccount(id, existing.code)) {
+      throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing.code || id} - ${existing.nameAr}) تاريخي ومحمي قبل تاريخ تحديث النظام ولا يمكن تعديل رمزه أو طبيعته أو دليله.`);
+    }
+    localDataStore.removeTombstone('accounts', id);
     const catUpper = (accData.category || existing.category || 'ASSET').toUpperCase();
     const ifrsNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
     const norm = accData.normalBalance || (accData as any).nature || existing.normalBalance || (existing as any).nature || ifrsNature;
@@ -2368,8 +2372,12 @@ export class DataService {
   }
 
   public static async deleteAccount(id: string): Promise<boolean> {
-    localDataStore.addTombstone('accounts', id);
     const accounts = localDataStore.getAccounts();
+    const existing = accounts.find((a) => a.id === id);
+    if (isHistoricalAccount(id, existing?.code)) {
+      throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing?.code || id}) تاريخي ومحمي قبل تاريخ تحديث النظام وممنوع حذفه نهائياً.`);
+    }
+    localDataStore.addTombstone('accounts', id);
     const filtered = accounts.filter((a) => a.id !== id);
     localDataStore.saveAccounts(filtered);
     if (isSupabaseConfigured) {
@@ -4406,6 +4414,9 @@ export class DataService {
   }
 
   public static async updateInvoice(id: string, data: any): Promise<Invoice | null> {
+    if (isHistoricalInvoice(id)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: الفاتورة (${id}) تاريخية ومسجلة قبل تاريخ القطع ومحمية حماية مطلقة ولا يمكن تعديلها.`);
+    }
     localDataStore.removeTombstone('invoices', id);
     const invoices = localDataStore.getInvoices();
     const targetInvoiceNumber = (data.invoiceNumber || '').trim().toUpperCase();
@@ -4418,6 +4429,9 @@ export class DataService {
       return null;
     }
     const original = invoices[originalIdx];
+    if (isHistoricalInvoice(original.id, original.createdAt, original.date)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: الفاتورة (${original.invoiceNumber}) تاريخية ومحمية حماية مطلقة.`);
+    }
 
     const customers = localDataStore.getCustomers();
     const suppliers = localDataStore.getSuppliers();
@@ -5888,15 +5902,18 @@ export class DataService {
   }
 
   public static async deleteVoucher(id: string): Promise<boolean> {
-    localDataStore.addTombstone('vouchers', id);
     const vouchers = localDataStore.getVouchers();
     const v = vouchers.find((x) => x.id === id);
+    if (v && isHistoricalRecord('payment_vouchers', v.id, (v as any).createdAt, (v as any).date)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: السند (${v.voucherNumber || id}) تاريخي ومحمي قبل تاريخ تحديث النظام ولا يمكن حذفه.`);
+    }
+    localDataStore.addTombstone('vouchers', id);
     if (v) {
-      // Revert invoice
-      if (v.invoiceId) {
+      // Revert invoice only if invoice is NOT historical
+      if (v.invoiceId && !isHistoricalInvoice(v.invoiceId)) {
         const invoices = localDataStore.getInvoices();
         const inv = invoices.find((i) => i.id === v.invoiceId);
-        if (inv) {
+        if (inv && !isHistoricalInvoice(inv.id, inv.createdAt, inv.date)) {
           inv.paidAmount = Math.max(0, (inv.paidAmount || 0) - v.amount);
           inv.dueAmount = Math.max(0, inv.grandTotal - inv.paidAmount);
           inv.status = inv.dueAmount === 0 ? 'PAID' : (inv.paidAmount > 0 ? 'PARTIALLY_PAID' : 'POSTED');

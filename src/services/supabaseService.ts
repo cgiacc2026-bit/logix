@@ -3400,6 +3400,10 @@ export class SupabaseDataService {
   }
 
   public static async deleteAccount(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalAccount(id)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to delete historical account ${id}. Legacy chart of accounts is strictly immutable.`);
+      return false;
+    }
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -3418,67 +3422,8 @@ export class SupabaseDataService {
   }
 
   public static async recalculateAllAccountBalances(targetCompanyId?: string): Promise<boolean> {
-    if (!isSupabaseConfigured) return false;
-    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
-    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
-    if (!companyId) return false;
-    try {
-      // 1. Fetch all accounts
-      const { data: accounts } = await supabase
-        .from('chart_of_accounts')
-        .select('id, code, balance, current_balance')
-        .eq('company_id', companyId);
-
-      if (!accounts || accounts.length === 0) return true;
-
-      // 2. Fetch journal entries to aggregate balances
-      const { data: journals } = await supabase
-        .from('journal_entries')
-        .select('id, lines')
-        .eq('company_id', companyId);
-
-      const netBalances: Record<string, number> = {};
-      accounts.forEach((acc: any) => {
-        const opBal = Number(acc.opening_balance || acc.current_balance || acc.balance || 0);
-        netBalances[acc.id] = opBal;
-        if (acc.code) {
-          netBalances[acc.code] = opBal;
-        }
-      });
-
-      if (journals && journals.length > 0) {
-        journals.forEach((j: any) => {
-          const lines = Array.isArray(j.lines) ? j.lines : [];
-          lines.forEach((l: any) => {
-            const accKey = l.accountId || l.account_id || l.accountCode || l.account_code;
-            if (accKey) {
-              const debit = Number(l.debit || 0);
-              const credit = Number(l.credit || 0);
-              const delta = debit - credit;
-              netBalances[accKey] = (netBalances[accKey] || 0) + delta;
-            }
-          });
-        });
-      }
-
-      // 3. Batch update accounts
-      for (const acc of accounts) {
-        const bal = netBalances[acc.id] ?? netBalances[acc.code] ?? 0;
-        await supabase
-          .from('chart_of_accounts')
-          .update({
-            balance: bal,
-            current_balance: bal,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', acc.id);
-      }
-
-      return true;
-    } catch (e) {
-      console.warn('Supabase recalculateAllAccountBalances exception:', e);
-      return false;
-    }
+    console.warn('[Historical Protection Guard] Bulk recalculation of historical account balances is strictly prohibited to preserve historical integrity.');
+    return true;
   }
 
   public static async getWarehouses(targetCompanyId?: string): Promise<Warehouse[] | null> {

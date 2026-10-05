@@ -19,6 +19,8 @@ export const HISTORICAL_JOURNAL_IDS = new Set<string>(historicalSnapshotData.jou
 export const HISTORICAL_CUSTOMER_IDS = new Set<string>(historicalSnapshotData.customerIds || []);
 export const HISTORICAL_SUPPLIER_IDS = new Set<string>(historicalSnapshotData.supplierIds || []);
 export const HISTORICAL_ITEM_IDS = new Set<string>(historicalSnapshotData.itemIds || []);
+export const HISTORICAL_ACCOUNT_IDS = new Set<string>((historicalSnapshotData as any).accountIds || []);
+export const HISTORICAL_ACCOUNT_CODES = new Set<string>((historicalSnapshotData as any).accountCodes || []);
 
 /**
  * فحص ما إذا كان التاريخ المدخل يسبق نقطة القطع
@@ -83,9 +85,18 @@ export function isHistoricalItem(id?: string): boolean {
 }
 
 /**
+ * فحص ما إذا كان الحساب في دليل الحسابات مسجلاً قبل تاريخ القطع ومحمياً
+ */
+export function isHistoricalAccount(id?: string, code?: string): boolean {
+  if (id && HISTORICAL_ACCOUNT_IDS.has(String(id).trim())) return true;
+  if (code && HISTORICAL_ACCOUNT_CODES.has(String(code).trim())) return true;
+  return false;
+}
+
+/**
  * فحص عام لأي جدول
  */
-export function isHistoricalRecord(table: string, id?: string, createdAt?: string): boolean {
+export function isHistoricalRecord(table: string, id?: string, createdAt?: string, code?: string): boolean {
   if (!id) return false;
   const cleanId = String(id).trim();
   switch (table.toLowerCase()) {
@@ -100,6 +111,9 @@ export function isHistoricalRecord(table: string, id?: string, createdAt?: strin
       return isHistoricalSupplier(cleanId);
     case 'items':
       return isHistoricalItem(cleanId);
+    case 'chart_of_accounts':
+    case 'accounts':
+      return isHistoricalAccount(cleanId, code);
     default:
       return createdAt ? isBeforeCutover(createdAt) : false;
   }

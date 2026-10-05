@@ -9,6 +9,7 @@ import {
   getDescendantLeaves,
 } from '../utils/accountingTreeEngine.ts';
 import { DataService } from '../services/dataService.ts';
+import { isHistoricalAccount } from '../services/historicalDataProtectionService.ts';
 import {
   FolderTree,
   Plus,
@@ -268,6 +269,10 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   };
 
   const handleOpenEditModal = (acc: Account) => {
+    if (isHistoricalAccount(acc.id, acc.code)) {
+      alert('هذا الحساب تاريخي ومحمي قبل تاريخ تحديث النظام ولا يمكن تعديل رمزه أو طبيعته أو دليله.');
+      return;
+    }
     setErrorMsg('');
     setEditingAccount(acc);
     setNewCode(acc.code);
@@ -283,6 +288,10 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   };
 
   const handleDeleteAccountRow = async (acc: Account) => {
+    if (isHistoricalAccount(acc.id, acc.code)) {
+      alert('هذا الحساب تاريخي ومحمي قبل تاريخ تحديث النظام وممنوع حذفه نهائياً.');
+      return;
+    }
     if (!confirm(`هل أنت متأكد من حذف الحساب "${acc.code} - ${acc.nameAr}"؟`)) return;
     try {
       if (onDeleteAccount) {
@@ -691,22 +700,34 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                       <Plus className="w-3.5 h-3.5" />
                     </button>
 
-                    <button
-                      onClick={() => handleOpenEditModal(acc)}
-                      title="تعديل الحساب"
-                      className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition-all cursor-pointer"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {!acc.isSystem && onDeleteAccount && (
-                      <button
-                        onClick={() => handleDeleteAccountRow(acc)}
-                        title="حذف الحساب"
-                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-all cursor-pointer"
+                    {isHistoricalAccount(acc.id, acc.code) ? (
+                      <span
+                        title="هذا حساب تاريخي محمي قبل تاريخ تحديث النظام ولا يمكن تعديل رمزه أو طبيعته أو حذفه"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 select-none"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                        <span>محمي تاريخياً</span>
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleOpenEditModal(acc)}
+                          title="تعديل الحساب"
+                          className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition-all cursor-pointer"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        {!acc.isSystem && onDeleteAccount && (
+                          <button
+                            onClick={() => handleDeleteAccountRow(acc)}
+                            title="حذف الحساب"
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

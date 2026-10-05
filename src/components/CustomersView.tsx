@@ -3,7 +3,8 @@ import { Customer, Invoice, PaymentVoucher, JournalEntry, CreditNote } from '../
 import { formatCurrency } from '../utils/formatters.ts';
 import { getCalculatedCustomerBalance } from '../services/statementService.ts';
 import { matchesSearch } from '../utils/searchUtils.ts';
-import { Users, Search, Building2, Tag, Sparkles, FileText, Plus, CheckCircle } from 'lucide-react';
+import { Users, Search, Building2, Tag, Sparkles, FileText, Plus, CheckCircle, ShieldCheck } from 'lucide-react';
+import { isHistoricalCustomer } from '../services/historicalDataProtectionService.ts';
 
 export interface CustomersViewProps {
   customers: Customer[];
@@ -186,6 +187,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <div>
                     <div className="font-extrabold text-[#1A1A1A] text-sm flex items-center gap-2">
                       <span>{c.nameAr}</span>
+                      {isHistoricalCustomer(c.id) && (
+                        <span
+                          title="هذا العميل مسجل قبل تاريخ تحديث النظام ومحمي حماية كاملة"
+                          className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200 font-bold"
+                        >
+                          <ShieldCheck className="w-3 h-3 text-amber-600" />
+                          <span>عميل تاريخي محمي</span>
+                        </span>
+                      )}
                       {c.code && (
                         <span className="text-[10px] bg-[#F7F5F0] px-2 py-0.5 rounded-md border border-[#E5E1DA] text-[#8C8273] font-mono">
                           {c.code}
