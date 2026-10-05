@@ -74,8 +74,10 @@ import {
   ArrowUpDown,
   X,
   Link as LinkIcon,
+  ShieldCheck,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { isHistoricalInvoice } from '../services/historicalDataProtectionService.ts';
 
 interface InvoicesProps {
   company: CompanyProfile;
@@ -693,6 +695,10 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   };
 
   const handleOpenEditInvoice = (inv: Invoice) => {
+    if (isHistoricalInvoice(inv.id, inv.createdAt, inv.date)) {
+      alert(`[حظر حماية البيانات التاريخية]: الفاتورة (${inv.invoiceNumber}) مسجلة قبل تاريخ القطع وتعتبر سجلاً تاريخياً محمياً حماية قانونية ومحاسبية مطلقة من التعديل.`);
+      return;
+    }
     setEditingInvoice(inv);
     setInvInvoiceNumber(inv.invoiceNumber || '');
     setInvType(inv.type);
@@ -2262,96 +2268,108 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                 طباعة مفقطة
                               </button>
 
-                              <button
-                                onClick={() => handleOpenEditInvoice(inv)}
-                                className="px-2.5 py-1 bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#855B00] border border-[#D4AF37]/40 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-                                title="تعديل بنود الفاتورة والكميات والأسعار مع تحديث الأرصدة والقيود تلقائياً بدون حذف"
-                              >
-                                <Edit2 className="w-3.5 h-3.5 text-[#B8860B]" />
-                                تعديل
-                              </button>
-
-                              {inv.status === 'DRAFT' && (
+                              {isHistoricalInvoice(inv.id, inv.createdAt, inv.date) ? (
+                                <span
+                                  className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs"
+                                  title="سجل تاريخي محمي قبل تاريخ القطع SYSTEM_CUTOVER_AT (متاح للقراءة والطباعة فقط دون تعديل أو حذف)"
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                                  تاريخي محمي
+                                </span>
+                              ) : (
                                 <>
                                   <button
-                                    onClick={async () => {
-                                      try {
-                                        await onPostInvoice(inv.id);
-                                      } catch (e: any) {
-                                        alert(e.message);
-                                      }
-                                    }}
-                                    className="px-2.5 py-1 bg-[#2D6A4F] hover:bg-[#1b4332] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
-                                    title="ترحيل الفاتورة للدفاتر"
+                                    onClick={() => handleOpenEditInvoice(inv)}
+                                    className="px-2.5 py-1 bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#855B00] border border-[#D4AF37]/40 text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                                    title="تعديل بنود الفاتورة والكميات والأسعار مع تحديث الأرصدة والقيود تلقائياً بدون حذف"
                                   >
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    ترحيل
+                                    <Edit2 className="w-3.5 h-3.5 text-[#B8860B]" />
+                                    تعديل
                                   </button>
 
-                                  {onDeleteInvoice && (
-                                    <button
-                                      onClick={async () => {
-                                        if (confirm(`هل أنت متأكد من حذف المسودة (${inv.invoiceNumber})؟`)) {
+                                  {inv.status === 'DRAFT' && (
+                                    <>
+                                      <button
+                                        onClick={async () => {
                                           try {
-                                            await onDeleteInvoice(inv.id);
-                                          } catch (err: any) {
-                                            alert(err.message);
+                                            await onPostInvoice(inv.id);
+                                          } catch (e: any) {
+                                            alert(e.message);
                                           }
-                                        }
-                                      }}
-                                      className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                                      title="حذف المسودة"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                </>
-                              )}
+                                        }}
+                                        className="px-2.5 py-1 bg-[#2D6A4F] hover:bg-[#1b4332] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                                        title="ترحيل الفاتورة للدفاتر"
+                                      >
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        ترحيل
+                                      </button>
 
-                              {(inv.status === 'POSTED' || inv.status === 'PAID') && (
-                                <>
-                                  {onCancelInvoice && (
-                                    <button
-                                      onClick={async () => {
-                                        const reason = prompt(
-                                          `إلغاء الفاتورة (${inv.invoiceNumber}): الرجاء كتابة سبب إلغاء الفاتورة وعكس قيودها ومخزونها:`,
-                                          'طلب العميل إلغاء الفاتورة'
-                                        );
-                                        if (reason === null) return;
-                                        try {
-                                          await onCancelInvoice(inv.id, reason);
-                                        } catch (e: any) {
-                                          alert(e.message);
-                                        }
-                                      }}
-                                      className="px-2.5 py-1 bg-[#9E2A2B] hover:bg-[#782021] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
-                                      title="إلغاء الفاتورة وعكس القيد بالكامل"
-                                    >
-                                      <RotateCcw className="w-3.5 h-3.5" />
-                                      إلغاء وعكس
-                                    </button>
+                                      {onDeleteInvoice && (
+                                        <button
+                                          onClick={async () => {
+                                            if (confirm(`هل أنت متأكد من حذف المسودة (${inv.invoiceNumber})؟`)) {
+                                              try {
+                                                await onDeleteInvoice(inv.id);
+                                              } catch (err: any) {
+                                                alert(err.message);
+                                              }
+                                            }
+                                          }}
+                                          className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                          title="حذف المسودة"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </>
                                   )}
 
-                                  {onDeleteInvoice && (
-                                    <button
-                                      onClick={async () => {
-                                        if (
-                                          confirm(
-                                            `⚠️ هل أنت متأكد من حذف الفاتورة (${inv.invoiceNumber})؟ سيتم عكس قيودها واسترجاع الكميات للمخزون وحذف الفاتورة بالكامل.`
-                                          )
-                                        ) {
-                                          try {
-                                            await onDeleteInvoice(inv.id);
-                                          } catch (err: any) {
-                                            alert(err.message);
-                                          }
-                                        }
-                                      }}
-                                      className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                                      title="حذف الفاتورة بالكامل وعكس آثارها"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
+                                  {(inv.status === 'POSTED' || inv.status === 'PAID') && (
+                                    <>
+                                      {onCancelInvoice && (
+                                        <button
+                                          onClick={async () => {
+                                            const reason = prompt(
+                                              `إلغاء الفاتورة (${inv.invoiceNumber}): الرجاء كتابة سبب إلغاء الفاتورة وعكس قيودها ومخزونها:`,
+                                              'طلب العميل إلغاء الفاتورة'
+                                            );
+                                            if (reason === null) return;
+                                            try {
+                                              await onCancelInvoice(inv.id, reason);
+                                            } catch (e: any) {
+                                              alert(e.message);
+                                            }
+                                          }}
+                                          className="px-2.5 py-1 bg-[#9E2A2B] hover:bg-[#782021] text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                                          title="إلغاء الفاتورة وعكس القيد بالكامل"
+                                        >
+                                          <RotateCcw className="w-3.5 h-3.5" />
+                                          إلغاء وعكس
+                                        </button>
+                                      )}
+
+                                      {onDeleteInvoice && (
+                                        <button
+                                          onClick={async () => {
+                                            if (
+                                              confirm(
+                                                `⚠️ هل أنت متأكد من حذف الفاتورة (${inv.invoiceNumber})؟ سيتم عكس قيودها واسترجاع الكميات للمخزون وحذف الفاتورة بالكامل.`
+                                              )
+                                            ) {
+                                              try {
+                                                await onDeleteInvoice(inv.id);
+                                              } catch (err: any) {
+                                                alert(err.message);
+                                              }
+                                            }
+                                          }}
+                                          className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                          title="حذف الفاتورة بالكامل وعكس آثارها"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </>
                                   )}
                                 </>
                               )}

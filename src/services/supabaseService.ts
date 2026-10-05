@@ -50,6 +50,14 @@ import {
   ItemOffer,
 } from '../types.js';
 import { CacheAndThrottleService } from './cacheAndThrottleService.js';
+import {
+  isHistoricalInvoice,
+  isHistoricalJournal,
+  isHistoricalCustomer,
+  isHistoricalSupplier,
+  isHistoricalItem,
+  SYSTEM_CUTOVER_AT,
+} from './historicalDataProtectionService.ts';
 
 export class SupabaseDataService {
   /**
@@ -864,6 +872,10 @@ export class SupabaseDataService {
   }
 
   public static async deleteItem(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalItem(id)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to delete historical item ${id}. Legacy master data is strictly immutable.`);
+      return false;
+    }
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -1173,6 +1185,10 @@ export class SupabaseDataService {
   }
 
   public static async deleteCustomer(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalCustomer(id)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to delete historical customer ${id}. Legacy master data is strictly immutable.`);
+      return false;
+    }
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -1400,6 +1416,10 @@ export class SupabaseDataService {
   }
 
   public static async deleteSupplier(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalSupplier(id)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to delete historical supplier ${id}. Legacy master data is strictly immutable.`);
+      return false;
+    }
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -1648,6 +1668,10 @@ export class SupabaseDataService {
   }
 
   public static async saveInvoice(inv: Invoice, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalInvoice(inv.id, (inv as any).createdAt, (inv as any).date)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to modify historical invoice ${inv.id} (${inv.invoiceNumber}). Legacy data is strictly immutable.`);
+      return true;
+    }
     const rawCompanyId = targetCompanyId || (inv as any).companyId || (inv as any).company_id || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) {
@@ -2456,6 +2480,10 @@ export class SupabaseDataService {
   }
 
   public static async deleteInvoice(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalInvoice(id)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to delete historical invoice ${id}. Legacy data is strictly immutable.`);
+      return false;
+    }
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -2946,6 +2974,10 @@ export class SupabaseDataService {
   }
 
   public static async saveJournal(j: JournalEntry, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalJournal(j.id, (j as any).createdAt, (j as any).date)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to modify historical journal ${j.id} (${j.entryNumber}). Legacy data is strictly immutable.`);
+      return true;
+    }
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || j.companyId || (j as any).company_id || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
@@ -3198,6 +3230,10 @@ export class SupabaseDataService {
   }
 
   public static async deleteJournal(id: string, targetCompanyId?: string): Promise<boolean> {
+    if (isHistoricalJournal(id)) {
+      console.warn(`[Historical Protection Guard] Blocked attempt to delete historical journal ${id}. Legacy data is strictly immutable.`);
+      return false;
+    }
     if (!isSupabaseConfigured) return false;
     const rawCompanyId = targetCompanyId || getCurrentCompanyId();
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);

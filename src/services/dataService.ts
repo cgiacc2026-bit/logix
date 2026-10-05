@@ -70,6 +70,16 @@ import { backgroundSync } from './backgroundSyncService.ts';
 import { getAccountStatement, getCalculatedCustomerBalance, getCalculatedSupplierBalance } from './statementService.ts';
 import { IAS2CostingEngine } from './costingEngine.ts';
 import { aggregateChartOfAccountsTree, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
+import {
+  isHistoricalInvoice,
+  isHistoricalJournal,
+  isHistoricalCustomer,
+  isHistoricalSupplier,
+  isHistoricalItem,
+  isHistoricalRecord,
+  assertOperationAllowed,
+  SYSTEM_CUTOVER_AT,
+} from './historicalDataProtectionService.ts';
 
 const STORAGE_KEYS = {
   COMPANY: 'alwaleed_erp_company',
@@ -2887,6 +2897,9 @@ export class DataService {
   }
 
   public static async deleteJournal(id: string): Promise<boolean> {
+    if (isHistoricalJournal(id)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: القيد المحاسبي (${id}) تاريخي ومسجل قبل تاريخ القطع ومحمي حماية مطلقة ولا يمكن حذفه.`);
+    }
     localDataStore.addTombstone('journals', id);
     let journals = localDataStore.getJournals();
     const isMatch = (j: JournalEntry) =>
@@ -3851,6 +3864,11 @@ export class DataService {
     const resolved = this.getResolvedAccounts();
 
     for (const inv of invoices) {
+      // حظر قاطع: استثناء كافة الفواتير التاريخية قبل تاريخ القطع من إعادة الترحيل أو التوليد التلقائي
+      if (isHistoricalInvoice(inv.id, inv.createdAt, inv.date)) {
+        continue;
+      }
+
       // 1. Link or generate journal entry if missing
       let j = journals.find(
         (entry) => entry.id === inv.journalEntryId ||
@@ -4216,9 +4234,15 @@ export class DataService {
   }
 
   public static async cancelInvoice(id: string, reason?: string): Promise<Invoice | null> {
+    if (isHistoricalInvoice(id)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: الفاتورة (${id}) تاريخية ومسجلة قبل تاريخ القطع ومحمية حماية مطلقة ولا يمكن إلغاؤها.`);
+    }
     const invoices = localDataStore.getInvoices();
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return null;
+    if (isHistoricalInvoice(inv.id, inv.createdAt, inv.date)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: الفاتورة (${inv.invoiceNumber}) تاريخية ومحمية حماية مطلقة.`);
+    }
 
     if (inv.status === 'CANCELLED') {
       return inv;
@@ -4335,9 +4359,15 @@ export class DataService {
   }
 
   public static async deleteInvoice(id: string): Promise<boolean> {
+    if (isHistoricalInvoice(id)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: الفاتورة (${id}) تاريخية ومسجلة قبل تاريخ القطع ومحمية حماية مطلقة ولا يمكن حذفها.`);
+    }
     const invoices = localDataStore.getInvoices();
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return true;
+    if (isHistoricalInvoice(inv.id, inv.createdAt, inv.date)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: الفاتورة (${inv.invoiceNumber}) تاريخية ومحمية حماية مطلقة.`);
+    }
 
     localDataStore.addTombstone('invoices', id);
 
@@ -5190,6 +5220,7 @@ export class DataService {
     }
 
     for (const v of vouchers) {
+      if (isHistoricalRecord('vouchers', v.id, v.createdAt)) continue;
       const isReceipt = v.type === 'RECEIPT';
       const amount = Number(v.amount) || 0;
       if (amount <= 0 && v.status !== 'CANCELLED') continue;
@@ -5392,7 +5423,8 @@ export class DataService {
 
     if (data.invoiceId) {
       const inv = invoices.find((i) => i.id === data.invoiceId);
-      if (inv) {
+      // حظر قاطع: ممنوع تعديل أي فاتورة تاريخية مسجلة قبل تاريخ القطع
+      if (inv && !isHistoricalInvoice(inv.id, inv.createdAt, inv.date)) {
         inv.paidAmount = Math.min(inv.grandTotal, Math.round(((inv.paidAmount || 0) + amount) * 1000) / 1000);
         inv.dueAmount = Math.max(0, Math.round((inv.grandTotal - inv.paidAmount) * 1000) / 1000);
         if (inv.dueAmount <= 0) {
@@ -6225,6 +6257,9 @@ export class DataService {
   }
 
   public static async deleteCustomer(id: string): Promise<boolean> {
+    if (isHistoricalCustomer(id)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: العميل (${id}) مسجل قبل تاريخ القطع ومحمي حماية مطلقة ولا يمكن حذفه.`);
+    }
     localDataStore.addTombstone('customers', id);
     const list = localDataStore.getCustomers();
     const filtered = list.filter((c) => c.id !== id);
@@ -6547,6 +6582,9 @@ export class DataService {
   }
 
   public static async deleteSupplier(id: string): Promise<boolean> {
+    if (isHistoricalSupplier(id)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: المورد (${id}) مسجل قبل تاريخ القطع ومحمي حماية مطلقة ولا يمكن حذفه.`);
+    }
     localDataStore.addTombstone('suppliers', id);
     const list = localDataStore.getSuppliers();
     const filtered = list.filter((s) => s.id !== id);
@@ -7063,6 +7101,9 @@ export class DataService {
   }
 
   public static async deleteInventoryItem(id: string): Promise<boolean> {
+    if (isHistoricalItem(id)) {
+      throw new Error(`[حظر حماية البيانات التاريخية]: الصنف (${id}) مسجل قبل تاريخ القطع ومحمي حماية مطلقة ولا يمكن حذفه.`);
+    }
     localDataStore.addTombstone('inventory', id);
     const list = localDataStore.getInventory();
     const filtered = list.filter((i) => i.id !== id);
@@ -9253,23 +9294,32 @@ export class DataService {
     journalsDeduplicated: number;
     message: string;
   }> {
-    // 1. Invoices deduplication based on unique invoiceNumber and ID
+    // 1. Invoices deduplication: Partition historical records vs modern records
     const rawInvoices = localDataStore.getLocal<Invoice[] | null>(localDataStore.getKey(STORAGE_KEYS.INVOICES), []) || [];
-    const dedupedInvoices = localDataStore.deduplicateInvoices(rawInvoices);
-    const invoicesDeduplicated = Math.max(0, rawInvoices.length - dedupedInvoices.length);
-    localDataStore.saveInvoices(dedupedInvoices);
+    const historicalInvoices = rawInvoices.filter((i) => isHistoricalInvoice(i.id, i.createdAt, i.date));
+    const modernInvoices = rawInvoices.filter((i) => !isHistoricalInvoice(i.id, i.createdAt, i.date));
+    const dedupedModernInvoices = localDataStore.deduplicateInvoices(modernInvoices);
+    const invoicesDeduplicated = Math.max(0, modernInvoices.length - dedupedModernInvoices.length);
+    const finalInvoices = [...historicalInvoices, ...dedupedModernInvoices];
+    localDataStore.saveInvoices(finalInvoices);
 
-    // 2. Vouchers deduplication based on unique voucherNumber and ID
+    // 2. Vouchers deduplication: Partition historical vs modern
     const rawVouchers = localDataStore.getLocal<PaymentVoucher[] | null>(localDataStore.getKey(STORAGE_KEYS.VOUCHERS), []) || [];
-    const dedupedVouchers = localDataStore.deduplicateVouchers(rawVouchers);
-    const vouchersDeduplicated = Math.max(0, rawVouchers.length - dedupedVouchers.length);
-    localDataStore.saveVouchers(dedupedVouchers);
+    const historicalVouchers = rawVouchers.filter((v) => isHistoricalRecord('vouchers', v.id, v.createdAt));
+    const modernVouchers = rawVouchers.filter((v) => !isHistoricalRecord('vouchers', v.id, v.createdAt));
+    const dedupedModernVouchers = localDataStore.deduplicateVouchers(modernVouchers);
+    const vouchersDeduplicated = Math.max(0, modernVouchers.length - dedupedModernVouchers.length);
+    const finalVouchers = [...historicalVouchers, ...dedupedModernVouchers];
+    localDataStore.saveVouchers(finalVouchers);
 
-    // 3. Journals deduplication based on unique entryNumber, reference, and ID
+    // 3. Journals deduplication: Partition historical vs modern
     const rawJournals = localDataStore.getLocal<JournalEntry[] | null>(localDataStore.getKey(STORAGE_KEYS.JOURNALS), []) || [];
-    const dedupedJournals = localDataStore.deduplicateJournals(rawJournals);
-    const journalsDeduplicated = Math.max(0, rawJournals.length - dedupedJournals.length);
-    localDataStore.saveJournals(dedupedJournals);
+    const historicalJournals = rawJournals.filter((j) => isHistoricalJournal(j.id, j.createdAt, j.date));
+    const modernJournals = rawJournals.filter((j) => !isHistoricalJournal(j.id, j.createdAt, j.date));
+    const dedupedModernJournals = localDataStore.deduplicateJournals(modernJournals);
+    const journalsDeduplicated = Math.max(0, modernJournals.length - dedupedModernJournals.length);
+    const finalJournals = [...historicalJournals, ...dedupedModernJournals];
+    localDataStore.saveJournals(finalJournals);
 
     // 4. Sync vouchers with journals (updates existing, creates missing, purges orphans)
     await this.syncVouchersWithJournals();
@@ -9287,13 +9337,13 @@ export class DataService {
       this.recalculateSupplierBalance(s.id);
     }
 
-    // 7. Push clean deduplicated data to Supabase if configured
+    // 7. Push clean modern data to Supabase if configured (Historical records are never touched)
     if (isSupabaseConfigured) {
       try {
         await Promise.all([
-          SupabaseDataService.saveInvoices(dedupedInvoices),
-          SupabaseDataService.saveVouchers(dedupedVouchers),
-          SupabaseDataService.saveJournals(dedupedJournals),
+          SupabaseDataService.saveInvoices(dedupedModernInvoices),
+          SupabaseDataService.saveVouchers(dedupedModernVouchers),
+          SupabaseDataService.saveJournals(dedupedModernJournals),
           SupabaseDataService.saveAccounts(updatedAccounts),
         ]);
       } catch (err) {

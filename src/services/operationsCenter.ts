@@ -9,6 +9,12 @@ import { DataService, localDataStore } from './dataService.ts';
 import { SupabaseDataService } from './supabaseService.ts';
 import { isSupabaseConfigured } from './supabaseClient.js';
 import { isAccountLeaf } from '../utils/accountingTreeEngine.ts';
+import {
+  assertOperationAllowed,
+  isHistoricalInvoice,
+  isHistoricalCustomer,
+  isHistoricalSupplier,
+} from './historicalDataProtectionService.ts';
 import type {
   Customer,
   Supplier,
@@ -231,6 +237,7 @@ export class OperationsCenter {
 
   public static async executeCustomerDelete(id: string): Promise<boolean> {
     try {
+      assertOperationAllowed('DELETE', 'customers', id);
       const success = await DataService.deleteCustomer(id);
       this.notifyChange('CUSTOMER', 'DELETE', id);
       return success;
@@ -276,6 +283,7 @@ export class OperationsCenter {
 
   public static async executeSupplierDelete(id: string): Promise<boolean> {
     try {
+      assertOperationAllowed('DELETE', 'suppliers', id);
       const success = await DataService.deleteSupplier(id);
       this.notifyChange('SUPPLIER', 'DELETE', id);
       return success;
@@ -290,6 +298,7 @@ export class OperationsCenter {
   // ==========================================================================
   public static async executeInvoiceUpdate(id: string, data: any): Promise<Invoice | null> {
     try {
+      assertOperationAllowed('UPDATE', 'invoices', id, data?.createdAt);
       const updated = await DataService.updateInvoice(id, {
         ...data,
         updatedAt: new Date().toISOString(),
@@ -324,6 +333,9 @@ export class OperationsCenter {
    */
   public static async executeInvoicePost(id: string): Promise<boolean> {
     try {
+      if (isHistoricalInvoice(id)) {
+        throw new Error(`[حظر حماية البيانات التاريخية]: الفاتورة (${id}) تاريخية ومرحلة مسبقاً قبل تاريخ القطع ولا يجوز إعادة ترحيلها.`);
+      }
       const invoices = localDataStore.getInvoices();
       const inv = invoices.find((i) => i.id === id);
       if (!inv) {
@@ -380,6 +392,7 @@ export class OperationsCenter {
 
   public static async executeInvoiceCancel(id: string, reason?: string): Promise<boolean> {
     try {
+      assertOperationAllowed('CANCEL', 'invoices', id);
       const result = await DataService.cancelInvoice(id, reason);
       this.notifyChange('INVOICE', 'CANCEL', id);
       return !!result;
@@ -391,6 +404,7 @@ export class OperationsCenter {
 
   public static async executeInvoiceDelete(id: string): Promise<boolean> {
     try {
+      assertOperationAllowed('DELETE', 'invoices', id);
       const success = await DataService.deleteInvoice(id);
       this.notifyChange('INVOICE', 'DELETE', id);
       return success;
