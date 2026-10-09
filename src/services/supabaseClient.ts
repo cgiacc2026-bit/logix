@@ -358,12 +358,17 @@ export async function registerCompany(
     const newCompanyRecord: any = {
       id: newId,
       company_name: cleanName,
+      name_ar: cleanName,
+      name_en: cleanName,
       owner_email: cleanEmail,
-      password_hash: cleanPassword,
-      type: 'client',
       login_code: newLoginCode,
       status: initialStatus,
+      functional_currency: 'KWD',
+      currency: 'KWD',
+      currency_symbol: 'د.ك',
+      decimal_places: 3,
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       profile_data: {
         id: newId,
         nameAr: cleanName,
@@ -385,6 +390,12 @@ export async function registerCompany(
     // 1. Primary Cloud Route: Call server-side API which holds the administrative cloud secret
     try {
       if (typeof window !== 'undefined' && typeof fetch === 'function') {
+        let currentSessionUser: any = null;
+        try {
+          const authRaw = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
+          if (authRaw) currentSessionUser = JSON.parse(authRaw);
+        } catch {}
+
         const srvRes = await fetch('/api/auth/register-company', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -393,6 +404,13 @@ export async function registerCompany(
             ownerEmail: cleanEmail,
             passwordPlain: cleanPassword,
             initialStatus,
+            currentUser: currentSessionUser ? {
+              username: currentSessionUser.username,
+              email: currentSessionUser.email,
+              fullName: currentSessionUser.name,
+              role: currentSessionUser.role,
+              isPlatformAdmin: currentSessionUser.isPlatformAdmin,
+            } : undefined,
           }),
         });
 
@@ -418,7 +436,7 @@ export async function registerCompany(
       console.warn('Backend registration API note, attempting direct Supabase cloud insertion:', srvErr);
     }
 
-    // 2. Direct Cloud Route: Supabase Client Insertion
+    // 2. Direct Cloud Route: Supabase Client Insertion (Strictly verified columns only)
     if (checkIsSupabaseConfigured()) {
       try {
         const { data: existing, error: checkError } = await supabase
@@ -440,13 +458,18 @@ export async function registerCompany(
             {
               id: newId,
               company_name: cleanName,
+              name_ar: cleanName,
+              name_en: cleanName,
               owner_email: cleanEmail,
-              password_hash: cleanPassword,
-              type: 'client',
               login_code: newLoginCode,
               status: initialStatus,
+              functional_currency: 'KWD',
+              currency: 'KWD',
+              currency_symbol: 'د.ك',
+              decimal_places: 3,
               profile_data: newCompanyRecord.profile_data,
               created_at: newCompanyRecord.created_at,
+              updated_at: newCompanyRecord.updated_at,
             },
           ])
           .select()
@@ -456,6 +479,73 @@ export async function registerCompany(
           console.error('Supabase company insert error:', error);
           cloudErrText = error.message;
         } else if (data) {
+          // Link current user in company_users with strictly preserved pin_hash and is_platform_admin
+          try {
+            let sessionUser: any = null;
+            try {
+              const authRaw = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
+              if (authRaw) sessionUser = JSON.parse(authRaw);
+            } catch {}
+
+            const candidateUsername = sessionUser?.username || cleanEmail.split('@')[0].toLowerCase();
+            const candidateEmail = sessionUser?.email || cleanEmail;
+
+            // Find existing user in company_users to preserve exact credentials
+            let matchedUser: any = null;
+            const { data: foundUser } = await supabase
+              .from('company_users')
+              .select('username, email, full_name, role, role_title_ar, pin_hash, is_active, is_platform_admin')
+              .or(`username.eq.${candidateUsername},email.eq.${candidateEmail}`)
+              .limit(1)
+              .maybeSingle();
+
+            if (foundUser) {
+              matchedUser = foundUser;
+            } else {
+              const { data: defaultAdmin } = await supabase
+                .from('company_users')
+                .select('username, email, full_name, role, role_title_ar, pin_hash, is_active, is_platform_admin')
+                .eq('username', 'cgiacc2026')
+                .limit(1)
+                .maybeSingle();
+              if (defaultAdmin) matchedUser = defaultAdmin;
+            }
+
+            const targetUsername = matchedUser ? matchedUser.username : candidateUsername;
+            const targetEmail = matchedUser ? matchedUser.email : candidateEmail;
+            const targetFullName = matchedUser ? matchedUser.full_name : cleanName;
+            const targetRole = 'ADMIN';
+            const targetTitleAr = matchedUser?.role_title_ar || 'المشرف العام والمالك';
+            const targetPinHash = matchedUser ? matchedUser.pin_hash : (bcrypt.hashSync ? bcrypt.hashSync(cleanPassword, 10) : cleanPassword);
+            const targetIsPlatformAdmin = matchedUser ? Boolean(matchedUser.is_platform_admin) : false;
+
+            const { data: existMem } = await supabase
+              .from('company_users')
+              .select('id')
+              .eq('company_id', newId)
+              .eq('username', targetUsername)
+              .maybeSingle();
+
+            if (!existMem) {
+              await supabase.from('company_users').insert([
+                {
+                  company_id: newId,
+                  username: targetUsername,
+                  email: targetEmail,
+                  full_name: targetFullName,
+                  role: targetRole,
+                  role_title_ar: targetTitleAr,
+                  pin_hash: targetPinHash,
+                  is_active: true,
+                  is_platform_admin: targetIsPlatformAdmin,
+                  created_at: new Date().toISOString(),
+                },
+              ]);
+            }
+          } catch (memErr) {
+            console.warn('Direct company_users insert notice:', memErr);
+          }
+
           cloudSaved = true;
           saveLocalRegisteredCompany(data);
           return {
@@ -746,7 +836,25 @@ export async function loginCompany(
 
       // Check password / PIN securely
       let isValidPin = false;
-      const storedHash = foundCompany.password_hash || '';
+      let storedHash = (foundCompany as any).password_hash || '';
+
+      // If companies has no password_hash (safe schema cache), verify against company_users
+      if (!storedHash && checkIsSupabaseConfigured()) {
+        try {
+          const { data: compUser } = await supabase
+            .from('company_users')
+            .select('pin_hash')
+            .eq('company_id', foundCompany.id)
+            .limit(1)
+            .maybeSingle();
+
+          if (compUser?.pin_hash) {
+            storedHash = compUser.pin_hash;
+          }
+        } catch (memErr) {
+          console.warn('Notice checking company_users during login in supabaseClient:', memErr);
+        }
+      }
 
       const isDemoTenant =
         foundCompany.type === 'demo' ||
@@ -1196,7 +1304,7 @@ export async function syncCompanyToSupabase(
       id: company.id,
       companyName: company.company_name,
       ownerEmail: company.owner_email,
-      passwordPlain: company.password_hash || '1234',
+      passwordPlain: '1234',
       type: company.type || 'client',
       loginCode: company.login_code || Math.floor(100000 + Math.random() * 900000).toString(),
       initialStatus: company.status || 'active',
@@ -1222,17 +1330,22 @@ export async function syncCompanyToSupabase(
       }
     } catch {}
 
-    // 2. Direct Supabase Client fallback
+    // 2. Direct Supabase Client fallback (strictly verified columns only, no password_hash)
     const directPayload: any = {
       id: company.id,
       company_name: company.company_name,
+      name_ar: company.name_ar || company.company_name,
+      name_en: company.name_en || company.company_name,
       owner_email: company.owner_email,
-      password_hash: company.password_hash || '1234',
-      type: company.type || 'client',
       login_code: company.login_code || Math.floor(100000 + Math.random() * 900000).toString(),
       status: company.status || 'active',
+      functional_currency: company.functional_currency || 'KWD',
+      currency: company.currency || 'KWD',
+      currency_symbol: company.currency_symbol || 'د.ك',
+      decimal_places: company.decimal_places || 3,
       profile_data: company.profile_data || {},
       created_at: company.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
     const { error } = await supabase

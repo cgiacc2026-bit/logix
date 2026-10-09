@@ -546,7 +546,25 @@ async function startServer() {
 
       // 3. Verify Password / PIN using bcrypt / crypt
       let isValidPin = false;
-      const storedHash = foundCompany.password_hash || '';
+      let storedHash = (foundCompany as any).password_hash || '';
+
+      // If companies table has no password_hash (safe schema cache), verify against company_users
+      if (!storedHash && supabaseAdmin) {
+        try {
+          const { data: matchedMember } = await supabaseAdmin
+            .from('company_users')
+            .select('pin_hash, is_platform_admin, role')
+            .eq('company_id', foundCompany.id)
+            .limit(1)
+            .maybeSingle();
+
+          if (matchedMember?.pin_hash) {
+            storedHash = matchedMember.pin_hash;
+          }
+        } catch (findErr) {
+          console.warn('Notice checking company_users during login:', findErr);
+        }
+      }
 
       const isDemoTenant =
         foundCompany.type === 'demo' ||
@@ -634,18 +652,28 @@ async function startServer() {
       const isUpsert = Boolean(req.body.upsert);
       const specifiedId = req.body.id ? String(req.body.id).trim() : null;
 
-      // Check if email already exists in Supabase under a different ID
-      const { data: existing } = await supabaseAdmin
+      // Duplicate prevention: check if company name or owner_email already exists in Supabase
+      const { data: existingByEmail } = await supabaseAdmin
         .from('companies')
         .select('id, owner_email, status, company_name')
         .eq('owner_email', cleanEmail)
         .maybeSingle();
 
-      if (existing && !isUpsert && existing.id !== specifiedId) {
-        if (existing.status === 'pending') {
+      if (existingByEmail && !isUpsert && existingByEmail.id !== specifiedId) {
+        if (existingByEmail.status === 'pending') {
           return res.status(400).json({ success: false, message: 'حسابك قيد التفعيل من قبل الإدارة' });
         }
-        return res.status(400).json({ success: false, message: 'البريد الإلكتروني مسجل بالفعل في النظام' });
+        return res.status(400).json({ success: false, message: 'البريد الإلكتروني مسجل بالفعل لشركة أخرى في النظام' });
+      }
+
+      const { data: existingByName } = await supabaseAdmin
+        .from('companies')
+        .select('id, company_name')
+        .ilike('company_name', cleanName)
+        .maybeSingle();
+
+      if (existingByName && !isUpsert && existingByName.id !== specifiedId) {
+        return res.status(400).json({ success: false, message: `اسم الشركة "${cleanName}" مسجل بالفعل في النظام` });
       }
 
       const newId = specifiedId || (crypto.randomUUID ? crypto.randomUUID() : `comp-${Date.now()}`);
@@ -665,38 +693,131 @@ async function startServer() {
         crNumber: newLoginCode,
       };
 
+      // STRICT SAFE SCHEMA: Only existing verified columns in public.companies (NO password_hash)
       const newCompanyRecord = {
         id: newId,
         company_name: cleanName,
-        owner_email: cleanEmail,
-        password_hash: cleanPassword,
-        type: req.body.type || 'client',
+        name_ar: cleanName,
+        name_en: req.body.nameEn || cleanName,
         login_code: newLoginCode,
+        owner_email: cleanEmail,
         status,
+        functional_currency: req.body.functionalCurrency || 'KWD',
+        currency: req.body.currency || 'KWD',
+        currency_symbol: req.body.currencySymbol || 'د.ك',
+        decimal_places: req.body.decimalPlaces || 3,
         profile_data: profileData,
         created_at: req.body.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabaseAdmin
+      const { data: insertedCompany, error: compError } = await supabaseAdmin
         .from('companies')
         .upsert([newCompanyRecord], { onConflict: 'id' })
         .select()
         .single();
 
-      if (error) {
-        console.error('Supabase cloud registration insert error:', error);
-        return res.status(500).json({ success: false, message: `خطأ أثناء الحفظ السحابي: ${error.message}` });
+      if (compError) {
+        console.error('Supabase cloud registration insert error on companies:', compError);
+        return res.status(500).json({ success: false, message: `خطأ أثناء حفظ سجل الشركة: ${compError.message}` });
       }
 
-      console.log(`[Supabase Cloud] New company registered and stored in database: ${cleanName} (${cleanEmail})`);
+      // STEP 2: Link current user / owner in public.company_users with existing columns only
+      // Extract active authenticated session / user information from request
+      let currentSessionUser: any = req.body.currentUser || null;
+      if (!currentSessionUser) {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.slice(7).trim();
+          currentSessionUser = activeSessions.get(token) || verifyJwt(token);
+        }
+      }
+
+      // Determine candidate user identifiers for current user
+      const candidateUsername = currentSessionUser?.username || req.body.username;
+      const candidateEmail = currentSessionUser?.email || cleanEmail;
+
+      // Check if user has an existing record in company_users to preserve their existing pin_hash and is_platform_admin
+      let matchedUser: any = null;
+      try {
+        if (candidateUsername || candidateEmail) {
+          const { data: foundCandidate } = await supabaseAdmin
+            .from('company_users')
+            .select('username, email, full_name, role, role_title_ar, pin_hash, is_active, is_platform_admin')
+            .or(`username.eq.${candidateUsername || ''},email.eq.${candidateEmail || ''}`)
+            .limit(1)
+            .maybeSingle();
+          if (foundCandidate) matchedUser = foundCandidate;
+        }
+
+        if (!matchedUser) {
+          // Fallback to active platform admin in company_users (e.g. cgiacc2026)
+          const { data: defaultAdmin } = await supabaseAdmin
+            .from('company_users')
+            .select('username, email, full_name, role, role_title_ar, pin_hash, is_active, is_platform_admin')
+            .eq('username', 'cgiacc2026')
+            .limit(1)
+            .maybeSingle();
+          if (defaultAdmin) matchedUser = defaultAdmin;
+        }
+      } catch (findErr) {
+        console.warn('Notice querying existing company_users template:', findErr);
+      }
+
+      // STRICT USER ATTRIBUTES: Preserve existing pin_hash and is_platform_admin exactly
+      const memberUsername = matchedUser ? matchedUser.username : (cleanEmail.split('@')[0].toLowerCase());
+      const memberEmail = matchedUser ? matchedUser.email : cleanEmail;
+      const memberFullName = matchedUser ? matchedUser.full_name : (req.body.fullName || req.body.ownerName || cleanName);
+      const memberRole = 'ADMIN';
+      const memberRoleTitleAr = matchedUser?.role_title_ar || 'المشرف العام والمالك';
+      const finalPinHash = matchedUser ? matchedUser.pin_hash : (bcrypt.hashSync ? bcrypt.hashSync(cleanPassword, 10) : cleanPassword);
+      const isPlatformAdmin = matchedUser ? Boolean(matchedUser.is_platform_admin) : false;
+
+      // Check if membership already exists in the new company to avoid duplicate constraint errors
+      const { data: existingMember } = await supabaseAdmin
+        .from('company_users')
+        .select('id, company_id, username')
+        .eq('company_id', newId)
+        .eq('username', memberUsername)
+        .maybeSingle();
+
+      if (!existingMember) {
+        const newMemberRecord = {
+          company_id: newId,
+          username: memberUsername,
+          email: memberEmail,
+          full_name: memberFullName,
+          role: memberRole,
+          role_title_ar: memberRoleTitleAr,
+          pin_hash: finalPinHash,
+          is_active: true,
+          is_platform_admin: isPlatformAdmin,
+          created_at: new Date().toISOString(),
+        };
+
+        const { error: memberError } = await supabaseAdmin
+          .from('company_users')
+          .insert([newMemberRecord]);
+
+        if (memberError) {
+          console.error('CRITICAL: Failed to create company_users membership:', memberError);
+          // Safety handling: report exact failure, do NOT report partial misleading success
+          return res.status(500).json({
+            success: false,
+            message: `تم إنشاء سجل الشركة ولكن تعذر ربط عضوية المستخدم (${memberError.message}). يرجى إعادة المحاولة.`,
+          });
+        }
+      }
+
+      console.log(`[Supabase Cloud] New company registered & member linked: ${cleanName} (${cleanEmail})`);
 
       return res.json({
         success: true,
         savedToCloud: true,
         message: status === 'active'
-          ? `تم إنشاء واعتماد شركة "${cleanName}" في قاعدة بيانات Supabase السحابية بنجاح!`
+          ? `تم إنشاء واعتماد شركة "${cleanName}" وربط صلاحيات المالك في قاعدة البيانات بنجاح!`
           : 'تم إرسال طلب تسجيل المنشأة بنجاح! حسابك قيد التفعيل من قبل الإدارة',
-        data: data || newCompanyRecord,
+        data: insertedCompany || newCompanyRecord,
       });
     } catch (err: any) {
       console.error('Registration server endpoint error:', err);
