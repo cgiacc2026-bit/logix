@@ -50,8 +50,30 @@ export const getSupabaseConfig = () => {
   let envKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
   let envSec = getEnvVar('SUPABASE_SERVICE_ROLE_KEY');
 
+  const isDeprecatedProject = (str: string) => {
+    if (!str) return false;
+    return str.includes('gzoncsbxfdnfellspgke') || str.includes('exupcqbzfngpbsjrzhjw') || str.includes('fbnxrxbkybrypfkbveym');
+  };
+
+  const isKeyForDeprecatedProject = (k: string) => {
+    if (!k || !k.startsWith('eyJ')) return false;
+    try {
+      const parts = k.split('.');
+      if (parts.length > 1) {
+        const decodedPart = typeof atob !== 'undefined'
+          ? atob(parts[1])
+          : (typeof Buffer !== 'undefined' ? Buffer.from(parts[1], 'base64').toString('utf-8') : '');
+        if (decodedPart) {
+          const payload = JSON.parse(decodedPart);
+          if (payload.ref && isDeprecatedProject(payload.ref)) return true;
+        }
+      }
+    } catch {}
+    return false;
+  };
+
   // Disconnect and purge old deprecated Supabase project URL and keys (e.g. gzoncsbxfdnfellspgke, exupcqbzfngpbsjrzhjw)
-  if (envUrl && (envUrl.includes('gzoncsbxfdnfellspgke') || envUrl.includes('exupcqbzfngpbsjrzhjw'))) {
+  if (envUrl && isDeprecatedProject(envUrl)) {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.removeItem('VITE_SUPABASE_URL');
@@ -60,7 +82,7 @@ export const getSupabaseConfig = () => {
     } catch {}
     envUrl = '';
   }
-  if (envKey && (envKey.includes('byqbhrpY1GEhRJlHF9vKVg') || envKey.includes('ys_e7Ltg33lcELGlPxuiNkvCLBrRmbyWa9pa3261u4E') || envKey.startsWith('sb_publishable'))) {
+  if (envKey && (isKeyForDeprecatedProject(envKey) || envKey.includes('byqbhrpY1GEhRJlHF9vKVg') || envKey.includes('ys_e7Ltg33lcELGlPxuiNkvCLBrRmbyWa9pa3261u4E') || envKey.startsWith('sb_publishable'))) {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.removeItem('VITE_SUPABASE_ANON_KEY');
@@ -68,13 +90,13 @@ export const getSupabaseConfig = () => {
     } catch {}
     envKey = '';
   }
-  if (envSec && (envSec.includes('gzoncsbxfdnfellspgke') || envSec.includes('exupcqbzfngpbsjrzhjw'))) {
+  if (envSec && isKeyForDeprecatedProject(envSec)) {
     envSec = '';
   }
 
-  const url = envUrl || 'https://tshcwdieqlldkygkcytr.supabase.co';
-  const key = envKey || _decodeCloudKey(_ENC_PUB);
-  const secret = (envSec && envSec.startsWith('eyJ') && !envSec.includes('gzoncsbxfdnfellspgke') && !envSec.includes('exupcqbzfngpbsjrzhjw')) ? envSec : key;
+  const url = (envUrl && !isDeprecatedProject(envUrl)) ? envUrl : 'https://tshcwdieqlldkygkcytr.supabase.co';
+  const key = (envKey && !isKeyForDeprecatedProject(envKey)) ? envKey : _decodeCloudKey(_ENC_PUB);
+  const secret = (envSec && envSec.startsWith('eyJ') && !isKeyForDeprecatedProject(envSec)) ? envSec : key;
   return { url, key, secret, anonKey: key };
 };
 
@@ -654,7 +676,6 @@ export async function loginCompany(
         status: 'active',
         type: 'demo',
         login_code: 'demo',
-        password_hash: 'P0182671648n$',
         profile_data: {
           id: '00000000-0000-0000-0000-000000000099',
           nameAr: 'شركة تجريبية - LOGIX Demo',
@@ -1208,7 +1229,6 @@ function getStoredLocalCompanies(): TenantCompanyRecord[] {
         id: '00000000-0000-0000-0000-000000000099',
         company_name: 'شركة تجريبية (Demo Company)',
         owner_email: 'logixdemo@logix.com',
-        password_hash: 'P0182671648n$',
         status: 'active',
         type: 'demo',
         login_code: 'demo',

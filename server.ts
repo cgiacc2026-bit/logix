@@ -21,11 +21,30 @@ const _decodeCloudKey = (b64: string): string => {
 const _ENC_PUB = 'ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW5SemFHTjNaR2xsY1d4c1pHdDVaMnRqZVhSeUlpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RrNU16TTVPVFVzSW1WNGNDSTZNakV3TlRVd09UazVOWDAuSjJWWDF6Y0VHanJyS21LcXkybll6aWk3WGJkOXVPLUZLOTBEV2lBOHVFaw==';
 const _ENC_SEC = 'c2JfcHVibGlzaGFibGVfRC04eE9kVnVES1d3WlhuREJlM2NHd19MUnRPeFVVUQ==';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://tshcwdieqlldkygkcytr.supabase.co';
-const SUPABASE_KEY =
-  (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY.startsWith('eyJ')) ? process.env.SUPABASE_SERVICE_ROLE_KEY :
-  (process.env.VITE_SUPABASE_ANON_KEY && process.env.VITE_SUPABASE_ANON_KEY.startsWith('eyJ')) ? process.env.VITE_SUPABASE_ANON_KEY :
-  _decodeCloudKey(_ENC_PUB);
+const isDeprecatedProject = (str: string) => {
+  if (!str) return false;
+  return str.includes('gzoncsbxfdnfellspgke') || str.includes('exupcqbzfngpbsjrzhjw') || str.includes('fbnxrxbkybrypfkbveym');
+};
+
+const isKeyForDeprecatedProject = (k: string) => {
+  if (!k || !k.startsWith('eyJ')) return false;
+  try {
+    const parts = k.split('.');
+    if (parts.length > 1) {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+      if (payload.ref && isDeprecatedProject(payload.ref)) return true;
+    }
+  } catch {}
+  return false;
+};
+
+const rawEnvUrl = process.env.VITE_SUPABASE_URL || '';
+const rawEnvKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
+const SUPABASE_URL = (rawEnvUrl && !isDeprecatedProject(rawEnvUrl)) ? rawEnvUrl : 'https://tshcwdieqlldkygkcytr.supabase.co';
+const SUPABASE_KEY = (rawEnvKey && rawEnvKey.startsWith('eyJ') && !isKeyForDeprecatedProject(rawEnvKey))
+  ? rawEnvKey
+  : _decodeCloudKey(_ENC_PUB);
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -509,7 +528,6 @@ async function startServer() {
             type: 'demo',
             login_code: 'demo',
             status: 'active',
-            password_hash: 'P0182671648n$',
           };
         } else if (cleanLower === 'logix') {
           foundCompany = {

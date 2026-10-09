@@ -847,7 +847,6 @@ export async function seedDemoCompanyInSupabase(): Promise<boolean> {
         id: DEMO_COMPANY_ID,
         company_name: DEMO_COMPANY.nameAr,
         owner_email: DEMO_COMPANY.email,
-        password_hash: 'demo_auto_login_token',
         status: 'active', // always active
         profile_data: {
           ...DEMO_COMPANY,
