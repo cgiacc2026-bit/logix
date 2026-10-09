@@ -310,9 +310,39 @@ export function setCurrentCompanyId(companyId: string): void {
   if (typeof window !== 'undefined') {
     const canonical = resolveToSupabaseCompanyUUID(companyId) || companyId;
     localStorage.setItem(STORAGE_KEYS.COMPANY_ID, canonical);
+    localStorage.setItem('activeCompanyId', canonical);
     if (canonical !== companyId) {
       localStorage.setItem('supabase_company_id_alias', companyId);
     }
+
+    // Try to update supabase_company_info immediately to prevent name ghosting
+    try {
+      const raw = localStorage.getItem('all_tenants_cache') || localStorage.getItem(LOCAL_COMPANIES_KEY);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const matched = list.find((c: any) => c.id === canonical || resolveToSupabaseCompanyUUID(c.id) === canonical);
+          if (matched) {
+            const p = matched.profile_data || {};
+            const cleanName = matched.company_name || matched.name_ar || p.nameAr || matched.name || 'الشركة';
+            const compObj = {
+              ...p,
+              id: canonical,
+              name: cleanName,
+              nameAr: cleanName,
+              name_ar: cleanName,
+              functional_currency: matched.functional_currency || p.functionalCurrency || 'KWD',
+              currency: matched.currency || p.currency || 'KWD',
+              currency_symbol: matched.currency_symbol || p.currencySymbol || 'د.ك',
+              currencySymbol: matched.currency_symbol || p.currencySymbol || 'د.ك',
+              decimal_places: matched.decimal_places ?? p.decimalPlaces ?? 3,
+              decimalPlaces: matched.decimal_places ?? p.decimalPlaces ?? 3,
+            };
+            localStorage.setItem(STORAGE_KEYS.COMPANY_INFO, JSON.stringify(compObj));
+          }
+        }
+      }
+    } catch {}
   }
 }
 

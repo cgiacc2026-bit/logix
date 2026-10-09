@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Building2,
   RefreshCw,
@@ -35,6 +35,7 @@ interface HeaderProps {
   onOpenCompanySetup: () => void;
   onOpenDiagnostics?: () => void;
   onOpenSuperAdminPortal?: () => void;
+  onSwitchCompany?: (companyId: string) => Promise<void> | void;
   currentUser?: SystemUser | null;
   onLogout?: () => void;
   onSaveCompany?: (updated: CompanyProfile) => Promise<void> | void;
@@ -48,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCompanySetup,
   onOpenDiagnostics,
   onOpenSuperAdminPortal,
+  onSwitchCompany,
   currentUser,
   onLogout,
   onSaveCompany,
@@ -89,7 +91,46 @@ export const Header: React.FC<HeaderProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isCompanyMenuOpen, setIsCompanyMenuOpen] = useState(false);
   const paletteMenuRef = useRef<HTMLDivElement>(null);
+  const companyMenuRef = useRef<HTMLDivElement>(null);
+  const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
+
+  const loadCompaniesList = useCallback(() => {
+    try {
+      const raw = localStorage.getItem('all_tenants_cache') || localStorage.getItem('logix_registered_companies');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const seen = new Set();
+          const unique = parsed.filter((c: any) => {
+            const id = c.id || c.company_id;
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+          setAvailableCompanies(unique);
+          return;
+        }
+      }
+    } catch {}
+    setAvailableCompanies([
+      { id: '20000000-0000-0000-0000-000000000001', company_name: 'مطحنة الوليد المتحدة (ذ.م.م)', status: 'active' }
+    ]);
+  }, []);
+
+  useEffect(() => {
+    loadCompaniesList();
+    const handleSync = () => loadCompaniesList();
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('company_settings_changed', handleSync);
+    window.addEventListener('companyChanged', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('company_settings_changed', handleSync);
+      window.removeEventListener('companyChanged', handleSync);
+    };
+  }, [loadCompaniesList]);
 
   const {
     themeColor: currentThemeColor,
@@ -100,18 +141,30 @@ export const Header: React.FC<HeaderProps> = ({
     setThemeMode,
   } = useTheme(company);
 
-  // Close palette menu on outside click
+  // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (paletteMenuRef.current && !paletteMenuRef.current.contains(event.target as Node)) {
         setIsPaletteOpen(false);
       }
+      if (companyMenuRef.current && !companyMenuRef.current.contains(event.target as Node)) {
+        setIsCompanyMenuOpen(false);
+      }
     };
-    if (isPaletteOpen) {
+    if (isPaletteOpen || isCompanyMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isPaletteOpen]);
+  }, [isPaletteOpen, isCompanyMenuOpen]);
+
+  const handleSelectCompany = (targetCompanyId: string) => {
+    setIsCompanyMenuOpen(false);
+    if (onSwitchCompany) {
+      onSwitchCompany(targetCompanyId);
+    } else if (companyContext?.switchCompany) {
+      companyContext.switchCompany(targetCompanyId);
+    }
+  };
 
   const handleSelectTheme = (modeKey: ThemeMode) => {
     setThemeMode(modeKey);
@@ -213,17 +266,119 @@ export const Header: React.FC<HeaderProps> = ({
                 <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" /> IFRS
               </span>
             </div>
-            <p className={`text-[11px] flex items-center gap-2 truncate ${isLight ? 'text-slate-500' : 'text-slate-300'}`}>
-              <span className={`flex items-center gap-1 font-medium truncate ${isLight ? 'text-slate-700' : 'text-slate-200'}`}>
-                <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
-                <span className="truncate">{activeCompany.nameAr || activeCompany.headerTitle || 'الشركة النشطة'}</span>
-              </span>
-              <span className={`hidden md:inline-block text-[10px] font-mono px-1.5 py-0.2 rounded border shrink-0 ${
-                isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-black/40 text-slate-300 border-white/10'
-              }`}>
-                س.ت: {activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}
-              </span>
-            </p>
+            <div className="relative" ref={companyMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsCompanyMenuOpen((prev) => !prev)}
+                className={`text-[11px] flex items-center gap-1.5 p-1 -m-1 rounded-md transition-all cursor-pointer truncate ${
+                  isLight ? 'hover:bg-slate-100 text-slate-700' : 'hover:bg-white/10 text-slate-200'
+                }`}
+                title="اضغط هنا لتبديل الشركة أو استعراض الشركات المسجلة"
+              >
+                <Building2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span className="font-bold text-xs truncate max-w-[200px] sm:max-w-[260px]">
+                  {activeCompany.nameAr || activeCompany.headerTitle || 'الشركة النشطة'}
+                </span>
+                <ChevronDown className={`w-3 h-3 text-slate-400 shrink-0 transition-transform duration-200 ${isCompanyMenuOpen ? 'rotate-180' : ''}`} />
+                <span className={`hidden md:inline-block text-[10px] font-mono px-1.5 py-0.2 rounded border shrink-0 ${
+                  isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-black/40 text-slate-300 border-white/10'
+                }`}>
+                  س.ت: {activeCompany.crNumber || activeCompany.commercialRegNumber || '-'}
+                </span>
+              </button>
+
+              {/* Company Switcher Dropdown */}
+              {isCompanyMenuOpen && (
+                <div
+                  className={`absolute right-0 mt-2 w-80 rounded-2xl shadow-2xl p-2.5 z-50 text-right space-y-2 border animate-in fade-in duration-150 ${
+                    isLight
+                      ? 'bg-white border-slate-200 text-slate-800'
+                      : 'bg-[#0F172A] border-slate-700 text-white'
+                  }`}
+                >
+                  <div className={`text-[11px] font-bold pb-2 px-1 border-b flex items-center justify-between ${
+                    isLight ? 'border-slate-100 text-slate-700' : 'border-slate-800 text-slate-300'
+                  }`}>
+                    <div className="flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>الشركات والمنشآت المسجلة</span>
+                    </div>
+                    <span className="text-[10px] font-mono bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded">
+                      {availableCompanies.length} شركة
+                    </span>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-1 py-1 scrollbar-thin">
+                    {availableCompanies.map((c) => {
+                      const cId = c.id || c.company_id;
+                      const isActive = cId === activeCompany.id || (activeCompany.id && resolveToSupabaseCompanyUUID(cId) === resolveToSupabaseCompanyUUID(activeCompany.id));
+                      const cName = c.company_name || c.name_ar || c.nameAr || c.name || 'شركة مسجلة';
+                      const isProtected = cId === '20000000-0000-0000-0000-000000000001' || String(cId).includes('alwaleed');
+
+                      return (
+                        <button
+                          key={cId}
+                          type="button"
+                          onClick={() => handleSelectCompany(cId)}
+                          className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-right ${
+                            isActive
+                              ? isLight
+                                ? 'bg-emerald-50 text-emerald-950 border border-emerald-300 shadow-2xs'
+                                : 'bg-emerald-950/40 text-white border border-emerald-500/40 shadow-xs'
+                              : isLight
+                              ? 'hover:bg-slate-100 text-slate-700'
+                              : 'hover:bg-slate-800/70 text-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                              isActive ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                            }`}>
+                              <Building2 className="w-3.5 h-3.5" />
+                            </span>
+                            <div className="truncate">
+                              <div className="truncate leading-tight">{cName}</div>
+                              <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                                {isProtected ? 'الشركة المحمية (Production)' : c.owner_email || 'منشأة معتمدة'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0 mr-1">
+                            {isActive ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-600 text-white flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>النشطة</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 hover:text-emerald-600">
+                                تبديل ↵
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {onOpenSuperAdminPortal && (
+                    <div className={`pt-2 border-t ${isLight ? 'border-slate-100' : 'border-slate-800'}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCompanyMenuOpen(false);
+                          onOpenSuperAdminPortal();
+                        }}
+                        className="w-full flex items-center justify-center gap-2 p-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 hover:text-amber-800 border border-amber-300/40 cursor-pointer transition-all"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>بوابة إدارة وتسجيل الشركات الجديدة</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

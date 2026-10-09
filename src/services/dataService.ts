@@ -840,8 +840,8 @@ class LocalDataStore {
     }
   }
 
-  public getCompany(): CompanyProfile {
-    const compId = this.getEffectiveCompanyId();
+  public getCompany(targetCompanyId?: string): CompanyProfile {
+    const compId = targetCompanyId || this.getEffectiveCompanyId();
     const dedicatedLogo = typeof window !== 'undefined'
       ? window.localStorage.getItem(compId ? `logix_company_logo_${compId}` : 'logix_current_company_logo') || window.localStorage.getItem('logix_current_company_logo')
       : null;
@@ -992,27 +992,28 @@ class LocalDataStore {
       if (cacheRaw) {
         const tenants = JSON.parse(cacheRaw);
         if (Array.isArray(tenants)) {
-          const found = tenants.find((t: any) => t.id === compId);
+          const found = tenants.find((t: any) => t.id === compId || resolveToSupabaseCompanyUUID(t.id) === compUuid);
           if (found) {
             const p = found.profile_data || {};
+            const cleanName = found.company_name || found.name_ar || p.nameAr || p.name || 'منشأة جديدة';
             const createdProfile: CompanyProfile = {
               ...DEFAULT_COMPANY_PROFILE,
-              id: found.id,
-              nameAr: found.company_name || p.nameAr || 'منشأة جديدة',
+              id: found.id || compId,
+              nameAr: cleanName,
               nameEn: p.nameEn || found.company_name || 'New Enterprise',
-              tradeName: p.tradeName || found.company_name || 'منشأة جديدة',
+              tradeName: p.tradeName || cleanName,
               email: found.owner_email || p.email || '',
               legalForm: p.legalForm || 'شركة ذات مسؤولية محدودة',
-              functionalCurrency: p.functionalCurrency || 'KWD',
-              currency: p.currency || 'KWD',
-              decimalPlaces: p.decimalPlaces ?? 3,
+              functionalCurrency: found.functional_currency || p.functionalCurrency || 'KWD',
+              currency: found.currency || p.currency || 'KWD',
+              decimalPlaces: found.decimal_places ?? p.decimalPlaces ?? 3,
               vatRate: p.vatRate ?? 0,
-              crNumber: p.crNumber || found.login_code || '',
+              crNumber: found.login_code || p.crNumber || '',
               logoUrl: found.logo_url || found.logo || p.logoUrl || dedicatedLogo || '',
               themeColor: p.themeColor || 'blue',
               themeMode: p.themeMode || 'light',
             };
-            this.saveCompany(createdProfile);
+            this.setLocal(this.getKey(STORAGE_KEYS.COMPANY, compId), createdProfile);
             return createdProfile;
           }
         }
@@ -1021,7 +1022,20 @@ class LocalDataStore {
       console.warn('Error reading tenant cache in getCompany:', err);
     }
 
-    const result = stored || DEFAULT_COMPANY_PROFILE;
+    const isAlwaleed = compId === ALWALEED_CANONICAL_UUID || compId === 'company-alwaleed-client-003' || compId.includes('alwaleed');
+    const safeFallback: CompanyProfile = isAlwaleed
+      ? DEFAULT_COMPANY_PROFILE
+      : {
+          ...DEFAULT_COMPANY_PROFILE,
+          id: compId,
+          nameAr: 'منشأة جديدة',
+          nameEn: 'New Enterprise',
+          tradeName: 'منشأة جديدة',
+          email: '',
+          crNumber: '',
+        };
+
+    const result = stored || safeFallback;
     if (dedicatedLogo && !result.logoUrl) {
       result.logoUrl = dedicatedLogo;
     }
@@ -1071,14 +1085,18 @@ class LocalDataStore {
 
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        window.localStorage.setItem('supabase_company_info', JSON.stringify(comp));
-        if (comp.nameAr) {
-          window.localStorage.setItem('logix_current_company_name', comp.nameAr);
-          if (compId) {
-            window.localStorage.setItem(`logix_company_name_${compId}`, comp.nameAr);
-          }
-          if (compUuid) {
-            window.localStorage.setItem(`logix_company_name_${compUuid}`, comp.nameAr);
+        const activeId = this.getEffectiveCompanyId();
+        // Only update active company info if this is indeed the current active tenant
+        if (!activeId || comp.id === activeId || compUuid === resolveToSupabaseCompanyUUID(activeId)) {
+          window.localStorage.setItem('supabase_company_info', JSON.stringify(comp));
+          if (comp.nameAr) {
+            window.localStorage.setItem('logix_current_company_name', comp.nameAr);
+            if (compId) {
+              window.localStorage.setItem(`logix_company_name_${compId}`, comp.nameAr);
+            }
+            if (compUuid) {
+              window.localStorage.setItem(`logix_company_name_${compUuid}`, comp.nameAr);
+            }
           }
         }
 

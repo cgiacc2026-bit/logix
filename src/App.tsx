@@ -197,8 +197,28 @@ export function AppContent() {
   }, [activeTab]);
 
   // Single Source of Truth for Company Profile and Currency
-  const { currentCompany, currency, setCurrency, updateCompany, reloadCompany } = useCompany();
+  const { currentCompany, currency, setCurrency, updateCompany, reloadCompany, switchCompany } = useCompany();
   const activeCompany = currentCompany;
+
+  const handleSwitchCompany = async (targetCompanyId: string) => {
+    // 1. Immediately reset data state to prevent cross-tenant visual ghosting/leakage
+    setInvoices([]);
+    setJournals([]);
+    setAccounts([]);
+    setCustomers([]);
+    setSuppliers([]);
+    setInventory([]);
+    setVouchers([]);
+    setProductionOrders([]);
+    setQuotations([]);
+
+    // 2. Clear memory caches and switch active company in context & local storage
+    DataService.clearLocalMemory();
+    await switchCompany(targetCompanyId);
+
+    // 3. Force reload all data for the switched company
+    await refreshAllData(false, true);
+  };
 
   // Separation of Concerns: Dedicated Reports Workspace vs Operations
   const isReportTab = [
@@ -829,6 +849,7 @@ export function AppContent() {
           setCurrency={handleCurrencyChange}
           onOpenCompanySetup={() => navigateToTab('company')}
           onOpenSuperAdminPortal={() => setIsSuperAdminModalOpen(true)}
+          onSwitchCompany={handleSwitchCompany}
           currentUser={currentUser}
           onLogout={handleLogout}
           onSaveCompany={handleSaveCompany}
@@ -1532,7 +1553,7 @@ export function AppContent() {
         isOpen={isSuperAdminModalOpen}
         onClose={() => setIsSuperAdminModalOpen(false)}
         currentUser={currentUser}
-        onSwitchCompany={() => refreshAllData()}
+        onSwitchCompany={(companyId) => handleSwitchCompany(companyId)}
       />
     </div>
   );

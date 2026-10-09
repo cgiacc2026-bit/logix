@@ -101,6 +101,16 @@ export function resolveActiveCompany(
     return providedCompany;
   }
 
-  // Fallback to default company profile
-  return DEFAULT_COMPANY_PROFILE;
+  const isAlw = !activeId || activeId === '20000000-0000-0000-0000-000000000001' || String(activeId).includes('alwaleed');
+  if (isAlw) {
+    return DEFAULT_COMPANY_PROFILE;
+  }
+
+  return {
+    ...DEFAULT_COMPANY_PROFILE,
+    id: activeId,
+    nameAr: 'منشأة جديدة',
+    nameEn: 'New Enterprise',
+    tradeName: 'منشأة جديدة',
+  };
 }

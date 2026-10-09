@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { CompanyProfile, DefaultAccountsMapping } from '../types.js';
-import { supabase, getCurrentCompanyId, resolveToSupabaseCompanyUUID, isSupabaseConfigured, ALWALEED_CANONICAL_UUID } from '../services/supabaseClient.ts';
+import { supabase, getCurrentCompanyId, setCurrentCompanyId, resolveToSupabaseCompanyUUID, isSupabaseConfigured, ALWALEED_CANONICAL_UUID } from '../services/supabaseClient.ts';
 import { SupabaseDataService } from '../services/supabaseService.ts';
 import { localDataStore, DataService } from '../services/dataService.ts';
 import { formatCurrency as globalFormatCurrency, setActiveCompanyConfig } from '../utils/formatters.ts';
@@ -24,7 +24,8 @@ export interface CompanyContextType {
   currency: string;
   setCurrency: (newCurrency: string) => Promise<void>;
   updateCompany: (updated: Partial<CompanyProfile>) => Promise<CompanyProfile>;
-  reloadCompany: () => Promise<CompanyProfile | null>;
+  switchCompany: (newCompanyId: string, profileOverride?: CompanyProfile) => Promise<ActiveCompanyData>;
+  reloadCompany: (targetCompanyId?: string) => Promise<CompanyProfile | null>;
   isLoading: boolean;
   formatCurrency: (amount: number, customDecimals?: number) => string;
 }
@@ -122,8 +123,10 @@ export function isSymbolMatchingCurrency(symbol: string | undefined | null, curr
 
 export function normalizeActiveCompany(raw: any, fallbackId?: string): ActiveCompanyData {
   const profile = raw?.profile_data || raw || {};
-  const effectiveId = raw?.id || profile?.id || fallbackId || getCurrentCompanyId() || DEFAULT_ACTIVE_COMPANY.id;
-  const nameAr = raw?.company_name || raw?.name_ar || profile?.nameAr || profile?.name || DEFAULT_ACTIVE_COMPANY.nameAr;
+  const effectiveId = resolveToSupabaseCompanyUUID(raw?.id || profile?.id || fallbackId || getCurrentCompanyId() || DEFAULT_ACTIVE_COMPANY.id) || ALWALEED_CANONICAL_UUID;
+  const rawName = raw?.company_name || raw?.name_ar || profile?.nameAr || profile?.name || raw?.name;
+  const isAlwaleed = effectiveId === ALWALEED_CANONICAL_UUID || effectiveId === 'company-alwaleed-client-003' || String(effectiveId).includes('alwaleed');
+  const nameAr = rawName || (isAlwaleed ? DEFAULT_ACTIVE_COMPANY.nameAr : 'منشأة جديدة');
   const rawCurrency = raw?.functional_currency || raw?.currency || profile?.functionalCurrency || profile?.currency || 'KWD';
   const currency = rawCurrency.trim().toUpperCase();
   const canonicalSymbol = getCanonicalCurrencySymbol(currency);
@@ -134,14 +137,29 @@ export function normalizeActiveCompany(raw: any, fallbackId?: string): ActiveCom
   const rawDecimals = raw?.decimal_places ?? profile?.decimalPlaces;
   const decimalPlaces = getCanonicalDecimals(currency, rawDecimals);
 
-  const normalized: ActiveCompanyData = {
+  const baseTemplate = isAlwaleed ? DEFAULT_ACTIVE_COMPANY : {
     ...DEFAULT_ACTIVE_COMPANY,
+    id: effectiveId,
+    name: nameAr,
+    nameAr: nameAr,
+    name_ar: nameAr,
+    nameEn: profile.nameEn || raw?.name_en || 'Enterprise',
+    tradeName: profile.tradeName || raw?.trade_name || nameAr,
+    crNumber: profile.crNumber || raw?.cr_number || raw?.login_code || '',
+    taxNumber: profile.taxNumber || raw?.tax_number || '',
+    email: profile.email || raw?.owner_email || '',
+    phone: profile.phone || '',
+    website: profile.website || '',
+  };
+
+  const normalized: ActiveCompanyData = {
+    ...baseTemplate,
     ...profile,
     id: effectiveId,
     name: nameAr,
     nameAr: nameAr,
     name_ar: nameAr,
-    nameEn: profile.nameEn || raw?.name_en || DEFAULT_ACTIVE_COMPANY.nameEn,
+    nameEn: profile.nameEn || raw?.name_en || baseTemplate.nameEn,
     currency,
     currency_symbol: currencySymbol,
     currencySymbol,
@@ -181,7 +199,11 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
       const stored = localStorage.getItem('supabase_company_info');
       if (stored) {
         const parsed = JSON.parse(stored);
-        return normalizeActiveCompany(parsed);
+        const storedId = parsed?.id ? resolveToSupabaseCompanyUUID(parsed.id) : null;
+        const activeId = getCurrentCompanyId();
+        if (storedId === activeId || !storedId) {
+          return normalizeActiveCompany(parsed, activeId);
+        }
       }
     } catch {
       // ignore
@@ -194,8 +216,8 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
   // Fetch true live active company record directly from Supabase (companies & company_accounting_settings)
   const fetchLiveCompany = useCallback(async (targetCompanyId?: string): Promise<ActiveCompanyData | null> => {
     try {
-      const rawId = targetCompanyId || currentCompany?.id || getCurrentCompanyId() || ALWALEED_CANONICAL_UUID;
-      const companyId = resolveToSupabaseCompanyUUID(rawId);
+      const rawId = targetCompanyId || getCurrentCompanyId() || currentCompany?.id || ALWALEED_CANONICAL_UUID;
+      const companyId = resolveToSupabaseCompanyUUID(rawId) || rawId;
 
       if (isSupabaseConfigured && companyId) {
         try {
@@ -254,22 +276,89 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
 
       // Fallback to DataService
       try {
-        const local = localDataStore.getCompany();
+        const local = localDataStore.getCompany(companyId);
         if (local && local.nameAr) {
           const normalized = normalizeActiveCompany(local, local.id || companyId);
           setCurrentCompany(normalized);
+          localStorage.setItem('supabase_company_info', JSON.stringify(normalized));
           return normalized;
         }
       } catch {
         // ignore
       }
 
-      return DEFAULT_ACTIVE_COMPANY;
+      const isAlw = companyId === ALWALEED_CANONICAL_UUID || companyId.includes('alwaleed');
+      const fallback = isAlw ? DEFAULT_ACTIVE_COMPANY : normalizeActiveCompany({ id: companyId }, companyId);
+      setCurrentCompany(fallback);
+      return fallback;
     } catch (outerErr) {
       console.warn('[CompanyContext] fetchLiveCompany error:', outerErr);
       return DEFAULT_ACTIVE_COMPANY;
     }
   }, [currentCompany?.id]);
+
+  // Dedicated instant company switch function
+  const switchCompany = useCallback(async (newCompanyId: string, profileOverride?: CompanyProfile): Promise<ActiveCompanyData> => {
+    setIsLoading(true);
+    const canonicalId = resolveToSupabaseCompanyUUID(newCompanyId) || newCompanyId;
+
+    // 1. Immediately set storage session IDs
+    setCurrentCompanyId(canonicalId);
+
+    // 2. Clear in-memory caches to prevent ghost data leakage
+    DataService.clearLocalMemory();
+
+    // 3. Resolve company profile
+    let resolvedProfile: any = profileOverride;
+    if (!resolvedProfile) {
+      try {
+        const rawCache = localStorage.getItem('all_tenants_cache') || localStorage.getItem('logix_registered_companies');
+        if (rawCache) {
+          const list = JSON.parse(rawCache);
+          const found = Array.isArray(list)
+            ? list.find((c: any) => c.id === canonicalId || resolveToSupabaseCompanyUUID(c.id) === canonicalId)
+            : null;
+          if (found) {
+            resolvedProfile = found;
+          }
+        }
+      } catch {}
+    }
+
+    if (!resolvedProfile && (canonicalId === ALWALEED_CANONICAL_UUID || canonicalId.includes('alwaleed'))) {
+      resolvedProfile = DEFAULT_ACTIVE_COMPANY;
+    }
+
+    let normalized: ActiveCompanyData;
+    if (resolvedProfile) {
+      normalized = normalizeActiveCompany(resolvedProfile, canonicalId);
+    } else {
+      const fetched = await fetchLiveCompany(canonicalId);
+      normalized = fetched || normalizeActiveCompany({ id: canonicalId }, canonicalId);
+    }
+
+    setCurrentCompany(normalized);
+    localStorage.setItem('supabase_company_info', JSON.stringify(normalized));
+    localStorage.setItem('supabase_company_id', canonicalId);
+    localStorage.setItem('activeCompanyId', canonicalId);
+    localDataStore.saveCompany(normalized);
+
+    setActiveCompanyConfig({
+      currency: normalized.currency,
+      symbol: normalized.currency_symbol,
+      decimals: normalized.decimal_places,
+    });
+
+    window.dispatchEvent(new CustomEvent('company_settings_changed', { detail: normalized }));
+    window.dispatchEvent(new CustomEvent('companyChanged', { detail: { companyId: canonicalId } }));
+
+    if (onCompanyChanged) {
+      onCompanyChanged(normalized);
+    }
+
+    setIsLoading(false);
+    return normalized;
+  }, [fetchLiveCompany, onCompanyChanged]);
 
   // Initial load
   useEffect(() => {
@@ -285,17 +374,20 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
           const normalized = normalizeActiveCompany(parsed);
           setCurrentCompany(normalized);
         } catch {}
-      } else if ('type' in e && e.type === 'company_settings_changed') {
-        fetchLiveCompany();
+      } else if ('type' in e && (e.type === 'company_settings_changed' || e.type === 'companyChanged')) {
+        const targetId = (e as CustomEvent)?.detail?.companyId;
+        fetchLiveCompany(targetId);
       }
     };
 
     window.addEventListener('storage', handleSyncEvent as EventListener);
     window.addEventListener('company_settings_changed', handleSyncEvent as EventListener);
+    window.addEventListener('companyChanged', handleSyncEvent as EventListener);
 
     return () => {
       window.removeEventListener('storage', handleSyncEvent as EventListener);
       window.removeEventListener('company_settings_changed', handleSyncEvent as EventListener);
+      window.removeEventListener('companyChanged', handleSyncEvent as EventListener);
     };
   }, [fetchLiveCompany]);
 
@@ -401,8 +493,8 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
     });
   }, [updateCompany]);
 
-  const reloadCompany = useCallback(async () => {
-    return await fetchLiveCompany();
+  const reloadCompany = useCallback(async (targetCompanyId?: string) => {
+    return await fetchLiveCompany(targetCompanyId);
   }, [fetchLiveCompany]);
 
   // Centralized currency formatting method tied to current company
@@ -416,10 +508,11 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
     currency: currentCompany.currency,
     setCurrency,
     updateCompany,
+    switchCompany,
     reloadCompany,
     isLoading,
     formatCurrency,
-  }), [currentCompany, setCurrency, updateCompany, reloadCompany, isLoading, formatCurrency]);
+  }), [currentCompany, setCurrency, updateCompany, switchCompany, reloadCompany, isLoading, formatCurrency]);
 
   return (
     <CompanyContext.Provider value={contextValue}>

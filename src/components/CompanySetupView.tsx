@@ -44,8 +44,10 @@ import {
   Moon,
   Monitor,
   Wrench,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Account, CompanyProfile, DefaultAccountsMapping } from '../types.js';
+import { ExcelBackupService } from '../services/excelBackupService.ts';
 import { DatabaseWizardModal } from './DatabaseWizardModal';
 import { CompanyOnboardingWizard } from './CompanyOnboardingWizard';
 import { DataService, localDataStore, getDefaultMappingForAccounts } from '../services/dataService.ts';
@@ -2902,133 +2904,41 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
               </div>
             </div>
 
-            {/* HERO WIZARD CARD: INITIALIZE NEW DATABASE */}
-            <div className="bg-gradient-to-r from-[#0F2942] to-[#1E3A8A] text-white rounded-2xl p-6 shadow-md border border-blue-800 space-y-4">
+            {/* EXPORT COMPANY DATA HERO BANNER */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-6 shadow-md border border-slate-700 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/30 flex items-center justify-center text-cyan-300">
-                      <Wand2 className="w-5 h-5" />
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/30 flex items-center justify-center text-emerald-300">
+                      <Download className="w-5 h-5" />
                     </div>
                     <h4 className="text-base font-bold text-white">
-                      مرشد خطوات إنشاء وتهيئة قاعدة بيانات جديدة (ERP Setup Wizard)
+                      تصدير وحفظ بيانات المنشأة الحالية (Company Data Export)
                     </h4>
                   </div>
-                  <p className="text-xs text-blue-200 leading-relaxed max-w-2xl">
-                    دليل شامل خطوة بخطوة لتأسيس قاعدة بيانات محاسبية معتمدة للمنشأة: تهيئة شجرة الحسابات، تحديد أرصدة النقدية ورأس المال، استيراد العملاء والموردين وبطاقات الأصناف، وتوليد القيد الافتتاحي التأسيسي تلقائياً.
+                  <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
+                    استخراج فوري لملف الأرشيف الرقمي الشامل لبيانات المنشأة النشطة، متضمناً الدليل المحاسبي والفواتير والقيود والمخزون وحسابات العملاء والموردين.
                   </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsWizardOpen(true)}
-                  className="px-5 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer shrink-0"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>بدء مرشد إنشاء قاعدة البيانات (5 خطوات)</span>
-                </button>
-              </div>
-
-              {/* 5-Steps Mini Roadmap */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-blue-800/80 text-[11px] text-blue-100">
-                <div className="bg-white/10 p-2 rounded-lg text-center">1. هوية المنشأة والعملة</div>
-                <div className="bg-white/10 p-2 rounded-lg text-center">2. دليل الحسابات</div>
-                <div className="bg-white/10 p-2 rounded-lg text-center">3. النقدية ورأس المال</div>
-                <div className="bg-white/10 p-2 rounded-lg text-center">4. استيراد العملاء والمخزون</div>
-                <div className="bg-white/10 p-2 rounded-lg text-center">5. اعتماد القيد الافتتاحي</div>
-              </div>
-            </div>
-
-            {/* ENTERPRISE SQL MIGRATION V2 CARD */}
-            <div className="bg-gradient-to-br from-[#111827] via-[#1E293B] to-[#0F172A] text-white rounded-2xl p-6 shadow-lg border border-slate-700 space-y-4">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                      <Database className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-bold text-white flex items-center gap-2">
-                        <span>اسكربت ترقية قاعدة البيانات المؤسسية (Enterprise SQL Migration V2)</span>
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-mono">
-                          v2.0 Production Ready
-                        </span>
-                      </h4>
-                      <p className="text-xs text-slate-300 mt-0.5">
-                        حزمة تحديث شاملة لـ PostgreSQL / Supabase تضيف 12 جدولاً وعلاقات متقدمة مع المفاتيح الأجنبية والقيود المحاسبية.
-                      </p>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 flex-wrap shrink-0">
                   <button
                     type="button"
-                    onClick={handleOpenSqlModal}
-                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+                    onClick={handleExportJson}
+                    disabled={isExporting}
+                    className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                   >
-                    <Sliders className="w-4 h-4 text-cyan-300" />
-                    <span>عرض ونسخ كود الاسكربت</span>
+                    <FileJson className="w-4 h-4 text-emerald-200" />
+                    <span>{isExporting ? 'جاري التصدير...' : 'تحميل نسخة JSON للمنشأة'}</span>
                   </button>
-                  <a
-                    href="/api/database/migration-script/download"
-                    download="supabase_enterprise_upgrade_v2.sql"
-                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={handleExcelBackup}
+                    className="px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                   >
-                    <Download className="w-4 h-4 text-slate-950" />
-                    <span>تحميل ملف SQL المعتمد</span>
-                  </a>
-                </div>
-              </div>
-
-              {/* 6 Modules Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-3 border-t border-slate-700/80 text-xs">
-                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px]">
-                    <Package className="w-3.5 h-3.5" />
-                    <span>المستودعات المتعددة</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">تحويلات مخزنية وأرصدة لكل مخزن</p>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-[11px]">
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>مراكز التكلفة</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">توجيه تحليلي للفواتير والقيود</p>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-emerald-300 font-bold text-[11px]">
-                    <Receipt className="w-3.5 h-3.5" />
-                    <span>قوائم الأسعار</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">تسعير شرائحي وخصومات معتمدة</p>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-purple-300 font-bold text-[11px]">
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>فروع العملاء</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">مواقع تسليم وفواتير لكل فرع</p>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-rose-300 font-bold text-[11px]">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>الفترات المالية</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">إغلاق الدفاتر وحماية القيود</p>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700 p-2.5 rounded-xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-sky-300 font-bold text-[11px]">
-                    <FileCheck2 className="w-3.5 h-3.5" />
-                    <span>أوامر البيع والشراء</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">دورة مستندية تجارية متكاملة</p>
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                    <span>تصدير تقرير Excel شامل</span>
+                  </button>
                 </div>
               </div>
             </div>
