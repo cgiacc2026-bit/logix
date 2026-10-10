@@ -70,9 +70,15 @@ export const Header: React.FC<HeaderProps> = ({
         setLiveCompany(e.detail);
       }
     };
+    const handleCompanyChanged = (e: any) => {
+      // Clear liveCompany so companyContext or fresh fetch takes immediate priority
+      setLiveCompany(null);
+    };
     window.addEventListener('company_settings_changed', handleCompanyUpdate);
+    window.addEventListener('companyChanged', handleCompanyChanged);
     return () => {
       window.removeEventListener('company_settings_changed', handleCompanyUpdate);
+      window.removeEventListener('companyChanged', handleCompanyChanged);
     };
   }, []);
 
@@ -109,6 +115,15 @@ export const Header: React.FC<HeaderProps> = ({
             seen.add(id);
             return true;
           });
+          // Ensure protected tenant is always in the list
+          const hasProtected = unique.some((c: any) => (c.id || c.company_id) === '20000000-0000-0000-0000-000000000001');
+          if (!hasProtected) {
+            unique.unshift({
+              id: '20000000-0000-0000-0000-000000000001',
+              company_name: 'مطحنة الوليد المتحدة (ذ.م.م)',
+              status: 'active',
+            });
+          }
           setAvailableCompanies(unique);
           return;
         }

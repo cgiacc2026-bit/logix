@@ -1649,17 +1649,18 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                 </p>
               </div>
 
-              <div>
-                <label className="block text-[#1A1A1A] font-semibold mb-1">نسق وألوان البرنامج (ERP Theme)</label>
-                <select
-                  value={formData.themeColor || 'blue'}
-                  onChange={(e) => handleChange('themeColor', e.target.value)}
-                  className="w-full bg-white border border-blue-200 rounded-md px-3 py-2 text-[#1A1A1A] font-bold focus:outline-none focus:border-blue-500"
+              <div className="bg-blue-50/50 border border-blue-200/60 rounded-md px-3 py-2 text-xs flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800">نسق وهوية البرنامج (ERP Theme):</span>
+                  <span className="text-slate-600 mr-1.5 font-medium">متاح في تبويب «نسق ومظهر النظام» وأعلى الشاشة</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('branding')}
+                  className="text-blue-700 hover:text-blue-900 font-bold text-xs underline cursor-pointer"
                 >
-                  <option value="blue">الأزرق الملكي الماسي (Executive Royal Sapphire Blue) - الافتراضي</option>
-                  <option value="navy">الكحلي المؤسسي (Midnight Corporate Navy)</option>
-                  <option value="slate">الأزرق الرمادي المالي (Financial Slate Blue)</option>
-                </select>
+                  تخصيص المظهر ↵
+                </button>
               </div>
             </div>
 

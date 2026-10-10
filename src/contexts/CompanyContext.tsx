@@ -123,9 +123,25 @@ export function isSymbolMatchingCurrency(symbol: string | undefined | null, curr
 
 export function normalizeActiveCompany(raw: any, fallbackId?: string): ActiveCompanyData {
   const profile = raw?.profile_data || raw || {};
-  const effectiveId = resolveToSupabaseCompanyUUID(raw?.id || profile?.id || fallbackId || getCurrentCompanyId() || DEFAULT_ACTIVE_COMPANY.id) || ALWALEED_CANONICAL_UUID;
-  const rawName = raw?.company_name || raw?.name_ar || profile?.nameAr || profile?.name || raw?.name;
+  const activeSessionId = getCurrentCompanyId();
+  const effectiveId = resolveToSupabaseCompanyUUID(raw?.id || profile?.id || fallbackId || activeSessionId || DEFAULT_ACTIVE_COMPANY.id) || ALWALEED_CANONICAL_UUID;
   const isAlwaleed = effectiveId === ALWALEED_CANONICAL_UUID || effectiveId === 'company-alwaleed-client-003' || String(effectiveId).includes('alwaleed');
+  
+  // Strict multi-tenant isolation: do not inherit Al-Waleed's name if this record is for another company
+  let rawName = raw?.company_name || raw?.name_ar || profile?.nameAr || profile?.name || raw?.name;
+  if (!isAlwaleed && (!rawName || rawName === DEFAULT_ACTIVE_COMPANY.nameAr || rawName.includes('مطحنة الوليد'))) {
+    // Check registered cache for this specific company
+    try {
+      const cache = typeof localStorage !== 'undefined' ? (localStorage.getItem('all_tenants_cache') || localStorage.getItem('logix_registered_companies')) : null;
+      if (cache) {
+        const list = JSON.parse(cache);
+        const match = Array.isArray(list) ? list.find((c: any) => c.id === effectiveId || resolveToSupabaseCompanyUUID(c.id) === effectiveId) : null;
+        if (match) {
+          rawName = match.company_name || match.name_ar || match.profile_data?.nameAr || match.name;
+        }
+      }
+    } catch {}
+  }
   const nameAr = rawName || (isAlwaleed ? DEFAULT_ACTIVE_COMPANY.nameAr : 'منشأة جديدة');
   const rawCurrency = raw?.functional_currency || raw?.currency || profile?.functionalCurrency || profile?.currency || 'KWD';
   const currency = rawCurrency.trim().toUpperCase();
@@ -216,7 +232,8 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({
   // Fetch true live active company record directly from Supabase (companies & company_accounting_settings)
   const fetchLiveCompany = useCallback(async (targetCompanyId?: string): Promise<ActiveCompanyData | null> => {
     try {
-      const rawId = targetCompanyId || getCurrentCompanyId() || currentCompany?.id || ALWALEED_CANONICAL_UUID;
+      const activeSessionId = getCurrentCompanyId();
+      const rawId = targetCompanyId || activeSessionId || currentCompany?.id || ALWALEED_CANONICAL_UUID;
       const companyId = resolveToSupabaseCompanyUUID(rawId) || rawId;
 
       if (isSupabaseConfigured && companyId) {
