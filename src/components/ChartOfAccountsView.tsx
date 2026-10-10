@@ -269,7 +269,8 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   };
 
   const handleOpenEditModal = (acc: Account) => {
-    if (isHistoricalAccount(acc.id, acc.code)) {
+    const compId = currentCompany?.id;
+    if (isHistoricalAccount(acc.id, acc.code, compId)) {
       alert('هذا الحساب تاريخي ومحمي قبل تاريخ تحديث النظام ولا يمكن تعديل رمزه أو طبيعته أو دليله.');
       return;
     }
@@ -288,10 +289,26 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
   };
 
   const handleDeleteAccountRow = async (acc: Account) => {
-    if (isHistoricalAccount(acc.id, acc.code)) {
+    const compId = currentCompany?.id;
+    if (isHistoricalAccount(acc.id, acc.code, compId)) {
       alert('هذا الحساب تاريخي ومحمي قبل تاريخ تحديث النظام وممنوع حذفه نهائياً.');
       return;
     }
+
+    // Check if account has child accounts
+    const hasChildren = accounts.some((a) => a.parentId === acc.id);
+    if (hasChildren) {
+      alert(`لا يمكن حذف الحساب (${acc.code}) لأنه حساب رئيسي يحتوي على حسابات فرعية.`);
+      return;
+    }
+
+    // Check if account has journal movements
+    const hasMovement = journals.some((j) => (j.lines || []).some((l) => l.accountId === acc.id || l.accountCode === acc.code));
+    if (hasMovement) {
+      alert(`لا يمكن حذف الحساب (${acc.code}) لوجود قيود يومية وحركات محاسبية سابقة مسجلة عليه. يمكن تعطيل الحساب بدلاً من ذلك.`);
+      return;
+    }
+
     if (!confirm(`هل أنت متأكد من حذف الحساب "${acc.code} - ${acc.nameAr}"؟`)) return;
     try {
       if (onDeleteAccount) {
@@ -700,7 +717,7 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
                       <Plus className="w-3.5 h-3.5" />
                     </button>
 
-                    {isHistoricalAccount(acc.id, acc.code) ? (
+                    {isHistoricalAccount(acc.id, acc.code, currentCompany?.id) ? (
                       <span
                         title="هذا حساب تاريخي محمي قبل تاريخ تحديث النظام ولا يمكن تعديل رمزه أو طبيعته أو حذفه"
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 select-none"

@@ -1172,14 +1172,16 @@ class LocalDataStore {
     }
     const tombstones = this.getTombstones('accounts');
     const filtered = tombstones.size > 0 ? list.filter((a) => !tombstones.has(a.id)) : list;
-    const existingCodes = new Set(filtered.map((a) => String(a.code || '').trim()));
-    const missingStandard = INITIAL_ACCOUNTS.filter(
-      (a) => !existingCodes.has(String(a.code || '').trim()) && !tombstones.has(a.id)
-    );
-    if (missingStandard.length > 0) {
-      const merged = this.deduplicateAccounts([...filtered, ...missingStandard.map((a) => ({ ...a, balance: 0 }))]);
-      this.saveAccounts(merged);
-      return merged;
+    if (this.isAlWaleedActive()) {
+      const existingCodes = new Set(filtered.map((a) => String(a.code || '').trim()));
+      const missingStandard = INITIAL_ACCOUNTS.filter(
+        (a) => !existingCodes.has(String(a.code || '').trim()) && !tombstones.has(a.id)
+      );
+      if (missingStandard.length > 0) {
+        const merged = this.deduplicateAccounts([...filtered, ...missingStandard.map((a) => ({ ...a, balance: 0 }))]);
+        this.saveAccounts(merged);
+        return merged;
+      }
     }
     return this.deduplicateAccounts(filtered);
   }
@@ -2267,16 +2269,18 @@ export class DataService {
       }
     }
 
-    // Ensure all standard accounts from COMPLETE_EXPERT_CHART_OF_ACCOUNTS exist
-    const existingCodes = new Set((accounts || []).map((a) => String(a.code || '').trim()));
-    const missingStandard = INITIAL_ACCOUNTS.filter(
-      (a) => !existingCodes.has(String(a.code || '').trim()) && !tombstones.has(a.id)
-    );
-    if (missingStandard.length > 0) {
-      accounts = [...(accounts || []), ...missingStandard.map((a) => ({ ...a, balance: 0 }))];
-      localDataStore.saveAccounts(accounts);
-      if (isSupabaseConfigured) {
-        SupabaseDataService.saveAccounts(accounts).catch((err) => notifyCloudSyncError("CloudSync", err));
+    // Ensure standard accounts only for Al-Waleed tenant
+    if (localDataStore.isAlWaleedActive()) {
+      const existingCodes = new Set((accounts || []).map((a) => String(a.code || '').trim()));
+      const missingStandard = INITIAL_ACCOUNTS.filter(
+        (a) => !existingCodes.has(String(a.code || '').trim()) && !tombstones.has(a.id)
+      );
+      if (missingStandard.length > 0) {
+        accounts = [...(accounts || []), ...missingStandard.map((a) => ({ ...a, balance: 0 }))];
+        localDataStore.saveAccounts(accounts);
+        if (isSupabaseConfigured) {
+          SupabaseDataService.saveAccounts(accounts).catch((err) => notifyCloudSyncError("CloudSync", err));
+        }
       }
     }
 
@@ -2362,8 +2366,18 @@ export class DataService {
     const idx = accounts.findIndex((a) => a.id === id);
     if (idx === -1) return null;
     const existing = accounts[idx];
-    if (isHistoricalAccount(id, existing.code)) {
+    const compId = localDataStore.getEffectiveCompanyId();
+    if (isHistoricalAccount(id, existing.code, compId)) {
       throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing.code || id} - ${existing.nameAr}) تاريخي ومحمي قبل تاريخ تحديث النظام ولا يمكن تعديل رمزه أو طبيعته أو دليله.`);
+    }
+
+    // [ACCOUNTING INTEGRITY] A non-historical account cannot change its code or parent if it has movements or child accounts
+    if (accData.code && accData.code !== existing.code) {
+      const journals = localDataStore.getJournals();
+      const hasMovement = journals.some((j) => (j.lines || []).some((l) => l.accountId === id || l.accountCode === existing.code));
+      if (hasMovement) {
+        throw new Error(`[ضوابط النزاهة المحاسبية]: لا يمكن تعديل رمز الحساب (${existing.code}) لوجود حركات وقيود محاسبية مرتبطة به.`);
+      }
     }
     localDataStore.removeTombstone('accounts', id);
     const catUpper = (accData.category || existing.category || 'ASSET').toUpperCase();
@@ -2392,9 +2406,28 @@ export class DataService {
   public static async deleteAccount(id: string): Promise<boolean> {
     const accounts = localDataStore.getAccounts();
     const existing = accounts.find((a) => a.id === id);
-    if (isHistoricalAccount(id, existing?.code)) {
+    const compId = localDataStore.getEffectiveCompanyId();
+    if (isHistoricalAccount(id, existing?.code, compId)) {
       throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing?.code || id}) تاريخي ومحمي قبل تاريخ تحديث النظام وممنوع حذفه نهائياً.`);
     }
+
+    if (existing?.isSystem) {
+      throw new Error(`[ضوابط النزاهة المحاسبية]: لا يمكن حذف حساب نظام أساسي (${existing.code || id}).`);
+    }
+
+    // [ACCOUNTING INTEGRITY] Check child accounts
+    const hasChildren = accounts.some((a) => a.parentId === id);
+    if (hasChildren) {
+      throw new Error(`[ضوابط النزاهة المحاسبية]: لا يمكن حذف الحساب (${existing?.code || id}) لأنه حساب رئيسي يحتوي على حسابات فرعية.`);
+    }
+
+    // [ACCOUNTING INTEGRITY] Check journal lines
+    const journals = localDataStore.getJournals();
+    const hasJournalMovement = journals.some((j) => (j.lines || []).some((l) => l.accountId === id || (existing && l.accountCode === existing.code)));
+    if (hasJournalMovement) {
+      throw new Error(`[ضوابط النزاهة المحاسبية]: لا يمكن حذف حساب محاسبي مرتبطة به قيود يومية وحركات سابقة.`);
+    }
+
     localDataStore.addTombstone('accounts', id);
     const filtered = accounts.filter((a) => a.id !== id);
     localDataStore.saveAccounts(filtered);

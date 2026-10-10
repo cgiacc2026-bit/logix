@@ -695,7 +695,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   };
 
   const handleOpenEditInvoice = (inv: Invoice) => {
-    if (isHistoricalInvoice(inv.id, inv.createdAt, inv.date)) {
+    const compId = inv.companyId || (inv as any).company_id || company?.id;
+    if (isHistoricalInvoice(inv.id, inv.createdAt, inv.date, compId)) {
       alert(`[حظر حماية البيانات التاريخية]: الفاتورة (${inv.invoiceNumber}) مسجلة قبل تاريخ القطع وتعتبر سجلاً تاريخياً محمياً حماية قانونية ومحاسبية مطلقة من التعديل.`);
       return;
     }
@@ -2268,7 +2269,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                                 طباعة مفقطة
                               </button>
 
-                              {isHistoricalInvoice(inv.id, inv.createdAt, inv.date) ? (
+                              {isHistoricalInvoice(inv.id, inv.createdAt, inv.date, inv.companyId || (inv as any).company_id || company?.id) ? (
                                 <span
                                   className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs"
                                   title="سجل تاريخي محمي قبل تاريخ القطع SYSTEM_CUTOVER_AT (متاح للقراءة والطباعة فقط دون تعديل أو حذف)"
