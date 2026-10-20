@@ -1210,37 +1210,6 @@ class LocalDataStore {
     if (tombstones.size > 0) {
       filtered = list.filter((c) => !tombstones.has(c.id));
     }
-    let hasCustDateFix = false;
-    filtered.forEach((c) => {
-      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-08-31') {
-        c.openingBalanceDate = '2026-08-31';
-        hasCustDateFix = true;
-      }
-    });
-    if (hasCustDateFix) {
-      this.saveCustomers(this.deduplicateCustomers(filtered));
-    }
-    if (this.isAlWaleedActive() && Array.isArray(ALWALEED_MILL_PRESET_BACKUP?.data?.customers)) {
-      const presetCustomers = ALWALEED_MILL_PRESET_BACKUP.data.customers;
-      if (filtered.length < presetCustomers.length) {
-        const existingCodes = new Set(filtered.map((c) => (c.code || '').trim()));
-        const existingIds = new Set(filtered.map((c) => (c.id || '').trim()));
-        let hasNew = false;
-        const merged = [...filtered];
-        for (const pc of presetCustomers) {
-          const code = (pc.code || '').trim();
-          const id = (pc.id || '').trim();
-          if ((!code || !existingCodes.has(code)) && (!id || !existingIds.has(id)) && !tombstones.has(pc.id)) {
-            merged.push(JSON.parse(JSON.stringify(pc)));
-            hasNew = true;
-          }
-        }
-        if (hasNew) {
-          filtered = merged;
-          this.saveCustomers(this.deduplicateCustomers(filtered));
-        }
-      }
-    }
     return this.deduplicateCustomers(filtered);
   }
   public saveCustomers(customers: Customer[]): void {
@@ -1617,75 +1586,7 @@ class LocalDataStore {
       return [];
     }
     let filtered = tombstones.size > 0 ? list.filter((j) => !tombstones.has(j.id)) : list;
-    let hasJournalFix = false;
-    filtered.forEach((j) => {
-      // قيد تسوية JV-SETTLE-2026-09-10
-      if (
-        j.entryNumber === 'JV-SETTLE-2026-09-10' ||
-        j.reference === 'JV-SETTLE-2026-09-10' ||
-        j.id === 'JV-SETTLE-2026-09-10' ||
-        (j.entryNumber?.includes('SETTLE') && j.date === '2026-09-10')
-      ) {
-        if (j.date !== '2026-08-13' || j.status !== 'POSTED') {
-          j.date = '2026-08-13';
-          j.status = 'POSTED';
-          hasJournalFix = true;
-        }
-        // إعادة توجيه الطرف الثاني إلى حساب الأرصدة الافتتاحية والفروقات 3100
-        if (Array.isArray(j.lines) && j.lines.length >= 2) {
-          const secondLine = j.lines[1];
-          if (secondLine && secondLine.accountCode !== '3100') {
-            secondLine.accountId = 'bf25f8f9-9775-4fc5-8ff6-187c9b5306e5';
-            secondLine.accountCode = '3100';
-            secondLine.accountNameAr = 'رأس المال المكتتب به / الأرصدة الافتتاحية';
-            secondLine.memo = 'تسوية فروقات الأرصدة الافتتاحية';
-            hasJournalFix = true;
-          }
-        }
-      }
-      // قيد تسوية اشعار مدين فرق مهرجان
-      if (
-        j.entryNumber === 'JV-2026-0037' ||
-        j.reference === '304' ||
-        j.id === 'jv-7cgx6qwmc' ||
-        j.id === 'ac244fe8-843c-42dd-9368-29c5f12d4f9f' ||
-        j.description?.includes('فرق مهرجان')
-      ) {
-        if (j.date !== '2026-08-30' || j.status !== 'POSTED' || !j.description?.startsWith('قيد تسوية')) {
-          j.date = '2026-08-30';
-          j.status = 'POSTED';
-          if (!j.description?.startsWith('قيد تسوية')) {
-            j.description = 'قيد تسوية - ' + (j.description || 'اشعارمدين فرق مهرجان من 24-7-2026 الي 1/8/2026');
-          }
-          hasJournalFix = true;
-        }
-      }
-      // إلغاء قيد العكس السابق
-      if (j.entryNumber === 'REV-JV-2026-0037' || j.reference === 'JV-2026-0037' || j.id === 'aaa4423d-6b92-429c-83ba-f1cf75cd5a52') {
-        if (j.status !== 'CANCELLED') {
-          j.status = 'CANCELLED';
-          hasJournalFix = true;
-        }
-      }
-      // قيد الأرصدة الافتتاحية للعملاء (تاريخ البداية الموحد 2026-08-31)
-      if (
-        j.id === 'jv-ob-2026-07-31' ||
-        j.reference === 'OB-2026-07-31' ||
-        (j.id === 'jv-op-4568' && j.date === '2026-07-31')
-      ) {
-        if (j.date !== '2026-08-31') {
-          j.date = '2026-08-31';
-          if (j.reference === 'OB-2026-07-31') j.reference = 'OB-2026-08-31';
-          hasJournalFix = true;
-        }
-      }
-    });
-    if (hasJournalFix || tombstones.size > 0) {
-      const deduped = this.deduplicateJournals(filtered);
-      this.saveJournals(deduped);
-      return deduped;
-    }
-    return this.deduplicateJournals(list);
+    return this.deduplicateJournals(filtered);
   }
   public saveJournals(j: JournalEntry[]): void {
     const deduped = this.deduplicateJournals(j);
@@ -2269,26 +2170,9 @@ export class DataService {
       }
     }
 
-    // Ensure standard accounts only for Al-Waleed tenant
-    if (localDataStore.isAlWaleedActive()) {
-      const existingCodes = new Set((accounts || []).map((a) => String(a.code || '').trim()));
-      const missingStandard = INITIAL_ACCOUNTS.filter(
-        (a) => !existingCodes.has(String(a.code || '').trim()) && !tombstones.has(a.id)
-      );
-      if (missingStandard.length > 0) {
-        accounts = [...(accounts || []), ...missingStandard.map((a) => ({ ...a, balance: 0 }))];
-        localDataStore.saveAccounts(accounts);
-        if (isSupabaseConfigured) {
-          SupabaseDataService.saveAccounts(accounts).catch((err) => notifyCloudSyncError("CloudSync", err));
-        }
-      }
-    }
-
     const journals = await this.getJournals();
     const withBalances = this.calculateDynamicAccountBalances(accounts || [], journals);
-    const deduped = localDataStore.deduplicateAccounts(withBalances);
-    localDataStore.saveAccounts(deduped);
-    return deduped;
+    return localDataStore.deduplicateAccounts(withBalances);
   }
 
   /**
@@ -4119,7 +4003,7 @@ export class DataService {
         const code = (c.code || '').trim();
         if (AUDITED_OPENING_BALANCES[code] !== undefined) {
           c.openingBalance = AUDITED_OPENING_BALANCES[code];
-          c.openingBalanceDate = '2026-08-31';
+          c.openingBalanceDate = c.openingBalanceDate || '2026-08-31';
         }
       }
 
@@ -6109,62 +5993,135 @@ export class DataService {
     if (!compId) {
       throw new Error('تعذر تحديد الشركة الحالية — لا يمكن إنشاء السجل.');
     }
-    const list = localDataStore.getCustomers();
-    const newCust: Customer = {
-      id: 'cust-' + Math.random().toString(36).substr(2, 9),
+
+    const payload = {
+      ...data,
       companyId: compId,
       company_id: compId,
-      code: data.code || `CUST-${String(list.length + 1).padStart(3, '0')}`,
-      nameAr: data.nameAr || 'عميل جديد',
-      nameEn: data.nameEn || '',
-      taxNumber: data.taxNumber,
-      phone: data.phone,
-      address: data.address,
-      governorate: data.governorate,
-      city: data.city,
-      balance: Number(data.openingBalance) || Number(data.balance) || 0,
-      openingBalance: Number(data.openingBalance) || 0,
-      openingBalanceDate: data.openingBalanceDate || '2026-08-31',
-      isActive: true,
-      branches: data.branches || [],
-      priceListId: data.priceListId || 'standard',
-      priceListName: data.priceListName || '',
-      customPrices: data.customPrices || [],
-      defaultDiscountRate: data.defaultDiscountRate !== undefined ? Number(data.defaultDiscountRate) : 0,
     };
-    localDataStore.removeTombstone('customers', newCust.id);
-    list.push(newCust);
-    localDataStore.saveCustomers(list);
-    cacheService.setCustomers(compId, list);
+
+    // Try server unified endpoint first
+    let res: any = null;
     try {
-      await SupabaseDataService.saveCustomer(newCust, compId);
-    } catch (e) {
-      console.warn('Supabase saveCustomer notice:', e);
+      res = await safeApiFetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      console.warn('Backend createCustomer notice:', e?.message);
     }
 
-    // [ARCHITECT] Automated Balanced GL Opening Entry Generation
-    if (newCust.openingBalance && Number(newCust.openingBalance) > 0) {
-      const openAmount = Number(newCust.openingBalance);
-      const resolved = this.getResolvedAccounts();
-      const equityAcc = (resolved as any).retainedEarnings || (resolved as any).capital || { id: 'acc-3200', code: '3200', nameAr: 'الأرباح المرحلة / الأرصدة الافتتاحية' };
-      const jEntry: JournalEntry = {
+    if (res && (res.customer || res.id)) {
+      const createdCustomer: Customer = res.customer || res;
+      const createdAccount: Account | undefined = res.account;
+      const createdJournal: JournalEntry | undefined = res.journal;
+
+      // Update local storage with single authoritative server response
+      const list = localDataStore.getCustomers();
+      localDataStore.removeTombstone('customers', createdCustomer.id);
+      const existingIdx = list.findIndex((c) => c.id === createdCustomer.id);
+      if (existingIdx !== -1) {
+        list[existingIdx] = createdCustomer;
+      } else {
+        list.push(createdCustomer);
+      }
+      localDataStore.saveCustomers(list);
+      cacheService.setCustomers(compId, list);
+
+      if (createdAccount) {
+        const accs = localDataStore.getAccounts();
+        if (!accs.some((a) => a.id === createdAccount.id)) {
+          accs.push(createdAccount);
+          localDataStore.saveAccounts(accs);
+        }
+      }
+
+      if (createdJournal) {
+        const journals = localDataStore.getJournals();
+        if (!journals.some((j) => j.id === createdJournal.id)) {
+          journals.unshift(createdJournal);
+          localDataStore.saveJournals(journals);
+        }
+      }
+
+      return createdCustomer;
+    }
+
+    // Offline / Local fallback: Atomic customer & sub-account creation
+    const allAccounts = localDataStore.getAccounts();
+    const compAccounts = allAccounts.filter((a) => a.companyId === compId || (!a.companyId && localDataStore.isAlWaleedActive()));
+    const parentAccount = compAccounts.find(
+      (a) => a.code === '1120' || (a.category === 'ASSET' && (a.nameAr.includes('الذمم المدينة') || a.nameAr.includes('العملاء')))
+    );
+
+    if (!parentAccount) {
+      throw new Error('تعذر العثور على حساب الذمم المدينة الرئيسي المعتمد لهذه الشركة.');
+    }
+
+    const prefix = parentAccount.code;
+    const existingCodes = new Set(compAccounts.map((a) => a.code));
+    let maxSeq = 0;
+    for (const acc of compAccounts) {
+      if (acc.code && acc.code.startsWith(prefix) && acc.code !== prefix) {
+        const suffix = acc.code.slice(prefix.length);
+        const num = parseInt(suffix, 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    }
+    let subAccountCode = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+    while (existingCodes.has(subAccountCode)) {
+      maxSeq++;
+      subAccountCode = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+    }
+
+    const custNameAr = (data.nameAr || 'عميل جديد').trim();
+    const subAccount: Account = {
+      id: 'acc-' + Math.random().toString(36).substr(2, 9),
+      companyId: compId,
+      code: subAccountCode,
+      nameAr: `حساب عميل: ${custNameAr}`,
+      nameEn: data.nameEn || custNameAr,
+      category: 'ASSET',
+      parentId: parentAccount.id,
+      level: (parentAccount.level || 1) + 1,
+      normalBalance: 'DEBIT',
+      nature: 'DEBIT',
+      isSystem: false,
+      isActive: true,
+      description: `حساب الذمة الفرعي التلقائي للعميل: ${custNameAr}`,
+    };
+
+    const openAmount = Number(data.openingBalance) || 0;
+    let localJournal: JournalEntry | undefined = undefined;
+    if (openAmount > 0) {
+      if (!data.openingBalanceDate || !data.openingBalanceDate.trim()) {
+        throw new Error('لا يمكن اعتماد رصيد افتتاحي للعميل دون تحديد تاريخ صريح للرصيد الافتتاحي.');
+      }
+      const equityAcc = compAccounts.find((a) => a.code === '3200' || a.code === '3100' || a.category === 'EQUITY');
+      if (!equityAcc) {
+        throw new Error('تعذر اعتماد الرصيد الافتتاحي لعدم توفر حساب حقوق ملكية / أرباح مرحلة معتمد في هذه الشركة.');
+      }
+      localJournal = {
         id: 'jv-' + Math.random().toString(36).substr(2, 9),
-        entryNumber: `JV-OP-CUST-${newCust.id.slice(-4)}`,
-        date: newCust.openingBalanceDate || new Date().toISOString().split('T')[0],
-        reference: `OP-${newCust.nameAr}`,
-        description: `قيد رصيد أول المدة الافتتاحي للعميل (${newCust.nameAr})`,
+        companyId: compId,
+        entryNumber: `JV-OP-CUST-${subAccountCode}`,
+        date: data.openingBalanceDate.trim(),
+        reference: `OP-${custNameAr}`,
+        description: `قيد رصيد أول المدة الافتتاحي للعميل (${custNameAr})`,
         status: 'POSTED',
         lines: [
           {
             id: 'jl-1',
-            accountId: resolved.receivable.id,
-            accountCode: resolved.receivable.code,
-            accountNameAr: resolved.receivable.nameAr,
+            accountId: subAccount.id,
+            accountCode: subAccount.code,
+            accountNameAr: subAccount.nameAr,
             debit: openAmount,
             credit: 0,
-            memo: `رصيد أول المدة للعميل ${newCust.nameAr}`,
+            memo: `رصيد أول المدة للعميل ${custNameAr}`,
             entityType: 'CUSTOMER',
-            entityId: newCust.id,
+            entityId: '',
+            companyId: compId,
           },
           {
             id: 'jl-2',
@@ -6173,7 +6130,8 @@ export class DataService {
             accountNameAr: equityAcc.nameAr,
             debit: 0,
             credit: openAmount,
-            memo: `حقوق الملكية / أرصدة افتتاحية - ${newCust.nameAr}`,
+            memo: `حقوق الملكية / أرصدة افتتاحية - ${custNameAr}`,
+            companyId: compId,
           },
         ],
         totalDebit: openAmount,
@@ -6182,18 +6140,51 @@ export class DataService {
         postedAt: new Date().toISOString(),
         isAutoGenerated: true,
         sourceModule: 'CUSTOMER_OPENING_BALANCE' as any,
-        sourceId: newCust.id,
       };
+    }
+
+    const list = localDataStore.getCustomers();
+    const newCust: Customer = {
+      id: 'cust-' + Math.random().toString(36).substr(2, 9),
+      companyId: compId,
+      company_id: compId,
+      account_id: subAccount.id,
+      accountId: subAccount.id,
+      code: data.code || `CUST-${String(list.length + 1).padStart(3, '0')}`,
+      nameAr: custNameAr,
+      nameEn: data.nameEn || '',
+      taxNumber: data.taxNumber,
+      phone: data.phone,
+      address: data.address,
+      governorate: data.governorate,
+      city: data.city,
+      balance: openAmount,
+      openingBalance: openAmount,
+      openingBalanceDate: openAmount > 0 ? data.openingBalanceDate.trim() : (data.openingBalanceDate || undefined),
+      isActive: true,
+      branches: data.branches || [],
+      priceListId: data.priceListId || 'standard',
+      priceListName: data.priceListName || '',
+      customPrices: data.customPrices || [],
+      defaultDiscountRate: data.defaultDiscountRate !== undefined ? Number(data.defaultDiscountRate) : 0,
+    };
+
+    if (localJournal) {
+      localJournal.sourceId = newCust.id;
+      if (localJournal.lines[0]) localJournal.lines[0].entityId = newCust.id;
       const journals = localDataStore.getJournals();
-      journals.unshift(jEntry);
+      journals.unshift(localJournal);
       localDataStore.saveJournals(journals);
     }
 
-    await safeApiFetch('/api/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    allAccounts.push(subAccount);
+    localDataStore.saveAccounts(allAccounts);
+
+    localDataStore.removeTombstone('customers', newCust.id);
+    list.push(newCust);
+    localDataStore.saveCustomers(list);
+    cacheService.setCustomers(compId, list);
+
     return newCust;
   }
 
@@ -6214,7 +6205,7 @@ export class DataService {
       ...list[idx],
       ...data,
       openingBalance: newOpening,
-      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-08-31'),
+      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : list[idx].openingBalanceDate,
       balance: updatedBalance,
       currentBalance: updatedBalance,
     };
@@ -6453,7 +6444,7 @@ export class DataService {
       city: data.city,
       balance: Number(data.openingBalance) || Number(data.balance) || 0,
       openingBalance: Number(data.openingBalance) || 0,
-      openingBalanceDate: data.openingBalanceDate || '2026-08-31',
+      openingBalanceDate: data.openingBalanceDate || undefined,
       isActive: true,
     };
     localDataStore.removeTombstone('suppliers', newSupp.id);
@@ -6539,7 +6530,7 @@ export class DataService {
       ...list[idx],
       ...data,
       openingBalance: newOpening,
-      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : (list[idx].openingBalanceDate || '2026-08-31'),
+      openingBalanceDate: data.openingBalanceDate !== undefined ? data.openingBalanceDate : list[idx].openingBalanceDate,
       balance: updatedBalance,
       currentBalance: updatedBalance,
     };
@@ -9817,17 +9808,8 @@ export class DataService {
       }
     });
 
-    // ضمان توافق تواريخ الأرصدة الافتتاحية (31/08/2026)
-    let customersChanged = false;
-    customers.forEach((c) => {
-      if (c.openingBalance && c.openingBalance > 0 && c.openingBalanceDate !== '2026-08-31') {
-        c.openingBalanceDate = '2026-08-31';
-        customersChanged = true;
-      }
-    });
-    if (customersChanged) {
-      localDataStore.saveCustomers(customers);
-    }
+    // الحفاظ التام على تواريخ الأرصدة الافتتاحية المسجلة فعلياً للعملاء دون أي تبديل أو فرض قسري لـ 2026-08-31
+    // (Zero Implicit Mutations Policy)
 
     // تحديث قيود اليومية: الأرصدة الافتتاحية 31/08/2026
     const journals = localDataStore.getJournals();
@@ -9889,7 +9871,7 @@ export class DataService {
       localDataStore.saveJournals(journals);
     }
 
-    if (updatedInvoices > 0 || updatedVouchers > 0 || customersChanged || journalsChanged) {
+    if (updatedInvoices > 0 || updatedVouchers > 0 || journalsChanged) {
       localDataStore.saveInvoices(invoices);
       localDataStore.saveVouchers(vouchers);
       if (typeof window !== 'undefined') {

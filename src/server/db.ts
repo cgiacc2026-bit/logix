@@ -43,7 +43,9 @@ interface DBData {
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
 
-class DatabaseStore {
+export class DatabaseStore {
+  private inMemory: boolean = false;
+  private customDbPath?: string;
   private data: DBData = {
     company: JSON.parse(JSON.stringify(DEFAULT_COMPANY_PROFILE)),
     users: JSON.parse(JSON.stringify(INITIAL_USERS)),
@@ -61,8 +63,19 @@ class DatabaseStore {
     },
   };
 
-  constructor() {
-    this.init();
+  constructor(inMemory: boolean = false, customDbPath?: string) {
+    this.inMemory = inMemory;
+    this.customDbPath = customDbPath;
+    if (!this.inMemory) {
+      this.init();
+    }
+  }
+
+  public loadData(customData: Partial<DBData>) {
+    this.data = {
+      ...this.data,
+      ...customData,
+    };
   }
 
   private init() {
@@ -161,8 +174,10 @@ class DatabaseStore {
   }
 
   public save() {
+    if (this.inMemory) return;
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
+      const targetPath = this.customDbPath || DB_FILE;
+      fs.writeFileSync(targetPath, JSON.stringify(this.data, null, 2), 'utf-8');
     } catch (err) {
       console.error('Failed to save DB file:', err);
     }
@@ -1204,4 +1219,7 @@ class DatabaseStore {
   }
 }
 
-export const db = new DatabaseStore();
+export let db = new DatabaseStore();
+export function setDbInstance(customDb: DatabaseStore) {
+  db = customDb;
+}

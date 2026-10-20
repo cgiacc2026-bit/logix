@@ -1381,18 +1381,19 @@ export async function syncCompanyToSupabase(
     } catch {}
 
     // 2. Direct Supabase Client fallback (strictly verified columns only, no password_hash)
+    const compAny = company as any;
     const directPayload: any = {
       id: company.id,
       company_name: company.company_name,
-      name_ar: company.name_ar || company.company_name,
-      name_en: company.name_en || company.company_name,
+      name_ar: compAny.name_ar || company.company_name,
+      name_en: compAny.name_en || company.company_name,
       owner_email: company.owner_email,
       login_code: company.login_code || Math.floor(100000 + Math.random() * 900000).toString(),
       status: company.status || 'active',
       functional_currency: company.functional_currency || 'KWD',
-      currency: company.currency || 'KWD',
-      currency_symbol: company.currency_symbol || 'د.ك',
-      decimal_places: company.decimal_places || 3,
+      currency: compAny.currency || 'KWD',
+      currency_symbol: compAny.currency_symbol || 'د.ك',
+      decimal_places: compAny.decimal_places || 3,
       profile_data: company.profile_data || {},
       created_at: company.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),

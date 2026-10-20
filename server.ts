@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/server/db.js';
-import { AccountingEngine } from './src/server/accountingEngine.js';
+import { AccountingEngine, matchesCompany } from './src/server/accountingEngine.js';
 import { Account, JournalEntry, Invoice, PaymentVoucher, CompanyProfile } from './src/types.js';
 import bcrypt from 'bcryptjs';
 import { createClient } from '@supabase/supabase-js';
@@ -1078,9 +1078,11 @@ async function startServer() {
   });
 
   // KPIs
-  app.get('/api/kpis', (req, res) => {
+  app.get('/api/kpis', requireCompanyAccess, (req, res) => {
     try {
-      const kpis = AccountingEngine.getFinancialKPIs();
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
+      const kpis = AccountingEngine.getFinancialKPIs(compId);
       res.json(kpis);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1090,8 +1092,12 @@ async function startServer() {
   // 1. Chart of Accounts
   app.get('/api/accounts', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة (companyId) إلزامي ومطلوب' });
+      }
       const asOfDate = req.query.asOfDate as string;
-      const accounts = AccountingEngine.getAccountsWithBalances(asOfDate);
+      const accounts = AccountingEngine.getAccountsWithBalances(compId, asOfDate);
       res.json(accounts);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1100,16 +1106,20 @@ async function startServer() {
 
   app.post('/api/accounts', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) {
+        return res.status(400).json({ error: 'معرّف الشركة (companyId) إلزامي ومطلوب' });
+      }
       const { code, nameAr, nameEn, category, parentId, normalBalance, description } = req.body;
 
       if (!code || !nameAr || !category) {
         return res.status(400).json({ error: 'الرجاء إدخال الكود، اسم الحساب، والتصنيف الرئيسي' });
       }
 
-      // Check duplicate code
-      const existing = db.getAccounts().find((a) => a.code === code);
+      // Check duplicate code ONLY within the same company!
+      const existing = db.getAccounts().find((a) => a.code === code && matchesCompany(a.companyId, compId));
       if (existing) {
-        return res.status(400).json({ error: `رمز الحساب (${code}) مستخدم بالفعل` });
+        return res.status(400).json({ error: `رمز الحساب (${code}) مستخدم بالفعل داخل هذه الشركة` });
       }
 
       let level = 1;
@@ -1118,15 +1128,17 @@ async function startServer() {
       let computedNormalBalance: 'DEBIT' | 'CREDIT' = normalBalance || req.body.nature || ifrsDefaultNature;
 
       if (parentId) {
-        const parent = db.getAccounts().find((a) => a.id === parentId);
-        if (parent) {
-          level = parent.level + 1;
-          computedNormalBalance = parent.normalBalance || parent.nature || ifrsDefaultNature;
+        const parent = db.getAccounts().find((a) => a.id === parentId && matchesCompany(a.companyId, compId));
+        if (!parent) {
+          return res.status(400).json({ error: 'الحساب الرئيسي المحدد غير موجود أو لا ينتمي إلى هذه الشركة' });
         }
+        level = (parent.level || 1) + 1;
+        computedNormalBalance = parent.normalBalance || parent.nature || ifrsDefaultNature;
       }
 
       const newAccount: Account = {
         id: 'acc-' + Math.random().toString(36).substr(2, 9),
+        companyId: compId,
         code,
         nameAr,
         nameEn: nameEn || nameAr,
@@ -1149,11 +1161,29 @@ async function startServer() {
 
   app.put('/api/accounts/:id', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
       const { id } = req.params;
+      const existingAcc = db.getAccounts().find((a) => a.id === id && matchesCompany(a.companyId, compId));
+      if (!existingAcc) {
+        return res.status(404).json({ error: 'الحساب غير موجود في هذه الشركة' });
+      }
       const { code, nameAr, nameEn, category, parentId, description, isActive, normalBalance, nature } = req.body;
-      const catUpper = (category || 'ASSET').toUpperCase();
+      if (code && code !== existingAcc.code) {
+        const dup = db.getAccounts().find((a) => a.id !== id && a.code === code && matchesCompany(a.companyId, compId));
+        if (dup) {
+          return res.status(400).json({ error: `رمز الحساب (${code}) مستخدم بالفعل داخل هذه الشركة` });
+        }
+      }
+      if (parentId) {
+        const parent = db.getAccounts().find((a) => a.id === parentId && matchesCompany(a.companyId, compId));
+        if (!parent) {
+          return res.status(400).json({ error: 'الحساب الرئيسي المحدد غير موجود أو لا ينتمي إلى هذه الشركة' });
+        }
+      }
+      const catUpper = (category || existingAcc.category || 'ASSET').toUpperCase();
       const ifrsDefaultNature: 'DEBIT' | 'CREDIT' = (catUpper === 'ASSET' || catUpper === 'EXPENSE' || catUpper === 'COGS') ? 'DEBIT' : 'CREDIT';
-      const resolvedNature = normalBalance || nature || ifrsDefaultNature;
+      const resolvedNature = normalBalance || nature || existingAcc.normalBalance || ifrsDefaultNature;
       db.updateAccount(id, {
         code,
         nameAr,
@@ -1175,12 +1205,13 @@ async function startServer() {
     try {
       const { id } = req.params;
       const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
-      const acc = db.getAccounts().find((a) => a.id === id);
-      if (!acc) return res.status(404).json({ error: 'الحساب غير موجود' });
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
+      const acc = db.getAccounts().find((a) => a.id === id && matchesCompany(a.companyId, compId));
+      if (!acc) return res.status(404).json({ error: 'الحساب غير موجود في هذه الشركة' });
       if (acc.isSystem) return res.status(400).json({ error: 'لا يمكن حذف حساب نظام جوهري' });
 
       // Check if posted journal lines exist for this account
-      const journals = db.getJournals();
+      const journals = db.getJournals().filter((j) => matchesCompany(j.companyId, compId));
       const hasEntries = journals.some((j) => j.lines.some((l) => l.accountId === id));
       if (hasEntries) {
         return res
@@ -1209,7 +1240,9 @@ async function startServer() {
   // 2. Journal Entries
   app.get('/api/journals', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
-      const journals = db.getJournals().sort((a, b) => b.date.localeCompare(a.date));
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
+      const journals = db.getJournals().filter((j) => matchesCompany(j.companyId, compId)).sort((a, b) => b.date.localeCompare(a.date));
       res.json(journals);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1218,8 +1251,23 @@ async function startServer() {
 
   app.post('/api/journals', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT']), (req, res) => {
     try {
-      const { id: reqId, entryNumber: reqEntryNumber, date, reference, description, lines, status, companyId } = req.body;
-      const targetCompanyId = (companyId || (req as any).authorizedCompanyId || req.headers['x-company-id']) as string | undefined;
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
+      const targetCompanyId = compId;
+      const { id: reqId, entryNumber: reqEntryNumber, date, reference, description, lines, status } = req.body;
+
+      if (req.body.companyId && !matchesCompany(req.body.companyId, targetCompanyId)) {
+        return res.status(400).json({ error: 'معرّف الشركة في الطلب لا يطابق الشركة المصرح بها' });
+      }
+
+      // Check all line accounts belong strictly to targetCompanyId
+      const compAccounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, targetCompanyId));
+      const compAccountIds = new Set(compAccounts.map((a) => a.id));
+      for (const l of lines || []) {
+        if (!compAccountIds.has(l.accountId)) {
+          return res.status(400).json({ error: `الحساب المحاسبي (${l.accountCode || l.accountId}) غير موجود أو لا ينتمي لهذه الشركة` });
+        }
+      }
 
       // Strict validation of entry balance & lines
       const validation = AccountingEngine.validateJournalEntry({ lines });
@@ -1485,11 +1533,13 @@ async function startServer() {
   // 3. General Ledger & Trial Balance
   app.get('/api/ledger/:accountId', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
       const { accountId } = req.params;
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
 
-      const report = AccountingEngine.getGeneralLedger(accountId, startDate, endDate);
+      const report = AccountingEngine.getGeneralLedger(compId, accountId, startDate, endDate);
       res.json(report);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1498,8 +1548,10 @@ async function startServer() {
 
   app.get('/api/trial-balance', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
       const asOfDate = req.query.asOfDate as string;
-      const report = AccountingEngine.getTrialBalance(asOfDate);
+      const report = AccountingEngine.getTrialBalance(compId, asOfDate);
       res.json(report);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1509,9 +1561,11 @@ async function startServer() {
   // 4. Financial Statements (P&L, Balance Sheet, Cash Flow)
   app.get('/api/financial-statements/pnl', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
-      const report = AccountingEngine.getIncomeStatement(startDate, endDate);
+      const report = AccountingEngine.getIncomeStatement(compId, startDate, endDate);
       res.json(report);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1520,8 +1574,10 @@ async function startServer() {
 
   app.get('/api/financial-statements/balance-sheet', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
       const asOfDate = req.query.asOfDate as string;
-      const report = AccountingEngine.getBalanceSheet(asOfDate);
+      const report = AccountingEngine.getBalanceSheet(compId, asOfDate);
       res.json(report);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1530,9 +1586,11 @@ async function startServer() {
 
   app.get('/api/financial-statements/cash-flow', requireCompanyAccess, requireRole(['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'GENERAL_MANAGER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT', 'AUDITOR']), (req, res) => {
     try {
+      const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
-      const report = AccountingEngine.getCashFlowStatement(startDate, endDate);
+      const report = AccountingEngine.getCashFlowStatement(compId, startDate, endDate);
       res.json(report);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1542,43 +1600,18 @@ async function startServer() {
   // 5. Sales, Purchases, Inventory, Vouchers
   app.get('/api/customers', requireCompanyAccess, (req, res) => {
     const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
-    const filtered = db.getCustomers().filter((c: any) => c.companyId === compId || c.company_id === compId);
+    const filtered = db.getCustomers().filter((c: any) => matchesCompany(c.companyId || c.company_id, compId));
     res.json(filtered);
   });
 
   app.post('/api/customers', requireCompanyAccess, (req, res) => {
     try {
       const compId = (req as any).authorizedCompanyId || getReqCompanyId(req);
-      const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, branches, priceListId, priceListName, customPrices, defaultDiscountRate } = req.body;
-      const compCustomers = db.getCustomers().filter((c: any) => c.companyId === compId || c.company_id === compId);
-      const customCode = code || `${101 + compCustomers.length}`;
-      const initialOpening = Number(openingBalance) || 0;
-      const customer = {
-        id: 'cust-' + Math.random().toString(36).substr(2, 9),
-        companyId: compId,
-        company_id: compId,
-        code: customCode,
-        nameAr,
-        nameEn: nameEn || nameAr,
-        taxNumber,
-        phone,
-        email,
-        address,
-        governorate: governorate || address || '',
-        city: city || 'الكويت',
-        balance: initialOpening,
-        openingBalance: initialOpening,
-        openingBalanceDate: openingBalanceDate || '2026-07-01',
-        branches: branches || [],
-        priceListId: priceListId || 'standard',
-        priceListName: priceListName || '',
-        customPrices: customPrices || [],
-        defaultDiscountRate: defaultDiscountRate !== undefined ? Number(defaultDiscountRate) : 0,
-      };
-      db.addCustomer(customer);
-      res.status(201).json(customer);
+      if (!compId) return res.status(400).json({ error: 'معرّف الشركة مطلوب' });
+      const result = AccountingEngine.createCustomerWithSubAccount(req.body, compId);
+      res.status(201).json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(400).json({ error: err.message });
     }
   });
 

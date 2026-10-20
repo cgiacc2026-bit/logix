@@ -56,6 +56,7 @@ import {
   isHistoricalCustomer,
   isHistoricalSupplier,
   isHistoricalItem,
+  isHistoricalAccount,
   SYSTEM_CUTOVER_AT,
 } from './historicalDataProtectionService.ts';
 

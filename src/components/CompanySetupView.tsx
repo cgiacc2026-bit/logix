@@ -2925,7 +2925,7 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                 <div className="flex items-center gap-2.5 flex-wrap shrink-0">
                   <button
                     type="button"
-                    onClick={handleExportJson}
+                    onClick={handleExportBackup}
                     disabled={isExporting}
                     className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                   >
@@ -2934,11 +2934,12 @@ export const CompanySetupView: React.FC<CompanySetupViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={handleExcelBackup}
+                    onClick={handleExportBackup}
+                    disabled={isExporting}
                     className="px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
-                    <span>تصدير تقرير Excel شامل</span>
+                    <span>تصدير تقرير شامل</span>
                   </button>
                 </div>
               </div>

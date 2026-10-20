@@ -408,7 +408,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
   const [entityGovernorate, setEntityGovernorate] = useState('');
   const [entityCity, setEntityCity] = useState('الكويت');
   const [entityOpeningBalance, setEntityOpeningBalance] = useState<number | string>(0);
-  const [entityOpeningBalanceDate, setEntityOpeningBalanceDate] = useState('2026-08-31');
+  const [entityOpeningBalanceDate, setEntityOpeningBalanceDate] = useState('');
   const [entitySearch, setEntitySearch] = useState('');
 
   // Unit Form State
@@ -1060,7 +1060,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setEntityGovernorate('');
     setEntityCity('الكويت');
     setEntityOpeningBalance(0);
-    setEntityOpeningBalanceDate('2026-08-31');
+    setEntityOpeningBalanceDate('');
     setIsEntityModalOpen(true);
   };
 
@@ -1075,7 +1075,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     setEntityGovernorate(entity.governorate || '');
     setEntityCity(entity.city || 'الكويت');
     setEntityOpeningBalance(entity.openingBalance || 0);
-    setEntityOpeningBalanceDate(entity.openingBalanceDate || '2026-08-31');
+    setEntityOpeningBalanceDate(entity.openingBalanceDate || '');
     setIsEntityModalOpen(true);
   };
 
@@ -1120,6 +1120,11 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         invoices,
         vouchers
       );
+      const openBal = Number(entityOpeningBalance) || 0;
+      if (openBal > 0 && !entityOpeningBalanceDate.trim()) {
+        alert('لا يمكن اعتماد رصيد افتتاحي أكبر من الصفر دون تحديد تاريخ صريح للرصيد الافتتاحي.');
+        return;
+      }
       const payload = {
         code: entityCode,
         nameAr: entityNameAr,
@@ -1128,8 +1133,8 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
         address: entityAddress,
         governorate: entityGovernorate,
         city: entityCity,
-        openingBalance: Number(entityOpeningBalance) || 0,
-        openingBalanceDate: entityOpeningBalanceDate || '2026-08-31',
+        openingBalance: openBal,
+        openingBalanceDate: openBal > 0 ? entityOpeningBalanceDate.trim() : (editingEntity?.openingBalanceDate || undefined),
         balance: computedBalance,
         currentBalance: computedBalance,
       };

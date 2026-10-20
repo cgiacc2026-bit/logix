@@ -90,6 +90,8 @@ export interface AccountStatementResult {
   openingBalance: number; // الرصيد المنقول قبل تاريخ البداية
   openingBalanceType: 'DEBIT' | 'CREDIT' | 'ZERO';
   openingBalanceDate: string;
+  carriedForwardDate?: string;
+  carriedForwardText?: string;
   
   transactions: StatementTransaction[]; // حركات الفترة الزمنية المحددة
   
@@ -1007,7 +1009,40 @@ export function getAccountStatement(
     endDate: cleanEndDate,
     openingBalance: Math.round(calculatedOpeningBalance * 1000) / 1000,
     openingBalanceType: getBalanceNature(calculatedOpeningBalance, entityType),
-    openingBalanceDate: entity?.openingBalanceDate || '2026-08-31',
+    openingBalanceDate: entity?.openingBalanceDate || (() => {
+      try {
+        const parts = cleanStartDate.split('-');
+        if (parts.length === 3) {
+          const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          d.setDate(d.getDate() - 1);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+      } catch {}
+      return cleanStartDate;
+    })(),
+    carriedForwardDate: (() => {
+      try {
+        const parts = cleanStartDate.split('-');
+        if (parts.length === 3) {
+          const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          d.setDate(d.getDate() - 1);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+      } catch {}
+      return cleanStartDate;
+    })(),
+    carriedForwardText: (() => {
+      try {
+        const parts = cleanStartDate.split('-');
+        if (parts.length === 3) {
+          const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          d.setDate(d.getDate() - 1);
+          const pDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          return `رصيد مرحل حتى ${pDay}`;
+        }
+      } catch {}
+      return `رصيد مرحل حتى بداية الفترة`;
+    })(),
     transactions: periodTransactions,
     closingBalance,
     closingBalanceType: getBalanceNature(closingBalance, entityType),

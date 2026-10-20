@@ -246,6 +246,7 @@ export interface Customer {
   currentBalance?: number;
   creditLimit?: number;
   accountId?: string;
+  account_id?: string;
   openingBalance?: number;
   openingBalanceDate?: string;
   isActive?: boolean;
@@ -282,6 +283,7 @@ export interface Supplier {
   currentBalance?: number;
   creditLimit?: number;
   accountId?: string;
+  account_id?: string;
   openingBalance?: number;
   openingBalanceDate?: string;
   isActive?: boolean;

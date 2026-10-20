@@ -14,8 +14,39 @@ import {
   Invoice,
   PaymentVoucher,
   FinancialKPIs,
-  ProductionOrder
+  ProductionOrder,
+  Customer,
+  Supplier
 } from '../types.js';
+
+export const ALWALEED_CANONICAL_UUID = '20000000-0000-0000-0000-000000000001';
+
+export function normalizeCompanyId(companyId: string | null | undefined): string {
+  if (!companyId) return '';
+  const clean = companyId.trim();
+  if (
+    clean === ALWALEED_CANONICAL_UUID ||
+    clean === 'company-alwaleed-client-003' ||
+    clean.toLowerCase().includes('alwaleed') ||
+    clean === '450912'
+  ) {
+    return ALWALEED_CANONICAL_UUID;
+  }
+  return clean;
+}
+
+export function matchesCompany(recordCompanyId: string | undefined | null, targetCompanyId: string | undefined | null): boolean {
+  if (!targetCompanyId || !targetCompanyId.trim()) return false;
+  const normTarget = normalizeCompanyId(targetCompanyId);
+  const normRecord = normalizeCompanyId(recordCompanyId);
+  if (normTarget === ALWALEED_CANONICAL_UUID) {
+    return normRecord === ALWALEED_CANONICAL_UUID || !recordCompanyId;
+  }
+  return normRecord === normTarget;
+}
+
+// Global posting lock to strictly prevent concurrent duplicate posting of the same document
+const activePostingLocks = new Set<string>();
 
 export class AccountingEngine {
   /**
@@ -68,10 +99,14 @@ export class AccountingEngine {
 
   /**
    * Calculate dynamic balances for Chart of Accounts with O(N) single-pass aggregation
+   * Filtered strictly by companyId to prevent cross-tenant data leakage
    */
-  public static getAccountsWithBalances(asOfDate?: string): Account[] {
-    const accounts = db.getAccounts();
-    const journals = db.getJournals().filter((j) => j.status === 'POSTED' || j.status === 'REVERSED');
+  public static getAccountsWithBalances(companyId: string, asOfDate?: string): Account[] {
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لعزل واستخراج الحسابات والأرصدة');
+    }
+    const accounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, companyId));
+    const journals = db.getJournals().filter((j) => (j.status === 'POSTED' || j.status === 'REVERSED') && matchesCompany(j.companyId, companyId));
 
     // Create balance map and account lookup map for O(1) lookups
     const balanceMap = new Map<string, number>();
@@ -100,7 +135,7 @@ export class AccountingEngine {
       }
     }
 
-    // Rollup parent account balances
+    // Rollup parent account balances within this company's accounts
     const accountsCopy: Account[] = JSON.parse(JSON.stringify(accounts));
     
     // Sort by level descending (deepest level first to rollup into parents)
@@ -119,12 +154,16 @@ export class AccountingEngine {
   }
 
   /**
-   * Reverse a posted journal entry (عكس القيد)
+   * Reverse a posted journal entry (عكس القيد) with company validation
    */
-  public static reverseJournalEntry(journalId: string, reason: string): JournalEntry {
+  public static reverseJournalEntry(journalId: string, reason: string, companyId?: string): JournalEntry {
     const original = db.getJournals().find((j) => j.id === journalId);
     if (!original) {
       throw new Error('القيد غير موجود');
+    }
+    const compId = companyId || original.companyId;
+    if (companyId && original.companyId && !matchesCompany(original.companyId, companyId)) {
+      throw new Error('القيد غير تابع للشركة المصرح بها');
     }
     if (original.status !== 'POSTED') {
       throw new Error('يمكن عكس القيود المرحلة فقط');
@@ -139,10 +178,12 @@ export class AccountingEngine {
       debit: line.credit, // Swap debit and credit
       credit: line.debit,
       memo: `عكس قيد: ${line.memo}`,
+      companyId: compId,
     }));
 
     const reversalEntry: JournalEntry = {
       id: 'jv-' + Math.random().toString(36).substr(2, 9),
+      companyId: compId,
       entryNumber: reversalNumber,
       date: today,
       reference: `عكس القيد ${original.entryNumber}`,
@@ -175,17 +216,21 @@ export class AccountingEngine {
   }
 
   /**
-   * Generate General Ledger Report for a specific account
+   * Generate General Ledger Report for a specific account with company isolation
    */
   public static getGeneralLedger(
+    companyId: string,
     accountId: string,
     startDate?: string,
     endDate?: string
   ): GeneralLedgerReport {
-    const accounts = db.getAccounts();
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لتقرير دفتر الأستاذ العام');
+    }
+    const accounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, companyId));
     const targetAccount = accounts.find((a) => a.id === accountId || a.code === accountId);
     if (!targetAccount) {
-      throw new Error('الحساب المحاسبي غير موجود');
+      throw new Error('الحساب المحاسبي غير موجود في هذه الشركة');
     }
 
     const start = startDate || '2000-01-01';
@@ -193,7 +238,7 @@ export class AccountingEngine {
 
     const allPostedJournals = db
       .getJournals()
-      .filter((j) => j.status === 'POSTED' || j.status === 'REVERSED')
+      .filter((j) => (j.status === 'POSTED' || j.status === 'REVERSED') && matchesCompany(j.companyId, companyId))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Get all descendant account IDs if this is a parent/category account
@@ -280,18 +325,21 @@ export class AccountingEngine {
   }
 
   /**
-   * Generate Trial Balance Report (ميزان المراجعة)
+   * Generate Trial Balance Report (ميزان المراجعة) strictly isolated per company
    */
-  public static getTrialBalance(asOfDate?: string): TrialBalanceReport {
-    const accounts = db.getAccounts();
-    const postedJournals = db.getJournals().filter((j) => j.status === 'POSTED' || j.status === 'REVERSED');
+  public static getTrialBalance(companyId: string, asOfDate?: string): TrialBalanceReport {
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لتقرير ميزان المراجعة');
+    }
+    const accounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, companyId));
+    const postedJournals = db.getJournals().filter((j) => (j.status === 'POSTED' || j.status === 'REVERSED') && matchesCompany(j.companyId, companyId));
     const cutoff = asOfDate || '2099-12-31';
 
     // Pre-aggregate debit and credit per account in O(J * L)
     const movementMap = new Map<string, { debit: number; credit: number }>();
     accounts.forEach((acc) => movementMap.set(acc.id, { debit: 0, credit: 0 }));
 
-    // Identify leaf accounts
+    // Identify leaf accounts within this company
     const leafSet = new Set<string>();
     accounts.forEach((acc) => {
       const hasChildren = accounts.some((child) => child.parentId === acc.id);
@@ -402,14 +450,17 @@ export class AccountingEngine {
   }
 
   /**
-   * Generate Income Statement Report (قائمة الدخل - P&L)
+   * Generate Income Statement Report (قائمة الدخل - P&L) isolated per company
    */
-  public static getIncomeStatement(startDate?: string, endDate?: string): IncomeStatementReport {
+  public static getIncomeStatement(companyId: string, startDate?: string, endDate?: string): IncomeStatementReport {
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لتقرير قائمة الدخل');
+    }
     const start = startDate || '2026-01-01';
     const end = endDate || '2099-12-31';
 
-    const accounts = db.getAccounts();
-    const postedJournals = db.getJournals().filter((j) => j.status === 'POSTED');
+    const accounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, companyId));
+    const postedJournals = db.getJournals().filter((j) => j.status === 'POSTED' && matchesCompany(j.companyId, companyId));
 
     // Pre-aggregate movements in the date range
     const rangeMovementMap = new Map<string, { debit: number; credit: number }>();
@@ -490,16 +541,19 @@ export class AccountingEngine {
   }
 
   /**
-   * Generate Balance Sheet Report (قائمة المركز المالي)
+   * Generate Balance Sheet Report (قائمة المركز المالي) isolated per company
    */
-  public static getBalanceSheet(asOfDate?: string): BalanceSheetReport {
+  public static getBalanceSheet(companyId: string, asOfDate?: string): BalanceSheetReport {
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لتقرير المركز المالي');
+    }
     const cutoff = asOfDate || '2099-12-31';
 
     // Calculate income statement for net profit to include in equity
-    const incomeStatement = this.getIncomeStatement('2000-01-01', cutoff);
+    const incomeStatement = this.getIncomeStatement(companyId, '2000-01-01', cutoff);
     const periodNetIncome = incomeStatement.netIncome;
 
-    const accountsWithBalances = this.getAccountsWithBalances(cutoff);
+    const accountsWithBalances = this.getAccountsWithBalances(companyId, cutoff);
 
     const currentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
     const nonCurrentAssetsItems: { accountCode: string; accountNameAr: string; amount: number }[] = [];
@@ -589,20 +643,24 @@ export class AccountingEngine {
   }
 
   /**
-   * Cash Flow Statement (IAS 7)
+   * Cash Flow Statement (IAS 7) isolated per company
    */
-  public static getCashFlowStatement(startDate?: string, endDate?: string): CashFlowReport {
+  public static getCashFlowStatement(companyId: string, startDate?: string, endDate?: string): CashFlowReport {
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لتقرير التدفقات النقدية');
+    }
     const start = startDate || '2026-01-01';
     const end = endDate || '2099-12-31';
 
-    const income = this.getIncomeStatement(start, end);
-    const balanceSheet = this.getBalanceSheet(end);
+    const income = this.getIncomeStatement(companyId, start, end);
+    const balanceSheet = this.getBalanceSheet(companyId, end);
 
     const netIncome = income.netIncome;
 
     // Calculate changes in cash and operating accounts
-    const cashAccount = this.getAccountsWithBalances(end).find((a) => a.code === '1111');
-    const cashBoxAccount = this.getAccountsWithBalances(end).find((a) => a.code === '1112');
+    const companyAccs = this.getAccountsWithBalances(companyId, end);
+    const cashAccount = companyAccs.find((a) => a.code === '1111');
+    const cashBoxAccount = companyAccs.find((a) => a.code === '1112');
 
     const closingCash = (cashAccount?.balance || 0) + (cashBoxAccount?.balance || 0);
 
@@ -632,6 +690,7 @@ export class AccountingEngine {
     };
   }
 
+
   /**
    * Post Sales Invoice -> Creates Journal Entry with ACID Transaction Boundary
    * Ensures:
@@ -640,417 +699,513 @@ export class AccountingEngine {
    * 3. Customer accounts receivable balance synchronization
    * 4. Automatic atomic rollback on any validation failure
    */
-  public static postSalesInvoice(invoiceId: string): Invoice {
-    return db.executeTransaction(() => {
-      const invoice = db.getInvoices().find((inv) => inv.id === invoiceId);
-      if (!invoice) throw new Error('الفاتورة غير موجودة');
-      if (invoice.status === 'POSTED' || invoice.status === 'PAID') {
-        throw new Error('الفاتورة مرحّلة بالفعل مسبقاً (Idempotency Violation)');
-      }
+  public static postSalesInvoice(invoiceId: string, companyId?: string): Invoice {
+    if (activePostingLocks.has(invoiceId)) {
+      throw new Error('عملية الترحيل قيد المعالجة بالفعل لهذا المستند (Concurrent Posting Lock)');
+    }
+    activePostingLocks.add(invoiceId);
 
-      const today = new Date().toISOString().split('T')[0];
-      const isReturn = invoice.type === 'SALES_RETURN';
-      const journalEntryNumber = isReturn ? `JV-RET-${invoice.invoiceNumber}` : `JV-INV-${invoice.invoiceNumber}`;
+    try {
+      return db.executeTransaction(() => {
+        const invoice = db.getInvoices().find((inv) => inv.id === invoiceId);
+        if (!invoice) throw new Error('الفاتورة غير موجودة');
+        const compId = companyId || invoice.companyId;
+        if (companyId && invoice.companyId && !matchesCompany(invoice.companyId, companyId)) {
+          throw new Error('الفاتورة غير تابعة للشركة المصرح بها');
+        }
+        if (invoice.status === 'POSTED' || invoice.status === 'PAID') {
+          throw new Error('الفاتورة مرحّلة بالفعل مسبقاً (Idempotency Violation)');
+        }
 
-      // Calculate Cost of Goods Sold (COGS) based on stock item purchase prices
-      const inventoryItems = db.getInventory();
-      let totalCogs = 0;
+        const today = new Date().toISOString().split('T')[0];
+        const isReturn = invoice.type === 'SALES_RETURN';
+        const journalEntryNumber = isReturn ? `JV-RET-${invoice.invoiceNumber}` : `JV-INV-${invoice.invoiceNumber}`;
 
-      const company = db.getCompany();
-      const allowNegativeStock = !!(
-        (invoice as any).allowNegativeStock ||
-        (invoice as any).allowNegative ||
-        (company && company.allowNegativeInventory !== false)
-      );
+        // Calculate Cost of Goods Sold (COGS) based on stock item purchase prices
+        const inventoryItems = db.getInventory().filter((i) => matchesCompany(i.companyId, compId));
+        let totalCogs = 0;
 
-      // Validate stock availability if negative stock is NOT allowed
-      if (!isReturn && !allowNegativeStock) {
-        for (const line of invoice.lines) {
+        const company = db.getCompany();
+        const allowNegativeStock = !!(
+          (invoice as any).allowNegativeStock ||
+          (invoice as any).allowNegative ||
+          (company && company.allowNegativeInventory !== false)
+        );
+
+        // Validate stock availability if negative stock is NOT allowed
+        if (!isReturn && !allowNegativeStock) {
+          for (const line of invoice.lines) {
+            const invItem = inventoryItems.find((i) => i.id === line.itemId);
+            if (invItem && invItem.quantityOnHand < line.quantity) {
+              throw new Error(
+                `الكمية المتوفرة في المخزون (${invItem.quantityOnHand}) غير كافية لبيع (${line.quantity}) للصنف (${invItem.nameAr}). يمكنك تفعيل خيار (السماح بالقيم السالبة للمخزون) من إعدادات الشركة للمتابعة.`
+              );
+            }
+          }
+        }
+
+        invoice.lines.forEach((line) => {
           const invItem = inventoryItems.find((i) => i.id === line.itemId);
-          if (invItem && invItem.quantityOnHand < line.quantity) {
-            throw new Error(
-              `الكمية المتوفرة في المخزون (${invItem.quantityOnHand}) غير كافية لبيع (${line.quantity}) للصنف (${invItem.nameAr}). يمكنك تفعيل خيار (السماح بالقيم السالبة للمخزون) من إعدادات الشركة للمتابعة.`
+          if (invItem) {
+            const itemCost = Number((invItem as any).costPrice ?? invItem.purchasePrice ?? 0);
+            totalCogs += line.quantity * itemCost;
+            if (isReturn) {
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: invItem.quantityOnHand + line.quantity,
+              });
+            } else {
+              const newQty = allowNegativeStock
+                ? invItem.quantityOnHand - line.quantity
+                : Math.max(0, invItem.quantityOnHand - line.quantity);
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: newQty,
+              });
+            }
+          }
+        });
+
+        const netRevenue = Math.max(0, invoice.grandTotal - invoice.vatTotal);
+        const compAccounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, compId));
+
+        // Resolve customer receivable account: prefer customer.account_id if valid; otherwise approved receivable account
+        let recAccId = 'acc-1120';
+        let recAccCode = '1120';
+        let recAccNameAr = 'الذمم المدينة (حسابات العملاء)';
+
+        if (invoice.entityId) {
+          const customer = db.getCustomers().find((c) => c.id === invoice.entityId && matchesCompany(c.companyId, compId));
+          if (customer) {
+            const custAccId = customer.account_id || (customer as any).accountId;
+            if (custAccId) {
+              const matchedAcc = compAccounts.find((a) => (a.id === custAccId || a.code === custAccId) && matchesCompany(a.companyId, compId));
+              if (matchedAcc) {
+                recAccId = matchedAcc.id;
+                recAccCode = matchedAcc.code;
+                recAccNameAr = matchedAcc.nameAr;
+              }
+            }
+          }
+        }
+
+        if (recAccId === 'acc-1120') {
+          const approvedAcc = compAccounts.find(
+            (a) => a.id === company?.defaultAccounts?.receivableAccountId || a.code === '1120' || (a.category === 'ASSET' && a.nameAr.includes('الذمم المدينة'))
+          );
+          if (approvedAcc) {
+            recAccId = approvedAcc.id;
+            recAccCode = approvedAcc.code;
+            recAccNameAr = approvedAcc.nameAr;
+          }
+        }
+
+        let lines = [];
+
+        if (isReturn) {
+          lines = [
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '4101' || a.code === '4100')?.id || 'acc-4101',
+              accountCode: '4101',
+              accountNameAr: 'إيرادات المبيعات والخدمات (مردودات)',
+              debit: netRevenue,
+              credit: 0,
+              memo: `مردودات مبيعات - إشعار رقم ${invoice.invoiceNumber}`,
+              companyId: compId,
+            },
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: recAccId,
+              accountCode: recAccCode,
+              accountNameAr: recAccNameAr,
+              debit: 0,
+              credit: invoice.grandTotal,
+              memo: `إشعار دائن مردودات مبيعات رقم ${invoice.invoiceNumber} - العميل: ${invoice.entityNameAr}`,
+              entityType: 'CUSTOMER' as const,
+              entityId: invoice.entityId,
+              companyId: compId,
+            },
+          ];
+
+          if (invoice.vatTotal > 0) {
+            lines.push({
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '2120')?.id || 'acc-2120',
+              accountCode: '2120',
+              accountNameAr: 'ضريبة القيمة المضافة - مخرجات (عكس)',
+              debit: invoice.vatTotal,
+              credit: 0,
+              memo: `عكس ضريبة القيمة المضافة لمردودات مبيعات ${invoice.invoiceNumber}`,
+              companyId: compId,
+            });
+          }
+
+          if (totalCogs > 0) {
+            lines.push(
+              {
+                id: 'jl-' + Math.random().toString(36).substr(2, 9),
+                accountId: compAccounts.find((a) => a.code === '1130')?.id || 'acc-1130',
+                accountCode: '1130',
+                accountNameAr: 'مخزون البضائع والمنتجات',
+                debit: totalCogs,
+                credit: 0,
+                memo: `إرجاع بضاعة للمخزن - إشعار ${invoice.invoiceNumber}`,
+                companyId: compId,
+              },
+              {
+                id: 'jl-' + Math.random().toString(36).substr(2, 9),
+                accountId: compAccounts.find((a) => a.code === '5101' || a.code === '5100')?.id || 'acc-5101',
+                accountCode: '5101',
+                accountNameAr: 'تكلفة البضاعة المباعة والمشتريات',
+                debit: 0,
+                credit: totalCogs,
+                memo: `تخفيض تكلفة المبيعات للمردودات - إشعار ${invoice.invoiceNumber}`,
+                companyId: compId,
+              }
+            );
+          }
+        } else {
+          lines = [
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: recAccId,
+              accountCode: recAccCode,
+              accountNameAr: recAccNameAr,
+              debit: invoice.grandTotal,
+              credit: 0,
+              memo: `فاتورة مبيعات رقم ${invoice.invoiceNumber} - العميل: ${invoice.entityNameAr}`,
+              entityType: 'CUSTOMER' as const,
+              entityId: invoice.entityId,
+              entityNameAr: invoice.entityNameAr,
+              companyId: compId,
+            },
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '4101' || a.code === '4100')?.id || 'acc-4101',
+              accountCode: '4101',
+              accountNameAr: 'إيرادات المبيعات والخدمات',
+              debit: 0,
+              credit: netRevenue,
+              memo: `إيراد مبيعات - فاتورة رقم ${invoice.invoiceNumber}`,
+              companyId: compId,
+            },
+          ];
+
+          if (invoice.vatTotal > 0) {
+            lines.push({
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '2120')?.id || 'acc-2120',
+              accountCode: '2120',
+              accountNameAr: 'ضريبة القيمة المضافة - مخرجات (مستحقة)',
+              debit: 0,
+              credit: invoice.vatTotal,
+              memo: `ضريبة القيمة المضافة - فاتورة ${invoice.invoiceNumber}`,
+              companyId: compId,
+            });
+          }
+
+          if (totalCogs > 0) {
+            lines.push(
+              {
+                id: 'jl-' + Math.random().toString(36).substr(2, 9),
+                accountId: compAccounts.find((a) => a.code === '5101' || a.code === '5100')?.id || 'acc-5101',
+                accountCode: '5101',
+                accountNameAr: 'تكلفة البضاعة المباعة والمشتريات',
+                debit: totalCogs,
+                credit: 0,
+                memo: `إثبات تكلفة البضاعة المباعة - فاتورة ${invoice.invoiceNumber}`,
+                companyId: compId,
+              },
+              {
+                id: 'jl-' + Math.random().toString(36).substr(2, 9),
+                accountId: compAccounts.find((a) => a.code === '1130')?.id || 'acc-1130',
+                accountCode: '1130',
+                accountNameAr: 'مخزون البضائع والمنتجات',
+                debit: 0,
+                credit: totalCogs,
+                memo: `خصم بضاعة من المخزون - فاتورة ${invoice.invoiceNumber}`,
+                companyId: compId,
+              }
             );
           }
         }
-      }
 
-      invoice.lines.forEach((line) => {
-        const invItem = inventoryItems.find((i) => i.id === line.itemId);
-        if (invItem) {
-          const itemCost = Number((invItem as any).costPrice ?? invItem.purchasePrice ?? 0);
-          totalCogs += line.quantity * itemCost;
-          if (isReturn) {
-            // Return to stock
-            db.updateInventoryItem(invItem.id, {
-              quantityOnHand: invItem.quantityOnHand + line.quantity,
-            });
-          } else {
-            // Atomically decrement stock on hand (allows negative if enabled)
-            const newQty = allowNegativeStock
-              ? invItem.quantityOnHand - line.quantity
-              : Math.max(0, invItem.quantityOnHand - line.quantity);
-            db.updateInventoryItem(invItem.id, {
-              quantityOnHand: newQty,
-            });
-          }
+        const totalDebit = lines.reduce((sum, l) => sum + l.debit, 0);
+        const totalCredit = lines.reduce((sum, l) => sum + l.credit, 0);
+
+        const validation = this.validateJournalEntry({ lines });
+        if (!validation.isValid) {
+          throw new Error(`فشل التحقق المحاسبي لقيد المبيعات: ${validation.error}`);
         }
+
+        const journalEntry: JournalEntry = {
+          id: 'jv-' + Math.random().toString(36).substr(2, 9),
+          companyId: compId,
+          entryNumber: journalEntryNumber,
+          date: invoice.date || today,
+          reference: invoice.invoiceNumber,
+          description: isReturn
+            ? `قيد آلي ناتج عن إشعار دائن مردودات مبيعات رقم (${invoice.invoiceNumber}) للعميل ${invoice.entityNameAr}`
+            : `قيد آلي ناتج عن إصدار فاتورة مبيعات رقم (${invoice.invoiceNumber}) للعميل ${invoice.entityNameAr}`,
+          status: 'POSTED',
+          lines,
+          totalDebit,
+          totalCredit,
+          createdAt: new Date().toISOString(),
+          postedAt: new Date().toISOString(),
+          isAutoGenerated: true,
+          sourceModule: 'SALES_INVOICE',
+          sourceId: invoice.id,
+        };
+
+        db.addJournal(journalEntry);
+
+        // Update Customer Ledger Balance
+        const customer = db.getCustomers().find((c) => c.id === invoice.entityId && matchesCompany(c.companyId, compId));
+        if (customer) {
+          const rawBalance = isReturn
+            ? (Number(customer.balance) || 0) - (Number(invoice.grandTotal) || 0)
+            : (Number(customer.balance) || 0) + (Number(invoice.grandTotal) || 0);
+          const newBalance = Math.round(rawBalance * 1000) / 1000;
+          db.updateCustomer(customer.id, { balance: newBalance });
+        }
+
+        // Update Invoice status & attach Journal ID
+        db.updateInvoice(invoice.id, {
+          status: 'POSTED',
+          journalEntryId: journalEntry.id,
+        });
+
+        return db.getInvoices().find((inv) => inv.id === invoiceId)!;
       });
-
-      const netRevenue = Math.max(0, invoice.grandTotal - invoice.vatTotal);
-      let lines = [];
-
-      if (isReturn) {
-        // Sales Return Journal
-        lines = [
-          // 1. Debit: Sales Revenue / Returns (تخفيض الإيراد)
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-4101',
-            accountCode: '4101',
-            accountNameAr: 'إيرادات المبيعات والخدمات (مردودات)',
-            debit: netRevenue,
-            credit: 0,
-            memo: `مردودات مبيعات - إشعار رقم ${invoice.invoiceNumber}`,
-          },
-          // 2. Credit: Accounts Receivable (العميل دائن بتخفيض حسابه)
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-1120',
-            accountCode: '1120',
-            accountNameAr: 'الذمم المدينة (حسابات العملاء)',
-            debit: 0,
-            credit: invoice.grandTotal,
-            memo: `إشعار دائن مردودات مبيعات رقم ${invoice.invoiceNumber} - العميل: ${invoice.entityNameAr}`,
-            entityType: 'CUSTOMER' as const,
-            entityId: invoice.entityId,
-          },
-        ];
-
-        // Debit Output VAT reversal if applicable (تخفيض ضريبة المخرجات لضمان توازن القيد)
-        if (invoice.vatTotal > 0) {
-          lines.push({
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-2120',
-            accountCode: '2120',
-            accountNameAr: 'ضريبة القيمة المضافة - مخرجات (عكس)',
-            debit: invoice.vatTotal,
-            credit: 0,
-            memo: `عكس ضريبة القيمة المضافة لمردودات مبيعات ${invoice.invoiceNumber}`,
-          });
-        }
-
-        // Reverse COGS & Return Inventory
-        if (totalCogs > 0) {
-          lines.push(
-            {
-              id: 'jl-' + Math.random().toString(36).substr(2, 9),
-              accountId: 'acc-1130',
-              accountCode: '1130',
-              accountNameAr: 'مخزون البضائع والمنتجات',
-              debit: totalCogs,
-              credit: 0,
-              memo: `إرجاع بضاعة للمخزن - إشعار ${invoice.invoiceNumber}`,
-            },
-            {
-              id: 'jl-' + Math.random().toString(36).substr(2, 9),
-              accountId: 'acc-5101',
-              accountCode: '5101',
-              accountNameAr: 'تكلفة البضاعة المباعة والمشتريات',
-              debit: 0,
-              credit: totalCogs,
-              memo: `تخفيض تكلفة المبيعات للمردودات - إشعار ${invoice.invoiceNumber}`,
-            }
-          );
-        }
-      } else {
-        // Standard Sales Invoice Journal
-        lines = [
-          // 1. Debit: Accounts Receivable (العميل مدين بالصافي الإجمالي المستحق)
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-1120',
-            accountCode: '1120',
-            accountNameAr: 'الذمم المدينة (حسابات العملاء)',
-            debit: invoice.grandTotal,
-            credit: 0,
-            memo: `فاتورة مبيعات رقم ${invoice.invoiceNumber} - العميل: ${invoice.entityNameAr}`,
-            entityType: 'CUSTOMER' as const,
-            entityId: invoice.entityId,
-            entityNameAr: invoice.entityNameAr,
-          },
-          // 2. Credit: Sales Revenue (صافي الإيراد بعد الخصومات وقبل الضريبة)
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-4101',
-            accountCode: '4101',
-            accountNameAr: 'إيرادات المبيعات والخدمات',
-            debit: 0,
-            credit: netRevenue,
-            memo: `إيراد مبيعات - فاتورة رقم ${invoice.invoiceNumber}`,
-          },
-        ];
-
-        // Output VAT if applicable
-        if (invoice.vatTotal > 0) {
-          lines.push({
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-2120',
-            accountCode: '2120',
-            accountNameAr: 'ضريبة القيمة المضافة - مخرجات (مستحقة)',
-            debit: 0,
-            credit: invoice.vatTotal,
-            memo: `ضريبة القيمة المضافة - فاتورة ${invoice.invoiceNumber}`,
-          });
-        }
-
-        // Debit COGS & Credit Inventory
-        if (totalCogs > 0) {
-          lines.push(
-            {
-              id: 'jl-' + Math.random().toString(36).substr(2, 9),
-              accountId: 'acc-5100',
-              accountCode: '5100',
-              accountNameAr: 'تكلفة البضاعة المباعة (COGS)',
-              debit: totalCogs,
-              credit: 0,
-              memo: `إثبات تكلفة البضاعة المباعة - فاتورة ${invoice.invoiceNumber}`,
-            },
-            {
-              id: 'jl-' + Math.random().toString(36).substr(2, 9),
-              accountId: 'acc-1130',
-              accountCode: '1130',
-              accountNameAr: 'مخزون البضائع والمنتجات',
-              debit: 0,
-              credit: totalCogs,
-              memo: `تخفيض المخزون - فاتورة ${invoice.invoiceNumber}`,
-            }
-          );
-        }
-      }
-
-      // Double-Entry Invariant Validation (Debit === Credit)
-      const validation = this.validateJournalEntry({ lines });
-      if (!validation.isValid) {
-        throw new Error(`فشل التحقق المحاسبي: ${validation.error}`);
-      }
-
-      const totalDebit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
-      const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
-
-      const journalEntry: JournalEntry = {
-        id: 'jv-' + Math.random().toString(36).substr(2, 9),
-        entryNumber: journalEntryNumber,
-        date: invoice.date || today,
-        reference: invoice.invoiceNumber,
-        description: isReturn
-          ? `قيد آلي ناتج عن إشعار دائن مردودات مبيعات رقم (${invoice.invoiceNumber}) للعميل ${invoice.entityNameAr}`
-          : `قيد آلي ناتج عن إصدار فاتورة مبيعات رقم (${invoice.invoiceNumber}) للعميل ${invoice.entityNameAr}`,
-        status: 'POSTED',
-        lines,
-        totalDebit,
-        totalCredit,
-        createdAt: new Date().toISOString(),
-        postedAt: new Date().toISOString(),
-        isAutoGenerated: true,
-        sourceModule: 'SALES_INVOICE',
-        sourceId: invoice.id,
-      };
-
-      db.addJournal(journalEntry);
-
-      // Update Customer Ledger Balance
-      const customer = db.getCustomers().find((c) => c.id === invoice.entityId);
-      if (customer) {
-        const rawBalance = isReturn
-          ? (Number(customer.balance) || 0) - (Number(invoice.grandTotal) || 0)
-          : (Number(customer.balance) || 0) + (Number(invoice.grandTotal) || 0);
-        const newBalance = Math.round(rawBalance * 1000) / 1000;
-        db.updateCustomer(customer.id, { balance: newBalance });
-      }
-
-      // Update Invoice status & attach Journal ID
-      db.updateInvoice(invoice.id, {
-        status: 'POSTED',
-        journalEntryId: journalEntry.id,
-      });
-
-      return db.getInvoices().find((inv) => inv.id === invoiceId)!;
-    });
+    } finally {
+      activePostingLocks.delete(invoiceId);
+    }
   }
 
   /**
    * Post Purchase Invoice automatically creating Journal Entry, increasing inventory and updating Supplier Balance
    * Wrapped in ACID transaction boundary.
    */
-  public static postPurchaseInvoice(invoiceId: string): Invoice {
-    return db.executeTransaction(() => {
-      const invoice = db.getInvoices().find((inv) => inv.id === invoiceId);
-      if (!invoice) throw new Error('الفاتورة غير موجودة');
-      if (invoice.status === 'POSTED' || invoice.status === 'PAID') {
-        throw new Error('الفاتورة مرحّلة بالفعل مسبقاً (Idempotency Violation)');
-      }
+  public static postPurchaseInvoice(invoiceId: string, companyId?: string): Invoice {
+    if (activePostingLocks.has(invoiceId)) {
+      throw new Error('عملية الترحيل قيد المعالجة بالفعل لهذا المستند (Concurrent Posting Lock)');
+    }
+    activePostingLocks.add(invoiceId);
 
-      const today = new Date().toISOString().split('T')[0];
-      const isReturn = invoice.type === 'PURCHASE_RETURN';
-      const journalEntryNumber = isReturn ? `JV-RET-PUR-${invoice.invoiceNumber}` : `JV-PUR-${invoice.invoiceNumber}`;
+    try {
+      return db.executeTransaction(() => {
+        const invoice = db.getInvoices().find((inv) => inv.id === invoiceId);
+        if (!invoice) throw new Error('الفاتورة غير موجودة');
+        const compId = companyId || invoice.companyId;
+        if (companyId && invoice.companyId && !matchesCompany(invoice.companyId, companyId)) {
+          throw new Error('الفاتورة غير تابعة للشركة المصرح بها');
+        }
+        if (invoice.status === 'POSTED' || invoice.status === 'PAID') {
+          throw new Error('الفاتورة مرحّلة بالفعل مسبقاً (Idempotency Violation)');
+        }
 
-      // Update inventory on-hand quantity
-      const inventoryItems = db.getInventory();
-      invoice.lines.forEach((line) => {
-        const invItem = inventoryItems.find((i) => i.id === line.itemId);
-        if (invItem) {
-          if (isReturn) {
-            const company = db.getCompany();
-            const allowNeg = !!(
-              (invoice as any).allowNegativeStock ||
-              (invoice as any).allowNegative ||
-              (company && company.allowNegativeInventory !== false)
-            );
-            db.updateInventoryItem(invItem.id, {
-              quantityOnHand: allowNeg ? invItem.quantityOnHand - line.quantity : Math.max(0, invItem.quantityOnHand - line.quantity),
+        const today = new Date().toISOString().split('T')[0];
+        const isReturn = invoice.type === 'PURCHASE_RETURN';
+        const journalEntryNumber = isReturn ? `JV-RET-PUR-${invoice.invoiceNumber}` : `JV-PUR-${invoice.invoiceNumber}`;
+
+        // Update inventory on-hand quantity
+        const inventoryItems = db.getInventory().filter((i) => matchesCompany(i.companyId, compId));
+        invoice.lines.forEach((line) => {
+          const invItem = inventoryItems.find((i) => i.id === line.itemId);
+          if (invItem) {
+            if (isReturn) {
+              const company = db.getCompany();
+              const allowNeg = !!(
+                (invoice as any).allowNegativeStock ||
+                (invoice as any).allowNegative ||
+                (company && company.allowNegativeInventory !== false)
+              );
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: allowNeg ? invItem.quantityOnHand - line.quantity : Math.max(0, invItem.quantityOnHand - line.quantity),
+              });
+            } else {
+              const currentQty = Number(invItem.quantityOnHand) || 0;
+              const currentCost = Number((invItem as any).costPrice ?? invItem.purchasePrice ?? 0);
+              const incomingQty = Number(line.quantity) || 0;
+              const purchasePrice = Number(line.unitPrice) || 0;
+              const newAvgCost = currentQty <= 0
+                ? purchasePrice
+                : Math.round((((currentQty * currentCost) + (incomingQty * purchasePrice)) / (currentQty + incomingQty)) * 1000) / 1000;
+
+              db.updateInventoryItem(invItem.id, {
+                quantityOnHand: currentQty + incomingQty,
+                purchasePrice: newAvgCost,
+                costPrice: newAvgCost,
+              });
+            }
+          }
+        });
+
+        const netPurchase = Math.max(0, (Number(invoice.grandTotal) || 0) - (Number(invoice.vatTotal) || 0));
+        const compAccounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, compId));
+
+        let payAccId = 'acc-2110';
+        let payAccCode = '2110';
+        let payAccNameAr = 'الذمم الدائنة (حسابات الموردين)';
+
+        if (invoice.entityId) {
+          const supplier = db.getSuppliers().find((s) => s.id === invoice.entityId && matchesCompany(s.companyId, compId));
+          if (supplier) {
+            const suppAccId = supplier.account_id || (supplier as any).accountId;
+            if (suppAccId) {
+              const matchedAcc = compAccounts.find((a) => (a.id === suppAccId || a.code === suppAccId) && matchesCompany(a.companyId, compId));
+              if (matchedAcc) {
+                payAccId = matchedAcc.id;
+                payAccCode = matchedAcc.code;
+                payAccNameAr = matchedAcc.nameAr;
+              }
+            }
+          }
+        }
+
+        if (payAccId === 'acc-2110') {
+          const approvedAcc = compAccounts.find(
+            (a) => a.code === '2110' || (a.category === 'LIABILITY' && (a.nameAr.includes('الذمم الدائنة') || a.nameAr.includes('الموردين')))
+          );
+          if (approvedAcc) {
+            payAccId = approvedAcc.id;
+            payAccCode = approvedAcc.code;
+            payAccNameAr = approvedAcc.nameAr;
+          }
+        }
+
+        let lines = [];
+        if (isReturn) {
+          // Purchase Return: Debit Supplier (AP) & Credit Inventory & Reverse Input VAT
+          lines = [
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: payAccId,
+              accountCode: payAccCode,
+              accountNameAr: payAccNameAr,
+              debit: invoice.grandTotal,
+              credit: 0,
+              memo: `إشعار مدين مردودات مشتريات رقم ${invoice.invoiceNumber} - المورد: ${invoice.entityNameAr}`,
+              entityType: 'SUPPLIER' as const,
+              entityId: invoice.entityId,
+              companyId: compId,
+            },
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '1130')?.id || 'acc-1130',
+              accountCode: '1130',
+              accountNameAr: 'مخزون البضائع والمنتجات',
+              debit: 0,
+              credit: netPurchase,
+              memo: `إخراج بضاعة مردودة للمورد - إشعار ${invoice.invoiceNumber}`,
+              companyId: compId,
+            },
+          ];
+
+          if (invoice.vatTotal > 0) {
+            lines.push({
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '1140')?.id || 'acc-1140',
+              accountCode: '1140',
+              accountNameAr: 'ضريبة القيمة المضافة - مدخلات (عكس)',
+              debit: 0,
+              credit: invoice.vatTotal,
+              memo: `عكس ضريبة مدخلات لمردود مشتريات ${invoice.invoiceNumber}`,
+              companyId: compId,
             });
-          } else {
-            const currentQty = Number(invItem.quantityOnHand) || 0;
-            const currentCost = Number((invItem as any).costPrice ?? invItem.purchasePrice ?? 0);
-            const incomingQty = Number(line.quantity) || 0;
-            const purchasePrice = Number(line.unitPrice) || 0;
-            const newAvgCost = currentQty <= 0
-              ? purchasePrice
-              : Math.round((((currentQty * currentCost) + (incomingQty * purchasePrice)) / (currentQty + incomingQty)) * 1000) / 1000;
+          }
+        } else {
+          // Standard Purchase Invoice: Debit Inventory (IAS-2 Net Cost) & Debit Input VAT, Credit Accounts Payable
+          lines = [
+            // 1. Debit: Merchandise Inventory (صافي تكلفة المخزون المشتراة دون الضريبة المستردة)
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '1130')?.id || 'acc-1130',
+              accountCode: '1130',
+              accountNameAr: 'مخزون البضائع والمنتجات',
+              debit: netPurchase,
+              credit: 0,
+              memo: `إثبات مشتريات بضائع - فاتورة مورد رقم ${invoice.invoiceNumber}`,
+              companyId: compId,
+            },
+            // 2. Credit: Accounts Payable (المورد دائن بقيمة الفاتورة المستحقة)
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: payAccId,
+              accountCode: payAccCode,
+              accountNameAr: payAccNameAr,
+              debit: 0,
+              credit: invoice.grandTotal,
+              memo: `فاتورة مشتريات رقم ${invoice.invoiceNumber} - المورد: ${invoice.entityNameAr}`,
+              entityType: 'SUPPLIER' as const,
+              entityId: invoice.entityId,
+              companyId: compId,
+            },
+          ];
 
-            db.updateInventoryItem(invItem.id, {
-              quantityOnHand: currentQty + incomingQty,
-              purchasePrice: newAvgCost,
-              costPrice: newAvgCost,
+          if (invoice.vatTotal > 0) {
+            lines.push({
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: compAccounts.find((a) => a.code === '1140')?.id || 'acc-1140',
+              accountCode: '1140',
+              accountNameAr: 'ضريبة القيمة المضافة - مدخلات (مستردة)',
+              debit: invoice.vatTotal,
+              credit: 0,
+              memo: `ضريبة مدخلات فاتورة مشتريات ${invoice.invoiceNumber}`,
+              companyId: compId,
             });
           }
         }
-      });
 
-      const netPurchase = Math.max(0, (Number(invoice.grandTotal) || 0) - (Number(invoice.vatTotal) || 0));
-      let lines = [];
-      if (isReturn) {
-        // Purchase Return: Debit Supplier (AP) & Credit Inventory & Reverse Input VAT
-        lines = [
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-2110',
-            accountCode: '2110',
-            accountNameAr: 'الذمم الدائنة (حسابات الموردين)',
-            debit: invoice.grandTotal,
-            credit: 0,
-            memo: `إشعار مدين مردودات مشتريات رقم ${invoice.invoiceNumber} - المورد: ${invoice.entityNameAr}`,
-            entityType: 'SUPPLIER' as const,
-            entityId: invoice.entityId,
-          },
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-1130',
-            accountCode: '1130',
-            accountNameAr: 'مخزون البضائع والمنتجات',
-            debit: 0,
-            credit: netPurchase,
-            memo: `إخراج بضاعة مردودة للمورد - إشعار ${invoice.invoiceNumber}`,
-          },
-        ];
-
-        if (invoice.vatTotal > 0) {
-          lines.push({
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-1140',
-            accountCode: '1140',
-            accountNameAr: 'ضريبة القيمة المضافة - مدخلات (عكس)',
-            debit: 0,
-            credit: invoice.vatTotal,
-            memo: `عكس ضريبة مدخلات لمردود مشتريات ${invoice.invoiceNumber}`,
-          });
+        // Double-Entry Invariant Validation (Debit === Credit)
+        const validation = this.validateJournalEntry({ lines });
+        if (!validation.isValid) {
+          throw new Error(`فشل التحقق المحاسبي لقيد المشتريات: ${validation.error}`);
         }
-      } else {
-        // Standard Purchase Invoice: Debit Inventory (IAS-2 Net Cost) & Debit Input VAT, Credit Accounts Payable
-        lines = [
-          // 1. Debit: Merchandise Inventory (صافي تكلفة المخزون المشتراة دون الضريبة المستردة)
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-1130',
-            accountCode: '1130',
-            accountNameAr: 'مخزون البضائع والمنتجات',
-            debit: netPurchase,
-            credit: 0,
-            memo: `إثبات مشتريات بضائع - فاتورة مورد رقم ${invoice.invoiceNumber}`,
-          },
-          // 2. Credit: Accounts Payable (المورد دائن بقيمة الفاتورة المستحقة)
-          {
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-2110',
-            accountCode: '2110',
-            accountNameAr: 'الذمم الدائنة (حسابات الموردين)',
-            debit: 0,
-            credit: invoice.grandTotal,
-            memo: `فاتورة مشتريات رقم ${invoice.invoiceNumber} - المورد: ${invoice.entityNameAr}`,
-            entityType: 'SUPPLIER' as const,
-            entityId: invoice.entityId,
-          },
-        ];
 
-        if (invoice.vatTotal > 0) {
-          lines.push({
-            id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-1140',
-            accountCode: '1140',
-            accountNameAr: 'ضريبة القيمة المضافة - مدخلات (مستردة)',
-            debit: invoice.vatTotal,
-            credit: 0,
-            memo: `ضريبة مدخلات فاتورة مشتريات ${invoice.invoiceNumber}`,
-          });
+        const journalEntry: JournalEntry = {
+          id: 'jv-' + Math.random().toString(36).substr(2, 9),
+          companyId: compId,
+          entryNumber: journalEntryNumber,
+          date: invoice.date || today,
+          reference: invoice.invoiceNumber,
+          description: isReturn
+            ? `قيد آلي ناتج عن إشعار مدين مردودات مشتريات رقم (${invoice.invoiceNumber}) للمورد ${invoice.entityNameAr}`
+            : `قيد آلي ناتج عن إصدار فاتورة مشتريات رقم (${invoice.invoiceNumber}) للمورد ${invoice.entityNameAr}`,
+          status: 'POSTED',
+          lines,
+          totalDebit: invoice.grandTotal,
+          totalCredit: invoice.grandTotal,
+          createdAt: new Date().toISOString(),
+          postedAt: new Date().toISOString(),
+          isAutoGenerated: true,
+          sourceModule: 'PURCHASE_INVOICE',
+          sourceId: invoice.id,
+        };
+
+        db.addJournal(journalEntry);
+
+        // Update Supplier Balance without arbitrary zero-clamping
+        const supplier = db.getSuppliers().find((s) => s.id === invoice.entityId && matchesCompany(s.companyId, compId));
+        if (supplier) {
+          const rawBalance = isReturn
+            ? (Number(supplier.balance) || 0) - (Number(invoice.grandTotal) || 0)
+            : (Number(supplier.balance) || 0) + (Number(invoice.grandTotal) || 0);
+          const newBalance = Math.round(rawBalance * 1000) / 1000;
+          db.updateSupplier(supplier.id, { balance: newBalance });
         }
-      }
 
-      // Double-Entry Invariant Validation (Debit === Credit)
-      const validation = this.validateJournalEntry({ lines });
-      if (!validation.isValid) {
-        throw new Error(`فشل التحقق المحاسبي لقيد المشتريات: ${validation.error}`);
-      }
+        // Update Invoice status & attach Journal ID
+        db.updateInvoice(invoice.id, {
+          status: 'POSTED',
+          journalEntryId: journalEntry.id,
+        });
 
-      const journalEntry: JournalEntry = {
-        id: 'jv-' + Math.random().toString(36).substr(2, 9),
-        entryNumber: journalEntryNumber,
-        date: invoice.date || today,
-        reference: invoice.invoiceNumber,
-        description: isReturn
-          ? `قيد آلي ناتج عن إشعار مدين مردودات مشتريات رقم (${invoice.invoiceNumber}) للمورد ${invoice.entityNameAr}`
-          : `قيد آلي ناتج عن إصدار فاتورة مشتريات رقم (${invoice.invoiceNumber}) للمورد ${invoice.entityNameAr}`,
-        status: 'POSTED',
-        lines,
-        totalDebit: invoice.grandTotal,
-        totalCredit: invoice.grandTotal,
-        createdAt: new Date().toISOString(),
-        postedAt: new Date().toISOString(),
-        isAutoGenerated: true,
-        sourceModule: 'PURCHASE_INVOICE',
-        sourceId: invoice.id,
-      };
-
-      db.addJournal(journalEntry);
-
-      // Update Supplier Balance without arbitrary zero-clamping
-      const supplier = db.getSuppliers().find((s) => s.id === invoice.entityId);
-      if (supplier) {
-        const rawBalance = isReturn
-          ? (Number(supplier.balance) || 0) - (Number(invoice.grandTotal) || 0)
-          : (Number(supplier.balance) || 0) + (Number(invoice.grandTotal) || 0);
-        const newBalance = Math.round(rawBalance * 1000) / 1000;
-        db.updateSupplier(supplier.id, { balance: newBalance });
-      }
-
-      // Update Invoice status & attach Journal ID
-      db.updateInvoice(invoice.id, {
-        status: 'POSTED',
-        journalEntryId: journalEntry.id,
+        return db.getInvoices().find((inv) => inv.id === invoiceId)!;
       });
-
-      return db.getInvoices().find((inv) => inv.id === invoiceId)!;
-    });
+    } finally {
+      activePostingLocks.delete(invoiceId);
+    }
   }
 
   /**
@@ -1285,6 +1440,192 @@ export class AccountingEngine {
   }
 
   /**
+   * إنشاء العميل وحسابه الفرعي تلقائياً وفق ترقيم الشركة المعتمد
+   * عملية ذرية كاملة (Atomic Transaction): نجاح العمليتين معاً أو فشلهما معاً
+   */
+  public static createCustomerWithSubAccount(
+    data: any,
+    companyId: string
+  ): { customer: Customer; account: Account; journal?: JournalEntry } {
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لإنشاء العميل وحسابه المحاسبي');
+    }
+    const cleanCompanyId = companyId.trim();
+
+    return db.executeTransaction(() => {
+      const compAccounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, cleanCompanyId));
+      const company = db.getCompany();
+
+      // 1. التحقق من حساب الذمم المعتمد للشركة من إعداداتها أو الدليل المحاسبي
+      let parentAccount = compAccounts.find(
+        (a) =>
+          a.id === company?.defaultAccounts?.receivableAccountId ||
+          a.code === '1120' ||
+          (a.category === 'ASSET' && (a.nameAr.includes('الذمم المدينة') || a.nameAr.includes('حسابات العملاء')))
+      );
+
+      if (!parentAccount) {
+        throw new Error('تعذر العثور على حساب الذمم المدينة الرئيسي المعتمد لهذه الشركة (لا يوجد حساب 1120 أو حساب ذمم معتمد).');
+      }
+
+      if (parentAccount.isActive === false) {
+        throw new Error('حساب الذمم المدينة الرئيسي معطل في هذه الشركة، يرجى تفعيله أولاً.');
+      }
+
+      // 2. توليد حساب العميل الفرعي تلقائياً وفق ترقيم الشركة
+      const prefix = parentAccount.code;
+      const existingCodes = new Set(compAccounts.map((a) => a.code));
+      let maxSeq = 0;
+      for (const acc of compAccounts) {
+        if (acc.code && acc.code.startsWith(prefix) && acc.code !== prefix) {
+          const suffix = acc.code.slice(prefix.length);
+          const num = parseInt(suffix, 10);
+          if (!isNaN(num) && num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+      let nextSeq = maxSeq + 1;
+      let subAccountCode = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+      while (existingCodes.has(subAccountCode)) {
+        nextSeq++;
+        subAccountCode = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+      }
+
+      const custNameAr = (data.nameAr || 'عميل جديد').trim();
+      const custNameEn = (data.nameEn || custNameAr).trim();
+      const newAccountId = 'acc-' + Math.random().toString(36).substr(2, 9);
+
+      const subAccount: Account = {
+        id: newAccountId,
+        companyId: cleanCompanyId,
+        code: subAccountCode,
+        nameAr: `حساب عميل: ${custNameAr}`,
+        nameEn: custNameEn ? `Customer: ${custNameEn}` : `Customer: ${custNameAr}`,
+        category: 'ASSET',
+        parentId: parentAccount.id,
+        level: (parentAccount.level || 1) + 1,
+        normalBalance: 'DEBIT',
+        nature: 'DEBIT',
+        isSystem: false,
+        isActive: true,
+        description: `حساب الذمة الفرعي التلقائي للعميل: ${custNameAr}`,
+      };
+
+      db.addAccount(subAccount);
+
+      // 3. التحقق من الرصيد الافتتاحي وتاريخه
+      const openingBal = Number(data.openingBalance) || 0;
+      let openingJournal: JournalEntry | undefined = undefined;
+
+      if (openingBal > 0) {
+        if (!data.openingBalanceDate || !data.openingBalanceDate.trim()) {
+          throw new Error('لا يمكن اعتماد رصيد افتتاحي للعميل دون تحديد تاريخ صريح للرصيد الافتتاحي.');
+        }
+
+        const equityAccount = compAccounts.find(
+          (a) =>
+            a.id === company?.defaultAccounts?.retainedEarningsAccountId ||
+            a.code === '3200' ||
+            a.code === '3100' ||
+            (a.category === 'EQUITY' && (a.nameAr.includes('أرباح مرحلة') || a.nameAr.includes('أرصدة افتتاحية') || a.nameAr.includes('رأس المال')))
+        );
+
+        if (!equityAccount) {
+          throw new Error('تعذر اعتماد الرصيد الافتتاحي لعدم توفر حساب حقوق ملكية / أرباح مرحلة معتمد في هذه الشركة.');
+        }
+
+        const customerIdForJv = data.id || ('cust-' + Math.random().toString(36).substr(2, 9));
+        openingJournal = {
+          id: 'jv-' + Math.random().toString(36).substr(2, 9),
+          companyId: cleanCompanyId,
+          entryNumber: `JV-OP-CUST-${customerIdForJv.slice(-4)}`,
+          date: data.openingBalanceDate.trim(),
+          reference: `OP-${custNameAr}`,
+          description: `قيد رصيد أول المدة الافتتاحي للعميل (${custNameAr})`,
+          status: 'POSTED',
+          lines: [
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: subAccount.id,
+              accountCode: subAccount.code,
+              accountNameAr: subAccount.nameAr,
+              debit: openingBal,
+              credit: 0,
+              memo: `رصيد أول المدة للعميل ${custNameAr}`,
+              entityType: 'CUSTOMER',
+              entityId: customerIdForJv,
+              companyId: cleanCompanyId,
+            },
+            {
+              id: 'jl-' + Math.random().toString(36).substr(2, 9),
+              accountId: equityAccount.id,
+              accountCode: equityAccount.code,
+              accountNameAr: equityAccount.nameAr,
+              debit: 0,
+              credit: openingBal,
+              memo: `حقوق الملكية / أرصدة افتتاحية - ${custNameAr}`,
+              companyId: cleanCompanyId,
+            },
+          ],
+          totalDebit: openingBal,
+          totalCredit: openingBal,
+          createdAt: new Date().toISOString(),
+          postedAt: new Date().toISOString(),
+          isAutoGenerated: true,
+          sourceModule: 'CUSTOMER_OPENING_BALANCE' as any,
+          sourceId: customerIdForJv,
+        };
+
+        const validation = this.validateJournalEntry(openingJournal);
+        if (!validation.isValid) {
+          throw new Error(`فشل التحقق من توازن قيد الرصيد الافتتاحي: ${validation.error}`);
+        }
+        db.addJournal(openingJournal);
+      }
+
+      // 4. إنشاء سجل العميل وحفظ account_id
+      const customerId = (openingJournal?.sourceId) || data.id || ('cust-' + Math.random().toString(36).substr(2, 9));
+      const compCustomers = db.getCustomers().filter((c) => matchesCompany(c.companyId, cleanCompanyId));
+      const customerCode = data.code || `CUST-${String(compCustomers.length + 1).padStart(3, '0')}`;
+
+      const customer: Customer = {
+        id: customerId,
+        companyId: cleanCompanyId,
+        company_id: cleanCompanyId,
+        account_id: subAccount.id,
+        accountId: subAccount.id,
+        code: customerCode,
+        nameAr: custNameAr,
+        nameEn: custNameEn,
+        taxNumber: data.taxNumber || '',
+        phone: data.phone || '',
+        email: data.email || '',
+        address: data.address || '',
+        governorate: data.governorate || data.address || '',
+        city: data.city || 'الكويت',
+        balance: openingBal,
+        openingBalance: openingBal,
+        openingBalanceDate: openingBal > 0 ? data.openingBalanceDate.trim() : (data.openingBalanceDate || undefined),
+        isActive: true,
+        branches: data.branches || [],
+        priceListId: data.priceListId || 'standard',
+        priceListName: data.priceListName || '',
+        customPrices: data.customPrices || [],
+        defaultDiscountRate: data.defaultDiscountRate !== undefined ? Number(data.defaultDiscountRate) : 0,
+      };
+
+      db.addCustomer(customer);
+
+      return {
+        customer,
+        account: subAccount,
+        journal: openingJournal,
+      };
+    });
+  }
+
+  /**
    * Recalculate customer balance from first principles (Opening + Invoices - Returns - Receipts + Journals)
    */
   public static recalculateCustomerBalance(customerId: string): number {
@@ -1416,16 +1757,22 @@ export class AccountingEngine {
   /**
    * Post Payment/Receipt Voucher (سند القبض والصرف) with ACID transaction
    */
-  public static postVoucher(voucher: PaymentVoucher): PaymentVoucher {
+  public static postVoucher(voucher: PaymentVoucher, companyId?: string): PaymentVoucher {
     return db.executeTransaction(() => {
       const today = new Date().toISOString().split('T')[0];
       const journalEntryNumber = `JV-${voucher.voucherNumber}`;
+      const compId = companyId || voucher.companyId || (voucher as any).company_id;
+      if (companyId && voucher.companyId && !matchesCompany(voucher.companyId, companyId)) {
+        throw new Error('السند غير تابع للشركة المصرح بها');
+      }
 
-      // Dynamically resolve Bank or Cash account from Chart of Accounts
-      const allAccounts = db.getAccounts();
+      const compAccounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, compId));
+
+      // Dynamically resolve Bank or Cash account from Chart of Accounts for this company
       const targetBankAccId = voucher.bankAccountId || (voucher.paymentMethod === 'CASH' ? 'acc-1112' : 'acc-1111');
-      const resolvedBankAcc = allAccounts.find((a) => a.id === targetBankAccId || a.code === targetBankAccId) ||
-        allAccounts.find((a) => (voucher.paymentMethod === 'CASH' ? a.code === '1112' || a.code === '1110' : a.code === '1111')) || {
+      const resolvedBankAcc = compAccounts.find((a) => a.id === targetBankAccId || a.code === targetBankAccId) ||
+        compAccounts.find((a) => (voucher.paymentMethod === 'CASH' ? a.code === '1112' || a.code === '1110' : a.code === '1111')) ||
+        compAccounts.find((a) => a.category === 'ASSET' && (voucher.paymentMethod === 'CASH' ? a.nameAr.includes('صندوق') || a.nameAr.includes('خزينة') : a.nameAr.includes('بنك'))) || {
           id: targetBankAccId,
           code: voucher.paymentMethod === 'CASH' ? '1112' : '1111',
           nameAr: voucher.paymentMethod === 'CASH' ? 'الصندوق الرئيسي (الخزينة)' : 'البنك الأهلي التجاري - الحساب الرئيسي',
@@ -1435,6 +1782,36 @@ export class AccountingEngine {
 
       if (voucher.type === 'RECEIPT') {
         // Receipt from Customer (قبض): Debit Bank/Cash, Credit Accounts Receivable
+        let recAccId = 'acc-1120';
+        let recAccCode = '1120';
+        let recAccNameAr = 'الذمم المدينة (حسابات العملاء)';
+
+        if (voucher.entityId) {
+          const customer = db.getCustomers().find((c) => c.id === voucher.entityId && matchesCompany(c.companyId, compId));
+          if (customer) {
+            const custAccId = customer.account_id || (customer as any).accountId;
+            if (custAccId) {
+              const matchedAcc = compAccounts.find((a) => (a.id === custAccId || a.code === custAccId) && matchesCompany(a.companyId, compId));
+              if (matchedAcc) {
+                recAccId = matchedAcc.id;
+                recAccCode = matchedAcc.code;
+                recAccNameAr = matchedAcc.nameAr;
+              }
+            }
+          }
+        }
+
+        if (recAccId === 'acc-1120') {
+          const approvedAcc = compAccounts.find(
+            (a) => a.code === '1120' || (a.category === 'ASSET' && (a.nameAr.includes('الذمم المدينة') || a.nameAr.includes('حسابات العملاء')))
+          );
+          if (approvedAcc) {
+            recAccId = approvedAcc.id;
+            recAccCode = approvedAcc.code;
+            recAccNameAr = approvedAcc.nameAr;
+          }
+        }
+
         lines.push(
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
@@ -1444,32 +1821,65 @@ export class AccountingEngine {
             debit: voucher.amount,
             credit: 0,
             memo: `سند قبض رقم ${voucher.voucherNumber} من ${voucher.entityNameAr}`,
+            companyId: compId,
           },
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-1120',
-            accountCode: '1120',
-            accountNameAr: 'الذمم المدينة (حسابات العملاء)',
+            accountId: recAccId,
+            accountCode: recAccCode,
+            accountNameAr: recAccNameAr,
             debit: 0,
             credit: voucher.amount,
             memo: `تحصيل من العميل ${voucher.entityNameAr}`,
             entityType: 'CUSTOMER' as const,
             entityId: voucher.entityId,
+            companyId: compId,
           }
         );
       } else {
         // Payment to Supplier (صرف): Debit Accounts Payable, Credit Bank/Cash
+        let payAccId = 'acc-2110';
+        let payAccCode = '2110';
+        let payAccNameAr = 'الذمم الدائنة (حسابات الموردين)';
+
+        if (voucher.entityId) {
+          const supplier = db.getSuppliers().find((s) => s.id === voucher.entityId && matchesCompany(s.companyId, compId));
+          if (supplier) {
+            const suppAccId = supplier.account_id || (supplier as any).accountId;
+            if (suppAccId) {
+              const matchedAcc = compAccounts.find((a) => (a.id === suppAccId || a.code === suppAccId) && matchesCompany(a.companyId, compId));
+              if (matchedAcc) {
+                payAccId = matchedAcc.id;
+                payAccCode = matchedAcc.code;
+                payAccNameAr = matchedAcc.nameAr;
+              }
+            }
+          }
+        }
+
+        if (payAccId === 'acc-2110') {
+          const approvedAcc = compAccounts.find(
+            (a) => a.code === '2110' || (a.category === 'LIABILITY' && (a.nameAr.includes('الذمم الدائنة') || a.nameAr.includes('حسابات الموردين')))
+          );
+          if (approvedAcc) {
+            payAccId = approvedAcc.id;
+            payAccCode = approvedAcc.code;
+            payAccNameAr = approvedAcc.nameAr;
+          }
+        }
+
         lines.push(
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
-            accountId: 'acc-2110',
-            accountCode: '2110',
-            accountNameAr: 'الذمم الدائنة (حسابات الموردين)',
+            accountId: payAccId,
+            accountCode: payAccCode,
+            accountNameAr: payAccNameAr,
             debit: voucher.amount,
             credit: 0,
             memo: `سداد للمورد ${voucher.entityNameAr}`,
             entityType: 'SUPPLIER' as const,
             entityId: voucher.entityId,
+            companyId: compId,
           },
           {
             id: 'jl-' + Math.random().toString(36).substr(2, 9),
@@ -1479,6 +1889,7 @@ export class AccountingEngine {
             debit: 0,
             credit: voucher.amount,
             memo: `سند صرف رقم ${voucher.voucherNumber} إلى ${voucher.entityNameAr}`,
+            companyId: compId,
           }
         );
       }
@@ -1505,6 +1916,7 @@ export class AccountingEngine {
 
       const journalEntry: JournalEntry = {
         id: 'jv-' + Math.random().toString(36).substr(2, 9),
+        companyId: compId,
         entryNumber: journalEntryNumber,
         date: voucher.date || today,
         reference: voucher.reference || voucher.voucherNumber,
@@ -1525,6 +1937,7 @@ export class AccountingEngine {
       db.addJournal(journalEntry);
       voucher.status = 'POSTED';
       voucher.journalEntryId = journalEntry.id;
+      voucher.companyId = compId;
       db.addVoucher(voucher);
 
       // Dynamically recalculate entity balance
@@ -1874,14 +2287,17 @@ export class AccountingEngine {
   }
 
   /**
-   * Get Core Executive KPIs (Single-pass aggregated & memoized)
+   * Get Core Executive KPIs (Single-pass aggregated & memoized) isolated per company
    */
-  public static getFinancialKPIs(): FinancialKPIs {
-    const bs = this.getBalanceSheet();
-    const inc = this.getIncomeStatement();
+  public static getFinancialKPIs(companyId: string): FinancialKPIs {
+    if (!companyId || !companyId.trim()) {
+      throw new Error('معرّف الشركة (companyId) إلزامي ومطلوب لتقرير المؤشرات المالية');
+    }
+    const bs = this.getBalanceSheet(companyId);
+    const inc = this.getIncomeStatement(companyId);
 
     // Fetch accounts with balances once
-    const accountsWithBalances = this.getAccountsWithBalances();
+    const accountsWithBalances = this.getAccountsWithBalances(companyId);
     const codeBalanceMap = new Map<string, number>();
     accountsWithBalances.forEach((a) => codeBalanceMap.set(a.code, a.balance || 0));
 
@@ -1893,7 +2309,7 @@ export class AccountingEngine {
 
     const unpaidCount = db
       .getInvoices()
-      .filter((inv) => inv.dueAmount > 0 && inv.status !== 'CANCELLED').length;
+      .filter((inv) => matchesCompany(inv.companyId, companyId) && inv.dueAmount > 0 && inv.status !== 'CANCELLED').length;
 
     return {
       totalAssets: bs.totalAssets,
