@@ -982,7 +982,7 @@ export class SupabaseDataService {
             address: row.address || raw.address || '',
             city: row.city || raw.city || 'الكويت',
             openingBalance: Number(row.opening_balance ?? raw.openingBalance ?? 0),
-            openingBalanceDate: raw.openingBalanceDate || '2026-08-31',
+            openingBalanceDate: raw.openingBalanceDate || undefined,
             isActive: raw.isActive ?? row.is_active ?? true,
             current_balance: Number(row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),
             currentBalance: Number(row.balance ?? raw.current_balance ?? raw.currentBalance ?? raw.balance ?? 0),

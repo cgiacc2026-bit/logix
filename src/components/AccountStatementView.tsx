@@ -222,13 +222,13 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
     ];
 
     const rows = [
-      // سطر الرصيد الافتتاحي
+      // سطر الرصيد المرحل
       [
         '0',
-        statementResult.startDate,
+        statementResult.carriedForwardDate || statementResult.startDate,
         'OPEN-BAL',
-        'رصيد افتتاحي',
-        `الرصيد الافتتاحي المنقول قبل تاريخ ${statementResult.startDate}`,
+        'رصيد مرحل',
+        statementResult.carriedForwardText || `رصيد مرحل حتى ${statementResult.carriedForwardDate || statementResult.startDate}`,
         statementResult.openingBalance > 0 && statementResult.openingBalanceType === 'DEBIT'
           ? statementResult.openingBalance.toFixed(3)
           : '0.000',
@@ -236,7 +236,7 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
           ? statementResult.openingBalance.toFixed(3)
           : '0.000',
         statementResult.openingBalance.toFixed(3),
-        'افتتاحي',
+        'مرحل',
       ],
       // أسطر الحركات
       ...filteredTransactions.map((tx, idx) => [
@@ -568,17 +568,17 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
       {/* ========================================================================= */}
       {statementResult && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 no-print">
-          {/* Card 1: الرصيد الافتتاحي المنقول */}
+          {/* Card 1: الرصيد المرحل المنقول */}
           <div className="bg-white border border-[#E5E1DA] rounded-xl p-4 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#8C8273] text-xs font-semibold">
-              <span>الرصيد الافتتاحي المنقول</span>
+              <span>الرصيد المرحل</span>
               <Clock className="w-4 h-4 text-[#B8860B]" />
             </div>
             <div className="text-lg font-serif font-extrabold text-[#1A1A1A] font-mono">
               {formatCurrency(statementResult.openingBalance, currency)}
             </div>
             <div className="text-[11px] text-[#8C8273]">
-              ما قبل تاريخ: <span className="font-mono font-bold text-[#1A1A1A]">{statementResult.startDate}</span>
+              حتى تاريخ: <span className="font-mono font-bold text-[#1A1A1A]">{statementResult.carriedForwardDate || statementResult.startDate}</span>
             </div>
           </div>
 
@@ -833,7 +833,7 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
                 <tr className="bg-[#FBF9F4] font-bold text-[#0F172A] border-b border-[#E2E8F0] print:bg-white print:text-black print:border-black">
                   <td className="py-3.5 px-3 text-center border-r border-[#E2E8F0] text-[#B8860B] font-mono print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px]">0</td>
                   <td className="py-3.5 px-3 border-r border-[#E2E8F0] font-mono text-[#64748B] whitespace-nowrap print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px] print:whitespace-normal">
-                    {statementResult.carriedForwardDate || statementResult.openingBalanceDate || statementResult.startDate}
+                    {statementResult.carriedForwardDate || statementResult.startDate}
                   </td>
                   <td className="py-3.5 px-3 border-r border-[#E2E8F0] font-mono text-[#64748B] whitespace-nowrap print:py-1.5 print:px-1 print:border print:border-black print:text-black print:text-[10px] print:whitespace-normal">
                     OPEN-BAL

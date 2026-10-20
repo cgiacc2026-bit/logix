@@ -1129,7 +1129,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                   {/* Account Summary Cards */}
                   <div className="grid grid-cols-3 gap-4 text-xs sm:text-sm font-bold">
                     <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300">
-                      <span className="text-neutral-600 block font-normal text-xs">الرصيد الافتتاحي:</span>
+                      <span className="text-neutral-600 block font-normal text-xs">{stmt.carriedForwardText || 'الرصيد المرحل:'}</span>
                       <span className="text-sm sm:text-base font-mono text-black font-black">{formattedCurrency(stmt.openingBalance || 0)}</span>
                     </div>
                     <div className="p-3.5 bg-neutral-100 rounded-xl border border-neutral-300">

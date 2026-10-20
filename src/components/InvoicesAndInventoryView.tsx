@@ -2737,9 +2737,11 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                               <span>• الضريبي: {c.taxNumber || 'غير مدخل'}</span>
                               {c.governorate && <span>• {c.governorate}</span>}
                             </div>
-                            <div className="text-[10px] text-[#9E2A2B] font-semibold mt-1">
-                              الرصيد الافتتاحي ({c.openingBalanceDate || '2026-08-31'}): {formatCurrency(c.openingBalance || 0, currency)}
-                            </div>
+                            {Number(c.openingBalance) > 0 && (
+                              <div className="text-[10px] text-[#9E2A2B] font-semibold mt-1">
+                                الرصيد الافتتاحي{c.openingBalanceDate ? ` (${c.openingBalanceDate})` : ''}: {formatCurrency(c.openingBalance || 0, currency)}
+                              </div>
+                            )}
                             {/* Branches & Price List indicators */}
                             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
@@ -2849,9 +2851,11 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
                               <span>هاتف: {s.phone || '-'}</span>
                               <span>• الضريبي: {s.taxNumber || 'غير مدخل'}</span>
                             </div>
-                            <div className="text-[10px] text-[#2D6A4F] font-semibold mt-1">
-                              الرصيد الافتتاحي ({s.openingBalanceDate || '2026-08-31'}): {formatCurrency(s.openingBalance || 0, currency)}
-                            </div>
+                            {Number(s.openingBalance) > 0 && (
+                              <div className="text-[10px] text-[#2D6A4F] font-semibold mt-1">
+                                الرصيد الافتتاحي{s.openingBalanceDate ? ` (${s.openingBalanceDate})` : ''}: {formatCurrency(s.openingBalance || 0, currency)}
+                              </div>
+                            )}
                           </div>
                           <div className="text-left font-black text-sm text-[#9E2A2B] bg-[#FFF5F5] px-3 py-1.5 rounded-xl border border-[#FFD8D8]">
                             <span className="text-[10px] text-[#8C8273] font-normal block">الرصيد المستحق</span>

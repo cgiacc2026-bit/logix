@@ -4003,7 +4003,6 @@ export class DataService {
         const code = (c.code || '').trim();
         if (AUDITED_OPENING_BALANCES[code] !== undefined) {
           c.openingBalance = AUDITED_OPENING_BALANCES[code];
-          c.openingBalanceDate = c.openingBalanceDate || '2026-08-31';
         }
       }
 

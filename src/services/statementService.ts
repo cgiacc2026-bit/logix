@@ -1009,7 +1009,7 @@ export function getAccountStatement(
     endDate: cleanEndDate,
     openingBalance: Math.round(calculatedOpeningBalance * 1000) / 1000,
     openingBalanceType: getBalanceNature(calculatedOpeningBalance, entityType),
-    openingBalanceDate: entity?.openingBalanceDate || (() => {
+    openingBalanceDate: (() => {
       try {
         const parts = cleanStartDate.split('-');
         if (parts.length === 3) {
