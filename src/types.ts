@@ -106,6 +106,8 @@ export interface TrialBalanceItem {
 
 export interface TrialBalanceReport {
   asOfDate: string;
+  startDate?: string;
+  endDate?: string;
   items: TrialBalanceItem[];
   totalOpeningDebit: number;
   totalOpeningCredit: number;

@@ -22,6 +22,7 @@ import {
   FinancialKPIs,
   GeneralLedgerReport,
   TrialBalanceReport,
+  TrialBalanceItem,
   IncomeStatementReport,
   BalanceSheetReport,
   BalanceSheetItem,
@@ -69,7 +70,7 @@ import { CacheAndThrottleService } from './cacheAndThrottleService.js';
 import { backgroundSync } from './backgroundSyncService.ts';
 import { getAccountStatement, getCalculatedCustomerBalance, getCalculatedSupplierBalance } from './statementService.ts';
 import { IAS2CostingEngine } from './costingEngine.ts';
-import { aggregateChartOfAccountsTree, isAccountLeaf } from '../utils/accountingTreeEngine.ts';
+import { aggregateChartOfAccountsTree, isAccountLeaf, getDescendantLeaves } from '../utils/accountingTreeEngine.ts';
 import {
   isHistoricalInvoice,
   isHistoricalJournal,
@@ -7486,75 +7487,246 @@ export class DataService {
   }
 
   // Financial Reports
-  public static async getTrialBalance(asOfDate?: string): Promise<TrialBalanceReport> {
-    const cutoff = asOfDate || new Date().toISOString().split('T')[0];
-    const accounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
-    const journals = (isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals()).filter(
-      (j) => j.status === 'POSTED' && j.date <= cutoff
+  public static async getTrialBalance(asOfDateOrEndDate?: string, startDate?: string): Promise<TrialBalanceReport> {
+    const cutoff = asOfDateOrEndDate || new Date().toISOString().split('T')[0];
+    const cleanStartDate = startDate && startDate.trim() ? startDate.trim() : '';
+
+    const rawAccounts = isSupabaseConfigured ? await this.getAccounts() : localDataStore.getAccounts();
+    const allPostedJournals = (isSupabaseConfigured ? await this.getJournals() : localDataStore.getJournals()).filter(
+      (j) => j.status === 'POSTED' && !(j as any).isReversed && !(j as any).reversedEntryId
     );
 
-    const agg = aggregateChartOfAccountsTree(accounts, journals, true);
-    const enrichedMap = agg.accountMap;
+    // 1. Deduplicate accounts by code/id
+    const dedupedAccountsMap = new Map<string, Account>();
+    for (const a of rawAccounts || []) {
+      if (!a) continue;
+      const key = String(a.code || a.id || '').trim();
+      if (!key) continue;
+      if (!dedupedAccountsMap.has(key)) {
+        dedupedAccountsMap.set(key, { ...a });
+      }
+    }
+    const accounts = Array.from(dedupedAccountsMap.values());
 
-    let totalMovementDebit = 0;
-    let totalMovementCredit = 0;
-    let totalEndingDebit = 0;
-    let totalEndingCredit = 0;
+    // 2. Determine leaf accounts
+    const leafMap = new Map<string, boolean>();
+    accounts.forEach((acc) => {
+      leafMap.set(acc.id, isAccountLeaf(acc, accounts));
+    });
 
-    const items = accounts.map((acc) => {
-      const enriched = enrichedMap.get(acc.id) || (acc as any);
-      const isLeaf = enriched.isLeaf ?? isAccountLeaf(acc, accounts);
-      const movDeb = enriched.totalDebitMovement || 0;
-      const movCred = enriched.totalCreditMovement || 0;
+    const accountByLookup = new Map<string, Account>();
+    accounts.forEach((a) => {
+      accountByLookup.set(a.id, a);
+      if (a.code) accountByLookup.set(a.code, a);
+    });
+
+    // 3. Separate journals into Prior and Period
+    const priorJournals = cleanStartDate
+      ? allPostedJournals.filter((j) => j.date < cleanStartDate)
+      : [];
+    const periodJournals = cleanStartDate
+      ? allPostedJournals.filter((j) => j.date >= cleanStartDate && j.date <= cutoff)
+      : allPostedJournals.filter((j) => j.date <= cutoff);
+
+    // Helper to map lines to leaves
+    const accumulateMovements = (journalsList: JournalEntry[]) => {
+      const debitMap = new Map<string, number>();
+      const creditMap = new Map<string, number>();
+
+      for (const j of journalsList) {
+        for (const line of j.lines || []) {
+          const acc = accountByLookup.get(line.accountId) || accountByLookup.get(line.accountCode || '');
+          if (!acc) continue;
+          const d = Number(line.debit) || 0;
+          const c = Number(line.credit) || 0;
+          const isLeaf = leafMap.get(acc.id) ?? true;
+
+          if (isLeaf) {
+            debitMap.set(acc.id, (debitMap.get(acc.id) || 0) + d);
+            creditMap.set(acc.id, (creditMap.get(acc.id) || 0) + c);
+          } else {
+            // Mistaken line on parent account -> map to primary leaf child
+            const leaves = accounts.filter(
+              (o) =>
+                leafMap.get(o.id) &&
+                (o.parentId === acc.id || (o.code && acc.code && o.code.startsWith(acc.code) && o.code !== acc.code))
+            );
+            if (leaves.length > 0) {
+              leaves.sort((x, y) => x.code.localeCompare(y.code));
+              const primary = leaves[0];
+              debitMap.set(primary.id, (debitMap.get(primary.id) || 0) + d);
+              creditMap.set(primary.id, (creditMap.get(primary.id) || 0) + c);
+            } else {
+              debitMap.set(acc.id, (debitMap.get(acc.id) || 0) + d);
+              creditMap.set(acc.id, (creditMap.get(acc.id) || 0) + c);
+            }
+          }
+        }
+      }
+      return { debitMap, creditMap };
+    };
+
+    const prior = accumulateMovements(priorJournals);
+    const period = accumulateMovements(periodJournals);
+
+    // 4. Compute preliminary leaf balances
+    const leafItemMap = new Map<string, TrialBalanceItem>();
+    const leafItemsList: TrialBalanceItem[] = [];
+
+    accounts.forEach((acc) => {
+      const isLeaf = leafMap.get(acc.id) ?? true;
+      if (!isLeaf) return;
+
+      const isDebitNat = (acc.normalBalance || (acc as any).nature) === 'DEBIT';
+      const initialBase = Number(acc.openingBalance ?? (acc as any).initialBalance ?? 0);
+
+      const pDeb = prior.debitMap.get(acc.id) || 0;
+      const pCred = prior.creditMap.get(acc.id) || 0;
+      const mDeb = period.debitMap.get(acc.id) || 0;
+      const mCred = period.creditMap.get(acc.id) || 0;
+
+      let openDeb = 0;
+      let openCred = 0;
+
+      if (cleanStartDate) {
+        if (isDebitNat) {
+          const netPrior = initialBase + (pDeb - pCred);
+          if (netPrior >= 0) openDeb = netPrior;
+          else openCred = -netPrior;
+        } else {
+          const netPrior = initialBase + (pCred - pDeb);
+          if (netPrior >= 0) openCred = netPrior;
+          else openDeb = -netPrior;
+        }
+      } else {
+        if (isDebitNat) {
+          if (initialBase >= 0) openDeb = initialBase;
+          else openCred = -initialBase;
+        } else {
+          if (initialBase >= 0) openCred = initialBase;
+          else openDeb = -initialBase;
+        }
+      }
 
       let endDeb = 0;
       let endCred = 0;
-
-      const isDebitNat = (acc.normalBalance || (acc as any).nature) === 'DEBIT';
       if (isDebitNat) {
-        const net = movDeb - movCred;
-        if (net >= 0) endDeb = net;
-        else endCred = -net;
+        const netEnd = (openDeb - openCred) + (mDeb - mCred);
+        if (netEnd >= 0) endDeb = netEnd;
+        else endCred = -netEnd;
       } else {
-        const net = movCred - movDeb;
-        if (net >= 0) endCred = net;
-        else endDeb = -net;
+        const netEnd = (openCred - openDeb) + (mCred - mDeb);
+        if (netEnd >= 0) endCred = netEnd;
+        else endDeb = -netEnd;
       }
 
-      // Strict rule: Only leaf accounts accumulate into grand totals to prevent double-counting
+      const item: TrialBalanceItem = {
+        account: {
+          ...acc,
+          isLeaf: true,
+          normalBalance: isDebitNat ? 'DEBIT' : 'CREDIT',
+          nature: isDebitNat ? 'DEBIT' : 'CREDIT',
+        } as any,
+        openingBalanceDebit: Math.round(openDeb * 1000) / 1000,
+        openingBalanceCredit: Math.round(openCred * 1000) / 1000,
+        movementDebit: Math.round(mDeb * 1000) / 1000,
+        movementCredit: Math.round(mCred * 1000) / 1000,
+        endingBalanceDebit: Math.round(endDeb * 1000) / 1000,
+        endingBalanceCredit: Math.round(endCred * 1000) / 1000,
+      };
+
+      leafItemMap.set(acc.id, item);
+      leafItemsList.push(item);
+    });
+
+    // 5. Compute rolled-up numbers for Parent Accounts strictly from descendant leaves
+    const enrichedLeavesForTree = leafItemsList.map((item) => ({
+      ...item.account,
+      balance: item.endingBalanceDebit - item.endingBalanceCredit,
+    })) as any[];
+
+    const allItems: TrialBalanceItem[] = accounts.map((acc) => {
+      const isLeaf = leafMap.get(acc.id) ?? true;
       if (isLeaf) {
-        totalMovementDebit += movDeb;
-        totalMovementCredit += movCred;
-        totalEndingDebit += endDeb;
-        totalEndingCredit += endCred;
+        return leafItemMap.get(acc.id)!;
+      }
+
+      const isDebitNat = (acc.normalBalance || (acc as any).nature) === 'DEBIT';
+      const descendantLeaves = getDescendantLeaves(acc, accounts, enrichedLeavesForTree);
+
+      let pOpenDeb = 0;
+      let pOpenCred = 0;
+      let pMovDeb = 0;
+      let pMovCred = 0;
+      let pEndDeb = 0;
+      let pEndCred = 0;
+
+      for (const dLeaf of descendantLeaves) {
+        const lItem = leafItemMap.get(dLeaf.id);
+        if (lItem) {
+          pOpenDeb += lItem.openingBalanceDebit;
+          pOpenCred += lItem.openingBalanceCredit;
+          pMovDeb += lItem.movementDebit;
+          pMovCred += lItem.movementCredit;
+          pEndDeb += lItem.endingBalanceDebit;
+          pEndCred += lItem.endingBalanceCredit;
+        }
       }
 
       return {
         account: {
           ...acc,
-          isLeaf,
+          isLeaf: false,
           normalBalance: isDebitNat ? 'DEBIT' : 'CREDIT',
           nature: isDebitNat ? 'DEBIT' : 'CREDIT',
         } as any,
-        openingBalanceDebit: 0,
-        openingBalanceCredit: 0,
-        movementDebit: movDeb,
-        movementCredit: movCred,
-        endingBalanceDebit: endDeb,
-        endingBalanceCredit: endCred,
+        openingBalanceDebit: Math.round(pOpenDeb * 1000) / 1000,
+        openingBalanceCredit: Math.round(pOpenCred * 1000) / 1000,
+        movementDebit: Math.round(pMovDeb * 1000) / 1000,
+        movementCredit: Math.round(pMovCred * 1000) / 1000,
+        endingBalanceDebit: Math.round(pEndDeb * 1000) / 1000,
+        endingBalanceCredit: Math.round(pEndCred * 1000) / 1000,
       };
     });
 
+    // 6. Strict Grand Totals: Accumulate ONLY leaf accounts to guarantee zero double-counting
+    let totalOpeningDebit = 0;
+    let totalOpeningCredit = 0;
+    let totalMovementDebit = 0;
+    let totalMovementCredit = 0;
+    let totalEndingDebit = 0;
+    let totalEndingCredit = 0;
+
+    leafItemsList.forEach((item) => {
+      totalOpeningDebit += item.openingBalanceDebit;
+      totalOpeningCredit += item.openingBalanceCredit;
+      totalMovementDebit += item.movementDebit;
+      totalMovementCredit += item.movementCredit;
+      totalEndingDebit += item.endingBalanceDebit;
+      totalEndingCredit += item.endingBalanceCredit;
+    });
+
+    totalOpeningDebit = Math.round(totalOpeningDebit * 1000) / 1000;
+    totalOpeningCredit = Math.round(totalOpeningCredit * 1000) / 1000;
+    totalMovementDebit = Math.round(totalMovementDebit * 1000) / 1000;
+    totalMovementCredit = Math.round(totalMovementCredit * 1000) / 1000;
+    totalEndingDebit = Math.round(totalEndingDebit * 1000) / 1000;
+    totalEndingCredit = Math.round(totalEndingCredit * 1000) / 1000;
+
+    const isBalanced = Math.abs(totalEndingDebit - totalEndingCredit) < 0.001;
+
     return {
-      asOfDate,
-      items,
-      totalOpeningDebit: 0,
-      totalOpeningCredit: 0,
+      asOfDate: cutoff,
+      startDate: cleanStartDate || undefined,
+      endDate: cutoff,
+      items: allItems.sort((a, b) => a.account.code.localeCompare(b.account.code)),
+      totalOpeningDebit,
+      totalOpeningCredit,
       totalMovementDebit,
       totalMovementCredit,
       totalEndingDebit,
       totalEndingCredit,
-      isBalanced: Math.abs(totalEndingDebit - totalEndingCredit) < 0.001,
+      isBalanced,
     };
   }
 

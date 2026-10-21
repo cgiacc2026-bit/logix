@@ -252,7 +252,7 @@ export const DedicatedReportsWorkspace: React.FC<DedicatedReportsWorkspaceProps>
 
         {activeReportTab === 'trial-balance' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs">
-            <TrialBalanceView currency={currency} />
+            <TrialBalanceView currency={currency} company={company} accounts={accounts} journals={journals} />
           </div>
         )}
 
