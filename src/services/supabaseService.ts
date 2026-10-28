@@ -62,6 +62,43 @@ import {
 
 export class SupabaseDataService {
   /**
+   * Ensure company row exists in companies table to prevent foreign key errors (23503)
+   * on child tables like journal_entries, invoices, payment_vouchers
+   */
+  public static async ensureCompanyExists(targetCompanyId?: string, fallbackName?: string): Promise<string | null> {
+    if (!isSupabaseConfigured) return null;
+    const rawCompanyId = targetCompanyId || getCurrentCompanyId();
+    const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
+    if (!companyId) return null;
+
+    try {
+      const { data: existing, error: selErr } = await supabase
+        .from('companies')
+        .select('id')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      if (!existing && !selErr) {
+        const companyName = fallbackName || (companyId === ALWALEED_CANONICAL_UUID ? 'مطحنة الوليد المتحده' : 'شركة تجارية');
+        await supabase.from('companies').upsert([
+          {
+            id: companyId,
+            company_name: companyName,
+            status: 'active',
+            type: 'client',
+            owner_email: 'admin@logix-erp.com',
+            created_at: new Date().toISOString(),
+          }
+        ], { onConflict: 'id' });
+      }
+      return companyId;
+    } catch (e: any) {
+      console.warn('[Supabase ensureCompanyExists] notice:', e?.message);
+      return companyId;
+    }
+  }
+
+  /**
    * 1. COMPANIES (Fetch and Update active company profile)
    */
   public static async getCompany(targetCompanyId?: string): Promise<CompanyProfile | null> {
@@ -1682,6 +1719,9 @@ export class SupabaseDataService {
     const invUuid = toValidUUID(inv.id);
     inv.id = invUuid;
 
+    // Ensure parent company row exists in companies table
+    await this.ensureCompanyExists(companyId);
+
     // عزل صارم: فواتير المشتريات لا ترتبط بـ customer_id نهائياً في قاعدة البيانات
     const isPurchaseDoc = inv.type === 'PURCHASE' || inv.type === 'PURCHASE_RETURN';
     let customerIdCandidate: string | null = null;
@@ -2631,8 +2671,9 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
+      await this.ensureCompanyExists(companyId);
       const voucherUuid = toValidUUID(v.id);
-      const payload = {
+      const payload: any = {
         id: voucherUuid,
         company_id: companyId,
         voucher_number: v.voucherNumber || v.id,
@@ -2643,20 +2684,34 @@ export class SupabaseDataService {
         entity_type: v.entityType || 'CUSTOMER',
         entity_id: v.entityId || null,
         entity_name: v.entityNameAr || (v as any).entityName || '',
-        account_id: v.bankAccountId || (v as any).accountId || null,
+        account_id: v.bankAccountId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.bankAccountId)
+          ? v.bankAccountId
+          : null,
         notes: v.notes || (v as any).description || '',
         status: v.status || 'POSTED',
         raw_data: {
           ...v,
           id: v.id,
           companyId,
+          checkNumber: v.checkNumber,
+          checkBankName: v.checkBankName,
+          checkDueDate: v.checkDueDate,
+          checkStatus: v.checkStatus,
+          bankAccountId: v.bankAccountId,
         },
         created_at: v.createdAt || new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      let { error } = await supabase
         .from('payment_vouchers')
         .upsert([payload]);
+
+      if (error && (error.message?.includes('account_id') || error.code === '23503')) {
+        console.warn('Supabase saveVoucher account_id notice, retrying with account_id in raw_data only:', error.message);
+        payload.account_id = null;
+        const retryRes = await supabase.from('payment_vouchers').upsert([payload]);
+        error = retryRes.error;
+      }
 
       if (error) {
         console.warn('Supabase saveVoucher error:', error.message);
@@ -3033,6 +3088,7 @@ export class SupabaseDataService {
         }
       }
 
+      await this.ensureCompanyExists(companyId);
       const entryId = toValidUUID(j.id);
       let activeEntryNumber = j.entryNumber;
 

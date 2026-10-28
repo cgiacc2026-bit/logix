@@ -86,7 +86,11 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
   const [vouchEntityId, setVouchEntityId] = useState('');
   const [vouchAmount, setVouchAmount] = useState<number>(0);
   const [vouchBankAcc, setVouchBankAcc] = useState<string>('');
-  const [vouchPaymentMethod, setVouchPaymentMethod] = useState<'CASH' | 'BANK'>('BANK');
+  const [vouchPaymentMethod, setVouchPaymentMethod] = useState<'CASH' | 'BANK' | 'CHECK'>('BANK');
+  const [vouchCheckNumber, setVouchCheckNumber] = useState<string>('');
+  const [vouchCheckBankName, setVouchCheckBankName] = useState<string>('');
+  const [vouchCheckDueDate, setVouchCheckDueDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [vouchCheckStatus, setVouchCheckStatus] = useState<'UNDER_COLLECTION' | 'COLLECTED' | 'BOUNCED' | 'ISSUED'>('UNDER_COLLECTION');
   const [vouchInvoiceId, setVouchInvoiceId] = useState<string>('');
   const [vouchReference, setVouchReference] = useState<string>('');
   const [vouchNotes, setVouchNotes] = useState<string>('');
@@ -199,6 +203,10 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
     setVouchEntityId('');
     setVouchAmount(0);
     setVouchPaymentMethod(type === 'RECEIPT' ? 'BANK' : 'CASH');
+    setVouchCheckNumber('');
+    setVouchCheckBankName('');
+    setVouchCheckDueDate(new Date().toISOString().split('T')[0]);
+    setVouchCheckStatus(type === 'RECEIPT' ? 'UNDER_COLLECTION' : 'ISSUED');
     const defaultAcc = bankAndCashAccounts.find(
       (a) => (type === 'RECEIPT' ? a.category === 'BANK' : a.category === 'CASH')
     ) || bankAndCashAccounts[0];
@@ -218,6 +226,10 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
     setVouchEntityId(voucher.entityId || '');
     setVouchAmount(Number(voucher.amount) || 0);
     setVouchPaymentMethod(voucher.paymentMethod || (voucher.bankAccountId === 'acc-1112' ? 'CASH' : 'BANK'));
+    setVouchCheckNumber(voucher.checkNumber || '');
+    setVouchCheckBankName(voucher.checkBankName || '');
+    setVouchCheckDueDate(voucher.checkDueDate || voucher.date);
+    setVouchCheckStatus(voucher.checkStatus || 'UNDER_COLLECTION');
     setVouchBankAcc(voucher.bankAccountId || 'acc-1111');
     setVouchInvoiceId(voucher.invoiceId || '');
     setVouchReference(voucher.reference || '');
@@ -270,7 +282,8 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
         if (s) entityNameAr = s.nameAr;
       }
 
-      const payload = {
+      const isCheck = vouchPaymentMethod === 'CHECK';
+      const payload: any = {
         type: vouchType,
         date: vouchDate || new Date().toISOString().split('T')[0],
         entityType: vouchType === 'RECEIPT' ? 'CUSTOMER' : 'SUPPLIER',
@@ -278,9 +291,13 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
         entityNameAr,
         amount: Number(vouchAmount),
         paymentMethod: vouchPaymentMethod,
+        checkNumber: isCheck ? vouchCheckNumber : undefined,
+        checkBankName: isCheck ? vouchCheckBankName : undefined,
+        checkDueDate: isCheck ? vouchCheckDueDate : undefined,
+        checkStatus: isCheck ? vouchCheckStatus : undefined,
         bankAccountId: vouchBankAcc,
         invoiceId: vouchInvoiceId || undefined,
-        reference: vouchReference || undefined,
+        reference: vouchReference || (isCheck && vouchCheckNumber ? `CHQ-${vouchCheckNumber}` : undefined),
         notes: vouchNotes,
         voucherNumber: editingVoucher?.voucherNumber,
       };
@@ -575,7 +592,23 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-4 text-[#6E6659]">
-                        {v.paymentMethod === 'CASH' ? 'نقداً (خزينة)' : 'تحويل بنكي / شيك'}
+                        {v.paymentMethod === 'CHECK' ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800">
+                              <span>شيك {v.checkNumber ? `#${v.checkNumber}` : ''}</span>
+                            </span>
+                            {v.checkBankName && (
+                              <span className="text-[10px] text-gray-500">بنك: {v.checkBankName}</span>
+                            )}
+                            {v.checkDueDate && (
+                              <span className="text-[10px] text-blue-600 font-mono">استحقاق: {v.checkDueDate}</span>
+                            )}
+                          </div>
+                        ) : v.paymentMethod === 'CASH' ? (
+                          'نقداً (خزينة)'
+                        ) : (
+                          'تحويل بنكي'
+                        )}
                       </td>
                       <td className="py-3 px-4 text-[#8C8273] max-w-[200px] truncate" title={v.notes}>
                         {v.notes || '-'}
@@ -748,18 +781,86 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
                   <select
                     value={vouchPaymentMethod}
                     onChange={(e) => {
-                      const method = e.target.value as 'CASH' | 'BANK';
+                      const method = e.target.value as 'CASH' | 'BANK' | 'CHECK';
                       setVouchPaymentMethod(method);
-                      const matchingAcc = bankAndCashAccounts.find((a) => a.category === method);
+                      const targetCategory = method === 'CASH' ? 'CASH' : 'BANK';
+                      const matchingAcc = bankAndCashAccounts.find((a) => a.category === targetCategory);
                       if (matchingAcc) setVouchBankAcc(matchingAcc.id);
                     }}
                     className="w-full bg-[#F9F8F6] border border-[#E5E1DA] rounded-lg p-2.5 font-bold text-[#1A1A1A]"
                   >
-                    <option value="BANK">تحويل بنكي / إيداع بنكي / شيك</option>
-                    <option value="CASH">نقداً من الخزينة / الصندوق</option>
+                    <option value="BANK">تحويل بنكي / إيداع بحساب الشركة</option>
+                    <option value="CASH">نقداً من الصندوق / الخزينة</option>
+                    <option value="CHECK">شيك مصرفي (شيك قبض / شيك صرف)</option>
                   </select>
                 </div>
               </div>
+
+              {/* Check Details Block (When payment method is CHECK) */}
+              {vouchPaymentMethod === 'CHECK' && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                    <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-amber-700" />
+                      بيانات الشيك المصرفي والتحصيل
+                    </span>
+                    <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                      {vouchType === 'RECEIPT' ? 'شيك برسم التحصيل' : 'شيك صادر للمورد'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[#1A1A1A] font-bold mb-1">رقم الشيك *</label>
+                      <input
+                        type="text"
+                        required={vouchPaymentMethod === 'CHECK'}
+                        placeholder="مثال: 009842"
+                        value={vouchCheckNumber}
+                        onChange={(e) => setVouchCheckNumber(e.target.value)}
+                        className="w-full bg-white border border-[#E5E1DA] rounded-lg p-2 text-[#1A1A1A] font-mono font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[#1A1A1A] font-bold mb-1">البنك المسحوب عليه *</label>
+                      <input
+                        type="text"
+                        required={vouchPaymentMethod === 'CHECK'}
+                        placeholder="مثال: الوطني / بيتك / الخليج"
+                        value={vouchCheckBankName}
+                        onChange={(e) => setVouchCheckBankName(e.target.value)}
+                        className="w-full bg-white border border-[#E5E1DA] rounded-lg p-2 text-[#1A1A1A] font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[#1A1A1A] font-bold mb-1">تاريخ استحقاق الشيك *</label>
+                      <input
+                        type="date"
+                        required={vouchPaymentMethod === 'CHECK'}
+                        value={vouchCheckDueDate}
+                        onChange={(e) => setVouchCheckDueDate(e.target.value)}
+                        className="w-full bg-white border border-[#E5E1DA] rounded-lg p-2 text-[#1A1A1A] font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[#1A1A1A] font-bold mb-1">حالة الشيك</label>
+                    <select
+                      value={vouchCheckStatus}
+                      onChange={(e) => setVouchCheckStatus(e.target.value as any)}
+                      className="w-full bg-white border border-[#E5E1DA] rounded-lg p-2 text-[#1A1A1A] font-bold"
+                    >
+                      <option value="UNDER_COLLECTION">برسم التحصيل / في حافظة الشيكات</option>
+                      <option value="COLLECTED">تم التحصيل والإيداع الفعلي في الحساب الجاري</option>
+                      <option value="BOUNCED">شيك مرتد / مرفوض لعدم كفاية الرصيد</option>
+                      <option value="ISSUED">شيك صادر للمورد مسحوب على حسابنا</option>
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Entity & Date */}
               <div className="grid grid-cols-2 gap-3">

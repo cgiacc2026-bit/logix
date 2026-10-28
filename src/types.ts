@@ -632,8 +632,12 @@ export interface PaymentVoucher {
   salesRepId?: string;
   salesRepName?: string;
   amount: number;
-  paymentMethod: 'BANK' | 'CASH';
-  bankAccountId: string; // Account ID for cash/bank
+  paymentMethod: 'BANK' | 'CASH' | 'CHECK';
+  checkNumber?: string;
+  checkBankName?: string;
+  checkDueDate?: string;
+  checkStatus?: 'UNDER_COLLECTION' | 'COLLECTED' | 'BOUNCED' | 'ISSUED';
+  bankAccountId: string; // Account ID for cash/bank/check
   invoiceId?: string;
   reference?: string | null;
   notes: string;

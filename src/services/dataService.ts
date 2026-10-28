@@ -2252,8 +2252,17 @@ export class DataService {
     if (idx === -1) return null;
     const existing = accounts[idx];
     const compId = localDataStore.getEffectiveCompanyId();
-    if (isHistoricalAccount(id, existing.code, compId)) {
-      throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing.code || id} - ${existing.nameAr}) تاريخي ومحمي قبل تاريخ تحديث النظام ولا يمكن تعديل رمزه أو طبيعته أو دليله.`);
+    const isHist = isHistoricalAccount(id, existing.code, compId);
+    if (isHist) {
+      if (accData.code && accData.code !== existing.code) {
+        throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing.code} - ${existing.nameAr}) تاريخي ومحمي؛ يُسمح بتعديل الاسم والوصف فقط دون تعديل رمز الحساب.`);
+      }
+      if (accData.category && accData.category !== existing.category) {
+        throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing.code} - ${existing.nameAr}) تاريخي؛ لا يمكن تغيير تصنيف القوائم المالية.`);
+      }
+      if (accData.parentId && accData.parentId !== existing.parentId) {
+        throw new Error(`[حظر حماية الحسابات التاريخية]: الحساب (${existing.code} - ${existing.nameAr}) تاريخي؛ لا يمكن تغيير موقعه الشجري.`);
+      }
     }
 
     // [ACCOUNTING INTEGRITY] A non-historical account cannot change its code or parent if it has movements or child accounts
@@ -3505,23 +3514,22 @@ export class DataService {
       }
     }
     
-    // Immediate Synchronous Supabase Persistence for zero-lag consistency
+    // Atomic Local Persistence first - guarantees no user transaction or invoice is ever lost
+    invoices.unshift(newInvoice);
+    localDataStore.saveInvoices(invoices);
+
     if (isSupabaseConfigured) {
-      // Must NOT swallow errors! Enforce strict database persistence before updating state.
-      await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
-
-      // Save to local store ONLY after Supabase successfully confirmed persistence
-      invoices.unshift(newInvoice);
-      localDataStore.saveInvoices(invoices);
-
-      if (jEntry) {
-        await SupabaseDataService.saveJournal(jEntry, activeCompanyId).catch((jeErr) => {
-          console.warn('[DataService] Direct saveJournal notice:', jeErr);
-        });
+      try {
+        await SupabaseDataService.saveInvoice(newInvoice, activeCompanyId);
+        if (jEntry) {
+          await SupabaseDataService.saveJournal(jEntry, activeCompanyId).catch((jeErr) => {
+            console.warn('[DataService] Direct saveJournal notice:', jeErr);
+          });
+        }
+      } catch (sbErr: any) {
+        console.warn('[DataService] Supabase saveInvoice sync notice, enqueued for retry:', sbErr?.message);
+        backgroundSync.enqueueInvoiceCreate(newInvoice, data, activeCompanyId);
       }
-    } else {
-      invoices.unshift(newInvoice);
-      localDataStore.saveInvoices(invoices);
     }
 
     // Smart Caching update
@@ -5396,13 +5404,20 @@ export class DataService {
     let liquidAcc = accounts.find((a) => a.id === targetBankAccId || a.code === targetBankAccId) ||
       (data.paymentMethod === 'CASH' ? resolved.cash : resolved.bank);
 
+    const isCheck = data.paymentMethod === 'CHECK';
+    const paymentMethod: 'BANK' | 'CASH' | 'CHECK' = isCheck ? 'CHECK' : data.paymentMethod === 'CASH' ? 'CASH' : 'BANK';
+
     const newVoucher: PaymentVoucher = {
       id: 'vch-' + Math.random().toString(36).substr(2, 9),
       voucherNumber,
       type: data.type || 'RECEIPT',
       date: data.date || new Date().toISOString().split('T')[0],
       amount,
-      paymentMethod: data.paymentMethod === 'CASH' ? 'CASH' : 'BANK',
+      paymentMethod,
+      checkNumber: data.checkNumber || undefined,
+      checkBankName: data.checkBankName || undefined,
+      checkDueDate: data.checkDueDate || undefined,
+      checkStatus: data.checkStatus || (isCheck ? 'UNDER_COLLECTION' : undefined),
       bankAccountId: liquidAcc.id,
       entityType: data.entityType || (isReceipt ? 'CUSTOMER' : 'SUPPLIER'),
       entityId: data.entityId || '',
@@ -5415,6 +5430,8 @@ export class DataService {
       createdAt: new Date().toISOString(),
     };
 
+    const checkDesc = isCheck && data.checkNumber ? ` (شيك رقم: ${data.checkNumber}${data.checkBankName ? ' - بنك ' + data.checkBankName : ''})` : '';
+
     const jLines = isReceipt
       ? [
           {
@@ -5424,7 +5441,7 @@ export class DataService {
             accountNameAr: liquidAcc.nameAr,
             debit: amount,
             credit: 0,
-            memo: `قبض مبالغ سند رقم ${voucherNumber} - ${entityNameAr}`,
+            memo: `قبض مبالغ سند رقم ${voucherNumber}${checkDesc} - ${entityNameAr}`,
           },
           {
             id: 'jl-2',
@@ -5457,7 +5474,7 @@ export class DataService {
             accountNameAr: liquidAcc.nameAr,
             debit: 0,
             credit: amount,
-            memo: `صرف مبالغ سند رقم ${voucherNumber} - ${entityNameAr}`,
+            memo: `صرف مبالغ سند رقم ${voucherNumber}${checkDesc} - ${entityNameAr}`,
           },
         ];
 

@@ -47,29 +47,32 @@ export function isBeforeCutover(dateStr?: string): boolean {
 
 /**
  * فحص ما إذا كانت الفاتورة سجلاً تاريخياً محمياً
- * لا يُعتبر السجل تاريخياً إلا إذا كان تابعاً حصرياً للشركة المؤسسة المحمية
+ * لا يُعتبر السجل تاريخياً إلا إذا كان موجوداً ضمن لقطة المعرفات التاريخية المحددة للشركة المحمية
  */
 export function isHistoricalInvoice(id?: string, createdAt?: string, date?: string, companyId?: string): boolean {
   if (!id) return false;
   if (companyId && !isProtectedCompany(companyId)) return false;
   const cleanId = String(id).trim();
   if (HISTORICAL_INVOICE_IDS.has(cleanId)) return true;
-  if (createdAt && isBeforeCutover(createdAt)) return true;
-  if (date && isBeforeCutover(date + 'T23:59:59.999Z')) return true;
+  // حماية السجلات التي تم إنشاؤها فعلياً داخل النظام قبل نقطة القطع التاريخية وليست قيوداً جديدة منشأة حالياً
+  if (createdAt && isBeforeCutover(createdAt) && (cleanId.startsWith('inv-hist-') || cleanId.startsWith('hist-') || HISTORICAL_INVOICE_IDS.has(cleanId))) {
+    return true;
+  }
   return false;
 }
 
 /**
  * فحص ما إذا كان القيد المحاسبي سجلاً تاريخياً محمياً
- * لا يُعتبر السجل تاريخياً إلا إذا كان تابعاً حصرياً للشركة المؤسسة المحمية
+ * لا يُعتبر السجل تاريخياً إلا إذا كان موجوداً ضمن لقطة القيود التاريخية المحددة للشركة المحمية
  */
 export function isHistoricalJournal(id?: string, createdAt?: string, date?: string, companyId?: string): boolean {
   if (!id) return false;
   if (companyId && !isProtectedCompany(companyId)) return false;
   const cleanId = String(id).trim();
   if (HISTORICAL_JOURNAL_IDS.has(cleanId)) return true;
-  if (createdAt && isBeforeCutover(createdAt)) return true;
-  if (date && isBeforeCutover(date + 'T23:59:59.999Z')) return true;
+  if (createdAt && isBeforeCutover(createdAt) && (cleanId.startsWith('jv-hist-') || cleanId.startsWith('hist-') || HISTORICAL_JOURNAL_IDS.has(cleanId))) {
+    return true;
+  }
   return false;
 }
 
