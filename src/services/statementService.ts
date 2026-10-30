@@ -240,9 +240,40 @@ export function toValidUUID(val?: string): string | null {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
+// قائمة الكلمات المؤسسية والتعريفية العامة التي يُمنع المطابقة الجزئية المنفردة بها لمنع خلط حسابات الجمعيات والشركات
+const STOPWORDS_ENTITY = new Set([
+  'جمعية', 'جمعيه', 'التعاونية', 'التعاونيه', 'شركة', 'شركه', 'مؤسسة', 'مؤسسه', 
+  'مجموعة', 'مجموعه', 'مصنع', 'مطحنة', 'مطحنه', 'للتجارة', 'للتجاره', 'المتحدة', 
+  'المتحده', 'العامة', 'العامه', 'المحدودة', 'المحدوده', 'ش.م.ك', 'ذ.م.م', 
+  'العالمية', 'العالميه', 'الوطنية', 'الوطنيه', 'العميل', 'المورد', 'حساب', 'فرع',
+  'السيد', 'السيدة', 'الاستاذ', 'الدكتور', 'المحترم'
+]);
+
+// قائمة الحسابات المجمعة والتحكمية الرئيسية وحسابات الفئات التي تشمل جميع العملاء أو الموردين
+// يُمنع اعتبار هذه الحسابات حسابات فرعية فردية لعميل أو مورد واحد لمنع تسريب الحركات بين الحسابات
+export const COLLECTIVE_CONTROL_ACCOUNTS = new Set([
+  '1120', 'acc-1120', '1121', 'acc-1121', '1122', 'acc-1122', '1123', 'acc-1123', '1124', 'acc-1124',
+  '2110', 'acc-2110', '2111', 'acc-2111', '2112', 'acc-2112', '2113', 'acc-2113'
+]);
+
+/**
+ * دالة استخراج الكلمات المميزة الحصرية لاسم الكيان (Distinctive Keywords)
+ * مثلاً: "جمعية المطلاع التعاونية" -> ["المطلاع"]
+ * "جمعية القيروان التعاونية" -> ["القيروان"]
+ * "جمعية الجليب التعاونية" -> ["الجليب"]
+ */
+export function getEntityDistinctiveKeywords(name?: string): string[] {
+  if (!name || typeof name !== 'string') return [];
+  const normalized = normalizeArabicForMatching(name);
+  const words = normalized
+    .split(/[\s\-_()\/،,]+/)
+    .filter((w) => w.length >= 2 && !STOPWORDS_ENTITY.has(w));
+  return words;
+}
+
 /**
  * دالة مركزية فائقة الدقة لمطابقة المستندات (فواتير، سندات، أسطر قيود) مع العميل أو المورد
- * تدعم المطابقة المباشرة بالـ UUID، الكود، المعرف القديم (legacyId)، ومطابقة الأسماء الذكية
+ * تضمن العزل التام وتمنع خلط فواتير العملاء أو تسريب المستندات نهائياً
  */
 export function isDocMatchingEntity(
   doc: {
@@ -320,130 +351,97 @@ export function isDocMatchingEntity(
     }
   }
 
-  // 1. استخراج المعرفات الموثوقة الخاصة بنوع الكيان فقط (منع الخلط بين customer_id و supplier_id)
-  const docIds = (
-    entityType === 'CUSTOMER'
-      ? [
-          doc.entityId,
-          doc.customerId,
-          doc.customer_id,
-          doc.entity_id,
-          doc.accountId,
-          doc.account_id,
-          raw.entityId,
-          raw.customerId,
-          raw.customer_id,
-          raw.accountId,
-          raw.account_id,
-        ]
-      : [
-          doc.entityId,
-          doc.supplierId,
-          doc.supplier_id,
-          doc.entity_id,
-          doc.accountId,
-          doc.account_id,
-          raw.entityId,
-          raw.supplierId,
-          raw.supplier_id,
-          raw.accountId,
-          raw.account_id,
-        ]
-  )
-    .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
-    .map((x) => x.trim());
-
-  // 2. استخراج كافة معرفات الكيان المستهدف (الرقم التعريفي، الكود، وحساب الأستاذ العام الفرعي)
-  const targetIds = [
-    targetEntityId,
-    targetEntity?.id,
-    targetEntity?.code,
-    (targetEntity as any)?.account_id,
-    (targetEntity as any)?.accountId,
-    rawTarget.id,
-    rawTarget.code,
-    rawTarget.entityId,
-    rawTarget.account_id,
-    rawTarget.accountId,
+  // 1. استخراج المعرفات الصريحة من المستند بحسب نوع الكيان
+  const docExplicitIds = [
+    doc.entityId,
+    entityType === 'CUSTOMER' ? doc.customerId : doc.supplierId,
+    entityType === 'CUSTOMER' ? doc.customer_id : doc.supplier_id,
+    doc.entity_id,
+    raw.entityId,
+    entityType === 'CUSTOMER' ? raw.customerId : raw.supplierId,
+    entityType === 'CUSTOMER' ? raw.customer_id : raw.supplier_id,
   ]
     .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
     .map((x) => x.trim());
 
-  // أ) مطابقة مباشرة عبر المعرفات أو الـ UUID
-  for (const dId of docIds) {
-    for (const tId of targetIds) {
-      if (dId === tId) return true;
-      const u1 = toValidUUID(dId);
-      const u2 = toValidUUID(tId);
-      if (u1 && u2 && u1 === u2) return true;
-    }
+  // 2. استخراج كافة معرفات الكيان المستهدف المعتمدة
+  const targetIds = new Set<string>();
+  if (targetEntityId) targetIds.add(targetEntityId.trim());
+  if (targetEntity?.id) targetIds.add(targetEntity.id.trim());
+  if (targetEntity?.code) targetIds.add(String(targetEntity.code).trim());
+  if ((targetEntity as any)?.accountId) targetIds.add(String((targetEntity as any).accountId).trim());
+  if ((targetEntity as any)?.account_id) targetIds.add(String((targetEntity as any).account_id).trim());
+  if (rawTarget.id) targetIds.add(String(rawTarget.id).trim());
+  if (rawTarget.code) targetIds.add(String(rawTarget.code).trim());
+  if (rawTarget.account_id) targetIds.add(String(rawTarget.account_id).trim());
+  if (rawTarget.accountId) targetIds.add(String(rawTarget.accountId).trim());
 
-    // ب) مطابقة عبر كود الحساب (مثلاً 4640 أو CUST-4640 أو cust-4640)
-    if (targetEntity?.code) {
-      const code = String(targetEntity.code).trim();
-      if (code) {
-        if (
-          dId === code ||
-          dId === `cust-${code}` ||
-          dId === `supp-${code}` ||
-          dId.endsWith(`-${code}`) ||
-          dId.toLowerCase().includes(code.toLowerCase())
-        ) {
+  // 3. القاعدة الذهبية الصارمة: إذا كان المستند يحمل معرف كيان صريح
+  if (docExplicitIds.length > 0) {
+    for (const dId of docExplicitIds) {
+      if (targetIds.has(dId)) return true;
+      const u1 = toValidUUID(dId);
+      for (const tId of targetIds) {
+        if (dId === tId) return true;
+        const u2 = toValidUUID(tId);
+        if (u1 && u2 && u1 === u2) return true;
+      }
+      if (targetEntity?.code) {
+        const code = String(targetEntity.code).trim();
+        if (code && (dId === code || dId === `cust-${code}` || dId === `supp-${code}` || dId === `CUST-${code}` || dId === `SUPP-${code}`)) {
           return true;
         }
       }
     }
+    // المستند يحمل معرفاً صريحاً يخص كياناً آخر بالتأكيد، فيتم عزله واستبعاده فوراً!
+    // يمنع نهائياً انتقال الفحص إلى مطابقة النصوص لمنع تسريب أو خلط فواتير وسندات العملاء!
+    return false;
   }
 
-  // 3. مطابقة ذكية عبر الأسماء المعتمدة لنفس نوع الكيان فقط
-  const targetNames = [
-    targetEntity?.nameAr,
-    targetEntity?.nameEn,
-    (targetEntity as any)?.name,
-    rawTarget.nameAr,
+  // 4. مطابقة الحساب الفرعي التحليلي للعميل (إذا كان السطر مرتبطاً بالحساب الفرعي الخاص به)
+  const lineAccIds = [doc.accountId, doc.account_id, raw.accountId, raw.account_id]
+    .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
+    .map((x) => x.trim());
+
+  for (const accId of lineAccIds) {
+    // استبعاد حسابات الأستاذ العام المجمعة والفئوية لأنها تضم كافة العملاء أو الموردين
+    if (!COLLECTIVE_CONTROL_ACCOUNTS.has(accId)) {
+      if (targetIds.has(accId)) return true;
+      if (
+        (targetEntity?.accountId && accId === targetEntity.accountId) ||
+        ((targetEntity as any)?.account_id && accId === (targetEntity as any).account_id)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // 5. مطابقة الاسم المعتمد المباشر الكامل
+  const targetNameAr = targetEntity?.nameAr?.trim() || '';
+  const docNames = [
+    doc.entityNameAr,
+    entityType === 'CUSTOMER' ? doc.customerName : doc.supplierName,
+    entityType === 'CUSTOMER' ? doc.customer_name : doc.supplier_name,
+    doc.entityName,
+    doc.entity_name,
+    raw.entityNameAr,
   ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
 
-  const docNames = (
-    entityType === 'CUSTOMER'
-      ? [
-          doc.entityNameAr,
-          doc.customerName,
-          doc.customer_name,
-          doc.entityName,
-          doc.entity_name,
-          raw.entityNameAr,
-          raw.customerName,
-          raw.entity_name,
-        ]
-      : [
-          doc.entityNameAr,
-          doc.supplierName,
-          doc.supplier_name,
-          doc.entityName,
-          doc.entity_name,
-          raw.entityNameAr,
-          raw.supplierName,
-          raw.entity_name,
-        ]
-  ).filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
-
-  for (const tName of targetNames) {
-    const normTarget = normalizeArabicForMatching(tName);
-    if (!normTarget || normTarget.length < 3) continue;
-
+  if (targetNameAr) {
+    const normTarget = normalizeArabicForMatching(targetNameAr);
     for (const dName of docNames) {
       const normDoc = normalizeArabicForMatching(dName);
-      if (!normDoc || normDoc.length < 3) continue;
-
       if (normDoc === normTarget) return true;
-
-      // مطابقة الأسماء المركبة التامة للجمعيات والشركات
       if (normDoc.length >= 8 && normTarget.length >= 8) {
         if (normDoc.includes(normTarget) || normTarget.includes(normDoc)) return true;
       }
     }
+  }
 
-    // مطابقة عبر نصوص البيان والملاحظات والمرجع للوثيقة
+  // 6. مطابقة الكلمات المميزة الحصرية (Distinctive Keywords Matching)
+  // يمنع قطعياً المطابقة بالبادئات العامة المشتركة مثل "جمعية" أو "شركة"
+  const distinctKeywords = getEntityDistinctiveKeywords(targetNameAr);
+  if (distinctKeywords.length > 0) {
     const docTexts = [
       doc.notes,
       doc.description,
@@ -453,32 +451,27 @@ export function isDocMatchingEntity(
       raw.description,
       raw.memo,
       raw.reference,
+      ...docNames,
     ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
 
     for (const dText of docTexts) {
       const normText = normalizeArabicForMatching(dText);
-      if (normText && (normText.includes(normTarget) || (normTarget.length >= 6 && normText.includes(normTarget.slice(0, 6))))) {
+      // يجب أن يحتوي النص على كافة الكلمات المميزة الحصرية لهذا الكيان تحديداً
+      // مثلاً: "المطلاع" أو "القيروان" أو "الجليب"
+      const allDistinctMatch = distinctKeywords.every((kw) => normText.includes(kw));
+      if (allDistinctMatch) {
         return true;
       }
     }
   }
 
-  // مطابقة عبر كود الحساب داخل نصوص البيان والملاحظات
+  // 7. مطابقة برقم الكود في البيان إذا كان الكود مميزاً (3 أرقام فأكثر)
   if (targetEntity?.code) {
     const code = String(targetEntity.code).trim();
     if (code && code.length >= 3) {
-      const docTexts = [
-        doc.notes,
-        doc.description,
-        doc.memo,
-        doc.reference,
-        raw.notes,
-        raw.description,
-        raw.memo,
-        raw.reference,
-      ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
-      for (const dText of docTexts) {
-        if (dText.includes(code)) return true;
+      const docTexts = [doc.notes, doc.description, doc.memo, doc.reference, raw.notes, raw.description];
+      for (const t of docTexts) {
+        if (typeof t === 'string' && t.includes(code)) return true;
       }
     }
   }
@@ -760,10 +753,41 @@ export function getAccountStatement(
       }
     }
 
+    // عزل قطعي حسب الدورة المحاسبية: فواتير ومرتجعات المبيعات لا تظهر في كشوف الموردين، والعكس صحيح
+    if (entityType === 'CUSTOMER') {
+      if (
+        refUpper.startsWith('RET-PUR') ||
+        refUpper.startsWith('INV-PUR') ||
+        entryNumUpper.startsWith('JV-RET-PUR') ||
+        entryNumUpper.startsWith('JV-INV-PUR') ||
+        refUpper.startsWith('PAY-') ||
+        entryNumUpper.startsWith('JV-PAY-')
+      ) {
+        return;
+      }
+    } else {
+      // entityType === 'SUPPLIER'
+      if (
+        refUpper.startsWith('RET-SAL') ||
+        refUpper.startsWith('INV-SAL') ||
+        entryNumUpper.startsWith('JV-RET-SAL') ||
+        entryNumUpper.startsWith('JV-INV-SAL') ||
+        refUpper.startsWith('RCV-') ||
+        entryNumUpper.startsWith('JV-RCV-')
+      ) {
+        return;
+      }
+    }
+
     // 2. فحص أسطر القيد التي تخص هذا الكيان بدقة محاسبية شبكية
     j.lines?.forEach((line) => {
-      // عزل نوع الكيان للسطر إن وُجد
+      // عزل نوع الكيان للسطر إن وُجد (مورد مقابل عميل)
       if (line.entityType && line.entityType !== entityType) {
+        return;
+      }
+
+      // إذا كان للسطر معرف كيان صريح يخص كياناً آخر، يتم استبعاده فوراً لمنع خلط حسابات العملاء
+      if (line.entityId && line.entityId !== entityId && !isDocMatchingEntity(line, entityId, entity, entityType)) {
         return;
       }
 
@@ -771,30 +795,59 @@ export function getAccountStatement(
         line.entityId && (line.entityId === entityId || isDocMatchingEntity(line, entityId, entity, entityType))
       );
       const isDirectAccountMatch = Boolean(
-        line.accountId === entityId ||
-        (entity?.accountId && line.accountId === entity.accountId) ||
-        ((entity as any)?.account_id && line.accountId === (entity as any).account_id)
+        line.accountId &&
+        !COLLECTIVE_CONTROL_ACCOUNTS.has(line.accountId) &&
+        (line.accountId === entityId ||
+         (entity?.accountId && line.accountId === entity.accountId) ||
+         ((entity as any)?.account_id && line.accountId === (entity as any).account_id))
       );
-      const isAccountCodeMatch = Boolean(entityCode && line.accountCode === entityCode);
+      const isAccountCodeMatch = Boolean(
+        entityCode &&
+        line.accountCode &&
+        !COLLECTIVE_CONTROL_ACCOUNTS.has(line.accountCode) &&
+        line.accountCode === entityCode
+      );
 
       const isEntityNameMatch = Boolean(
         line.entityType === entityType &&
         line.entityNameAr &&
         entityNameAr &&
-        (line.entityNameAr.trim() === entityNameAr.trim() || line.entityNameAr.includes(entityNameAr))
+        (normalizeArabicForMatching(line.entityNameAr) === normalizeArabicForMatching(entityNameAr))
       );
 
-      // في حال لم يكن السطر محدداً بـ entityId صريح، نتحقق أن الحساب هو حساب ذمم (عملاء أو موردين)
+      // فحص صارم ومحكم لطبيعة الحساب لمنع تسريب حسابات العملاء إلى الموردين وحسابات الموردين إلى العملاء
+      const isCustomerAccount =
+        line.accountCode?.startsWith('112') ||
+        line.accountNameAr?.includes('عملاء') ||
+        line.accountNameAr?.includes('ذمم مدينة');
+
+      const isSupplierAccount =
+        line.accountCode?.startsWith('211') ||
+        line.accountNameAr?.includes('موردين') ||
+        line.accountNameAr?.includes('ذمم دائنة');
+
+      if (entityType === 'CUSTOMER' && isSupplierAccount) {
+        return;
+      }
+      if (entityType === 'SUPPLIER' && isCustomerAccount) {
+        return;
+      }
+
+      // التحقق من توافق الحساب مع نوع الكيان
       const isApplicableAccount =
         entityType === 'CUSTOMER'
-          ? (line.accountCode?.startsWith('112') || line.accountNameAr?.includes('عملاء') || line.accountNameAr?.includes('ذمم مدينة') || isDirectAccountMatch || isDirectEntityIdMatch)
-          : (line.accountCode?.startsWith('211') || line.accountNameAr?.includes('موردين') || line.accountNameAr?.includes('ذمم دائنة') || isDirectAccountMatch || isDirectEntityIdMatch);
+          ? !isSupplierAccount && (isCustomerAccount || isDirectAccountMatch || isDirectEntityIdMatch)
+          : !isCustomerAccount && (isSupplierAccount || isDirectAccountMatch || isDirectEntityIdMatch);
 
+      const targetDistinctKws = getEntityDistinctiveKeywords(entityNameAr);
       const isMemoMatch = Boolean(
         isApplicableAccount &&
-        ((line.memo && ((entityNameAr && line.memo.includes(entityNameAr)) || (entityCode && line.memo.includes(entityCode)))) ||
-         (j.description && ((entityNameAr && j.description.includes(entityNameAr)) || (entityCode && j.description.includes(entityCode)))) ||
-         (j.reference && ((entityNameAr && j.reference.includes(entityNameAr)) || (entityCode && j.reference.includes(entityCode)))))
+        !line.entityId && // الاعتماد على البيان فقط عند غياب المعرف الصريح
+        targetDistinctKws.length > 0 &&
+        (() => {
+          const combined = normalizeArabicForMatching(`${line.memo || ''} ${j.description || ''} ${j.reference || ''}`);
+          return targetDistinctKws.every((kw) => combined.includes(kw));
+        })()
       );
 
       const isEntityLine = (isDirectEntityIdMatch || isDirectAccountMatch || isAccountCodeMatch || isEntityNameMatch || isMemoMatch) && isApplicableAccount;
