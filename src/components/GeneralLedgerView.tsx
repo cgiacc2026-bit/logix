@@ -6,6 +6,8 @@ import { BookOpen, Printer, Search, Layers, RefreshCw, FileSpreadsheet, Download
 import { DataService } from '../services/dataService.ts';
 import { supabase, isSupabaseConfigured, getCurrentCompanyId, resolveToSupabaseCompanyUUID } from '../services/supabaseClient.ts';
 import * as XLSX from 'xlsx';
+import { AccountSearchCombobox } from './AccountSearchCombobox.tsx';
+import { matchesTransactionRecord, matchesSearch } from '../utils/searchUtils.ts';
 
 interface GeneralLedgerProps {
   journals?: any[];
@@ -127,31 +129,21 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
     }
   }, [currentAccountId, startDate, endDate, journals]);
 
-  // Filter movements by search query in real time
+  // Filter movements by search query in real time (Multi-token, Arabic-normalized, Amounts & References)
   const displayedMovements = useMemo(() => {
     if (!report?.movements) return [];
     if (!searchQuery.trim()) return report.movements;
-    const q = searchQuery.toLowerCase().trim();
-    return report.movements.filter((m) =>
-      (m.entryNumber && m.entryNumber.toLowerCase().includes(q)) ||
-      (m.description && m.description.toLowerCase().includes(q)) ||
-      (m.reference && m.reference.toLowerCase().includes(q)) ||
-      (m.date && m.date.includes(q))
-    );
+    return report.movements.filter((m) => matchesTransactionRecord(m, searchQuery));
   }, [report, searchQuery]);
 
   // Filtered reports when ALL accounts mode is active
   const filteredAllReports = useMemo(() => {
     if (!searchQuery.trim()) return allReports;
-    const q = searchQuery.toLowerCase().trim();
     return allReports.filter((r) =>
-      r.account.code.toLowerCase().includes(q) ||
-      r.account.nameAr.toLowerCase().includes(q) ||
-      r.movements.some((m) =>
-        (m.entryNumber && m.entryNumber.toLowerCase().includes(q)) ||
-        (m.description && m.description.toLowerCase().includes(q)) ||
-        (m.reference && m.reference.toLowerCase().includes(q))
-      )
+      matchesSearch(r.account.code, searchQuery) ||
+      matchesSearch(r.account.nameAr, searchQuery) ||
+      (r.account.nameEn && matchesSearch(r.account.nameEn, searchQuery)) ||
+      r.movements.some((m) => matchesTransactionRecord(m, searchQuery))
     );
   }, [allReports, searchQuery]);
 
@@ -307,36 +299,16 @@ export const GeneralLedgerView: React.FC<GeneralLedgerProps> = ({
       {/* 1. Compact Horizontal Top Bar (Consolidates all filter controls) */}
       <div className="bg-white border border-[#E5E1DA] rounded-lg p-3 shadow-2xs no-print">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Account Selector */}
-          <div className="flex-1 min-w-[300px]">
-            <label className="block text-[11px] font-bold text-[#6E6659] mb-1">
-              الحساب المحاسبي (Chart of Accounts)
-            </label>
-            <select
-              id="gl-account-selector"
-              value={currentAccountId}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === 'ALL') {
-                  setCurrentAccountId('ALL');
-                } else {
-                  const match = accounts.find((a) => a.id === val || a.code === val);
-                  setCurrentAccountId(match ? match.id : val);
-                }
-              }}
-              className="w-full bg-[#FDFCFB] border border-[#E5E1DA] rounded-md px-3 py-1.5 text-xs text-[#1A1A1A] font-bold focus:outline-none focus:border-[#B8860B]"
-            >
-              <option value="ALL">★ كافة الحسابات (دفتر الأستاذ العام الشامل لجميع الحسابات)</option>
-              {accounts.map((acc) => {
-                const leaf = isAccountLeaf(acc, accounts);
-                const isDebit = (acc.normalBalance || (acc as any).nature) === 'DEBIT';
-                return (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.code} - {acc.nameAr} [{leaf ? 'طرفي' : 'رئيسي'} • {isDebit ? 'طبيعة: مدين' : 'طبيعة: دائن'}]
-                  </option>
-                );
-              })}
-            </select>
+          {/* Account Selector Combobox (Searchable, Category Filter, Zero Data Loss) */}
+          <div className="flex-1 min-w-[320px]">
+            <AccountSearchCombobox
+              accounts={accounts}
+              selectedId={currentAccountId}
+              onSelect={(accId) => setCurrentAccountId(accId)}
+              includeAllOption={true}
+              label="الحساب المحاسبي (Chart of Accounts)"
+              placeholder="ابحث برقم الحساب أو الاسم أو اختر..."
+            />
           </div>
 
           {/* Date Range: من تاريخ */}

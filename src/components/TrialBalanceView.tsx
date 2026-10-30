@@ -29,6 +29,7 @@ import {
   CheckSquare,
 } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
+import { matchesAccountSearch } from '../utils/searchUtils.ts';
 import * as XLSX from 'xlsx';
 
 interface TrialBalanceProps {
@@ -150,15 +151,9 @@ export const TrialBalanceView: React.FC<TrialBalanceProps> = ({
 
     let list = [...report.items];
 
-    // 1. Search Query Filter
+    // 1. Search Query Filter (Arabic-normalized, multi-token, code, name, category, nature)
     if (searchQuery.trim()) {
-      const query = searchQuery.trim().toLowerCase();
-      list = list.filter((item) => {
-        const code = String(item.account.code || '').toLowerCase();
-        const nameAr = String(item.account.nameAr || '').toLowerCase();
-        const nameEn = String((item.account as any).nameEn || '').toLowerCase();
-        return code.includes(query) || nameAr.includes(query) || nameEn.includes(query);
-      });
+      list = list.filter((item) => matchesAccountSearch(item.account, searchQuery));
     }
 
     // 2. Zero-Balance Filter

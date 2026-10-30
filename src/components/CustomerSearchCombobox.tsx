@@ -15,6 +15,7 @@ interface CustomerSearchComboboxProps {
   getBalance?: (entity: any) => number;
   label?: string;
   required?: boolean;
+  placeholder?: string;
 }
 
 export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
@@ -26,6 +27,7 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
   getBalance,
   label,
   required = false,
+  placeholder,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -159,11 +161,12 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
             }}
             onKeyDown={handleKeyDown}
             placeholder={
-              selectedEntity
+              placeholder ||
+              (selectedEntity
                 ? `الحساب المختار: ${selectedEntity.nameAr} (انقر للبحث بالاسم أو التغيير)`
                 : isSupplier
                 ? 'ابحث باسم المورد مباشرة (أو انقر لعرض الكل)...'
-                : 'ابحث باسم العميل مباشرة (أو انقر لعرض الكل)...'
+                : 'ابحث باسم العميل مباشرة (أو انقر لعرض الكل)...')
             }
             className={`w-full border rounded-xl py-2.5 pr-9 pl-14 font-bold text-[#1A1A1A] text-xs outline-none transition-all shadow-2xs ${
               isOpen

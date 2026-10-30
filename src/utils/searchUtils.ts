@@ -177,3 +177,78 @@ export function filterAndRankEntities<T>(
   return results.map((r) => r.item);
 }
 
+/**
+ * دالة بحث ذكية مخصصة للحسابات المحاسبية ودليل الحسابات
+ * تطابق الكود، الاسم بالعربي والإنجليزي، التصنيف، والطبيعة
+ */
+export function matchesAccountSearch(acc: any, query: string): boolean {
+  if (!query || !query.trim()) return true;
+  if (!acc) return false;
+
+  const categoryLabels: Record<string, string> = {
+    ASSET: 'أصول الأصول أصل متداولة ثابتة',
+    LIABILITY: 'خصوم الخصوم التزامات التزام متداولة',
+    EQUITY: 'حقوق الملكية رأس المال أرباح مرحلة',
+    REVENUE: 'إيرادات ايرادات مبيعات دخل',
+    EXPENSE: 'مصروفات مصاريف تكاليف تشغيلية',
+    COGS: 'تكلفة بضاعة مباعة مشتريات مخزون',
+  };
+
+  const natureLabels = acc.normalBalance === 'DEBIT' || acc.nature === 'DEBIT' ? 'مدين debit' : 'دائن credit';
+  const typeLabels = acc.type === 'HEADER' || !acc.parentId ? 'رئيسي تجميعي' : 'طرفي تفصيلي فرعي تحليل';
+
+  const combinedCandidate = [
+    acc.code || '',
+    acc.nameAr || '',
+    acc.nameEn || '',
+    categoryLabels[acc.category] || acc.category || '',
+    natureLabels,
+    typeLabels,
+  ].join(' ');
+
+  return matchesSearch(combinedCandidate, query);
+}
+
+/**
+ * دالة بحث محاسبية شاملة لحركات كشوف الحسابات ودفتر الأستاذ والقيود
+ * تطابق رقم القيد، رقم المرجع، البيان، التاريخ، أسماء الأطراف، والمبالغ الرقمية
+ */
+export function matchesTransactionRecord(record: any, query: string): boolean {
+  if (!query || !query.trim()) return true;
+  if (!record) return false;
+
+  const amountTokens: string[] = [];
+  const addAmt = (val: any) => {
+    if (val !== undefined && val !== null && !isNaN(Number(val))) {
+      const n = Number(val);
+      amountTokens.push(String(n));
+      amountTokens.push(n.toFixed(3));
+      amountTokens.push(n.toFixed(2));
+      amountTokens.push(Math.round(n).toString());
+    }
+  };
+
+  addAmt(record.debit);
+  addAmt(record.credit);
+  addAmt(record.amount);
+  addAmt(record.runningBalance);
+
+  const combinedCandidate = [
+    record.docNumber || record.entryNumber || record.invoiceNumber || record.voucherNumber || '',
+    record.reference || record.referenceNumber || '',
+    record.description || record.memo || record.notes || '',
+    record.date || '',
+    record.docTypeLabel || record.docType || '',
+    record.entityNameAr || record.customerName || record.supplierName || record.entityName || '',
+    record.accountCode || '',
+    record.accountNameAr || record.accountName || '',
+    record.checkNumber ? `شيك ${record.checkNumber}` : '',
+    record.checkBankName || '',
+    record.status || '',
+    ...amountTokens,
+  ].join(' ');
+
+  return matchesSearch(combinedCandidate, query);
+}
+
+

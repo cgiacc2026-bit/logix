@@ -41,6 +41,8 @@ import {
   ZoomOut,
   Type,
 } from 'lucide-react';
+import { CustomerSearchCombobox } from './CustomerSearchCombobox.tsx';
+import { matchesTransactionRecord } from '../utils/searchUtils.ts';
 
 interface AccountStatementViewProps {
   customers: Customer[];
@@ -161,14 +163,21 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
         return false;
       }
 
-      // 2. فلتر البحث
+      // 2. فلتر البحث الذكي الموحد (أرقام المستندات، البيان، التواريخ، المبالغ، الشيكات، التطبيع العربي)
       if (!searchTerm.trim()) return true;
-      const term = searchTerm.toLowerCase();
-      return (
-        tx.docNumber.toLowerCase().includes(term) ||
-        tx.description.toLowerCase().includes(term) ||
-        tx.date.includes(term) ||
-        tx.docTypeLabel.toLowerCase().includes(term)
+      return matchesTransactionRecord(
+        {
+          docNumber: tx.docNumber,
+          reference: tx.reference,
+          description: tx.description,
+          date: tx.date,
+          docTypeLabel: tx.docTypeLabel,
+          checkNumber: (tx as any).checkNumber,
+          debit: tx.debit,
+          credit: tx.credit,
+          runningBalance: tx.runningBalance,
+        },
+        searchTerm
       );
     });
   }, [statementResult, movementFilter, searchTerm]);
@@ -482,32 +491,17 @@ export const AccountStatementView: React.FC<AccountStatementViewProps> = ({
             </button>
           </div>
 
-          {/* القائمة المنسدلة للكيانات */}
+          {/* محرك اختيار وبحث الكيان (عميل / مورد) مع البحث الذكي الفوري */}
           <div className="lg:col-span-8">
-            <select
-              value={selectedEntityId}
-              onChange={(e) => setSelectedEntityId(e.target.value)}
-              className="w-full bg-[#FDFCFB] border border-[#E5E1DA] rounded-xl px-3.5 py-2.5 text-xs text-[#1A1A1A] font-bold focus:outline-none focus:border-[#1A1A1A] cursor-pointer"
-            >
-              <option value="">-- اختر {entityType === 'CUSTOMER' ? 'العميل أو الجمعية' : 'المورد أو الشركة'} --</option>
-              {entityType === 'CUSTOMER'
-                ? customers.map((c) => {
-                    const currentBal = calculateEntityCurrentBalance(c, 'CUSTOMER', invoices, vouchers, journals);
-                    return (
-                      <option key={c.id} value={c.id}>
-                        {c.code} - {c.nameAr} | الرصيد الحالي: {formatCurrency(currentBal, currency)}
-                      </option>
-                    );
-                  })
-                : suppliers.map((s) => {
-                    const currentBal = calculateEntityCurrentBalance(s, 'SUPPLIER', invoices, vouchers, journals);
-                    return (
-                      <option key={s.id} value={s.id}>
-                        {s.code} - {s.nameAr} | الرصيد الحالي: {formatCurrency(currentBal, currency)}
-                      </option>
-                    );
-                  })}
-            </select>
+            <CustomerSearchCombobox
+              entities={entityType === 'CUSTOMER' ? customers : suppliers}
+              selectedId={selectedEntityId}
+              onSelect={(entityId) => setSelectedEntityId(entityId)}
+              entityType={entityType}
+              currency={currency}
+              getBalance={(entity) => calculateEntityCurrentBalance(entity, entityType, invoices, vouchers, journals)}
+              placeholder={`ابحث بالاسم، الكود، الهاتف أو اختر ${entityType === 'CUSTOMER' ? 'العميل أو الجمعية' : 'المورد أو الشركة'}...`}
+            />
           </div>
         </div>
 

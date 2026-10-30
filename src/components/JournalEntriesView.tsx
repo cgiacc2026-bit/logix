@@ -30,6 +30,7 @@ import {
 
 import { localDataStore } from '../services/dataService';
 import { isHistoricalJournal } from '../services/historicalDataProtectionService.ts';
+import { matchesSearch } from '../utils/searchUtils.ts';
 
 interface JournalEntriesProps {
   journals: JournalEntry[];
@@ -83,6 +84,7 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
   const activeProfile = useMemo(() => localDataStore.getCompany(), []);
   const companyName = propCompanyName || activeProfile?.nameAr || 'المنشأة';
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJournalId, setEditingJournalId] = useState<string | null>(null);
   const [printJournal, setPrintJournal] = useState<JournalEntry | null>(null);
@@ -383,10 +385,41 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
     }
   };
 
-  const filteredJournals = journals.filter((j) => {
-    if (filterStatus === 'ALL') return true;
-    return j.status === filterStatus;
-  });
+  const filteredJournals = useMemo(() => {
+    return journals.filter((j) => {
+      // 1. Status Filter
+      if (filterStatus !== 'ALL' && j.status !== filterStatus) return false;
+
+      // 2. Search Query (Multi-token, Arabic-normalized, amounts, parties, accounts)
+      if (!searchQuery.trim()) return true;
+
+      // Check header fields
+      if (
+        matchesSearch(j.entryNumber || '', searchQuery) ||
+        matchesSearch(j.reference || '', searchQuery) ||
+        matchesSearch(j.description || '', searchQuery) ||
+        (j.date && j.date.includes(searchQuery.trim()))
+      ) {
+        return true;
+      }
+
+      // Check lines (accounts, parties, memos, and numeric amounts)
+      const cleanNum = parseFloat(searchQuery.trim().replace(/,/g, ''));
+      const isNum = !isNaN(cleanNum);
+
+      return (j.lines || []).some((l) => {
+        if (matchesSearch(l.accountCode || '', searchQuery)) return true;
+        if (matchesSearch(l.accountNameAr || '', searchQuery)) return true;
+        if (matchesSearch(l.memo || '', searchQuery)) return true;
+        if (matchesSearch(l.entityNameAr || '', searchQuery)) return true;
+        if (isNum) {
+          if (Math.abs(Number(l.debit || 0) - cleanNum) < 0.001) return true;
+          if (Math.abs(Number(l.credit || 0) - cleanNum) < 0.001) return true;
+        }
+        return false;
+      });
+    });
+  }, [journals, filterStatus, searchQuery]);
 
   return (
     <div>
@@ -431,25 +464,48 @@ export const JournalEntriesView: React.FC<JournalEntriesProps> = ({
           </div>
         )}
 
-        {/* Filter Tabs */}
-        <div className="flex items-center gap-2 bg-[#F7F5F0] border border-[#E5E1DA] p-2 rounded-lg overflow-x-auto">
-          {[
-            { id: 'ALL', label: 'جميع القيود' },
-            { id: 'POSTED', label: 'القيود المرحّلة' },
-            { id: 'CANCELLED', label: 'القيود العكسية / الملغاة' },
-          ].map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFilterStatus(f.id)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                filterStatus === f.id
-                  ? 'bg-[#1A1A1A] text-white shadow-xs border border-[#1A1A1A]'
-                  : 'text-[#6E6659] hover:text-[#1A1A1A] hover:bg-white'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        {/* Filter Tabs & Real-time Search Toolbar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#F7F5F0] border border-[#E5E1DA] p-2.5 rounded-lg">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {[
+              { id: 'ALL', label: `جميع القيود (${journals.length})` },
+              { id: 'POSTED', label: `القيود المرحّلة (${journals.filter((j) => j.status === 'POSTED').length})` },
+              { id: 'CANCELLED', label: `القيود العكسية / الملغاة (${journals.filter((j) => j.status === 'CANCELLED').length})` },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFilterStatus(f.id)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                  filterStatus === f.id
+                    ? 'bg-[#1A1A1A] text-white shadow-xs border border-[#1A1A1A]'
+                    : 'text-[#6E6659] hover:text-[#1A1A1A] hover:bg-white'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Real-time Search Input */}
+          <div className="relative flex-1 sm:max-w-sm">
+            <input
+              type="text"
+              placeholder="بحث ذكي: رقم القيد، المرجع، البيان، العميل/المورد، المبلغ..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white border border-[#E5E1DA] rounded-md pr-8 pl-8 py-1.5 text-xs text-[#1A1A1A] placeholder:text-[#8C8273] focus:outline-none focus:border-[#B8860B] font-medium"
+            />
+            <Search className="w-3.5 h-3.5 text-[#8C8273] absolute right-2.5 top-2.5 pointer-events-none" />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute left-2.5 top-2 text-[#8C8273] hover:text-[#1A1A1A] text-xs font-bold"
+                title="مسح البحث"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Journal Entries List */}

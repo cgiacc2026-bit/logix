@@ -10,6 +10,7 @@ import {
 } from '../utils/accountingTreeEngine.ts';
 import { DataService } from '../services/dataService.ts';
 import { isHistoricalAccount } from '../services/historicalDataProtectionService.ts';
+import { matchesAccountSearch } from '../utils/searchUtils.ts';
 import {
   FolderTree,
   Plus,
@@ -353,13 +354,9 @@ export const ChartOfAccountsView: React.FC<ChartOfAccountsProps> = ({
     }
   };
 
-  // Filter accounts
+  // Filter accounts (Multi-token, Arabic-normalized, category, nature)
   const filteredAccounts = enrichedAccounts.filter((a) => {
-    const matchesSearch =
-      a.code.includes(search) ||
-      a.nameAr.includes(search) ||
-      (a.nameEn && a.nameEn.toLowerCase().includes(search.toLowerCase()));
-
+    const matchesSearch = !search.trim() || matchesAccountSearch(a, search);
     const matchesCategory = selectedCategory === 'ALL' || a.category === selectedCategory;
 
     const matchesMovement =
