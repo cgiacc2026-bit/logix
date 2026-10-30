@@ -306,6 +306,13 @@ export function isDocMatchingEntity(
   const raw = doc.raw_data || {};
   const rawTarget = (targetEntity as any)?.raw_data || {};
 
+  // عزل الشركات الصارم لمنع تسريب أي بيانات أو حركات بين المنشآت والشركات المختلفة (Multi-Tenant Company Isolation)
+  const docCompanyId = doc.companyId || doc.company_id || raw.companyId || raw.company_id;
+  const targetCompanyId = targetEntity?.companyId || (targetEntity as any)?.company_id || rawTarget.companyId || rawTarget.company_id;
+  if (docCompanyId && targetCompanyId && docCompanyId !== targetCompanyId) {
+    return false;
+  }
+
   // عزل صارم بحسب طبيعة المستند ونوع الكيان لمنع تسريب المشتريات إلى العملاء والمبيعات إلى الموردين
   if (entityType === 'CUSTOMER') {
     // السندات: سندات الصرف لمورد (PAYMENT) لا يمكن أن تنتمي لعميل
@@ -718,6 +725,13 @@ export function getAccountStatement(
 
   // ج) القيود اليومية اليدوية أو القيود غير الممثلة بسندات في دفتر اليومية
   cleanedJournals.forEach((j) => {
+    // عزل المنشآت والشركات الصارم (Multi-Tenant Company Isolation)
+    const jCompanyId = j.companyId || (j as any).company_id;
+    const targetCompanyId = entity?.companyId || (entity as any)?.company_id;
+    if (jCompanyId && targetCompanyId && jCompanyId !== targetCompanyId) {
+      return;
+    }
+
     // 1. تجنب التكرار للقيود التي تم تضمين سندها أو فاتورتها الأصلية بالفعل في كشف الحساب أعلاه
     const refUpper = (j.reference || '').trim().toUpperCase();
     const entryNumUpper = (j.entryNumber || '').trim().toUpperCase();
@@ -891,7 +905,7 @@ export function getAccountStatement(
   (creditNotes || []).forEach((cn) => {
     if (!cn) return;
     const matchesCust = isDocMatchingEntity(
-      { customerId: cn.customer_id, customerName: cn.customer_name },
+      { customerId: cn.customer_id, customerName: cn.customer_name, companyId: cn.companyId || cn.company_id },
       entityId,
       entity,
       entityType
