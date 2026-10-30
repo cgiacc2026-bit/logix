@@ -1032,11 +1032,15 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
     e.preventDefault();
     if (!vouchEntityId || vouchAmount <= 0) return alert('يرجى استكمال بيانات السند');
     try {
+      const targetCust = scopedCustomers.find((c) => c.id === vouchEntityId || c.code === vouchEntityId);
+      const targetSupp = scopedSuppliers.find((s) => s.id === vouchEntityId || s.code === vouchEntityId);
+      const entityNameAr = vouchType === 'RECEIPT' ? targetCust?.nameAr || '' : targetSupp?.nameAr || '';
       await onCreateVoucher({
         type: vouchType,
         date: vouchDate || new Date().toISOString().split('T')[0],
         entityType: vouchType === 'RECEIPT' ? 'CUSTOMER' : 'SUPPLIER',
         entityId: vouchEntityId,
+        entityNameAr,
         amount: vouchAmount,
         bankAccountId: vouchBankAcc,
         salesRepId: vouchSalesRepId || undefined,

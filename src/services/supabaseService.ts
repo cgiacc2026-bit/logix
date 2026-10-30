@@ -1047,6 +1047,7 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
+      await this.ensureCompanyExists(companyId, cust.nameAr);
       const custUuid = toValidUUID(cust.id);
       const branches = Array.isArray(cust.branches) ? cust.branches : [];
 
@@ -1367,6 +1368,7 @@ export class SupabaseDataService {
     const companyId = resolveToSupabaseCompanyUUID(rawCompanyId);
     if (!companyId) return false;
     try {
+      await this.ensureCompanyExists(companyId, supp.nameAr);
       const supUuid = toValidUUID(supp.id);
       const openingBal = Number(supp.openingBalance ?? (supp as any).opening_balance ?? 0);
       const { error } = await supabase

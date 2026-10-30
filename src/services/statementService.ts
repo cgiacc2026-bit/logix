@@ -328,29 +328,43 @@ export function isDocMatchingEntity(
           doc.customerId,
           doc.customer_id,
           doc.entity_id,
+          doc.accountId,
+          doc.account_id,
           raw.entityId,
           raw.customerId,
           raw.customer_id,
+          raw.accountId,
+          raw.account_id,
         ]
       : [
           doc.entityId,
           doc.supplierId,
           doc.supplier_id,
           doc.entity_id,
+          doc.accountId,
+          doc.account_id,
           raw.entityId,
           raw.supplierId,
           raw.supplier_id,
+          raw.accountId,
+          raw.account_id,
         ]
   )
     .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
     .map((x) => x.trim());
 
-  // 2. استخراج كافة معرفات الكيان المستهدف
+  // 2. استخراج كافة معرفات الكيان المستهدف (الرقم التعريفي، الكود، وحساب الأستاذ العام الفرعي)
   const targetIds = [
     targetEntityId,
     targetEntity?.id,
+    targetEntity?.code,
+    (targetEntity as any)?.account_id,
+    (targetEntity as any)?.accountId,
     rawTarget.id,
+    rawTarget.code,
     rawTarget.entityId,
+    rawTarget.account_id,
+    rawTarget.accountId,
   ]
     .filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0))
     .map((x) => x.trim());
@@ -372,7 +386,8 @@ export function isDocMatchingEntity(
           dId === code ||
           dId === `cust-${code}` ||
           dId === `supp-${code}` ||
-          dId.endsWith(`-${code}`)
+          dId.endsWith(`-${code}`) ||
+          dId.toLowerCase().includes(code.toLowerCase())
         ) {
           return true;
         }

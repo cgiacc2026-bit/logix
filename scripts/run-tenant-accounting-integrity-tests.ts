@@ -449,6 +449,37 @@ async function runAllTests() {
       `Opening on 2026-09-12: ${statementLateSept.openingBalance}`
     );
 
+    // Verify Receipt Voucher explicitly matches and appears inside customer statement movements
+    const vchTx = statementSept.transactions.find((t) => t.docNumber === voucherA.voucherNumber);
+    assert(
+      vchTx !== undefined &&
+      vchTx.credit === 150 &&
+      vchTx.docType === 'PAYMENT_RECEIPT',
+      'Receipt voucher appears on customer statement with credit amount reducing debt',
+      'Reports & Statements',
+      `Found transaction: ${vchTx?.docNumber}, credit: ${vchTx?.credit}`
+    );
+
+    // Verify Supplier Registration with automated sub-account and persistence
+    const suppA = {
+      id: `supp-test-a-${runId}`,
+      code: 'SUPP-TEST-01',
+      nameAr: 'مطاحن الدقيق الوطنية',
+      companyId: COMPANY_A,
+      openingBalance: 400,
+      openingBalanceDate: '2026-08-01',
+      account_id: 'acc-supp-2110001',
+    };
+    db.addSupplier(suppA as any);
+    const reloadedSupp = db.getSuppliers().find((s) => s.id === suppA.id);
+    assert(
+      reloadedSupp !== undefined &&
+      reloadedSupp.nameAr === 'مطاحن الدقيق الوطنية' &&
+      reloadedSupp.account_id === 'acc-supp-2110001',
+      'Supplier registered and saved with valid sub-account link',
+      'Customers & Auto-Accounts'
+    );
+
     // =========================================================================
     // هـ. الترحيل والتزامن (Posting & Concurrency)
     // =========================================================================

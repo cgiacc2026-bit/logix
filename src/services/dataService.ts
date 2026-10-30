@@ -5081,7 +5081,9 @@ export class DataService {
    */
   public static recalculateCustomerBalance(customerId: string): number {
     const customers = localDataStore.getCustomers();
-    const cust = customers.find((c) => c.id === customerId);
+    const cust = customers.find(
+      (c) => c.id === customerId || c.code === customerId || (c.id && toValidUUID(c.id) === toValidUUID(customerId))
+    );
     if (!cust) return 0;
 
     const invoices = localDataStore.getInvoices();
@@ -5089,7 +5091,7 @@ export class DataService {
     const journals = localDataStore.getJournals();
 
     const balance = getCalculatedCustomerBalance(
-      customerId,
+      cust.id,
       invoices,
       vouchers,
       journals,
@@ -5111,7 +5113,9 @@ export class DataService {
    */
   public static recalculateSupplierBalance(supplierId: string): number {
     const suppliers = localDataStore.getSuppliers();
-    const sup = suppliers.find((s) => s.id === supplierId);
+    const sup = suppliers.find(
+      (s) => s.id === supplierId || s.code === supplierId || (s.id && toValidUUID(s.id) === toValidUUID(supplierId))
+    );
     if (!sup) return 0;
 
     const invoices = localDataStore.getInvoices();
@@ -5119,7 +5123,7 @@ export class DataService {
     const journals = localDataStore.getJournals();
 
     const balance = getCalculatedSupplierBalance(
-      supplierId,
+      sup.id,
       invoices,
       vouchers,
       journals,
@@ -5222,6 +5226,29 @@ export class DataService {
         continue;
       }
 
+      // Resolve entity sub-account (Customer / Supplier)
+      const vCompId = v.companyId || (v as any).company_id || localDataStore.getEffectiveCompanyId() || 'default';
+      let entitySubAcc = isReceipt ? resolved.receivable : resolved.payable;
+      if (isReceipt && v.entityId) {
+        const c = customers.find((x) => x.id === v.entityId || x.code === v.entityId || (x.id && toValidUUID(x.id) === toValidUUID(v.entityId)));
+        if (c) {
+          const accId = c.account_id || (c as any).accountId;
+          if (accId) {
+            const foundAcc = accounts.find((a) => a.id === accId || a.code === accId);
+            if (foundAcc) entitySubAcc = foundAcc;
+          }
+        }
+      } else if (!isReceipt && v.entityId) {
+        const s = suppliers.find((x) => x.id === v.entityId || x.code === v.entityId || (x.id && toValidUUID(x.id) === toValidUUID(v.entityId)));
+        if (s) {
+          const accId = s.account_id || (s as any).accountId;
+          if (accId) {
+            const foundAcc = accounts.find((a) => a.id === accId || a.code === accId);
+            if (foundAcc) entitySubAcc = foundAcc;
+          }
+        }
+      }
+
       const jLines = isReceipt
         ? [
             {
@@ -5232,30 +5259,33 @@ export class DataService {
               debit: amount,
               credit: 0,
               memo: `قبض مبالغ سند رقم ${voucherNum} - ${entityNameAr}`,
+              companyId: vCompId,
             },
             {
               id: 'jl-2',
-              accountId: resolved.receivable.id,
-              accountCode: resolved.receivable.code,
-              accountNameAr: resolved.receivable.nameAr,
+              accountId: entitySubAcc.id,
+              accountCode: entitySubAcc.code,
+              accountNameAr: entitySubAcc.nameAr,
               debit: 0,
               credit: amount,
               memo: `تحصيل من العميل ${entityNameAr}`,
               entityType: 'CUSTOMER' as const,
               entityId: v.entityId || '',
+              companyId: vCompId,
             },
           ]
         : [
             {
               id: 'jl-1',
-              accountId: resolved.payable.id,
-              accountCode: resolved.payable.code,
-              accountNameAr: resolved.payable.nameAr,
+              accountId: entitySubAcc.id,
+              accountCode: entitySubAcc.code,
+              accountNameAr: entitySubAcc.nameAr,
               debit: amount,
               credit: 0,
               memo: `سداد للمورد ${entityNameAr}`,
               entityType: 'SUPPLIER' as const,
               entityId: v.entityId || '',
+              companyId: vCompId,
             },
             {
               id: 'jl-2',
@@ -5265,6 +5295,7 @@ export class DataService {
               debit: 0,
               credit: amount,
               memo: `صرف مبالغ سند رقم ${voucherNum} - ${entityNameAr}`,
+              companyId: vCompId,
             },
           ];
 
@@ -5400,6 +5431,7 @@ export class DataService {
 
     const resolved = this.getResolvedAccounts();
     const accounts = localDataStore.getAccounts();
+    const compId = data.companyId || data.company_id || localDataStore.getEffectiveCompanyId() || 'default';
     const targetBankAccId = data.bankAccountId || (data.paymentMethod === 'CASH' ? resolved.cash.id : resolved.bank.id);
     let liquidAcc = accounts.find((a) => a.id === targetBankAccId || a.code === targetBankAccId) ||
       (data.paymentMethod === 'CASH' ? resolved.cash : resolved.bank);
@@ -5407,9 +5439,35 @@ export class DataService {
     const isCheck = data.paymentMethod === 'CHECK';
     const paymentMethod: 'BANK' | 'CASH' | 'CHECK' = isCheck ? 'CHECK' : data.paymentMethod === 'CASH' ? 'CASH' : 'BANK';
 
+    // Microscopic resolution of customer / supplier dedicated sub-account
+    let entitySubAcc = isReceipt ? resolved.receivable : resolved.payable;
+    if (isReceipt && data.entityId) {
+      const c = customers.find((x) => x.id === data.entityId || x.code === data.entityId || (x.id && toValidUUID(x.id) === toValidUUID(data.entityId)));
+      if (c) {
+        if (!entityNameAr) entityNameAr = c.nameAr;
+        const subId = c.account_id || (c as any).accountId;
+        if (subId) {
+          const matched = accounts.find((a) => a.id === subId || a.code === subId);
+          if (matched) entitySubAcc = matched;
+        }
+      }
+    } else if (!isReceipt && data.entityId) {
+      const s = suppliers.find((x) => x.id === data.entityId || x.code === data.entityId || (x.id && toValidUUID(x.id) === toValidUUID(data.entityId)));
+      if (s) {
+        if (!entityNameAr) entityNameAr = s.nameAr;
+        const subId = s.account_id || (s as any).accountId;
+        if (subId) {
+          const matched = accounts.find((a) => a.id === subId || a.code === subId);
+          if (matched) entitySubAcc = matched;
+        }
+      }
+    }
+
     const newVoucher: PaymentVoucher = {
       id: 'vch-' + Math.random().toString(36).substr(2, 9),
       voucherNumber,
+      companyId: compId,
+      company_id: compId,
       type: data.type || 'RECEIPT',
       date: data.date || new Date().toISOString().split('T')[0],
       amount,
@@ -5421,7 +5479,14 @@ export class DataService {
       bankAccountId: liquidAcc.id,
       entityType: data.entityType || (isReceipt ? 'CUSTOMER' : 'SUPPLIER'),
       entityId: data.entityId || '',
+      customerId: isReceipt ? (data.entityId || undefined) : undefined,
+      customer_id: isReceipt ? (data.entityId || undefined) : undefined,
+      supplierId: !isReceipt ? (data.entityId || undefined) : undefined,
+      supplier_id: !isReceipt ? (data.entityId || undefined) : undefined,
       entityNameAr,
+      entityName: entityNameAr,
+      customerName: isReceipt ? entityNameAr : undefined,
+      supplierName: !isReceipt ? entityNameAr : undefined,
       invoiceId: data.invoiceId,
       salesRepId: data.salesRepId || undefined,
       salesRepName: data.salesRepName || undefined,
@@ -5442,30 +5507,33 @@ export class DataService {
             debit: amount,
             credit: 0,
             memo: `قبض مبالغ سند رقم ${voucherNumber}${checkDesc} - ${entityNameAr}`,
+            companyId: compId,
           },
           {
             id: 'jl-2',
-            accountId: resolved.receivable.id,
-            accountCode: resolved.receivable.code,
-            accountNameAr: resolved.receivable.nameAr,
+            accountId: entitySubAcc.id,
+            accountCode: entitySubAcc.code,
+            accountNameAr: entitySubAcc.nameAr,
             debit: 0,
             credit: amount,
             memo: `تحصيل من العميل ${entityNameAr}`,
             entityType: 'CUSTOMER' as const,
             entityId: newVoucher.entityId,
+            companyId: compId,
           },
         ]
       : [
           {
             id: 'jl-1',
-            accountId: resolved.payable.id,
-            accountCode: resolved.payable.code,
-            accountNameAr: resolved.payable.nameAr,
+            accountId: entitySubAcc.id,
+            accountCode: entitySubAcc.code,
+            accountNameAr: entitySubAcc.nameAr,
             debit: amount,
             credit: 0,
             memo: `سداد للمورد ${entityNameAr}`,
             entityType: 'SUPPLIER' as const,
             entityId: newVoucher.entityId,
+            companyId: compId,
           },
           {
             id: 'jl-2',
@@ -5475,12 +5543,14 @@ export class DataService {
             debit: 0,
             credit: amount,
             memo: `صرف مبالغ سند رقم ${voucherNumber}${checkDesc} - ${entityNameAr}`,
+            companyId: compId,
           },
         ];
 
     const jEntry: JournalEntry = {
       id: 'jv-' + Math.random().toString(36).substr(2, 9),
       entryNumber: `JV-${voucherNumber}`,
+      companyId: compId,
       date: newVoucher.date,
       reference: voucherNumber,
       description: `قيد ترحيل سند ${isReceipt ? 'قبض' : 'صرف'} رقم (${voucherNumber}) - ${entityNameAr}`,
@@ -5708,6 +5778,29 @@ export class DataService {
       (j.entryNumber && finalVoucherNumber && j.entryNumber.trim().toUpperCase() === `JV-${finalVoucherNumber.trim().toUpperCase()}`)
     );
 
+    // Resolve entity sub-account (Customer / Supplier)
+    const vCompId = updatedVoucher.companyId || (updatedVoucher as any).company_id || localDataStore.getEffectiveCompanyId() || 'default';
+    let entitySubAcc = isReceipt ? resolved.receivable : resolved.payable;
+    if (isReceipt && newEntityId) {
+      const c = localDataStore.getCustomers().find((x) => x.id === newEntityId || x.code === newEntityId || (x.id && toValidUUID(x.id) === toValidUUID(newEntityId)));
+      if (c) {
+        const subId = c.account_id || (c as any).accountId;
+        if (subId) {
+          const matched = accounts.find((a) => a.id === subId || a.code === subId);
+          if (matched) entitySubAcc = matched;
+        }
+      }
+    } else if (!isReceipt && newEntityId) {
+      const s = localDataStore.getSuppliers().find((x) => x.id === newEntityId || x.code === newEntityId || (x.id && toValidUUID(x.id) === toValidUUID(newEntityId)));
+      if (s) {
+        const subId = s.account_id || (s as any).accountId;
+        if (subId) {
+          const matched = accounts.find((a) => a.id === subId || a.code === subId);
+          if (matched) entitySubAcc = matched;
+        }
+      }
+    }
+
     const jLines = isReceipt
       ? [
           {
@@ -5718,30 +5811,33 @@ export class DataService {
             debit: newAmount,
             credit: 0,
             memo: `قبض مبالغ سند معدل رقم ${updatedVoucher.voucherNumber} - ${entityNameAr}`,
+            companyId: vCompId,
           },
           {
             id: 'jl-2',
-            accountId: resolved.receivable.id,
-            accountCode: resolved.receivable.code,
-            accountNameAr: resolved.receivable.nameAr,
+            accountId: entitySubAcc.id,
+            accountCode: entitySubAcc.code,
+            accountNameAr: entitySubAcc.nameAr,
             debit: 0,
             credit: newAmount,
             memo: `تحصيل من العميل ${entityNameAr}`,
             entityType: 'CUSTOMER' as const,
             entityId: newEntityId,
+            companyId: vCompId,
           },
         ]
       : [
           {
             id: 'jl-1',
-            accountId: resolved.payable.id,
-            accountCode: resolved.payable.code,
-            accountNameAr: resolved.payable.nameAr,
+            accountId: entitySubAcc.id,
+            accountCode: entitySubAcc.code,
+            accountNameAr: entitySubAcc.nameAr,
             debit: newAmount,
             credit: 0,
             memo: `سداد للمورد ${entityNameAr}`,
             entityType: 'SUPPLIER' as const,
             entityId: newEntityId,
+            companyId: vCompId,
           },
           {
             id: 'jl-2',
@@ -5751,12 +5847,14 @@ export class DataService {
             debit: 0,
             credit: newAmount,
             memo: `صرف مبالغ سند معدل رقم ${updatedVoucher.voucherNumber} - ${entityNameAr}`,
+            companyId: vCompId,
           },
         ];
 
     if (jIdx !== -1) {
       journals[jIdx] = {
         ...journals[jIdx],
+        companyId: vCompId,
         date: updatedVoucher.date,
         description: `قيد ترحيل سند معدل ${isReceipt ? 'قبض' : 'صرف'} رقم (${updatedVoucher.voucherNumber}) - ${entityNameAr}`,
         lines: jLines,
@@ -5769,6 +5867,7 @@ export class DataService {
       const newJ: JournalEntry = {
         id: 'jv-' + Math.random().toString(36).substr(2, 9),
         entryNumber: `JV-${updatedVoucher.voucherNumber}`,
+        companyId: vCompId,
         date: updatedVoucher.date,
         reference: updatedVoucher.voucherNumber,
         description: `قيد ترحيل سند معدل ${isReceipt ? 'قبض' : 'صرف'} رقم (${updatedVoucher.voucherNumber}) - ${entityNameAr}`,
@@ -6352,17 +6451,6 @@ export class DataService {
   }
 
   public static async getSuppliers(): Promise<Supplier[]> {
-    if (isSupabaseConfigured) {
-      const fromSupabase = await SupabaseDataService.getSuppliers();
-      if (Array.isArray(fromSupabase)) {
-        const tombstones = localDataStore.getTombstones('suppliers');
-        const validSupabase = fromSupabase.filter((s) => !tombstones.has(s.id));
-        localDataStore.saveSuppliers(validSupabase);
-        const compId = localDataStore.getEffectiveCompanyId() || 'default';
-        cacheService.setSuppliers(compId, validSupabase);
-        return validSupabase;
-      }
-    }
     const compId = localDataStore.getEffectiveCompanyId() || 'default';
     const tombstones = localDataStore.getTombstones('suppliers');
     const cached = cacheService.getSuppliers(compId);
@@ -6448,27 +6536,75 @@ export class DataService {
   }
 
   public static async createSupplier(data: any): Promise<Supplier> {
+    const compId = data.companyId || data.company_id || localDataStore.getEffectiveCompanyId() || 'default';
     const list = localDataStore.getSuppliers();
+    const openAmount = Number(data.openingBalance) || Number(data.balance) || 0;
+    const suppNameAr = (data.nameAr || 'مورد جديد').trim();
+
+    // Auto-create sub-account in Chart of Accounts under Accounts Payable (2110)
+    const allAccounts = localDataStore.getAccounts();
+    const resolved = this.getResolvedAccounts();
+    const prefix = resolved.payable.code || '2110';
+    const existingSubCodes = new Set(allAccounts.map((a) => a.code));
+    let maxSeq = 0;
+    for (const a of allAccounts) {
+      if (a.code && a.code.startsWith(prefix) && a.code !== prefix) {
+        const suffix = a.code.slice(prefix.length);
+        const num = parseInt(suffix, 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    }
+    let subCode = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+    while (existingSubCodes.has(subCode)) {
+      maxSeq++;
+      subCode = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+    }
+
+    const subAccountId = 'acc-' + Math.random().toString(36).substr(2, 9);
+    const subAccount: Account = {
+      id: subAccountId,
+      code: subCode,
+      nameAr: `حساب مورد: ${suppNameAr}`,
+      nameEn: data.nameEn || suppNameAr,
+      category: 'LIABILITY',
+      parentId: resolved.payable.id,
+      level: (resolved.payable.level || 1) + 1,
+      normalBalance: 'CREDIT',
+      nature: 'CREDIT',
+      isSystem: false,
+      isActive: true,
+      companyId: compId,
+      balance: openAmount,
+      isSubAccount: true,
+      description: `حساب ذمم فرعي للمورد: ${suppNameAr}`,
+    };
+    allAccounts.push(subAccount);
+    localDataStore.saveAccounts(allAccounts);
+
     const newSupp: Supplier = {
-      id: 'supp-' + Math.random().toString(36).substr(2, 9),
+      id: data.id || ('supp-' + Math.random().toString(36).substr(2, 9)),
+      companyId: compId,
+      company_id: compId,
+      account_id: subAccount.id,
+      accountId: subAccount.id,
       code: data.code || `SUPP-${String(list.length + 1).padStart(3, '0')}`,
-      nameAr: data.nameAr || 'مورد جديد',
+      nameAr: suppNameAr,
       nameEn: data.nameEn || '',
       taxNumber: data.taxNumber,
       phone: data.phone,
       address: data.address,
       governorate: data.governorate,
-      city: data.city,
-      balance: Number(data.openingBalance) || Number(data.balance) || 0,
-      openingBalance: Number(data.openingBalance) || 0,
+      city: data.city || 'الكويت',
+      balance: openAmount,
+      openingBalance: openAmount,
       openingBalanceDate: data.openingBalanceDate || undefined,
       isActive: true,
     };
     localDataStore.removeTombstone('suppliers', newSupp.id);
     list.push(newSupp);
     localDataStore.saveSuppliers(list);
-    const compId = localDataStore.getEffectiveCompanyId() || 'default';
     cacheService.setSuppliers(compId, list);
+
     try {
       await SupabaseDataService.saveSupplier(newSupp);
     } catch (e) {
@@ -6476,13 +6612,12 @@ export class DataService {
     }
 
     // [ARCHITECT] Automated Balanced GL Opening Entry Generation
-    if (newSupp.openingBalance && Number(newSupp.openingBalance) > 0) {
-      const openAmount = Number(newSupp.openingBalance);
-      const resolved = this.getResolvedAccounts();
+    if (openAmount > 0) {
       const equityAcc = (resolved as any).retainedEarnings || (resolved as any).capital || { id: 'acc-3200', code: '3200', nameAr: 'الأرباح المرحلة / الأرصدة الافتتاحية' };
       const jEntry: JournalEntry = {
         id: 'jv-' + Math.random().toString(36).substr(2, 9),
         entryNumber: `JV-OP-SUPP-${newSupp.id.slice(-4)}`,
+        companyId: compId,
         date: newSupp.openingBalanceDate || new Date().toISOString().split('T')[0],
         reference: `OP-${newSupp.nameAr}`,
         description: `قيد رصيد أول المدة الافتتاحي للمورد (${newSupp.nameAr})`,
@@ -6496,17 +6631,19 @@ export class DataService {
             debit: openAmount,
             credit: 0,
             memo: `حقوق الملكية / أرصدة افتتاحية - ${newSupp.nameAr}`,
+            companyId: compId,
           },
           {
             id: 'jl-2',
-            accountId: resolved.payable.id,
-            accountCode: resolved.payable.code,
-            accountNameAr: resolved.payable.nameAr,
+            accountId: subAccount.id,
+            accountCode: subAccount.code,
+            accountNameAr: subAccount.nameAr,
             debit: 0,
             credit: openAmount,
             memo: `رصيد أول المدة للمورد ${newSupp.nameAr}`,
             entityType: 'SUPPLIER',
             entityId: newSupp.id,
+            companyId: compId,
           },
         ],
         totalDebit: openAmount,
@@ -6520,12 +6657,19 @@ export class DataService {
       const journals = localDataStore.getJournals();
       journals.unshift(jEntry);
       localDataStore.saveJournals(journals);
+      if (isSupabaseConfigured) {
+        SupabaseDataService.saveJournal(jEntry).catch((err) => notifyCloudSyncError("CloudSync", err));
+      }
     }
 
     await safeApiFetch('/api/suppliers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        ...newSupp,
+        account_id: subAccount.id,
+        accountId: subAccount.id,
+      }),
     });
     return newSupp;
   }

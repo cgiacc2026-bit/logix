@@ -1880,31 +1880,82 @@ async function startServer() {
   });
 
   app.get('/api/suppliers', (req, res) => {
-    res.json(db.getSuppliers());
+    const compId = (req.query.companyId as string) || (req as any).companyId;
+    const all = db.getSuppliers();
+    if (compId) {
+      return res.json(all.filter((s) => matchesCompany(s.companyId, compId)));
+    }
+    res.json(all);
   });
 
   app.post('/api/suppliers', (req, res) => {
     try {
-      const { nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate } = req.body;
+      const { id, nameAr, nameEn, code, taxNumber, phone, email, address, governorate, city, openingBalance, openingBalanceDate, companyId, company_id, account_id, accountId } = req.body;
+      const effectiveCompanyId = companyId || company_id || (req as any).companyId || 'company-alwaleed-client-003';
       const customCode = code || `SUPP-${201 + db.getSuppliers().length}`;
       const initialOpening = Number(openingBalance) || 0;
-      const supplier = {
-        id: 'supp-' + Math.random().toString(36).substr(2, 9),
+      const supplierId = id || ('supp-' + Math.random().toString(36).substr(2, 9));
+
+      // Resolve or auto-generate subAccount in accounts under 2110
+      let subAccId = account_id || accountId;
+      if (!subAccId) {
+        const compAccounts = db.getAccounts().filter((a) => matchesCompany(a.companyId, effectiveCompanyId));
+        const prefix = '2110';
+        let maxSeq = 0;
+        for (const acc of compAccounts) {
+          if (acc.code && acc.code.startsWith(prefix) && acc.code !== prefix) {
+            const suffix = acc.code.slice(prefix.length);
+            const num = parseInt(suffix, 10);
+            if (!isNaN(num) && num > maxSeq) maxSeq = num;
+          }
+        }
+        const subAccountCode = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+        const newAcc = {
+          id: 'acc-' + Math.random().toString(36).substr(2, 9),
+          code: subAccountCode,
+          nameAr: nameAr || 'مورد جديد',
+          nameEn: nameEn || nameAr || 'New Supplier',
+          category: 'LIABILITY' as const,
+          parentId: 'acc-2110',
+          companyId: effectiveCompanyId,
+          balance: initialOpening,
+          isSubAccount: true,
+          description: `حساب ذمم فرعي للمورد: ${nameAr || ''}`,
+        };
+        db.addAccount(newAcc as any);
+        subAccId = newAcc.id;
+      }
+
+      const supplier: any = {
+        id: supplierId,
+        companyId: effectiveCompanyId,
+        company_id: effectiveCompanyId,
+        account_id: subAccId,
+        accountId: subAccId,
         code: customCode,
-        nameAr,
-        nameEn: nameEn || nameAr,
-        taxNumber,
-        phone,
-        email,
-        address,
+        nameAr: nameAr || 'مورد جديد',
+        nameEn: nameEn || nameAr || '',
+        taxNumber: taxNumber || '',
+        phone: phone || '',
+        email: email || '',
+        address: address || '',
         governorate: governorate || address || '',
         city: city || 'الكويت',
         balance: initialOpening,
         openingBalance: initialOpening,
         openingBalanceDate: openingBalanceDate || '2026-07-01',
+        isActive: true,
       };
-      db.addSupplier(supplier);
-      res.status(201).json(supplier);
+
+      const existingSuppliers = db.getSuppliers();
+      const existingIdx = existingSuppliers.findIndex((s) => s.id === supplierId || (s.code && s.code === customCode && matchesCompany(s.companyId, effectiveCompanyId)));
+      if (existingIdx !== -1) {
+        db.updateSupplier(existingSuppliers[existingIdx].id, supplier);
+      } else {
+        db.addSupplier(supplier);
+      }
+
+      res.status(201).json({ supplier, account_id: subAccId });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

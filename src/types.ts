@@ -25,6 +25,7 @@ export interface Account {
   current_balance?: number;
   currentBalance?: number;
   isLeaf?: boolean; // True if account has no sub-accounts
+  isSubAccount?: boolean;
   totalDebitMovement?: number;
   totalCreditMovement?: number;
   movementCount?: number;
@@ -657,6 +658,13 @@ export interface PaymentVoucher {
   entity_type?: string;
   payment_method?: string;
   voucher_number?: string;
+  customerId?: string;
+  customer_id?: string;
+  supplierId?: string;
+  supplier_id?: string;
+  entityName?: string;
+  customerName?: string;
+  supplierName?: string;
 }
 
 export type ManufacturingIndustryType =
