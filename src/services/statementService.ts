@@ -144,15 +144,18 @@ export function deduplicateStatementVouchers(vouchersList: PaymentVoucher[]): Pa
     const existing = (id ? byId.get(id) : null) || (numKey ? byNumAndEntity.get(numKey) : null);
 
     if (existing) {
+      const isCancelled = v.status === 'CANCELLED' || existing.status === 'CANCELLED';
       const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
       const currentTime = new Date((v as any).updatedAt || v.createdAt || 0).getTime();
-      // إذا كان أحدهما نشط والآخر ملغي نفضل النشط، أو الأحدث تعديلاً
-      const preferCurrent = (v.status !== 'CANCELLED' && existing.status === 'CANCELLED') || (currentTime >= existingTime);
+      const preferCurrent = currentTime >= existingTime;
       if (preferCurrent) {
+        if (isCancelled) v.status = 'CANCELLED';
         const idx = deduped.indexOf(existing);
         if (idx !== -1) deduped[idx] = v;
         if (id) byId.set(id, v);
         if (numKey) byNumAndEntity.set(numKey, v);
+      } else {
+        if (isCancelled) existing.status = 'CANCELLED';
       }
     } else {
       deduped.push(v);
@@ -179,15 +182,19 @@ export function deduplicateStatementInvoices(invoicesList: Invoice[]): Invoice[]
     const existing = (id ? byId.get(id) : null) || (numKey ? byNumAndEntity.get(numKey) : null);
 
     if (existing) {
+      const isCancelled = inv.status === 'CANCELLED' || existing.status === 'CANCELLED';
       const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
       const currentTime = new Date((inv as any).updatedAt || inv.createdAt || 0).getTime();
       const currentHasLines = Array.isArray(inv.lines) && inv.lines.length > 0;
       const existingHasLines = Array.isArray(existing.lines) && existing.lines.length > 0;
       if (currentTime >= existingTime || (currentHasLines && !existingHasLines)) {
+        if (isCancelled) inv.status = 'CANCELLED';
         const idx = deduped.indexOf(existing);
         if (idx !== -1) deduped[idx] = inv;
         if (id) byId.set(id, inv);
         if (numKey) byNumAndEntity.set(numKey, inv);
+      } else {
+        if (isCancelled) existing.status = 'CANCELLED';
       }
     } else {
       deduped.push(inv);

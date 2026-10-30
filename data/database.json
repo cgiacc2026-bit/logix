@@ -3421,7 +3421,7 @@
       "address": "",
       "governorate": "",
       "city": "الكويت",
-      "balance": 400,
+      "balance": 550,
       "openingBalance": 250,
       "openingBalanceDate": "2026-08-15",
       "isActive": true,
@@ -5987,7 +5987,7 @@
       "date": "2026-09-15",
       "reference": "RCV-A-1001",
       "description": "قيد آلي ناتج عن سند قبض رقم (RCV-A-1001) - ",
-      "status": "POSTED",
+      "status": "CANCELLED",
       "lines": [
         {
           "id": "jl-4fpjdri0k",
@@ -10745,14 +10745,15 @@
       "type": "RECEIPT",
       "paymentMethod": "BANK",
       "bankAccountId": "acc-a-1111",
-      "status": "POSTED",
+      "status": "CANCELLED",
       "companyId": "comp-test-alpha-1111",
       "entityType": "CUSTOMER",
       "entityId": "cust-iqa2xk0l3",
       "entityNameAr": "شركة الهدى للتجارة",
       "amount": 150,
       "description": "دفعة من الحساب",
-      "journalEntryId": "jv-6isucdvl8"
+      "journalEntryId": "jv-6isucdvl8",
+      "notes": "[ملغى بتاريخ 2026-10-30: اختبار إلغاء]"
     },
     {
       "id": "vch-test-a-et1kf5",

@@ -842,6 +842,70 @@ class LocalDataStore {
     }
   }
 
+  /**
+   * Cancelled Docs: Tracks documents explicitly cancelled by user to guarantee
+   * they NEVER resurrect to 'POSTED' upon browser reload, deduping, or reconciliation,
+   * while strictly preserving 100% of the document data (Zero Data Loss).
+   */
+  public getCancelledDocs(type: string, specificCompanyId?: string): Set<string> {
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const key = `logix_cancelled_${type}_${canonId}`;
+    const altKey = `logix_cancelled_${type}_${rawId}`;
+    let raw: string | null = null;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      raw = window.localStorage.getItem(key) || window.localStorage.getItem(altKey);
+    } else {
+      raw = this.memoryFallback[key] || this.memoryFallback[altKey] || null;
+    }
+    const result = new Set<string>();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((id) => {
+            if (id) {
+              result.add(String(id).trim());
+              result.add(String(id).trim().toUpperCase());
+            }
+          });
+        }
+      } catch {}
+    }
+    return result;
+  }
+
+  public addCancelledDoc(type: string, id?: string, docNumber?: string, specificCompanyId?: string): void {
+    if (!id && !docNumber) return;
+    const rawId = specificCompanyId || this.getEffectiveCompanyId() || 'default';
+    const canonId = resolveToSupabaseCompanyUUID(rawId) || rawId;
+    const key = `logix_cancelled_${type}_${canonId}`;
+    const altKey = `logix_cancelled_${type}_${rawId}`;
+    const set = this.getCancelledDocs(type, specificCompanyId);
+    if (id) {
+      set.add(String(id).trim());
+      set.add(String(id).trim().toUpperCase());
+    }
+    if (docNumber) {
+      set.add(String(docNumber).trim());
+      set.add(String(docNumber).trim().toUpperCase());
+    }
+    const serialized = JSON.stringify(Array.from(set));
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, serialized);
+      window.localStorage.setItem(altKey, serialized);
+    }
+    this.memoryFallback[key] = serialized;
+    this.memoryFallback[altKey] = serialized;
+  }
+
+  public isCancelledDoc(type: string, id?: string, docNumber?: string, specificCompanyId?: string): boolean {
+    const set = this.getCancelledDocs(type, specificCompanyId);
+    if (id && (set.has(String(id).trim()) || set.has(String(id).trim().toUpperCase()))) return true;
+    if (docNumber && (set.has(String(docNumber).trim()) || set.has(String(docNumber).trim().toUpperCase()))) return true;
+    return false;
+  }
+
   public getCompany(targetCompanyId?: string): CompanyProfile {
     const compId = targetCompanyId || this.getEffectiveCompanyId();
     const dedicatedLogo = typeof window !== 'undefined'
@@ -1439,11 +1503,26 @@ class LocalDataStore {
       const srcKey = j.sourceModule && j.sourceId ? `${j.sourceModule}_${j.sourceId}` : '';
       const key = num || (ref ? `REF_${ref}` : (srcKey || j.id));
 
+      if (this.isCancelledDoc('journals', j.id, num)) {
+        j.status = 'CANCELLED';
+      }
+
       const existing = seen.get(key) || (ref ? seen.get(`REF_${ref}`) : null) || (srcKey ? seen.get(srcKey) : null);
       if (existing) {
+        const isCancelled =
+          j.status === 'CANCELLED' ||
+          existing.status === 'CANCELLED' ||
+          this.isCancelledDoc('journals', j.id, num) ||
+          this.isCancelledDoc('journals', existing.id, existing.entryNumber);
+        const isReversed =
+          j.status === 'REVERSED' ||
+          existing.status === 'REVERSED';
+
         const existingTime = new Date(existing.postedAt || existing.createdAt || 0).getTime();
         const currentTime = new Date(j.postedAt || j.createdAt || 0).getTime();
         if (currentTime >= existingTime) {
+          if (isCancelled) j.status = 'CANCELLED';
+          else if (isReversed) j.status = 'REVERSED';
           const idx = result.indexOf(existing);
           if (idx !== -1) {
             result[idx] = j;
@@ -1451,8 +1530,14 @@ class LocalDataStore {
           seen.set(key, j);
           if (ref) seen.set(`REF_${ref}`, j);
           if (srcKey) seen.set(srcKey, j);
+        } else {
+          if (isCancelled) existing.status = 'CANCELLED';
+          else if (isReversed) existing.status = 'REVERSED';
         }
       } else {
+        if (this.isCancelledDoc('journals', j.id, num)) {
+          j.status = 'CANCELLED';
+        }
         result.push(j);
         seen.set(key, j);
         if (ref) seen.set(`REF_${ref}`, j);
@@ -1511,11 +1596,21 @@ class LocalDataStore {
         inv.type = 'SALES';
       }
 
+      if (this.isCancelledDoc('invoices', id, num)) {
+        inv.status = 'CANCELLED';
+      }
+
       const entityId = ((inv as any).customerId || (inv as any).supplierId || inv.entityId || (inv as any).customer_id || '').trim();
       const compId = (inv.companyId || (inv as any).company_id || '').trim();
       const numKey = num && entityId ? `${compId}_${num}_${entityId}` : '';
       const existing = (id ? seenIds.get(id) : null) || (numKey ? seenNumbers.get(numKey) : null);
       if (existing) {
+        const isCancelled =
+          inv.status === 'CANCELLED' ||
+          existing.status === 'CANCELLED' ||
+          this.isCancelledDoc('invoices', id, num) ||
+          this.isCancelledDoc('invoices', existing.id, existing.invoiceNumber);
+
         const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
         const currentTime = new Date(inv.updatedAt || inv.createdAt || 0).getTime();
         const currentHasLines = Array.isArray(inv.lines) && inv.lines.length > 0;
@@ -1523,14 +1618,20 @@ class LocalDataStore {
 
         // Keep the more recently updated, or the one with lines if the other is empty
         if (currentTime >= existingTime || (currentHasLines && !existingHasLines)) {
+          if (isCancelled) inv.status = 'CANCELLED';
           const idx = result.indexOf(existing);
           if (idx !== -1) {
             result[idx] = inv;
           }
           if (id) seenIds.set(id, inv);
           if (numKey) seenNumbers.set(numKey, inv);
+        } else {
+          if (isCancelled) existing.status = 'CANCELLED';
         }
       } else {
+        if (this.isCancelledDoc('invoices', id, num)) {
+          inv.status = 'CANCELLED';
+        }
         result.push(inv);
         if (id) seenIds.set(id, inv);
         if (numKey) seenNumbers.set(numKey, inv);
@@ -1552,20 +1653,36 @@ class LocalDataStore {
       const entityId = (v.entityId || (v as any).customerId || (v as any).supplierId || '').trim();
       const compId = (v.companyId || (v as any).company_id || '').trim();
 
+      if (this.isCancelledDoc('vouchers', id, num)) {
+        v.status = 'CANCELLED';
+      }
+
       const numKey = num && entityId ? `${compId}_${num}_${entityId}_${Number(v.amount || 0).toFixed(3)}` : '';
       const existing = (id ? seenIds.get(id) : null) || (numKey ? seenNumbers.get(numKey) : null);
       if (existing) {
+        const isCancelled =
+          v.status === 'CANCELLED' ||
+          existing.status === 'CANCELLED' ||
+          this.isCancelledDoc('vouchers', id, num) ||
+          this.isCancelledDoc('vouchers', existing.id, existing.voucherNumber);
+
         const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
         const currentTime = new Date((v as any).updatedAt || v.createdAt || 0).getTime();
         if (currentTime >= existingTime) {
+          if (isCancelled) v.status = 'CANCELLED';
           const idx = result.indexOf(existing);
           if (idx !== -1) {
             result[idx] = v;
           }
           if (id) seenIds.set(id, v);
           if (numKey) seenNumbers.set(numKey, v);
+        } else {
+          if (isCancelled) existing.status = 'CANCELLED';
         }
       } else {
+        if (this.isCancelledDoc('vouchers', id, num)) {
+          v.status = 'CANCELLED';
+        }
         result.push(v);
         if (id) seenIds.set(id, v);
         if (numKey) seenNumbers.set(numKey, v);
@@ -1621,6 +1738,11 @@ class LocalDataStore {
         entry.description = entry.description.replace(/INV-PUR-2026-/g, 'RET-SAL-2026-');
       }
 
+      // Check if document was cancelled by user
+      if (this.isCancelledDoc('journals', entry.id, entry.entryNumber)) {
+        entry.status = 'CANCELLED';
+      }
+
       // Auto-heal JV-2026-0112 specifically (سند قبض جمعية علي صباح السالم التعاونية)
       const enUpper = (entry.entryNumber || '').toUpperCase();
       const idUpper = (entry.id || '').toUpperCase();
@@ -1630,13 +1752,14 @@ class LocalDataStore {
         enUpper.includes('0112') ||
         idUpper.includes('0112')
       ) {
+        const isCancelled = entry.status === 'CANCELLED' || entry.status === 'REVERSED' || this.isCancelledDoc('journals', entry.id, entry.entryNumber);
         entry.entryNumber = 'JV-2026-0112';
         entry.reference = 'RCV-2026-0001';
         entry.date = '2026-10-29';
         entry.totalDebit = 290;
         entry.totalCredit = 290;
         entry.description = 'قبض مبالغ سند رقم RCV-2026-0001 - جمعية علي صباح السالم التعاونية';
-        entry.status = 'POSTED';
+        entry.status = isCancelled ? (entry.status === 'REVERSED' ? 'REVERSED' : 'CANCELLED') : 'POSTED';
         entry.sourceModule = 'RECEIPT';
         entry.lines = [
           {
@@ -1823,6 +1946,11 @@ class LocalDataStore {
 
     for (const v of vouchers) {
       if (!v) continue;
+      // Check if voucher was cancelled by user
+      if (this.isCancelledDoc('vouchers', v.id, v.voucherNumber)) {
+        v.status = 'CANCELLED';
+      }
+
       if (
         v.id === 'vch-rcv-2026-0001-ali-sabah' ||
         v.id === 'vch-jv-2026-0112' ||
@@ -1830,6 +1958,7 @@ class LocalDataStore {
         v.journalEntryId === 'JV-2026-0112' ||
         (v.entityNameAr?.includes('علي صباح السالم') && (v.voucherNumber?.includes('RCV-2026-0001') || v.reference?.includes('RCV-2026-0001')))
       ) {
+        const isCancelled = v.status === 'CANCELLED' || this.isCancelledDoc('vouchers', v.id, v.voucherNumber);
         v.amount = 290;
         v.entityId = aliEntityId;
         v.customerId = aliEntityId;
@@ -1837,7 +1966,7 @@ class LocalDataStore {
         v.customerName = 'جمعية علي صباح السالم التعاونية';
         v.type = 'RECEIPT';
         v.date = '2026-10-29';
-        v.status = 'POSTED';
+        v.status = isCancelled ? 'CANCELLED' : 'POSTED';
         v.notes = 'قبض مبالغ سند رقم RCV-2026-0001 - جمعية علي صباح السالم التعاونية';
       }
     }
@@ -2934,6 +3063,7 @@ export class DataService {
     if (!orig) return null;
 
     orig.status = 'CANCELLED';
+    localDataStore.addCancelledDoc('journals', orig.id, orig.entryNumber);
     localDataStore.saveJournals(journals);
     if (isSupabaseConfigured) {
       SupabaseDataService.saveJournal(orig).catch((err) =>
@@ -4115,8 +4245,12 @@ export class DataService {
           journals.push(JSON.parse(JSON.stringify(initJ)));
           generatedJournals++;
         } else {
-          if (journals[existingIdx].status !== 'POSTED') {
-            journals[existingIdx].status = 'POSTED';
+          const jExisting = journals[existingIdx];
+          const isCancelled = jExisting.status === 'CANCELLED' || jExisting.status === 'REVERSED' || localDataStore.isCancelledDoc('journals', jExisting.id, jExisting.entryNumber);
+          if (isCancelled) {
+            jExisting.status = jExisting.status === 'REVERSED' ? 'REVERSED' : 'CANCELLED';
+          } else if (jExisting.status !== 'POSTED') {
+            jExisting.status = 'POSTED';
           }
         }
       }
@@ -4333,6 +4467,7 @@ export class DataService {
 
     const wasPostedOrPaid = inv.status === 'POSTED' || inv.status === 'PAID';
     inv.status = 'CANCELLED';
+    localDataStore.addCancelledDoc('invoices', inv.id, inv.invoiceNumber);
     inv.notes = (inv.notes ? inv.notes + '\n' : '') + `[ملغاة بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason || 'إلغاء بطلب المستخدم'}]`;
     localDataStore.saveInvoices(invoices);
     if (isSupabaseConfigured) {
@@ -4353,6 +4488,7 @@ export class DataService {
         // المحاسبة المعيارية IFRS: نضبط القيد الأصلي إلى REVERSED وننشئ القيد العكسي بـ POSTED
         // ليتساوى المجموع الجبري للطرفين ويصبح الأثر المالي في الأستاذ العام صفراً تماماً دون أي رصيد سالب زائف
         origJournal.status = 'REVERSED';
+        localDataStore.addCancelledDoc('journals', origJournal.id, origJournal.entryNumber);
 
         // Generate corresponding Reversal Journal Entry REV-
         const revLines = origJournal.lines.map((l, i) => ({
@@ -5143,9 +5279,16 @@ export class DataService {
       const fromSupabase = await SupabaseDataService.getVouchers();
       if (Array.isArray(fromSupabase)) {
         const tombstones = localDataStore.getTombstones('vouchers');
-        const validSupabase = fromSupabase.filter((v) => !tombstones.has(v.id));
+        const validSupabase = fromSupabase
+          .filter((v) => !tombstones.has(v.id))
+          .map((v) => {
+            if (localDataStore.isCancelledDoc('vouchers', v.id, v.voucherNumber)) {
+              v.status = 'CANCELLED';
+            }
+            return v;
+          });
         localDataStore.saveVouchers(validSupabase);
-        return validSupabase;
+        return localDataStore.getVouchers();
       }
     }
     const tombstones = localDataStore.getTombstones('vouchers');
@@ -5648,7 +5791,7 @@ export class DataService {
           entityName: matchedEntityName || (entityLine?.memo || j.description || ''),
           customerName: vType === 'RECEIPT' ? matchedEntityName : undefined,
           supplierName: vType === 'PAYMENT' ? matchedEntityName : undefined,
-          status: 'POSTED',
+          status: localDataStore.isCancelledDoc('vouchers', uniqueVoucherId, finalVoucherNum) ? 'CANCELLED' : 'POSTED',
           journalEntryId: j.id,
           reference: j.reference || extractedVoucherNum,
           notes: j.description || '',
@@ -5667,9 +5810,11 @@ export class DataService {
           existingVoucher.journalEntryId = j.id;
           vouchersSynced++;
         }
-        if (existingVoucher.status === 'CANCELLED' && j.status === 'POSTED') {
-          existingVoucher.status = 'POSTED';
-          vouchersSynced++;
+        if (existingVoucher.status === 'CANCELLED' || localDataStore.isCancelledDoc('vouchers', existingVoucher.id, existingVoucher.voucherNumber)) {
+          existingVoucher.status = 'CANCELLED';
+          (j as any).status = 'CANCELLED';
+          localDataStore.addCancelledDoc('journals', j.id, j.entryNumber);
+          journalsChanged = true;
         }
       }
     }
@@ -6083,15 +6228,31 @@ export class DataService {
 
   public static async cancelVoucher(id: string, reason: string): Promise<PaymentVoucher | null> {
     const vouchers = localDataStore.getVouchers();
-    const v = vouchers.find((x) => x.id === id);
+    const v = vouchers.find(
+      (x) =>
+        x.id === id ||
+        (x.id && id && x.id.toLowerCase() === id.toLowerCase()) ||
+        (x.voucherNumber && id && x.voucherNumber.trim().toUpperCase() === id.trim().toUpperCase())
+    );
     if (!v) return null;
+
+    // Track cancelled voucher so it NEVER resurrects to POSTED
+    localDataStore.addCancelledDoc('vouchers', v.id, v.voucherNumber);
     if (v.status === 'CANCELLED') return v;
 
     // 1. Cancel associated journal entry
     const journals = localDataStore.getJournals();
-    const j = journals.find((item) => item.id === v.journalEntryId || item.sourceId === id);
+    const vNum = (v.voucherNumber || '').trim().toUpperCase();
+    const j = journals.find(
+      (item) =>
+        item.id === v.journalEntryId ||
+        item.sourceId === v.id ||
+        (vNum && item.reference && item.reference.trim().toUpperCase() === vNum) ||
+        (vNum && item.entryNumber && item.entryNumber.trim().toUpperCase() === `JV-${vNum}`)
+    );
     if (j) {
       j.status = 'CANCELLED';
+      localDataStore.addCancelledDoc('journals', j.id, j.entryNumber);
       localDataStore.saveJournals(journals);
     }
 

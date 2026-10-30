@@ -157,7 +157,12 @@ export class AccountingEngine {
    * Reverse a posted journal entry (عكس القيد) with company validation
    */
   public static reverseJournalEntry(journalId: string, reason: string, companyId?: string): JournalEntry {
-    const original = db.getJournals().find((j) => j.id === journalId);
+    const original = db.getJournals().find(
+      (j) =>
+        j.id === journalId ||
+        (j.id && journalId && j.id.toLowerCase() === journalId.toLowerCase()) ||
+        (j.entryNumber && journalId && j.entryNumber.trim().toUpperCase() === journalId.trim().toUpperCase())
+    );
     if (!original) {
       throw new Error('القيد غير موجود');
     }
@@ -1227,7 +1232,12 @@ export class AccountingEngine {
    */
   public static cancelInvoice(invoiceId: string, reason: string = 'إلغاء الفاتورة وعكس الحركة'): Invoice {
     return db.executeTransaction(() => {
-      const invoice = db.getInvoices().find((inv) => inv.id === invoiceId);
+      const invoice = db.getInvoices().find(
+        (inv) =>
+          inv.id === invoiceId ||
+          (inv.id && invoiceId && inv.id.toLowerCase() === invoiceId.toLowerCase()) ||
+          (inv.invoiceNumber && invoiceId && inv.invoiceNumber.trim().toUpperCase() === invoiceId.trim().toUpperCase())
+      );
       if (!invoice) throw new Error('الفاتورة غير موجودة');
       if (invoice.status === 'CANCELLED') {
         return invoice;
@@ -1293,7 +1303,7 @@ export class AccountingEngine {
         this.recalculateSupplierBalance(invoice.entityId);
       }
 
-      return db.getInvoices().find((i) => i.id === invoiceId)!;
+      return db.getInvoices().find((i) => i.id === invoice.id)!;
     });
   }
 
@@ -1305,7 +1315,12 @@ export class AccountingEngine {
     reason: string = 'إلغاء وعكس الفاتورة محاسبياً بدقة IFRS'
   ): { invoice: Invoice; reversalJournal: JournalEntry | null } {
     return db.executeTransaction(() => {
-      const invoice = db.getInvoices().find((inv) => inv.id === invoiceId);
+      const invoice = db.getInvoices().find(
+        (inv) =>
+          inv.id === invoiceId ||
+          (inv.id && invoiceId && inv.id.toLowerCase() === invoiceId.toLowerCase()) ||
+          (inv.invoiceNumber && invoiceId && inv.invoiceNumber.trim().toUpperCase() === invoiceId.trim().toUpperCase())
+      );
       if (!invoice) throw new Error('الفاتورة غير موجودة');
 
       let reversalJournal: JournalEntry | null = null;
@@ -1956,13 +1971,25 @@ export class AccountingEngine {
    */
   public static cancelVoucher(voucherId: string, reason: string = 'إلغاء السند وعكس أثره المالي'): PaymentVoucher {
     return db.executeTransaction(() => {
-      const voucher = db.getVouchers().find((v) => v.id === voucherId);
+      const voucher = db.getVouchers().find(
+        (v) =>
+          v.id === voucherId ||
+          (v.id && voucherId && v.id.toLowerCase() === voucherId.toLowerCase()) ||
+          (v.voucherNumber && voucherId && v.voucherNumber.trim().toUpperCase() === voucherId.trim().toUpperCase())
+      );
       if (!voucher) throw new Error('السند غير موجود');
       if (voucher.status === 'CANCELLED') return voucher;
 
       // 1. Reverse or cancel the associated journal entry
-      const journal = db.getJournals().find((j) => j.id === voucher.journalEntryId || j.sourceId === voucher.id);
-      if (journal && journal.status === 'POSTED') {
+      const vNum = (voucher.voucherNumber || '').trim().toUpperCase();
+      const journal = db.getJournals().find(
+        (j) =>
+          j.id === voucher.journalEntryId ||
+          j.sourceId === voucher.id ||
+          (vNum && j.reference && j.reference.trim().toUpperCase() === vNum) ||
+          (vNum && j.entryNumber && j.entryNumber.trim().toUpperCase() === `JV-${vNum}`)
+      );
+      if (journal && (journal.status === 'POSTED' || journal.status !== 'CANCELLED')) {
         db.updateJournal(journal.id, { status: 'CANCELLED' });
       }
 
@@ -1981,7 +2008,7 @@ export class AccountingEngine {
       }
 
       // 3. Mark voucher as cancelled
-      db.updateVoucher(voucherId, {
+      db.updateVoucher(voucher.id, {
         status: 'CANCELLED',
         notes: (voucher.notes ? voucher.notes + '\n' : '') + `[ملغى بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason}]`,
       });
@@ -1993,7 +2020,7 @@ export class AccountingEngine {
         this.recalculateSupplierBalance(voucher.entityId);
       }
 
-      return db.getVouchers().find((v) => v.id === voucherId)!;
+      return db.getVouchers().find((v) => v.id === voucher.id)!;
     });
   }
 
