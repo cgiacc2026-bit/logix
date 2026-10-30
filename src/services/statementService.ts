@@ -442,6 +442,45 @@ export function isDocMatchingEntity(
         if (normDoc.includes(normTarget) || normTarget.includes(normDoc)) return true;
       }
     }
+
+    // مطابقة عبر نصوص البيان والملاحظات والمرجع للوثيقة
+    const docTexts = [
+      doc.notes,
+      doc.description,
+      doc.memo,
+      doc.reference,
+      raw.notes,
+      raw.description,
+      raw.memo,
+      raw.reference,
+    ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
+
+    for (const dText of docTexts) {
+      const normText = normalizeArabicForMatching(dText);
+      if (normText && (normText.includes(normTarget) || (normTarget.length >= 6 && normText.includes(normTarget.slice(0, 6))))) {
+        return true;
+      }
+    }
+  }
+
+  // مطابقة عبر كود الحساب داخل نصوص البيان والملاحظات
+  if (targetEntity?.code) {
+    const code = String(targetEntity.code).trim();
+    if (code && code.length >= 3) {
+      const docTexts = [
+        doc.notes,
+        doc.description,
+        doc.memo,
+        doc.reference,
+        raw.notes,
+        raw.description,
+        raw.memo,
+        raw.reference,
+      ].filter((x): x is string => Boolean(x && typeof x === 'string' && x.trim().length > 0));
+      for (const dText of docTexts) {
+        if (dText.includes(code)) return true;
+      }
+    }
   }
 
   return false;
@@ -471,67 +510,25 @@ export function getAccountStatement(
     snapshots = [],
   } = options;
 
-  // 0. الاستبعاد الصارم للعمليات والقيود الملغاة (Strict Cancellation Filtering)
-  const validInvoices = (invoices || []).filter(
-    (inv) => inv && inv.status !== 'CANCELLED' && !inv.is_void && (inv as any).status !== 'VOID'
-  );
-  const validVouchers = (vouchers || []).filter(
-    (v) => v && v.status !== 'CANCELLED' && !v.is_void && (v as any).status !== 'VOID'
-  );
+  // 1. تنظيف وإزالة التكرار مع الحفاظ على الحركات النشطة والملغاة للعرض الشفاف الشامل
+  const dedupedInvoices = deduplicateStatementInvoices(invoices || []);
+  const dedupedVouchers = deduplicateStatementVouchers(vouchers || []);
 
-  // جمع أرقام ومعرفات الوثائق الملغاة لحظر أي قيود مرتبطة بها أو قيود عكسية تابعة لها
-  const cancelledDocNumbers = new Set<string>();
-  const cancelledDocIds = new Set<string>();
-  for (const inv of (invoices || [])) {
-    if (inv && (inv.status === 'CANCELLED' || inv.is_void || (inv as any).status === 'VOID')) {
-      if (inv.invoiceNumber) cancelledDocNumbers.add(inv.invoiceNumber.trim().toUpperCase());
-      if (inv.id) cancelledDocIds.add(inv.id.trim());
-      if (inv.journalEntryId) cancelledDocIds.add(inv.journalEntryId.trim());
-    }
-  }
-  for (const v of (vouchers || [])) {
-    if (v && (v.status === 'CANCELLED' || v.is_void || (v as any).status === 'VOID')) {
-      if (v.voucherNumber) cancelledDocNumbers.add(v.voucherNumber.trim().toUpperCase());
-      if (v.id) cancelledDocIds.add(v.id.trim());
-      if (v.journalEntryId) cancelledDocIds.add(v.journalEntryId.trim());
-    }
-  }
+  // أطقم تتبع للمستندات التي تمت مطابقتها وتضمينها فعلياً في كشف الحساب
+  const matchedVoucherNumbers = new Set<string>();
+  const matchedVoucherIds = new Set<string>();
+  const matchedVoucherJournalIds = new Set<string>();
+  const matchedInvoiceNumbers = new Set<string>();
+  const matchedInvoiceIds = new Set<string>();
+  const matchedInvoiceJournalIds = new Set<string>();
 
-  // 1. تنظيف وإزالة التكرار من المدخلات الأساسية الصالحة فقط
-  const dedupedInvoices = deduplicateStatementInvoices(validInvoices);
-  const dedupedVouchers = deduplicateStatementVouchers(validVouchers);
-
-  // إنشاء فهارس سريعة لجميع أرقام ومعرفات السندات والفواتير لمنع ازدواجية القيود اليومية التابعة لها
-  const knownVoucherNumbers = new Set<string>();
-  const knownVoucherIds = new Set<string>();
-  const knownVoucherJournalIds = new Set<string>();
-  for (const v of dedupedVouchers) {
-    if (v.voucherNumber) knownVoucherNumbers.add(v.voucherNumber.trim().toUpperCase());
-    if (v.id) knownVoucherIds.add(v.id.trim());
-    if (v.journalEntryId) knownVoucherJournalIds.add(v.journalEntryId.trim());
-  }
-
-  const knownInvoiceNumbers = new Set<string>();
-  const knownInvoiceIds = new Set<string>();
-  const knownInvoiceJournalIds = new Set<string>();
-  for (const inv of dedupedInvoices) {
-    if (inv.invoiceNumber) knownInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
-    if (inv.id) knownInvoiceIds.add(inv.id.trim());
-    if (inv.journalEntryId) knownInvoiceJournalIds.add(inv.journalEntryId.trim());
-  }
-
-  // تصفية القيود الصارمة: استبعاد القيود الملغاة والمعكوسة والقيود العكسية الناتجة عن إلغاء فواتير/سندات
+  // تصفية القيود الصالحة مع دعم القيود النشطة والملغاة
   const cleanedJournals = (journals || []).filter(
     (j) =>
       j &&
       j.id &&
-      (j.status as string) === 'POSTED' &&
-      (j.status as string) !== 'CANCELLED' &&
-      (j.status as string) !== 'REVERSED' &&
       !(j as any).is_void &&
-      !j.entryNumber?.toUpperCase().startsWith('REV-') &&
-      !(j.reference && cancelledDocNumbers.has(j.reference.trim().toUpperCase())) &&
-      !(j.sourceId && cancelledDocIds.has(j.sourceId.trim()))
+      !j.entryNumber?.toUpperCase().startsWith('REV-')
   );
 
   // 1. استخراج بيانات الكيان (العميل أو المورد) بمرونة عالية
@@ -664,6 +661,10 @@ export function getAccountStatement(
         originalDocId: inv.id,
         createdAt: inv.createdAt,
       });
+
+      if (inv.invoiceNumber) matchedInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+      if (inv.id) matchedInvoiceIds.add(inv.id.trim());
+      if (inv.journalEntryId) matchedInvoiceJournalIds.add(inv.journalEntryId.trim());
     });
 
   // ب) سندات القبض والصرف (من القائمة الفريدة غير المكررة)
@@ -716,63 +717,52 @@ export function getAccountStatement(
         originalDocId: v.id,
         createdAt: v.createdAt,
       });
+
+      if (v.voucherNumber) matchedVoucherNumbers.add(v.voucherNumber.trim().toUpperCase());
+      if (v.id) matchedVoucherIds.add(v.id.trim());
+      if (v.journalEntryId) matchedVoucherJournalIds.add(v.journalEntryId.trim());
     });
 
-  // ج) القيود اليومية اليدوية أو التسويات المباشرة لحساب هذا الكيان
+  // ج) القيود اليومية اليدوية أو القيود غير الممثلة بسندات في دفتر اليومية
   cleanedJournals.forEach((j) => {
-    // 1. تجنب التكرار للقيود الآلية الصادرة عن الفواتير أو السندات (لأنها محتسبة بالفعل كحركات فواتير وسندات مستقلة)
-    const isAuto = Boolean(j.isAutoGenerated);
-    const autoModules = [
-      'SALES_INVOICE', 'PURCHASE_INVOICE', 'SALES_RETURN', 'PURCHASE_RETURN', 'RECEIPT', 'PAYMENT', 
-      'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER', 'VOUCHER', 'INVOICE'
-    ];
-    if (autoModules.includes(j.sourceModule || '') || (isAuto && j.sourceModule !== 'MANUAL')) {
-      return;
-    }
-
-    // 2. التحقق من الربط المباشر بأي سند أو فاتورة معروفة بالرقم أو المعرف
+    // 1. تجنب التكرار للقيود التي تم تضمين سندها أو فاتورتها الأصلية بالفعل في كشف الحساب أعلاه
     const refUpper = (j.reference || '').trim().toUpperCase();
     const entryNumUpper = (j.entryNumber || '').trim().toUpperCase();
     const jId = (j.id || '').trim();
     const srcId = (j.sourceId || '').trim();
 
-    if (
-      (refUpper && (knownVoucherNumbers.has(refUpper) || knownInvoiceNumbers.has(refUpper))) ||
-      (srcId && (knownVoucherIds.has(srcId) || knownInvoiceIds.has(srcId))) ||
-      (jId && (knownVoucherJournalIds.has(jId) || knownInvoiceJournalIds.has(jId)))
-    ) {
+    const isAlreadyRepresented =
+      (refUpper && (matchedVoucherNumbers.has(refUpper) || matchedInvoiceNumbers.has(refUpper))) ||
+      (srcId && (matchedVoucherIds.has(srcId) || matchedInvoiceIds.has(srcId))) ||
+      (jId && (matchedVoucherJournalIds.has(jId) || matchedInvoiceJournalIds.has(jId)));
+
+    if (isAlreadyRepresented) {
       return;
     }
 
-    // 3. التحقق من احتواء رقم القيد أو بيانه على رقم السند أو الفاتورة لمنع الازدواجية
-    let matchesExistingDoc = false;
-    for (const vNum of knownVoucherNumbers) {
+    for (const vNum of matchedVoucherNumbers) {
       if (
         entryNumUpper.includes(vNum) ||
         refUpper.includes(vNum) ||
         (j.description && j.description.toUpperCase().includes(vNum))
       ) {
-        matchesExistingDoc = true;
-        break;
+        return;
       }
     }
-    if (matchesExistingDoc) return;
 
-    for (const invNum of knownInvoiceNumbers) {
+    for (const invNum of matchedInvoiceNumbers) {
       if (
         entryNumUpper.includes(invNum) ||
         refUpper.includes(invNum) ||
         (j.description && j.description.toUpperCase().includes(invNum))
       ) {
-        matchesExistingDoc = true;
-        break;
+        return;
       }
     }
-    if (matchesExistingDoc) return;
 
-    // نبحث بدقة عن السطر الذي يخص هذا الكيان محاسبياً، مع تجنب إضافة الطرف المقابل للقيد
+    // 2. فحص أسطر القيد التي تخص هذا الكيان بدقة محاسبية شبكية
     j.lines?.forEach((line) => {
-      // عزل نوع الكيان للسطر
+      // عزل نوع الكيان للسطر إن وُجد
       if (line.entityType && line.entityType !== entityType) {
         return;
       }
@@ -780,7 +770,11 @@ export function getAccountStatement(
       const isDirectEntityIdMatch = Boolean(
         line.entityId && (line.entityId === entityId || isDocMatchingEntity(line, entityId, entity, entityType))
       );
-      const isDirectAccountMatch = Boolean(line.accountId === entityId || (entity?.accountId && line.accountId === entity.accountId));
+      const isDirectAccountMatch = Boolean(
+        line.accountId === entityId ||
+        (entity?.accountId && line.accountId === entity.accountId) ||
+        ((entity as any)?.account_id && line.accountId === (entity as any).account_id)
+      );
       const isAccountCodeMatch = Boolean(entityCode && line.accountCode === entityCode);
 
       const isEntityNameMatch = Boolean(
@@ -790,7 +784,7 @@ export function getAccountStatement(
         (line.entityNameAr.trim() === entityNameAr.trim() || line.entityNameAr.includes(entityNameAr))
       );
 
-      // في حال لم يكن السطر محدداً بـ entityId صريح، نتحقق أن الحساب هو حساب ذمم وليس حساب إيراد أو تكلفة أو بنك
+      // في حال لم يكن السطر محدداً بـ entityId صريح، نتحقق أن الحساب هو حساب ذمم (عملاء أو موردين)
       const isApplicableAccount =
         entityType === 'CUSTOMER'
           ? (line.accountCode?.startsWith('112') || line.accountNameAr?.includes('عملاء') || line.accountNameAr?.includes('ذمم مدينة') || isDirectAccountMatch || isDirectEntityIdMatch)
@@ -798,25 +792,40 @@ export function getAccountStatement(
 
       const isMemoMatch = Boolean(
         isApplicableAccount &&
-        line.memo &&
-        ((entityNameAr && line.memo.includes(entityNameAr)) || (entityCode && line.memo.includes(entityCode)))
+        ((line.memo && ((entityNameAr && line.memo.includes(entityNameAr)) || (entityCode && line.memo.includes(entityCode)))) ||
+         (j.description && ((entityNameAr && j.description.includes(entityNameAr)) || (entityCode && j.description.includes(entityCode)))) ||
+         (j.reference && ((entityNameAr && j.reference.includes(entityNameAr)) || (entityCode && j.reference.includes(entityCode)))))
       );
 
       const isEntityLine = (isDirectEntityIdMatch || isDirectAccountMatch || isAccountCodeMatch || isEntityNameMatch || isMemoMatch) && isApplicableAccount;
 
       if (isEntityLine) {
+        let docType: StatementDocType = 'JOURNAL_ENTRY';
+        let docTypeLabel = 'قيد يومية وتسوية';
+        const jSource = (j.sourceModule || '').toUpperCase();
+
+        if (jSource === 'PAYMENT' || refUpper.startsWith('PAY-') || entryNumUpper.startsWith('JV-PAY-')) {
+          docType = 'PAYMENT_DISBURSEMENT';
+          docTypeLabel = 'سند صرف وسداد لمورد';
+        } else if (jSource === 'RECEIPT' || refUpper.startsWith('RCV-') || entryNumUpper.startsWith('JV-RCV-')) {
+          docType = 'PAYMENT_RECEIPT';
+          docTypeLabel = 'سند قبض نقدية/بنك';
+        }
+
+        const isCancelled = j.status === 'CANCELLED' || j.status === 'REVERSED';
+
         allRawMovements.push({
           id: `${j.id}-${line.id}`,
           date: j.date,
           docNumber: j.entryNumber,
-          docType: 'JOURNAL_ENTRY',
-          docTypeLabel: 'قيد يومية وتسوية',
-          description: line.memo || j.description || `قيد يومية رقم ${j.entryNumber}`,
+          docType,
+          docTypeLabel,
+          description: line.memo || j.description || `قيد رقم ${j.entryNumber}`,
           reference: j.reference || j.entryNumber,
           debit: Number(line.debit) || 0,
           credit: Number(line.credit) || 0,
-          status: j.status === 'POSTED' ? 'ACTIVE' : 'CANCELLED',
-          isCancelled: j.status === 'REVERSED' || j.status === 'CANCELLED',
+          status: isCancelled ? 'CANCELLED' : 'ACTIVE',
+          isCancelled,
           sourceModule: 'JOURNAL',
           originalDocId: j.id,
           createdAt: j.createdAt,
@@ -945,13 +954,32 @@ export function getAccountStatement(
   let cancelledCount = 0;
 
   for (const move of sortedRawMovements) {
-    // استبعاد أي حركة ملغاة من كشف الحساب نهائياً
-    if (move.status === 'CANCELLED' || move.isCancelled) {
-      continue;
-    }
-
     // تصفية الحركات الواقعة فقط داخل الفترة المحددة شاملة لليومين
     if (move.date >= cleanStartDate && move.date <= cleanEndDate) {
+      const isMoveCancelled = move.status === 'CANCELLED' || move.isCancelled;
+
+      if (isMoveCancelled) {
+        cancelledCount++;
+        periodTransactions.push({
+          id: move.id,
+          date: move.date,
+          docNumber: move.docNumber,
+          docType: move.docType,
+          docTypeLabel: move.docTypeLabel,
+          description: move.description,
+          reference: move.reference,
+          debit: move.debit,
+          credit: move.credit,
+          runningBalance: Math.round(currentRunning * 1000) / 1000,
+          balanceType: getBalanceNature(currentRunning, entityType),
+          status: 'CANCELLED',
+          isCancelled: true,
+          sourceModule: move.sourceModule,
+          originalDocId: move.originalDocId,
+        });
+        continue;
+      }
+
       totalPeriodDebit += move.debit;
       totalPeriodCredit += move.credit;
       activeCount++;
@@ -976,7 +1004,7 @@ export function getAccountStatement(
         runningBalance: Math.round(currentRunning * 1000) / 1000,
         balanceType: getBalanceNature(currentRunning, entityType),
         status: move.status,
-        isCancelled: move.isCancelled,
+        isCancelled: false,
         sourceModule: move.sourceModule,
         originalDocId: move.originalDocId,
       });

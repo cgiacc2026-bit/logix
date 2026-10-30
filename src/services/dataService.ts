@@ -5348,6 +5348,107 @@ export class DataService {
       }
     }
 
+    // 4.5. الفحص العكسي الشبكي: إعادة بناء واسترداد أي سندات مفقودة إذا وُجد قيد ترحيلها معتمداً في دفتر اليومية
+    const voucherMapByNum = new Map<string, PaymentVoucher>();
+    const voucherMapById = new Map<string, PaymentVoucher>();
+    for (const v of vouchers) {
+      if (v.voucherNumber) voucherMapByNum.set(v.voucherNumber.trim().toUpperCase(), v);
+      if (v.id) voucherMapById.set(v.id.trim(), v);
+    }
+
+    for (const j of journals) {
+      if (j.status !== 'POSTED') continue;
+      const ref = (j.reference || '').trim().toUpperCase();
+      const num = (j.entryNumber || '').trim().toUpperCase();
+      const isPaymentJ = j.sourceModule === 'PAYMENT' || ref.startsWith('PAY-') || num.startsWith('JV-PAY-');
+      const isReceiptJ = j.sourceModule === 'RECEIPT' || ref.startsWith('RCV-') || num.startsWith('JV-RCV-');
+
+      if (!isPaymentJ && !isReceiptJ) continue;
+
+      let extractedVoucherNum = ref;
+      if (!extractedVoucherNum || (!extractedVoucherNum.startsWith('PAY-') && !extractedVoucherNum.startsWith('RCV-'))) {
+        if (num.startsWith('JV-')) extractedVoucherNum = num.replace(/^JV-/, '');
+      }
+
+      if (!extractedVoucherNum) continue;
+
+      const existingVoucher = voucherMapByNum.get(extractedVoucherNum) || (j.sourceId ? voucherMapById.get(j.sourceId) : null);
+      if (!existingVoucher) {
+        const vType: 'PAYMENT' | 'RECEIPT' = isReceiptJ ? 'RECEIPT' : 'PAYMENT';
+        const vCompId = j.companyId || localDataStore.getEffectiveCompanyId() || 'default';
+        const vAmount = Number(j.totalDebit) || 0;
+
+        let entityLine: any = null;
+        let bankLine: any = null;
+        for (const l of j.lines || []) {
+          const accCode = String(l.accountCode || '');
+          if (accCode.startsWith('111') || l.accountNameAr?.includes('بنك') || l.accountNameAr?.includes('خزينة') || l.accountNameAr?.includes('صندوق')) {
+            bankLine = l;
+          } else if (accCode.startsWith('112') || accCode.startsWith('211') || l.entityId || l.entityType) {
+            entityLine = l;
+          }
+        }
+
+        let matchedEntityId = entityLine?.entityId || '';
+        let matchedEntityName = '';
+        if (vType === 'PAYMENT') {
+          const supp = suppliers.find((s) =>
+            s.id === matchedEntityId ||
+            s.code === matchedEntityId ||
+            (entityLine?.memo && s.nameAr && entityLine.memo.includes(s.nameAr)) ||
+            (j.description && s.nameAr && j.description.includes(s.nameAr))
+          );
+          if (supp) {
+            matchedEntityId = supp.id;
+            matchedEntityName = supp.nameAr;
+          }
+        } else {
+          const cust = customers.find((c) =>
+            c.id === matchedEntityId ||
+            c.code === matchedEntityId ||
+            (entityLine?.memo && c.nameAr && entityLine.memo.includes(c.nameAr)) ||
+            (j.description && c.nameAr && j.description.includes(c.nameAr))
+          );
+          if (cust) {
+            matchedEntityId = cust.id;
+            matchedEntityName = cust.nameAr;
+          }
+        }
+
+        const restoredVoucher: PaymentVoucher = {
+          id: j.sourceId || ('vch-' + extractedVoucherNum.toLowerCase()),
+          voucherNumber: extractedVoucherNum,
+          companyId: vCompId,
+          company_id: vCompId,
+          type: vType,
+          date: j.date || new Date().toISOString().split('T')[0],
+          amount: vAmount,
+          paymentMethod: bankLine?.accountCode === '1113' ? 'CASH' : 'BANK',
+          bankAccountId: bankLine?.accountId || 'acc-1111',
+          entityType: vType === 'RECEIPT' ? 'CUSTOMER' : 'SUPPLIER',
+          entityId: matchedEntityId,
+          customerId: vType === 'RECEIPT' ? matchedEntityId : undefined,
+          supplierId: vType === 'PAYMENT' ? matchedEntityId : undefined,
+          entityNameAr: matchedEntityName || (entityLine?.memo || j.description || ''),
+          entityName: matchedEntityName || (entityLine?.memo || j.description || ''),
+          customerName: vType === 'RECEIPT' ? matchedEntityName : undefined,
+          supplierName: vType === 'PAYMENT' ? matchedEntityName : undefined,
+          status: 'POSTED',
+          journalEntryId: j.id,
+          reference: j.reference || extractedVoucherNum,
+          notes: j.description || '',
+          createdAt: j.createdAt || new Date().toISOString(),
+        };
+
+        vouchers.push(restoredVoucher);
+        voucherMapByNum.set(extractedVoucherNum, restoredVoucher);
+        vouchersSynced++;
+      } else if (existingVoucher.status === 'CANCELLED' && j.status === 'POSTED') {
+        existingVoucher.status = 'POSTED';
+        vouchersSynced++;
+      }
+    }
+
     if (journalsChanged || vouchersSynced > 0) {
       localDataStore.saveJournals(journals);
       localDataStore.saveVouchers(vouchers);
@@ -5492,6 +5593,7 @@ export class DataService {
       salesRepName: data.salesRepName || undefined,
       reference: data.reference || data.referenceNumber || '',
       notes: data.notes || '',
+      status: 'POSTED',
       createdAt: new Date().toISOString(),
     };
 

@@ -147,10 +147,41 @@ async function runAllTests() {
       isSystem: false,
     };
 
+    const accA_2110: Account = {
+      id: 'acc-a-2110',
+      companyId: COMPANY_A,
+      code: '2110',
+      nameAr: 'الذمم الدائنة (حسابات الموردين) - شركة أ',
+      nameEn: 'Accounts Payable A',
+      category: 'LIABILITY',
+      parentId: null,
+      normalBalance: 'CREDIT',
+      nature: 'CREDIT',
+      level: 2,
+      isActive: true,
+      isSystem: false,
+    };
+    const accA_supp2110002: Account = {
+      id: 'acc-supp-2110002',
+      companyId: COMPANY_A,
+      code: '2110002',
+      nameAr: 'حساب مورد: احمد فرغلي',
+      nameEn: 'Supplier: Ahmed Farghali',
+      category: 'LIABILITY',
+      parentId: 'acc-a-2110',
+      normalBalance: 'CREDIT',
+      nature: 'CREDIT',
+      level: 3,
+      isActive: true,
+      isSystem: false,
+    };
+
     db.addAccount(accA_1120);
     db.addAccount(accA_3200);
     db.addAccount(accA_4101);
     db.addAccount(accA_1111);
+    db.addAccount(accA_2110);
+    db.addAccount(accA_supp2110002);
     db.addAccount(accB_1120);
     db.addAccount(accB_3200);
 
@@ -478,6 +509,74 @@ async function runAllTests() {
       reloadedSupp.account_id === 'acc-supp-2110001',
       'Supplier registered and saved with valid sub-account link',
       'Customers & Auto-Accounts'
+    );
+
+    // =========================================================================
+    // اختبارات الربط الشبكي لسندات الصرف وكشوف حسابات الموردين (Supplier Payment & Network Linkage)
+    // =========================================================================
+    console.log('\n--- Suite D2: Supplier Payment Vouchers & Network Linkage ---');
+    const suppAhmedFarghali = {
+      id: 'supp-10001',
+      code: '10001',
+      companyId: COMPANY_A,
+      nameAr: 'احمد فرغلي',
+      nameEn: 'Ahmed Farghali',
+      balance: 100,
+      currentBalance: 100,
+      openingBalance: 100,
+      openingBalanceDate: '2026-01-01',
+      account_id: 'acc-supp-2110002',
+    };
+    db.addSupplier(suppAhmedFarghali as any);
+
+    const paymentVoucherAhmed: PaymentVoucher = {
+      id: 'vch-pay-2026-0001',
+      voucherNumber: 'PAY-2026-0001',
+      type: 'PAYMENT',
+      date: '2026-10-27',
+      amount: 50,
+      paymentMethod: 'BANK',
+      bankAccountId: 'acc-a-1111',
+      entityType: 'SUPPLIER',
+      entityId: suppAhmedFarghali.id,
+      supplierId: suppAhmedFarghali.id,
+      entityNameAr: 'احمد فرغلي',
+      reference: 'PAY-2026-0001',
+      notes: 'صرف مبالغ سند رقم PAY-2026-0001 - احمد فرغلي',
+      createdAt: '2026-10-27T10:00:00Z',
+      companyId: COMPANY_A,
+    };
+    const postedPayVoucher = AccountingEngine.postVoucher(paymentVoucherAhmed, COMPANY_A);
+    assert(
+      postedPayVoucher.status === 'POSTED' && Boolean(postedPayVoucher.journalEntryId),
+      'Payment voucher for supplier posted with POSTED status and linked journal',
+      'Posting & Concurrency'
+    );
+
+    // Verify Statement Service accurately displays the 50.000 KWD debit in Ahmed Farghali supplier statement
+    const stmtAhmed = getAccountStatement(suppAhmedFarghali.id, 'SUPPLIER', '2026-01-01', '2026-10-30', {
+      vouchers: db.getVouchers(),
+      journals: db.getJournals(),
+      suppliers: db.getSuppliers(),
+    });
+    const foundPayTx = stmtAhmed.transactions.find((tx) => tx.docNumber === 'PAY-2026-0001' || tx.reference === 'PAY-2026-0001' || tx.description.includes('PAY-2026-0001'));
+    assert(
+      foundPayTx !== undefined && foundPayTx.debit === 50,
+      'Payment voucher PAY-2026-0001 appears with 50.000 debit in supplier statement',
+      'Reporting & Statements'
+    );
+
+    // Test: Network Linkage Resilience - Even if voucher list is empty but journal exists, supplier statement displays the movement
+    const stmtAhmedFromJournalsOnly = getAccountStatement(suppAhmedFarghali.id, 'SUPPLIER', '2026-01-01', '2026-10-30', {
+      vouchers: [], // simulate detached or missing voucher
+      journals: db.getJournals(),
+      suppliers: db.getSuppliers(),
+    });
+    const foundPayFromJv = stmtAhmedFromJournalsOnly.transactions.find((tx) => tx.reference === 'PAY-2026-0001' || tx.docNumber.includes('PAY-2026-0001') || tx.description.includes('احمد فرغلي'));
+    assert(
+      foundPayFromJv !== undefined && foundPayFromJv.debit === 50,
+      'Network linkage resilience: General ledger journal entry reflects on supplier statement even when voucher is detached',
+      'Reporting & Statements'
     );
 
     // =========================================================================
