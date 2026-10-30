@@ -1339,14 +1339,24 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
       });
     }
 
-    // 2. Search query (Invoice # or Customer/Supplier Name)
+    // 2. Search query (Invoice #, Customer/Supplier Name, Amount, Date, Reference)
     if (invSearchQuery.trim()) {
-      const q = invSearchQuery.trim().toLowerCase();
+      const q = invSearchQuery.trim();
       list = list.filter((inv) => {
-        const num = (inv.invoiceNumber || '').toLowerCase();
-        const nameAr = (inv.entityNameAr || '').toLowerCase();
-        const nameEn = ((inv as any).entityNameEn || '').toLowerCase();
-        return num.includes(q) || nameAr.includes(q) || nameEn.includes(q);
+        const num = String(inv.invoiceNumber || '');
+        const nameAr = String(inv.entityNameAr || '');
+        const nameEn = String((inv as any).entityNameEn || '');
+        const amount = String(inv.grandTotal ?? (inv as any).totalAmount ?? (inv as any).total ?? '');
+        const dateStr = String(inv.date || '');
+        const ref = String(inv.notes || (inv as any).reference || '');
+        return (
+          matchesSearch(num, q) ||
+          matchesSearch(nameAr, q) ||
+          matchesSearch(nameEn, q) ||
+          matchesSearch(amount, q) ||
+          matchesSearch(dateStr, q) ||
+          matchesSearch(ref, q)
+        );
       });
     }
 
@@ -2556,6 +2566,7 @@ export const InvoicesAndInventoryView: React.FC<InvoicesProps> = ({
           suppliers={suppliers}
           accounts={accounts}
           invoices={invoices}
+          journals={journals}
           company={company}
           currency={currency}
           onCreateVoucher={onCreateVoucher}

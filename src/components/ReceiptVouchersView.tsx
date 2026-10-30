@@ -25,8 +25,10 @@ import {
   Account,
   Invoice,
   CompanyProfile,
+  JournalEntry,
 } from '../types';
 import { formatCurrency } from '../utils/formatters.ts';
+import { matchesSearch } from '../utils/searchUtils.ts';
 import { VouchersService, BankOrCashAccountSummary } from '../services/vouchersService';
 import { DataService } from '../services/dataService.ts';
 import { getCalculatedCustomerBalance, getCalculatedSupplierBalance } from '../services/statementService.ts';
@@ -37,6 +39,7 @@ interface ReceiptVouchersViewProps {
   suppliers: Supplier[];
   accounts?: Account[];
   invoices?: Invoice[];
+  journals?: JournalEntry[];
   company: CompanyProfile;
   currency: string;
   onCreateVoucher: (data: any) => Promise<void>;
@@ -54,6 +57,7 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
   suppliers = [],
   accounts = [],
   invoices = [],
+  journals = [],
   company,
   currency,
   onCreateVoucher,
@@ -127,13 +131,151 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
     }
   }, [bankAndCashAccounts, vouchBankAcc]);
 
+  // Merge any journal-backed receipt/payment movements not yet in vouchers
+  const effectiveVouchers = useMemo(() => {
+    const list = [...vouchers];
+    if (!journals || journals.length === 0) return list;
+
+    const existingVoucherIds = new Set(list.map((v) => v.id));
+    const existingJournalIds = new Set(list.map((v) => v.journalEntryId).filter(Boolean));
+    const existingNumEntityKeys = new Set(
+      list.map((v) => `${(v.voucherNumber || '').toUpperCase()}_${v.entityId || ''}_${Number(v.amount || 0).toFixed(3)}`)
+    );
+
+    for (const j of journals) {
+      if (j.status !== 'POSTED') continue;
+      if (existingJournalIds.has(j.id) || existingVoucherIds.has(j.sourceId || '')) continue;
+
+      const ref = (j.reference || '').trim().toUpperCase();
+      const num = (j.entryNumber || '').trim().toUpperCase();
+      const desc = (j.description || '').trim();
+
+      // Check lines
+      let bankLine: any = null;
+      let entityLine: any = null;
+      for (const l of j.lines || []) {
+        const code = String(l.accountCode || '');
+        if (
+          code.startsWith('111') ||
+          l.accountNameAr?.includes('بنك') ||
+          l.accountNameAr?.includes('خزينة') ||
+          l.accountNameAr?.includes('صندوق') ||
+          l.accountNameAr?.includes('نقد')
+        ) {
+          bankLine = l;
+        } else if (
+          code.startsWith('112') ||
+          code.startsWith('211') ||
+          l.entityId ||
+          l.entityType ||
+          l.memo?.includes('عميل') ||
+          l.memo?.includes('مورد') ||
+          l.memo?.includes('جمعية')
+        ) {
+          entityLine = l;
+        }
+      }
+
+      const isExplicitPayment = j.sourceModule === 'PAYMENT' || ref.startsWith('PAY-') || num.startsWith('JV-PAY-') || desc.includes('صرف') || desc.includes('سداد');
+      const isExplicitReceipt = j.sourceModule === 'RECEIPT' || ref.startsWith('RCV-') || num.startsWith('JV-RCV-') || desc.includes('قبض') || desc.includes('تحصيل');
+      const isBankDebitReceipt = Boolean(bankLine && Number(bankLine.debit || 0) > 0 && (entityLine || desc.includes('شيك') || desc.includes('إيداع') || desc.includes('تحويل')));
+      const isBankCreditPayment = Boolean(bankLine && Number(bankLine.credit || 0) > 0 && (entityLine || desc.includes('شيك') || desc.includes('سحب') || desc.includes('تحويل')));
+
+      if (!isExplicitPayment && !isExplicitReceipt && !isBankDebitReceipt && !isBankCreditPayment) continue;
+
+      const vType: 'PAYMENT' | 'RECEIPT' = (isExplicitReceipt || isBankDebitReceipt) ? 'RECEIPT' : 'PAYMENT';
+      const vAmount = Number(j.totalDebit) || Number(j.totalCredit) || 0;
+
+      let extractedVoucherNum = ref;
+      if (!extractedVoucherNum || (!extractedVoucherNum.startsWith('PAY-') && !extractedVoucherNum.startsWith('RCV-'))) {
+        if (num.startsWith('JV-PAY-') || num.startsWith('JV-RCV-')) {
+          extractedVoucherNum = num.replace(/^JV-/, '');
+        } else {
+          const match = desc.match(/(?:RCV|PAY)-[\w-]+/i);
+          if (match) extractedVoucherNum = match[0].toUpperCase();
+          else extractedVoucherNum = vType === 'RECEIPT' ? `RCV-${num.replace(/^JV-/, '')}` : `PAY-${num.replace(/^JV-/, '')}`;
+        }
+      }
+
+      let matchedEntityId = entityLine?.entityId || '';
+      let matchedEntityName = '';
+      if (vType === 'PAYMENT') {
+        const supp = suppliers.find(
+          (s) =>
+            s.id === matchedEntityId ||
+            s.code === matchedEntityId ||
+            (entityLine?.memo && s.nameAr && entityLine.memo.includes(s.nameAr)) ||
+            (j.description && s.nameAr && j.description.includes(s.nameAr))
+        );
+        if (supp) {
+          matchedEntityId = supp.id;
+          matchedEntityName = supp.nameAr;
+        }
+      } else {
+        const cust = customers.find(
+          (c) =>
+            c.id === matchedEntityId ||
+            c.code === matchedEntityId ||
+            (entityLine?.memo && c.nameAr && entityLine.memo.includes(c.nameAr)) ||
+            (j.description && c.nameAr && j.description.includes(c.nameAr))
+        );
+        if (cust) {
+          matchedEntityId = cust.id;
+          matchedEntityName = cust.nameAr;
+        }
+      }
+
+      const compKey = `${extractedVoucherNum.toUpperCase()}_${matchedEntityId}_${vAmount.toFixed(3)}`;
+      if (existingNumEntityKeys.has(compKey)) continue;
+
+      let finalVoucherNum = extractedVoucherNum;
+      if (list.some((v) => (v.voucherNumber || '').toUpperCase() === finalVoucherNum && v.entityId !== matchedEntityId)) {
+        finalVoucherNum = `${extractedVoucherNum}-${num.replace(/^JV-/, '')}`;
+      }
+
+      const uniqueVoucherId = j.sourceId || ('vch-' + j.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-'));
+
+      list.push({
+        id: uniqueVoucherId,
+        voucherNumber: finalVoucherNum,
+        companyId: j.companyId || company.id,
+        company_id: j.companyId || company.id,
+        type: vType,
+        date: j.date || new Date().toISOString().split('T')[0],
+        amount: vAmount,
+        paymentMethod: bankLine?.accountCode === '1113' ? 'CASH' : (desc.includes('شيك') || ref.includes('شيك') ? 'CHECK' : 'BANK'),
+        bankAccountId: bankLine?.accountId || (bankLine?.accountCode === '1112' ? 'acc-1112' : 'acc-1111'),
+        entityType: vType === 'RECEIPT' ? 'CUSTOMER' : 'SUPPLIER',
+        entityId: matchedEntityId,
+        customerId: vType === 'RECEIPT' ? matchedEntityId : undefined,
+        supplierId: vType === 'PAYMENT' ? matchedEntityId : undefined,
+        entityNameAr: matchedEntityName || (entityLine?.memo || j.description || ''),
+        entityName: matchedEntityName || (entityLine?.memo || j.description || ''),
+        customerName: vType === 'RECEIPT' ? matchedEntityName : undefined,
+        supplierName: vType === 'PAYMENT' ? matchedEntityName : undefined,
+        status: 'POSTED',
+        journalEntryId: j.id,
+        reference: j.reference || extractedVoucherNum,
+        notes: j.description || '',
+        createdAt: j.createdAt || new Date().toISOString(),
+        checkNumber: (desc.match(/شيك\s*(?:رقم)?\s*([0-9]+)/i) || ref.match(/شيك\s*(?:رقم)?\s*([0-9]+)/i))?.[1] || undefined,
+      });
+
+      existingVoucherIds.add(uniqueVoucherId);
+      existingJournalIds.add(j.id);
+      existingNumEntityKeys.add(compKey);
+    }
+
+    return list;
+  }, [vouchers, journals, customers, suppliers, company.id]);
+
   // Total Receipts and Payments KPI
   const stats = useMemo(() => {
     let totalReceipts = 0;
     let totalPayments = 0;
     let countActive = 0;
 
-    vouchers.forEach((v) => {
+    effectiveVouchers.forEach((v) => {
       if (v.status !== 'CANCELLED') {
         countActive++;
         if (v.type === 'RECEIPT') {
@@ -159,11 +301,11 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
       totalCashBalance,
       totalBankBalance,
     };
-  }, [vouchers, bankAndCashAccounts]);
+  }, [effectiveVouchers, bankAndCashAccounts]);
 
   // Filtered Vouchers List
   const filteredVouchers = useMemo(() => {
-    return vouchers.filter((v) => {
+    return effectiveVouchers.filter((v) => {
       // Type filter
       if (typeFilter !== 'ALL' && v.type !== typeFilter) return false;
 
@@ -181,19 +323,32 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
 
       // Search term
       if (searchTerm.trim()) {
-        const term = searchTerm.trim().toLowerCase();
-        const num = String(v.voucherNumber || '').toLowerCase();
-        const entity = String(v.entityNameAr || '').toLowerCase();
-        const notes = String(v.notes || '').toLowerCase();
-        const ref = String(v.reference || '').toLowerCase();
-        if (!num.includes(term) && !entity.includes(term) && !notes.includes(term) && !ref.includes(term)) {
-          return false;
-        }
+        const term = searchTerm.trim();
+        const num = String(v.voucherNumber || '');
+        const entity = String(v.entityNameAr || (v as any).entityName || (v as any).customerName || (v as any).supplierName || '');
+        const notes = String(v.notes || '');
+        const ref = String(v.reference || '');
+        const amountStr = String(v.amount ?? '');
+        const dateStr = String(v.date || '');
+        const checkNum = String(v.checkNumber || '');
+        const checkBank = String(v.checkBankName || '');
+
+        const matched =
+          matchesSearch(num, term) ||
+          matchesSearch(entity, term) ||
+          matchesSearch(notes, term) ||
+          matchesSearch(ref, term) ||
+          matchesSearch(amountStr, term) ||
+          matchesSearch(dateStr, term) ||
+          matchesSearch(checkNum, term) ||
+          matchesSearch(checkBank, term);
+
+        if (!matched) return false;
       }
 
       return true;
     });
-  }, [vouchers, typeFilter, statusFilter, accountFilter, searchTerm]);
+  }, [effectiveVouchers, typeFilter, statusFilter, accountFilter, searchTerm]);
 
   // Open modal in Create mode
   const handleOpenCreate = (type: 'RECEIPT' | 'PAYMENT') => {

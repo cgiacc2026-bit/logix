@@ -129,16 +129,20 @@ export interface StatementQueryOptions {
 // دوال مساعدة مركزية لإزالة التكرار ومنع تكرار السندات والفواتير
 export function deduplicateStatementVouchers(vouchersList: PaymentVoucher[]): PaymentVoucher[] {
   if (!Array.isArray(vouchersList) || vouchersList.length <= 1) return vouchersList || [];
-  const byNumber = new Map<string, PaymentVoucher>();
   const byId = new Map<string, PaymentVoucher>();
+  const byNumAndEntity = new Map<string, PaymentVoucher>();
   const deduped: PaymentVoucher[] = [];
 
   for (const v of vouchersList) {
     if (!v) continue;
     const num = (v.voucherNumber || '').trim().toUpperCase();
     const id = (v.id || '').trim();
+    const entityId = (v.entityId || (v as any).customerId || (v as any).supplierId || '').trim();
 
-    const existing = (num ? byNumber.get(num) : null) || (id ? byId.get(id) : null);
+    // نعتبر السند مكرراً فقط إذا تطابق المعرف الصريح، أو تطابق رقم السند مع نفس العميل/المورد ونفس القيمة
+    const numKey = num && entityId ? `${num}_${entityId}_${Number(v.amount || 0).toFixed(3)}` : '';
+    const existing = (id ? byId.get(id) : null) || (numKey ? byNumAndEntity.get(numKey) : null);
+
     if (existing) {
       const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
       const currentTime = new Date((v as any).updatedAt || v.createdAt || 0).getTime();
@@ -147,15 +151,13 @@ export function deduplicateStatementVouchers(vouchersList: PaymentVoucher[]): Pa
       if (preferCurrent) {
         const idx = deduped.indexOf(existing);
         if (idx !== -1) deduped[idx] = v;
-        if (num) byNumber.set(num, v);
         if (id) byId.set(id, v);
-        if (existing.voucherNumber) byNumber.set(existing.voucherNumber.trim().toUpperCase(), v);
-        if (existing.id) byId.set(existing.id, v);
+        if (numKey) byNumAndEntity.set(numKey, v);
       }
     } else {
       deduped.push(v);
-      if (num) byNumber.set(num, v);
       if (id) byId.set(id, v);
+      if (numKey) byNumAndEntity.set(numKey, v);
     }
   }
   return deduped;
@@ -163,16 +165,19 @@ export function deduplicateStatementVouchers(vouchersList: PaymentVoucher[]): Pa
 
 export function deduplicateStatementInvoices(invoicesList: Invoice[]): Invoice[] {
   if (!Array.isArray(invoicesList) || invoicesList.length <= 1) return invoicesList || [];
-  const byNumber = new Map<string, Invoice>();
   const byId = new Map<string, Invoice>();
+  const byNumAndEntity = new Map<string, Invoice>();
   const deduped: Invoice[] = [];
 
   for (const inv of invoicesList) {
     if (!inv) continue;
     const num = (inv.invoiceNumber || '').trim().toUpperCase();
     const id = (inv.id || '').trim();
+    const entityId = (((inv as any).customerId) || ((inv as any).supplierId) || inv.entityId || (inv as any).customer_id || '').trim();
 
-    const existing = (num ? byNumber.get(num) : null) || (id ? byId.get(id) : null);
+    const numKey = num && entityId ? `${num}_${entityId}` : '';
+    const existing = (id ? byId.get(id) : null) || (numKey ? byNumAndEntity.get(numKey) : null);
+
     if (existing) {
       const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
       const currentTime = new Date((inv as any).updatedAt || inv.createdAt || 0).getTime();
@@ -181,15 +186,13 @@ export function deduplicateStatementInvoices(invoicesList: Invoice[]): Invoice[]
       if (currentTime >= existingTime || (currentHasLines && !existingHasLines)) {
         const idx = deduped.indexOf(existing);
         if (idx !== -1) deduped[idx] = inv;
-        if (num) byNumber.set(num, inv);
         if (id) byId.set(id, inv);
-        if (existing.invoiceNumber) byNumber.set(existing.invoiceNumber.trim().toUpperCase(), inv);
-        if (existing.id) byId.set(existing.id, inv);
+        if (numKey) byNumAndEntity.set(numKey, inv);
       }
     } else {
       deduped.push(inv);
-      if (num) byNumber.set(num, inv);
       if (id) byId.set(id, inv);
+      if (numKey) byNumAndEntity.set(numKey, inv);
     }
   }
   return deduped;
@@ -905,7 +908,7 @@ export function getAccountStatement(
   (creditNotes || []).forEach((cn) => {
     if (!cn) return;
     const matchesCust = isDocMatchingEntity(
-      { customerId: cn.customer_id, customerName: cn.customer_name, companyId: cn.companyId || cn.company_id },
+      { customerId: cn.customer_id, customerName: cn.customer_name, companyId: (cn as any).companyId || cn.company_id },
       entityId,
       entity,
       entityType

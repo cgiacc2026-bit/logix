@@ -11,6 +11,7 @@ import {
   JournalEntry,
   JournalLine,
   Invoice,
+  InvoiceType,
   PaymentVoucher,
   CompanyProfile,
   SystemUser,
@@ -1510,7 +1511,10 @@ class LocalDataStore {
         inv.type = 'SALES';
       }
 
-      const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
+      const entityId = ((inv as any).customerId || (inv as any).supplierId || inv.entityId || (inv as any).customer_id || '').trim();
+      const compId = (inv.companyId || (inv as any).company_id || '').trim();
+      const numKey = num && entityId ? `${compId}_${num}_${entityId}` : '';
+      const existing = (id ? seenIds.get(id) : null) || (numKey ? seenNumbers.get(numKey) : null);
       if (existing) {
         const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
         const currentTime = new Date(inv.updatedAt || inv.createdAt || 0).getTime();
@@ -1523,15 +1527,13 @@ class LocalDataStore {
           if (idx !== -1) {
             result[idx] = inv;
           }
-          if (num) seenNumbers.set(num, inv);
           if (id) seenIds.set(id, inv);
-          if (existing.invoiceNumber) seenNumbers.set(existing.invoiceNumber.trim().toUpperCase(), inv);
-          if (existing.id) seenIds.set(existing.id.trim(), inv);
+          if (numKey) seenNumbers.set(numKey, inv);
         }
       } else {
         result.push(inv);
-        if (num) seenNumbers.set(num, inv);
         if (id) seenIds.set(id, inv);
+        if (numKey) seenNumbers.set(numKey, inv);
       }
     }
     return result;
@@ -1547,8 +1549,11 @@ class LocalDataStore {
       if (!v) continue;
       const num = (v.voucherNumber || '').trim().toUpperCase();
       const id = (v.id || '').trim();
+      const entityId = (v.entityId || (v as any).customerId || (v as any).supplierId || '').trim();
+      const compId = (v.companyId || (v as any).company_id || '').trim();
 
-      const existing = (num ? seenNumbers.get(num) : null) || (id ? seenIds.get(id) : null);
+      const numKey = num && entityId ? `${compId}_${num}_${entityId}_${Number(v.amount || 0).toFixed(3)}` : '';
+      const existing = (id ? seenIds.get(id) : null) || (numKey ? seenNumbers.get(numKey) : null);
       if (existing) {
         const existingTime = new Date((existing as any).updatedAt || existing.createdAt || 0).getTime();
         const currentTime = new Date((v as any).updatedAt || v.createdAt || 0).getTime();
@@ -1557,15 +1562,13 @@ class LocalDataStore {
           if (idx !== -1) {
             result[idx] = v;
           }
-          if (num) seenNumbers.set(num, v);
           if (id) seenIds.set(id, v);
-          if (existing.voucherNumber) seenNumbers.set(existing.voucherNumber.trim().toUpperCase(), v);
-          if (existing.id) seenIds.set(existing.id.trim(), v);
+          if (numKey) seenNumbers.set(numKey, v);
         }
       } else {
         result.push(v);
-        if (num) seenNumbers.set(num, v);
         if (id) seenIds.set(id, v);
+        if (numKey) seenNumbers.set(numKey, v);
       }
     }
     return result;
@@ -5211,10 +5214,30 @@ export class DataService {
         }
       }
 
-      const existingJ = (v.journalEntryId && journalMap.get(v.journalEntryId)) ||
-        journalMap.get(v.id) ||
-        journalMap.get(voucherNum) ||
-        journalMap.get(jvNum);
+      let existingJ: JournalEntry | undefined = undefined;
+      if (v.journalEntryId) {
+        existingJ = journals.find((j) => j.id === v.journalEntryId);
+      }
+      if (!existingJ) {
+        existingJ = journals.find((j) => j.sourceId === v.id);
+      }
+      if (!existingJ && voucherNum) {
+        existingJ = journals.find((j) => {
+          const refMatch = (j.reference || '').trim().toUpperCase() === voucherNum;
+          const numMatch = (j.entryNumber || '').trim().toUpperCase() === jvNum;
+          if (!refMatch && !numMatch) return false;
+
+          const hasSameEntity =
+            !v.entityId ||
+            (j.lines && j.lines.some((l) => l.entityId === v.entityId)) ||
+            (entityNameAr && j.description && j.description.includes(entityNameAr)) ||
+            (entityNameAr && j.lines && j.lines.some((l) => l.memo && l.memo.includes(entityNameAr)));
+
+          const hasSameAmount = Math.abs(Number(j.totalDebit || j.totalCredit || 0) - amount) < 0.01;
+
+          return hasSameEntity && hasSameAmount;
+        });
+      }
 
       if (v.status === 'CANCELLED') {
         if (existingJ && existingJ.status !== 'CANCELLED') {
@@ -5319,9 +5342,13 @@ export class DataService {
         }
         v.journalEntryId = existingJ.id;
       } else {
+        const uniqueJvId = 'jv-' + (v.id.startsWith('v-') || v.id.startsWith('pv-') ? v.id : 'vch-' + v.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-'));
+        const isJvNumTaken = journals.some((j) => (j.entryNumber || '').toUpperCase() === jvNum);
+        const finalJvNum = isJvNumTaken ? `${jvNum}-${v.id.slice(-4)}` : jvNum;
+
         const newJ: JournalEntry = {
-          id: 'jv-' + (v.id.startsWith('v-') || v.id.startsWith('pv-') ? v.id : 'vch-' + voucherNum),
-          entryNumber: jvNum,
+          id: uniqueJvId,
+          entryNumber: finalJvNum,
           date: v.date || new Date().toISOString().split('T')[0],
           reference: voucherNum,
           description: `قيد ترحيل سند ${isReceipt ? 'قبض' : 'صرف'} رقم (${voucherNum}) - ${entityNameAr}`,
@@ -5337,10 +5364,6 @@ export class DataService {
         };
 
         journals.unshift(newJ);
-        journalMap.set(newJ.id, newJ);
-        journalMap.set(v.id, newJ);
-        journalMap.set(voucherNum, newJ);
-        journalMap.set(jvNum, newJ);
         v.journalEntryId = newJ.id;
         journalsChanged = true;
         vouchersSynced++;
@@ -5349,82 +5372,145 @@ export class DataService {
     }
 
     // 4.5. الفحص العكسي الشبكي: إعادة بناء واسترداد أي سندات مفقودة إذا وُجد قيد ترحيلها معتمداً في دفتر اليومية
-    const voucherMapByNum = new Map<string, PaymentVoucher>();
     const voucherMapById = new Map<string, PaymentVoucher>();
+    const voucherMapByJournalId = new Map<string, PaymentVoucher>();
+    const voucherMapByComposite = new Map<string, PaymentVoucher>();
+    const existingVoucherNumbers = new Set<string>();
+
     for (const v of vouchers) {
-      if (v.voucherNumber) voucherMapByNum.set(v.voucherNumber.trim().toUpperCase(), v);
       if (v.id) voucherMapById.set(v.id.trim(), v);
+      if (v.journalEntryId) voucherMapByJournalId.set(v.journalEntryId.trim(), v);
+      const vNum = (v.voucherNumber || '').trim().toUpperCase();
+      if (vNum) {
+        existingVoucherNumbers.add(vNum);
+        const entityKey = (v.entityId || (v as any).customerId || (v as any).supplierId || '').trim();
+        const amtKey = Number(v.amount || 0).toFixed(3);
+        voucherMapByComposite.set(`${vNum}_${entityKey}_${amtKey}`, v);
+      }
     }
 
     for (const j of journals) {
       if (j.status !== 'POSTED') continue;
       const ref = (j.reference || '').trim().toUpperCase();
       const num = (j.entryNumber || '').trim().toUpperCase();
-      const isPaymentJ = j.sourceModule === 'PAYMENT' || ref.startsWith('PAY-') || num.startsWith('JV-PAY-');
-      const isReceiptJ = j.sourceModule === 'RECEIPT' || ref.startsWith('RCV-') || num.startsWith('JV-RCV-');
+      const desc = (j.description || '').trim();
+
+      // Check journal lines to identify financial movement
+      let entityLine: any = null;
+      let bankLine: any = null;
+      for (const l of j.lines || []) {
+        const accCode = String(l.accountCode || '');
+        if (
+          accCode.startsWith('111') ||
+          l.accountNameAr?.includes('بنك') ||
+          l.accountNameAr?.includes('خزينة') ||
+          l.accountNameAr?.includes('صندوق') ||
+          l.accountNameAr?.includes('نقد')
+        ) {
+          bankLine = l;
+        } else if (
+          accCode.startsWith('112') ||
+          accCode.startsWith('211') ||
+          l.entityId ||
+          l.entityType ||
+          l.memo?.includes('عميل') ||
+          l.memo?.includes('مورد') ||
+          l.memo?.includes('جمعية')
+        ) {
+          entityLine = l;
+        }
+      }
+
+      const isExplicitPayment = j.sourceModule === 'PAYMENT' || ref.startsWith('PAY-') || num.startsWith('JV-PAY-') || desc.includes('صرف') || desc.includes('سداد');
+      const isExplicitReceipt = j.sourceModule === 'RECEIPT' || ref.startsWith('RCV-') || num.startsWith('JV-RCV-') || desc.includes('قبض') || desc.includes('تحصيل');
+      const isBankDebitReceipt = Boolean(bankLine && Number(bankLine.debit || 0) > 0 && (entityLine || desc.includes('شيك') || desc.includes('إيداع') || desc.includes('تحويل')));
+      const isBankCreditPayment = Boolean(bankLine && Number(bankLine.credit || 0) > 0 && (entityLine || desc.includes('شيك') || desc.includes('سحب') || desc.includes('تحويل')));
+
+      const isPaymentJ = isExplicitPayment || isBankCreditPayment;
+      const isReceiptJ = isExplicitReceipt || isBankDebitReceipt;
 
       if (!isPaymentJ && !isReceiptJ) continue;
 
       let extractedVoucherNum = ref;
       if (!extractedVoucherNum || (!extractedVoucherNum.startsWith('PAY-') && !extractedVoucherNum.startsWith('RCV-'))) {
-        if (num.startsWith('JV-')) extractedVoucherNum = num.replace(/^JV-/, '');
+        if (num.startsWith('JV-PAY-') || num.startsWith('JV-RCV-')) {
+          extractedVoucherNum = num.replace(/^JV-/, '');
+        } else {
+          // Check description for voucher code
+          const vchMatch = desc.match(/(?:RCV|PAY)-[\w-]+/i);
+          if (vchMatch) {
+            extractedVoucherNum = vchMatch[0].toUpperCase();
+          } else {
+            extractedVoucherNum = isReceiptJ ? `RCV-${num.replace(/^JV-/, '')}` : `PAY-${num.replace(/^JV-/, '')}`;
+          }
+        }
       }
 
       if (!extractedVoucherNum) continue;
 
-      const existingVoucher = voucherMapByNum.get(extractedVoucherNum) || (j.sourceId ? voucherMapById.get(j.sourceId) : null);
+      const vType: 'PAYMENT' | 'RECEIPT' = isReceiptJ ? 'RECEIPT' : 'PAYMENT';
+      const vCompId = j.companyId || localDataStore.getEffectiveCompanyId() || 'default';
+      const vAmount = Number(j.totalDebit) || Number(j.totalCredit) || 0;
+
+      // Resolve entity from lines, description, or memo
+      let matchedEntityId = entityLine?.entityId || '';
+      let matchedEntityName = '';
+      if (vType === 'PAYMENT') {
+        const supp = suppliers.find((s) =>
+          s.id === matchedEntityId ||
+          s.code === matchedEntityId ||
+          (entityLine?.memo && s.nameAr && entityLine.memo.includes(s.nameAr)) ||
+          (j.description && s.nameAr && j.description.includes(s.nameAr))
+        );
+        if (supp) {
+          matchedEntityId = supp.id;
+          matchedEntityName = supp.nameAr;
+        }
+      } else {
+        const cust = customers.find((c) =>
+          c.id === matchedEntityId ||
+          c.code === matchedEntityId ||
+          (entityLine?.memo && c.nameAr && entityLine.memo.includes(c.nameAr)) ||
+          (j.description && c.nameAr && j.description.includes(c.nameAr))
+        );
+        if (cust) {
+          matchedEntityId = cust.id;
+          matchedEntityName = cust.nameAr;
+        }
+      }
+
+      // Check if a voucher already corresponds to this journal entry
+      const existingVoucher =
+        voucherMapByJournalId.get(j.id) ||
+        (j.sourceId ? voucherMapById.get(j.sourceId) : null) ||
+        voucherMapByComposite.get(`${extractedVoucherNum}_${matchedEntityId}_${vAmount.toFixed(3)}`) ||
+        (extractedVoucherNum ? vouchers.find((v) => v.journalEntryId === j.id || (v.voucherNumber === extractedVoucherNum && (v.entityId === matchedEntityId || (!v.entityId && !matchedEntityId)))) : null);
+
       if (!existingVoucher) {
-        const vType: 'PAYMENT' | 'RECEIPT' = isReceiptJ ? 'RECEIPT' : 'PAYMENT';
-        const vCompId = j.companyId || localDataStore.getEffectiveCompanyId() || 'default';
-        const vAmount = Number(j.totalDebit) || 0;
-
-        let entityLine: any = null;
-        let bankLine: any = null;
-        for (const l of j.lines || []) {
-          const accCode = String(l.accountCode || '');
-          if (accCode.startsWith('111') || l.accountNameAr?.includes('بنك') || l.accountNameAr?.includes('خزينة') || l.accountNameAr?.includes('صندوق')) {
-            bankLine = l;
-          } else if (accCode.startsWith('112') || accCode.startsWith('211') || l.entityId || l.entityType) {
-            entityLine = l;
+        // Disambiguate voucher number if already taken by another entity
+        let finalVoucherNum = extractedVoucherNum;
+        if (existingVoucherNumbers.has(finalVoucherNum)) {
+          const isColliding = vouchers.some(
+            (v) => (v.voucherNumber || '').toUpperCase() === finalVoucherNum && v.entityId !== matchedEntityId
+          );
+          if (isColliding) {
+            const suffix = num.replace(/^JV-/, '');
+            finalVoucherNum = `${extractedVoucherNum}-${suffix}`;
           }
         }
 
-        let matchedEntityId = entityLine?.entityId || '';
-        let matchedEntityName = '';
-        if (vType === 'PAYMENT') {
-          const supp = suppliers.find((s) =>
-            s.id === matchedEntityId ||
-            s.code === matchedEntityId ||
-            (entityLine?.memo && s.nameAr && entityLine.memo.includes(s.nameAr)) ||
-            (j.description && s.nameAr && j.description.includes(s.nameAr))
-          );
-          if (supp) {
-            matchedEntityId = supp.id;
-            matchedEntityName = supp.nameAr;
-          }
-        } else {
-          const cust = customers.find((c) =>
-            c.id === matchedEntityId ||
-            c.code === matchedEntityId ||
-            (entityLine?.memo && c.nameAr && entityLine.memo.includes(c.nameAr)) ||
-            (j.description && c.nameAr && j.description.includes(c.nameAr))
-          );
-          if (cust) {
-            matchedEntityId = cust.id;
-            matchedEntityName = cust.nameAr;
-          }
-        }
+        const uniqueVoucherId = j.sourceId || ('vch-' + j.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-'));
 
         const restoredVoucher: PaymentVoucher = {
-          id: j.sourceId || ('vch-' + extractedVoucherNum.toLowerCase()),
-          voucherNumber: extractedVoucherNum,
+          id: uniqueVoucherId,
+          voucherNumber: finalVoucherNum,
           companyId: vCompId,
           company_id: vCompId,
           type: vType,
           date: j.date || new Date().toISOString().split('T')[0],
           amount: vAmount,
-          paymentMethod: bankLine?.accountCode === '1113' ? 'CASH' : 'BANK',
-          bankAccountId: bankLine?.accountId || 'acc-1111',
+          paymentMethod: bankLine?.accountCode === '1113' ? 'CASH' : (desc.includes('شيك') || ref.includes('شيك') ? 'CHECK' : 'BANK'),
+          bankAccountId: bankLine?.accountId || (bankLine?.accountCode === '1112' ? 'acc-1112' : 'acc-1111'),
           entityType: vType === 'RECEIPT' ? 'CUSTOMER' : 'SUPPLIER',
           entityId: matchedEntityId,
           customerId: vType === 'RECEIPT' ? matchedEntityId : undefined,
@@ -5438,14 +5524,24 @@ export class DataService {
           reference: j.reference || extractedVoucherNum,
           notes: j.description || '',
           createdAt: j.createdAt || new Date().toISOString(),
+          checkNumber: (desc.match(/شيك\s*(?:رقم)?\s*([0-9]+)/i) || ref.match(/شيك\s*(?:رقم)?\s*([0-9]+)/i))?.[1] || undefined,
         };
 
         vouchers.push(restoredVoucher);
-        voucherMapByNum.set(extractedVoucherNum, restoredVoucher);
+        existingVoucherNumbers.add(finalVoucherNum.toUpperCase());
+        voucherMapById.set(uniqueVoucherId, restoredVoucher);
+        voucherMapByJournalId.set(j.id, restoredVoucher);
+        voucherMapByComposite.set(`${finalVoucherNum}_${matchedEntityId}_${vAmount.toFixed(3)}`, restoredVoucher);
         vouchersSynced++;
-      } else if (existingVoucher.status === 'CANCELLED' && j.status === 'POSTED') {
-        existingVoucher.status = 'POSTED';
-        vouchersSynced++;
+      } else {
+        if (!existingVoucher.journalEntryId) {
+          existingVoucher.journalEntryId = j.id;
+          vouchersSynced++;
+        }
+        if (existingVoucher.status === 'CANCELLED' && j.status === 'POSTED') {
+          existingVoucher.status = 'POSTED';
+          vouchersSynced++;
+        }
       }
     }
 
@@ -5489,6 +5585,149 @@ export class DataService {
       accountsUpdated: updatedAccounts.length,
       vouchersSynced,
     };
+  }
+
+  public static async syncInvoicesWithJournals(targetJournals?: JournalEntry[]): Promise<{
+    invoicesSynced: number;
+  }> {
+    const invoices = localDataStore.getInvoices();
+    const journals = targetJournals || localDataStore.getJournals();
+    const customers = localDataStore.getCustomers();
+    const suppliers = localDataStore.getSuppliers();
+
+    const invoiceMapById = new Map<string, Invoice>();
+    const invoiceMapByJournalId = new Map<string, Invoice>();
+    const invoiceMapByNum = new Map<string, Invoice>();
+    const existingInvoiceNumbers = new Set<string>();
+
+    for (const inv of invoices) {
+      if (inv.id) invoiceMapById.set(inv.id.trim(), inv);
+      if (inv.journalEntryId) invoiceMapByJournalId.set(inv.journalEntryId.trim(), inv);
+      const num = (inv.invoiceNumber || '').trim().toUpperCase();
+      if (num) {
+        existingInvoiceNumbers.add(num);
+        invoiceMapByNum.set(num, inv);
+      }
+    }
+
+    let invoicesSynced = 0;
+
+    for (const j of journals) {
+      if (j.status !== 'POSTED') continue;
+      const ref = (j.reference || '').trim().toUpperCase();
+      const num = (j.entryNumber || '').trim().toUpperCase();
+      const desc = (j.description || '').trim();
+
+      const isSalesInv = ref.startsWith('INV-SAL-') || num.startsWith('JV-INV-SAL-') || desc.includes('فاتورة مبيعات');
+      const isPurchInv = ref.startsWith('INV-PUR-') || num.startsWith('JV-INV-PUR-') || desc.includes('فاتورة مشتريات');
+      const isSalesRet = ref.startsWith('RET-SAL-') || num.startsWith('JV-RET-SAL-') || desc.includes('مردود مبيعات') || desc.includes('مرتجع مبيعات');
+      const isPurchRet = ref.startsWith('RET-PUR-') || num.startsWith('JV-RET-PUR-') || desc.includes('مردود مشتريات') || desc.includes('مرتجع مشتريات');
+
+      if (!isSalesInv && !isPurchInv && !isSalesRet && !isPurchRet) continue;
+
+      let extractedInvNum = ref;
+      if (!extractedInvNum || (!extractedInvNum.startsWith('INV-') && !extractedInvNum.startsWith('RET-'))) {
+        if (num.startsWith('JV-')) {
+          extractedInvNum = num.replace(/^JV-/, '');
+        } else {
+          const match = desc.match(/(?:INV|RET)-(?:SAL|PUR)-[\w-]+/i);
+          if (match) extractedInvNum = match[0].toUpperCase();
+          else extractedInvNum = num.replace(/^JV-/, '');
+        }
+      }
+
+      if (!extractedInvNum) continue;
+
+      let matchedEntityId = '';
+      let matchedEntityName = '';
+      for (const l of j.lines || []) {
+        if (l.entityId) {
+          matchedEntityId = l.entityId;
+          break;
+        }
+      }
+
+      if (isSalesInv || isSalesRet) {
+        const cust = customers.find(
+          (c) =>
+            c.id === matchedEntityId ||
+            c.code === matchedEntityId ||
+            (j.description && c.nameAr && j.description.includes(c.nameAr)) ||
+            (j.lines && j.lines.some((l) => l.memo && c.nameAr && l.memo.includes(c.nameAr)))
+        );
+        if (cust) {
+          matchedEntityId = cust.id;
+          matchedEntityName = cust.nameAr;
+        }
+      } else {
+        const supp = suppliers.find(
+          (s) =>
+            s.id === matchedEntityId ||
+            s.code === matchedEntityId ||
+            (j.description && s.nameAr && j.description.includes(s.nameAr)) ||
+            (j.lines && j.lines.some((l) => l.memo && s.nameAr && l.memo.includes(s.nameAr)))
+        );
+        if (supp) {
+          matchedEntityId = supp.id;
+          matchedEntityName = supp.nameAr;
+        }
+      }
+
+      const existingInv =
+        invoiceMapByJournalId.get(j.id) ||
+        (j.sourceId ? invoiceMapById.get(j.sourceId) : null) ||
+        (extractedInvNum ? invoiceMapByNum.get(extractedInvNum) : null);
+
+      if (!existingInv) {
+        let invType: InvoiceType = 'SALES';
+        if (isSalesRet) invType = 'SALES_RETURN';
+        else if (isPurchInv) invType = 'PURCHASE';
+        else if (isPurchRet) invType = 'PURCHASE_RETURN';
+
+        const amount = Number(j.totalDebit) || 0;
+        const compId = j.companyId || localDataStore.getEffectiveCompanyId() || 'default';
+        const uniqueInvId = j.sourceId || ('inv-' + j.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-'));
+
+        const restoredInv: Invoice = {
+          id: uniqueInvId,
+          invoiceNumber: extractedInvNum,
+          type: invType,
+          paymentTerms: 'CREDIT',
+          entityId: matchedEntityId,
+          entityNameAr: matchedEntityName || j.description || '',
+          date: j.date || new Date().toISOString().split('T')[0],
+          status: 'POSTED',
+          lines: [],
+          items: [],
+          subtotal: amount,
+          vatTotal: 0,
+          grandTotal: amount,
+          paidAmount: 0,
+          dueAmount: amount,
+          journalEntryId: j.id,
+          notes: j.description || '',
+          companyId: compId,
+        };
+
+        invoices.push(restoredInv);
+        existingInvoiceNumbers.add(extractedInvNum.toUpperCase());
+        invoiceMapById.set(uniqueInvId, restoredInv);
+        invoiceMapByJournalId.set(j.id, restoredInv);
+        invoiceMapByNum.set(extractedInvNum.toUpperCase(), restoredInv);
+        invoicesSynced++;
+      } else {
+        if (!existingInv.journalEntryId) {
+          existingInv.journalEntryId = j.id;
+          invoicesSynced++;
+        }
+      }
+    }
+
+    if (invoicesSynced > 0) {
+      localDataStore.saveInvoices(invoices);
+    }
+
+    return { invoicesSynced };
   }
 
   public static async createVoucher(data: any): Promise<PaymentVoucher> {
@@ -9814,8 +10053,9 @@ export class DataService {
     const finalJournals = [...historicalJournals, ...dedupedModernJournals];
     localDataStore.saveJournals(finalJournals);
 
-    // 4. Sync vouchers with journals (updates existing, creates missing, purges orphans)
+    // 4. Sync vouchers & invoices with journals (updates existing, creates missing, purges orphans)
     await this.syncVouchersWithJournals();
+    await this.syncInvoicesWithJournals();
 
     // 5. Update Bank & Cash dynamic account balances
     const updatedAccounts = this.syncAccountBalances();
