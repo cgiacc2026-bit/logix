@@ -37,6 +37,7 @@ import {
 } from '../services/dataService';
 import { SupabaseDataService } from '../services/supabaseService';
 import { isSupabaseConfigured } from '../services/supabaseClient';
+import { initializeNewCompany } from '../services/firebaseCompanyService';
 
 interface CompanyOnboardingWizardProps {
   company: CompanyProfile;
@@ -426,6 +427,18 @@ export const CompanyOnboardingWizard: React.FC<CompanyOnboardingWizardProps> = (
           validInventory.length > 0 ? SupabaseDataService.saveInventory(validInventory) : Promise.resolve(),
           openingJournals.length > 0 ? SupabaseDataService.saveJournal(openingJournals[0]) : Promise.resolve(),
         ]);
+      }
+
+      // 8. Initialize & Sync collections directly to Firebase Firestore
+      try {
+        await initializeNewCompany(companyId, updatedProfile, {
+          customAccounts: freshAccounts,
+          customWarehouseName: startingWarehouse.nameAr,
+          customCurrency: currency,
+          customCity: city,
+        });
+      } catch (fbErr) {
+        console.warn('[Firebase] Onboarding init notice:', fbErr);
       }
 
       // Notify parent to transition to clean workspace

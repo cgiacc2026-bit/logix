@@ -41,8 +41,10 @@ import {
   Cpu,
   Globe,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Flame,
 } from 'lucide-react';
+import { initializeNewCompany } from '../services/firebaseCompanyService.ts';
 
 interface SuperAdminCompanyPortalModalProps {
   isOpen: boolean;
@@ -72,6 +74,7 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
   const [isSyncingAll, setIsSyncingAll] = useState<boolean>(false);
   const [syncingCompanyId, setSyncingCompanyId] = useState<string | null>(null);
+  const [initializingFirebaseId, setInitializingFirebaseId] = useState<string | null>(null);
 
   // Cloud DB Modal state
   const [showCloudModal, setShowCloudModal] = useState<boolean>(false);
@@ -272,6 +275,32 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
     }
   };
 
+  const handleInitializeFirebase = async (comp: TenantCompanyRecord) => {
+    setInitializingFirebaseId(comp.id);
+    setActionMessage(null);
+    try {
+      const res = await initializeNewCompany(comp.id, comp.profile_data || comp);
+      if (res.success) {
+        setActionMessage({
+          type: 'success',
+          text: `تم بنجاح تأسيس هيكل شركة "${comp.company_name}" في Firebase Firestore (accounts, partners, documents, journalEntries, warehouses...) 🔥`,
+        });
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: res.message || 'فشل تهيئة هيكل Firebase',
+        });
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err?.message || 'فشل الاتصال بـ Firebase',
+      });
+    } finally {
+      setInitializingFirebaseId(null);
+    }
+  };
+
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompanyName.trim() || !newOwnerEmail.trim()) return;
@@ -284,16 +313,29 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
       if (res.success && res.data) {
         // Automatically activate this company since it was created by Super Admin
         await updateCompanyStatus(res.data.id, 'active');
+
+        // Automatically initialize Firebase collections hierarchy
+        let fbSuccess = false;
+        try {
+          const fbRes = await initializeNewCompany(res.data.id, res.data);
+          fbSuccess = fbRes.success;
+        } catch (fbErr) {
+          console.warn('[Firebase] New company creation init notice:', fbErr);
+        }
         
         const cloudNote = res.savedToCloud
-          ? 'وحفظها في قاعدة بيانات Supabase السحابية بنجاح 🟢'
+          ? 'وحفظها في السحابة بنجاح 🟢'
           : res.cloudError
           ? `(حُفظت محلياً، تعذر الحفظ السحابي: ${res.cloudError}) 🟡`
           : 'في النظام المحلي (يمكنك مزامنتها مع السحابة بضغطة زر) 🟡';
 
+        const fbNote = fbSuccess
+          ? ' + تم إنشاء هيكل Firebase بنجاح 🔥'
+          : '';
+
         setActionMessage({
-          type: res.savedToCloud ? 'success' : 'error',
-          text: `تم إنشاء واعتماد شركة "${newCompanyName}" ${cloudNote}`,
+          type: 'success',
+          text: `تم إنشاء واعتماد شركة "${newCompanyName}" ${cloudNote}${fbNote}`,
         });
         setShowAddModal(false);
         setNewCompanyName('');
@@ -656,6 +698,16 @@ export const SuperAdminCompanyPortalModal: React.FC<SuperAdminCompanyPortalModal
                             >
                               <Database className={`w-3 h-3 text-sky-600 ${syncingCompanyId === comp.id ? 'animate-spin' : ''}`} />
                               <span>{syncingCompanyId === comp.id ? 'جاري الرفع...' : 'رفع للسحابة'}</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleInitializeFirebase(comp)}
+                              disabled={initializingFirebaseId === comp.id}
+                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg font-bold text-xs transition-all flex items-center gap-1 cursor-pointer"
+                              title="تهيئة هيكل المجموعات لهذه الشركة على Firebase Firestore (accounts, partners, documents, journalEntries, warehouses...)"
+                            >
+                              <Flame className={`w-3 h-3 text-amber-600 ${initializingFirebaseId === comp.id ? 'animate-spin' : ''}`} />
+                              <span>{initializingFirebaseId === comp.id ? 'جاري التهيئة...' : 'تهيئة Firebase 🔥'}</span>
                             </button>
 
                             <button

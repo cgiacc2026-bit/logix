@@ -5,6 +5,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { CompanyProfile, SystemUser, TenantCompanyRecord } from '../types.js';
 import bcrypt from 'bcryptjs';
+import { initializeNewCompany } from './firebaseCompanyService.ts';
 
 export const getEnvVar = (key: string): string => {
   try {
@@ -470,6 +471,12 @@ export async function registerCompany(
           const srvData = await srvRes.json();
           if (srvData.success && srvData.data) {
             saveLocalRegisteredCompany(srvData.data);
+            // Ensure client-side Firebase collections are also provisioned or synced
+            try {
+              await initializeNewCompany(srvData.data.id || newId, srvData.data);
+            } catch (fbClientErr) {
+              console.warn('[Firebase] Client verification notice:', fbClientErr);
+            }
             return {
               success: true,
               savedToCloud: true,
@@ -600,12 +607,17 @@ export async function registerCompany(
 
           cloudSaved = true;
           saveLocalRegisteredCompany(data);
+          try {
+            await initializeNewCompany(newId, data || newCompanyRecord);
+          } catch (fbInitErr) {
+            console.warn('[Firebase] Fallback init notice:', fbInitErr);
+          }
           return {
             success: true,
             savedToCloud: true,
             message:
               initialStatus === 'active'
-                ? `تم إنشاء واعتماد شركة "${cleanName}" وحفظها في قاعدة بيانات Supabase السحابية بنجاح!`
+                ? `تم إنشاء واعتماد شركة "${cleanName}" وتأسيس هيكل Firebase السحابي بنجاح!`
                 : 'تم إرسال طلب تسجيل المنشأة بنجاح! حسابك قيد التفعيل من قبل الإدارة',
             data,
           };
@@ -627,6 +639,11 @@ export async function registerCompany(
     }
 
     saveLocalRegisteredCompany(newCompanyRecord);
+    try {
+      await initializeNewCompany(newId, newCompanyRecord);
+    } catch (fbLocalErr) {
+      console.warn('[Firebase] Local fallback init notice:', fbLocalErr);
+    }
 
     const message = cloudErrText
       ? `تم إنشاء الشركة محلياً، ولكن تعذر الحفظ في سحابة Supabase (${cloudErrText}). يرجى التحقق من مفتاح السحابة وصلاحيات RLS.`

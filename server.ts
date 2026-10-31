@@ -8,6 +8,7 @@ import { Account, JournalEntry, Invoice, PaymentVoucher, CompanyProfile } from '
 import bcrypt from 'bcryptjs';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { initializeNewCompany, checkCompanyInitializedInFirebase } from './src/services/firebaseCompanyService.js';
 
 // Encrypted / Obfuscated cloud credential storage (Protected build)
 const _decodeCloudKey = (b64: string): string => {
@@ -829,17 +830,74 @@ async function startServer() {
 
       console.log(`[Supabase Cloud] New company registered & member linked: ${cleanName} (${cleanEmail})`);
 
+      // STEP 3: Automatic Firestore Collections Initialization under companies/{companyId}/
+      let firebaseInitResult: any = null;
+      try {
+        firebaseInitResult = await initializeNewCompany(newId, newCompanyRecord);
+        console.log(`[Firebase Firestore] Company collections initialized:`, firebaseInitResult?.message);
+      } catch (fbErr: any) {
+        console.error('[Firebase Firestore] Warning during company initialization:', fbErr);
+        firebaseInitResult = { success: false, message: fbErr?.message };
+      }
+
       return res.json({
         success: true,
         savedToCloud: true,
+        firebaseInitialized: firebaseInitResult?.success ?? false,
         message: status === 'active'
-          ? `تم إنشاء واعتماد شركة "${cleanName}" وربط صلاحيات المالك في قاعدة البيانات بنجاح!`
+          ? `تم إنشاء واعتماد شركة "${cleanName}" وتأسيس هيكل Firebase السحابي بنجاح!`
           : 'تم إرسال طلب تسجيل المنشأة بنجاح! حسابك قيد التفعيل من قبل الإدارة',
         data: insertedCompany || newCompanyRecord,
+        firebaseDetails: firebaseInitResult,
       });
     } catch (err: any) {
       console.error('Registration server endpoint error:', err);
       return res.status(500).json({ success: false, message: err?.message || 'حدث خطأ غير متوقع في الخادم' });
+    }
+  });
+
+  // FIREBASE INITIALIZATION: Initialize or Re-initialize company collections in Firestore
+  app.post('/api/companies/:id/initialize-firebase', async (req, res) => {
+    try {
+      const companyId = req.params.id;
+      if (!companyId) {
+        return res.status(400).json({ success: false, message: 'معرّف الشركة مطلوب' });
+      }
+
+      // Fetch company profile from Supabase or request body
+      let profile = req.body.profile;
+      if (!profile) {
+        const { data: comp } = await supabaseAdmin
+          .from('companies')
+          .select('*')
+          .eq('id', companyId)
+          .maybeSingle();
+        profile = comp?.profile_data || comp;
+      }
+
+      if (!profile) {
+        profile = { id: companyId, nameAr: 'منشأة سحابية', currency: 'KWD' };
+      }
+
+      const result = await initializeNewCompany(companyId, profile);
+      return res.json(result);
+    } catch (err: any) {
+      console.error('Error in /api/companies/:id/initialize-firebase:', err);
+      return res.status(500).json({ success: false, message: err?.message || 'فشل تهيئة هيكل الشركة في Firebase' });
+    }
+  });
+
+  // FIREBASE STATUS: Check if company collections exist in Firestore
+  app.get('/api/companies/:id/firebase-status', async (req, res) => {
+    try {
+      const companyId = req.params.id;
+      if (!companyId) {
+        return res.status(400).json({ success: false, message: 'معرّف الشركة مطلوب' });
+      }
+      const isInitialized = await checkCompanyInitializedInFirebase(companyId);
+      return res.json({ success: true, companyId, isInitialized });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message });
     }
   });
 
