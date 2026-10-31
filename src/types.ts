@@ -1374,5 +1374,103 @@ export interface CompanyBackupEnvelope {
   };
 }
 
+// ==========================================
+// UNIFIED ENTERPRISE ACCOUNTING SCHEMA (NEW)
+// ==========================================
+
+export type PartnerType = 'CUSTOMER' | 'SUPPLIER' | 'BOTH';
+
+export interface Partner {
+  id: string;
+  company_id: string;
+  type: PartnerType;
+  code?: string;
+  nameAr: string;
+  nameEn?: string;
+  taxNumber?: string;
+  crNumber?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  balance: number;
+  creditLimit?: number;
+  accountId?: string;
+  isActive: boolean;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type DocumentType =
+  | 'SALES_INVOICE'
+  | 'SALES_RETURN'
+  | 'PURCHASE_INVOICE'
+  | 'PURCHASE_RETURN'
+  | 'RECEIPT_VOUCHER'
+  | 'PAYMENT_VOUCHER'
+  | 'JOURNAL_VOUCHER'
+  | 'PRODUCTION_ORDER'
+  | 'STOCK_TRANSFER'
+  | 'INVENTORY_ADJUSTMENT';
+
+export type DocumentStatus = 'DRAFT' | 'APPROVED' | 'POSTED' | 'REVERSED' | 'CANCELLED';
+
+export interface DocumentLine {
+  id: string;
+  document_id: string;
+  item_id?: string;
+  item_code?: string;
+  item_name?: string;
+  unit?: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+  discount_amount?: number;
+  vat_amount?: number;
+  total: number;
+  warehouse_id?: string;
+  notes?: string;
+}
+
+export interface UnifiedDocument {
+  id: string;
+  company_id: string;
+  branch_id?: string;
+  doc_type: DocumentType;
+  doc_number: string;
+  status: DocumentStatus;
+
+  // العلاقات المحاسبية الحرجة
+  journal_entry_id?: string;
+  reverses_id?: string;         // السند الأصلي الذي تم عكسه
+  reversed_by_id?: string;      // السند العكسي الذي ألغى هذا السند
+
+  // المبالغ
+  subtotal: number;
+  discount_total: number;
+  vat_total: number;
+  grand_total: number;
+  paid_amount: number;
+  due_amount: number;
+
+  // دورة الحياة (Lifecycle)
+  posted_at?: string;
+  posted_by?: string;
+  reversed_at?: string;
+  reversed_by?: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
+
+  entity_id?: string;           // العميل أو المورد أو الشريك
+  warehouse_id?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+
+  lines?: DocumentLine[];
+}
+
+
 
 

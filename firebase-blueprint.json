@@ -45,6 +45,33 @@
       },
       "required": ["id", "code"]
     },
+    "partner": {
+      "title": "Partner",
+      "description": "Unified business partner (Customer/Supplier/Both)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Partner ID" },
+        "company_id": { "type": "string", "description": "Company ID" },
+        "type": { "type": "string", "description": "CUSTOMER, SUPPLIER, or BOTH" },
+        "nameAr": { "type": "string", "description": "Partner Arabic name" },
+        "balance": { "type": "number", "description": "Current balance" }
+      },
+      "required": ["id", "company_id", "type", "nameAr"]
+    },
+    "document": {
+      "title": "Document",
+      "description": "Unified transactional document (Invoice, Voucher, Return)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Document ID" },
+        "company_id": { "type": "string", "description": "Company ID" },
+        "doc_type": { "type": "string", "description": "Document Type" },
+        "doc_number": { "type": "string", "description": "Document sequence number" },
+        "status": { "type": "string", "description": "DRAFT, APPROVED, POSTED, REVERSED, CANCELLED" },
+        "grand_total": { "type": "number", "description": "Total document value" }
+      },
+      "required": ["id", "company_id", "doc_type", "doc_number", "status", "grand_total"]
+    },
     "item": {
       "title": "Item",
       "description": "Inventory product item",
@@ -109,6 +136,14 @@
     "/companies/{companyId}/accounts/{accountId}": {
       "schema": "account",
       "description": "Company chart of accounts"
+    },
+    "/companies/{companyId}/partners/{partnerId}": {
+      "schema": "partner",
+      "description": "Unified partners (customers and suppliers)"
+    },
+    "/companies/{companyId}/documents/{docId}": {
+      "schema": "document",
+      "description": "Unified transactions and invoices"
     },
     "/companies/{companyId}/customers/{customerId}": {
       "schema": "customer",
