@@ -1182,135 +1182,149 @@ export async function deleteCompanyPermanently(
 function getStoredLocalCompanies(): TenantCompanyRecord[] {
   if (typeof window === 'undefined') return [];
   const list: TenantCompanyRecord[] = [];
+  const validUUIDRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   try {
-    const raw = localStorage.getItem('all_tenants_cache');
+    const raw = localStorage.getItem('all_tenants_cache') || localStorage.getItem(LOCAL_COMPANIES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        // Enforce UUID schema: only valid UUID format companies allowed
-        const validUUIDRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         list.push(...parsed.filter((item) => item && validUUIDRegex.test(item.id)));
       }
     }
   } catch {}
 
-  // Canonical 3 tenants guarantee (Al-Waleed, Logix Solutions, Demo Company)
-  const canonicalIds = [
-    '20000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000001',
-    '00000000-0000-0000-0000-000000000099'
+  // Canonical registered tenants from live production portal
+  const defaultCompanies: TenantCompanyRecord[] = [
+    {
+      id: '20000000-0000-0000-0000-000000000001',
+      company_name: 'شركة مطحنة الوليد المتحده',
+      owner_email: 'alwaleed.mill@logixerp.com',
+      status: 'active',
+      type: 'client',
+      login_code: '450912',
+      created_at: '2026-09-21T03:57:41.082Z',
+      functional_currency: 'KWD',
+      profile_data: {
+        id: '20000000-0000-0000-0000-000000000001',
+        nameAr: 'شركة مطحنة الوليد المتحده',
+        nameEn: 'Al-Waleed United Mill & Food Industries',
+        tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
+        legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
+        crNumber: '450912',
+        chamberNumber: '78214',
+        functionalCurrency: 'KWD',
+        currency: 'KWD',
+        decimalPlaces: 3,
+        vatRate: 0,
+        city: 'الكويت',
+        country: 'دولة الكويت',
+        streetName: 'شارع الغزالي',
+        buildingNo: 'قسيمة 42',
+        district: 'منطقة الري الصناعية',
+        phone: '+965 2484 1888',
+        email: 'cgiacc2026@gmail.com',
+        generalManager: 'د. خالد السليمان',
+        financialManager: 'أ. محمد الشمري',
+        chiefAccountant: 'أ. محمد الشمري',
+        headerNotes: 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت',
+      },
+    },
+    {
+      id: '7df78899-c013-4237-95bd-0ccc545f8efe',
+      company_name: 'شركة سلفر نايت للتجارة العامة',
+      owner_email: 'silver@logix.com',
+      status: 'active',
+      type: 'client',
+      login_code: '423795',
+      created_at: '2026-10-09T08:55:02.851Z',
+      functional_currency: 'KWD',
+      profile_data: {
+        id: '7df78899-c013-4237-95bd-0ccc545f8efe',
+        nameAr: 'شركة سلفر نايت للتجارة العامة',
+        nameEn: 'Silver Knight General Trading Co.',
+        tradeName: 'شركة سلفر نايت للتجارة العامة',
+        legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
+        crNumber: '423795',
+        currency: 'KWD',
+        currencySymbol: 'د.ك',
+        decimalPlaces: 3,
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'الكويت',
+        country: 'دولة الكويت',
+        email: 'silver@logix.com',
+        status: 'active',
+      },
+    },
+    {
+      id: '7a9e9ae3-9d70-4397-9794-2121149add01',
+      company_name: 'شركة وجية العالمية للتجارة العامة والمقاولات',
+      owner_email: 'wageh@logix.com',
+      status: 'active',
+      type: 'client',
+      login_code: '979421',
+      created_at: '2026-10-10T06:21:51.706Z',
+      functional_currency: 'KWD',
+      profile_data: {
+        id: '7a9e9ae3-9d70-4397-9794-2121149add01',
+        nameAr: 'شركة وجية العالمية للتجارة العامة والمقاولات',
+        nameEn: 'Wageh Global General Trading & Contracting Co.',
+        tradeName: 'شركة وجية العالمية للتجارة العامة والمقاولات',
+        legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
+        crNumber: '787237',
+        chamberNumber: '78214',
+        currency: 'KWD',
+        currencySymbol: 'د.ك',
+        decimalPlaces: 3,
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'الكويت',
+        country: 'دولة الكويت',
+        district: 'منطقة الري الصناعية',
+        streetName: 'شارع الغزالي',
+        buildingNo: 'قسيمة 42',
+        email: 'wageh@logix.com',
+        status: 'active',
+      },
+    },
+    {
+      id: 'e5a7d628-1f8a-405b-a9f1-4421d04a25cc',
+      company_name: 'شركة سيتي جولف العالمية للتجارة العامة',
+      owner_email: 'citygulf@logix.com',
+      status: 'active',
+      type: 'client',
+      login_code: '805604',
+      created_at: '2026-10-20T05:51:32.504Z',
+      functional_currency: 'KWD',
+      profile_data: {
+        id: 'e5a7d628-1f8a-405b-a9f1-4421d04a25cc',
+        nameAr: 'شركة سيتي جولف العالمية للتجارة العامة',
+        nameEn: 'City Gulf Global General Trading Co.',
+        tradeName: 'شركة سيتي جولف العالمية للتجارة العامة',
+        legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
+        crNumber: '805604',
+        currency: 'KWD',
+        currencySymbol: 'د.ك',
+        decimalPlaces: 3,
+        functionalCurrency: 'KWD',
+        vatRate: 0,
+        city: 'الكويت',
+        country: 'دولة الكويت',
+        email: 'citygulf@logix.com',
+        status: 'active',
+      },
+    },
   ];
 
-  if (list.length === 0) {
-    list.push(
-      {
-        id: '20000000-0000-0000-0000-000000000001',
-        company_name: 'شركة مطحنة الوليد المتحده',
-        owner_email: 'alwaleed.mill@logixerp.com',
-        status: 'active',
-        type: 'client',
-        login_code: '450912',
-        created_at: '2026-01-01T00:00:00.000Z',
-        functional_currency: 'KWD',
-        profile_data: {
-          id: '20000000-0000-0000-0000-000000000001',
-          nameAr: 'شركة مطحنة الوليد المتحده',
-          nameEn: 'Al-Waleed United Mill & Food Industries',
-          tradeName: 'مطحنة الوليد للبهارات والمواد التموينية والصناعات الغذائية',
-          legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
-          crNumber: '450912',
-          chamberNumber: '78214',
-          functionalCurrency: 'KWD',
-          currency: 'KWD',
-          decimalPlaces: 3,
-          vatRate: 0,
-          city: 'الكويت',
-          country: 'دولة الكويت',
-          streetName: 'شارع الغزالي',
-          buildingNo: 'قسيمة 42',
-          district: 'منطقة الري الصناعية',
-          phone: '+965 2484 1888',
-          email: 'cgiacc2026@gmail.com',
-          generalManager: 'د. خالد السليمان',
-          financialManager: 'أ. محمد الشمري',
-          chiefAccountant: 'أ. محمد الشمري',
-          headerNotes: 'مستند تجاري ومالي رسمي معتمد • مطحنة الوليد المتحدة • دولة الكويت',
-        },
-      },
-      {
-        id: '10000000-0000-0000-0000-000000000001',
-        company_name: 'شركة لوجيكس للحلول البرمجية (Logix Solutions)',
-        owner_email: 'cgiacc2026@gmail.com',
-        status: 'active',
-        type: 'system',
-        login_code: 'logix',
-        created_at: '2026-01-01T00:00:00.000Z',
-        functional_currency: 'KWD',
-        profile_data: {
-          id: '10000000-0000-0000-0000-000000000001',
-          nameAr: 'شركة لوجيكس للحلول البرمجية (Logix Solutions)',
-          nameEn: 'Logix Solutions Software & Cloud Systems Co. W.L.L',
-          tradeName: 'لوجيكس للحلول البرمجية وتخطيط موارد المؤسسات',
-          legalForm: 'شركة ذات مسؤولية محدودة (ذ.م.م)',
-          taxNumber: '300100200300003',
-          crNumber: '554433',
-          chamberNumber: '99112',
-          functionalCurrency: 'KWD',
-          currency: 'KWD',
-          decimalPlaces: 3,
-          vatRate: 0,
-          city: 'مدينة الكويت',
-          country: 'دولة الكويت',
-          streetName: 'شارع أحمد الجابر - برج الراية',
-          buildingNo: 'طابق 24',
-          district: 'شرق',
-          phone: '+965 2200 8800',
-          email: 'cgiacc2026@gmail.com',
-          generalManager: 'المشرف العام (CGI Admin)',
-          financialManager: 'أ. عبد العزيز الكندري',
-          chiefAccountant: 'أ. طارق الفهد',
-          headerNotes: 'المنشأة الرسمية لشركة لوجيكس للحلول البرمجية لإدارة الإيرادات والمصروفات',
-        },
-      },
-      {
-        id: '00000000-0000-0000-0000-000000000099',
-        company_name: 'شركة تجريبية (Demo Company)',
-        owner_email: 'logixdemo@logix.com',
-        status: 'active',
-        type: 'demo',
-        login_code: 'demo',
-        created_at: '2026-01-01T00:00:00.000Z',
-        functional_currency: 'KWD',
-        profile_data: {
-          id: '00000000-0000-0000-0000-000000000099',
-          nameAr: 'شركة تجريبية (Demo Company)',
-          nameEn: 'Logix Demo Company (Sandbox Environment)',
-          tradeName: 'بيئة تجريبية معزولة مخصصة للتجربة والعرض',
-          legalForm: 'شركة ذات مسؤولية محدودة',
-          taxNumber: '310098765400003',
-          crNumber: '1010998877',
-          chamberNumber: '88200',
-          functionalCurrency: 'KWD',
-          currency: 'KWD',
-          decimalPlaces: 3,
-          vatRate: 0,
-          city: 'الكويت',
-          country: 'دولة الكويت',
-          streetName: 'طريق المطار الدولي',
-          buildingNo: 'مجمع واحة العرض التجريبي',
-          district: 'الفروانية',
-          phone: '+965 2200 8899',
-          email: 'logixdemo@logix.com',
-          generalManager: 'م. فهد السالم (مدير عام تجريبي)',
-          financialManager: 'أ. ريم المطيري (المدير المالي)',
-          chiefAccountant: 'أ. عمر الدوسري (رئيس الحسابات)',
-          headerNotes: 'بيئة تجريبية معزولة مخصصة للتجربة والاختبار وعرض الميزات',
-        },
-      }
-    );
+  // Merge default companies with any locally added ones
+  for (const def of defaultCompanies) {
+    if (!list.some((c) => c.id === def.id)) {
+      list.push(def);
+    }
   }
 
-  return list.filter((c) => canonicalIds.includes(c.id));
+  return list.filter((c) => validUUIDRegex.test(c.id));
 }
 
 /**

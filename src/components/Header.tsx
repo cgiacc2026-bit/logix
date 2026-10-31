@@ -102,6 +102,13 @@ export const Header: React.FC<HeaderProps> = ({
   const companyMenuRef = useRef<HTMLDivElement>(null);
   const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
 
+  const DEFAULT_COMPANIES_LIST = [
+    { id: '20000000-0000-0000-0000-000000000001', company_name: 'شركة مطحنة الوليد المتحدة', status: 'active' },
+    { id: '7df78899-c013-4237-95bd-0ccc545f8efe', company_name: 'شركة سلفر نايت للتجارة العامة', status: 'active' },
+    { id: '7a9e9ae3-9d70-4397-9794-2121149add01', company_name: 'شركة وجية العالمية للتجارة العامة والمقاولات', status: 'active' },
+    { id: 'e5a7d628-1f8a-405b-a9f1-4421d04a25cc', company_name: 'شركة سيتي جولف العالمية للتجارة العامة', status: 'active' },
+  ];
+
   const loadCompaniesList = useCallback(() => {
     try {
       const raw = localStorage.getItem('all_tenants_cache') || localStorage.getItem('logix_registered_companies');
@@ -109,29 +116,30 @@ export const Header: React.FC<HeaderProps> = ({
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const seen = new Set();
-          const unique = parsed.filter((c: any) => {
+          const unique: any[] = [];
+          for (const c of parsed) {
             const id = c.id || c.company_id;
-            if (!id || seen.has(id)) return false;
+            if (!id || seen.has(id)) continue;
             seen.add(id);
-            return true;
-          });
-          // Ensure protected tenant is always in the list
-          const hasProtected = unique.some((c: any) => (c.id || c.company_id) === '20000000-0000-0000-0000-000000000001');
-          if (!hasProtected) {
-            unique.unshift({
-              id: '20000000-0000-0000-0000-000000000001',
-              company_name: 'مطحنة الوليد المتحدة (ذ.م.م)',
-              status: 'active',
+            unique.push({
+              id,
+              company_name: c.company_name || c.nameAr || c.name || id,
+              status: c.status || 'active',
             });
+          }
+          // Ensure all 4 production tenants are always in the list
+          for (const def of DEFAULT_COMPANIES_LIST) {
+            if (!seen.has(def.id)) {
+              seen.add(def.id);
+              unique.push(def);
+            }
           }
           setAvailableCompanies(unique);
           return;
         }
       }
     } catch {}
-    setAvailableCompanies([
-      { id: '20000000-0000-0000-0000-000000000001', company_name: 'مطحنة الوليد المتحدة (ذ.م.م)', status: 'active' }
-    ]);
+    setAvailableCompanies(DEFAULT_COMPANIES_LIST);
   }, []);
 
   useEffect(() => {

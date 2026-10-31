@@ -97,11 +97,22 @@ export interface InitializeNewCompanyOptions {
  * Creates the complete isolated hierarchy under companies/{companyId}/
  */
 export async function initializeNewCompany(
-  companyId: string,
-  companyProfile: any,
+  firstArg: string | any,
+  secondArg?: any,
   options?: InitializeNewCompanyOptions
 ): Promise<{ success: boolean; message: string; details?: any }> {
   try {
+    let companyId: string;
+    let companyProfile: any;
+
+    if (typeof firstArg === 'object' && firstArg !== null) {
+      companyId = firstArg.id || firstArg.companyId || firstArg.company_id;
+      companyProfile = firstArg.profile || firstArg.profile_data || firstArg;
+    } else {
+      companyId = firstArg;
+      companyProfile = secondArg || {};
+    }
+
     if (!companyId) {
       throw new Error('Company ID is required to initialize Firebase collections');
     }
@@ -111,12 +122,12 @@ export async function initializeNewCompany(
     const nowIso = new Date().toISOString();
     const todayStr = nowIso.split('T')[0];
 
-    const companyName = companyProfile.nameAr || companyProfile.company_name || companyProfile.name || 'المنشأة الجديدة';
-    const companyNameEn = companyProfile.nameEn || companyProfile.name_en || '';
-    const currency = options?.customCurrency || companyProfile.currency || companyProfile.functional_currency || 'KWD';
+    const companyName = companyProfile?.nameAr || companyProfile?.company_name || companyProfile?.name || 'المنشأة الجديدة';
+    const companyNameEn = companyProfile?.nameEn || companyProfile?.name_en || '';
+    const currency = options?.customCurrency || companyProfile?.currency || companyProfile?.functional_currency || 'KWD';
     const currencySymbol = currency === 'KWD' ? 'د.ك' : currency === 'SAR' ? 'ر.س' : currency;
-    const city = options?.customCity || companyProfile.city || 'الكويت';
-    const country = companyProfile.country || 'دولة الكويت';
+    const city = options?.customCity || companyProfile?.city || 'الكويت';
+    const country = companyProfile?.country || 'دولة الكويت';
 
     console.log(`[Firebase] Initializing collections hierarchy for company: ${companyName} (${cleanCompanyId})...`);
 
