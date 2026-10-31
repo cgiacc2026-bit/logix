@@ -1,0 +1,12 @@
+{
+  "snapshotDate": "2026-10-31T08:38:04.800Z",
+  "b1Stats": {
+    "invoices": 50,
+    "journals": 99,
+    "accounts": 117
+  },
+  "b2Stats": {
+    "invoices": 113,
+    "journals": 136
+  }
+}
