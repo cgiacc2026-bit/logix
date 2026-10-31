@@ -1,12 +1,8 @@
 /**
- * Logix ERP v2 - Unified Enterprise Accounting Schema
+ * Logix ERP v2.1 - Unified Enterprise Accounting Schema
+ * File: src/types/unifiedV2.ts
  * 
- * Architecture Principles:
- * 1. Strict Multi-Tenant Isolation (company_id on every entity and query)
- * 2. Unified Document Model (Single documents table with strict lifecycle states)
- * 3. Immutable Double-Entry General Ledger (Strong 1-to-1 link between documents and journal entries)
- * 4. Non-Destructive Reversal Engine (status: REVERSED, linked via reverses_id & reversed_by_id)
- * 5. Unified Partners Model (Customers & Suppliers unified with clean subledger routing)
+ * Strict snake_case naming standard with complete multi-tenant isolation.
  */
 
 export type DocumentTypeV2 =
@@ -39,27 +35,41 @@ export type NormalBalanceV2 = 'DEBIT' | 'CREDIT';
 
 export type PaymentMethodV2 = 'CASH' | 'BANK_TRANSFER' | 'CHECK' | 'KNET' | 'CREDIT' | 'SPLIT';
 
+export type SystemAccountRole =
+  | 'RECEIVABLE'
+  | 'PAYABLE'
+  | 'SALES_REVENUE'
+  | 'SALES_RETURN'
+  | 'PURCHASE_EXPENSE'
+  | 'PURCHASE_RETURN'
+  | 'INVENTORY'
+  | 'COGS'
+  | 'CASH_OR_BANK'
+  | 'VAT_OUTPUT'
+  | 'VAT_INPUT'
+  | 'INVENTORY_ADJUSTMENT_DIFF';
+
 // -------------------------------------------------------------
 // 1. الشركات (Tenants / Multi-Tenant Isolation)
 // -------------------------------------------------------------
 export interface CompanyV2 {
-  id: string; // Canonical UUID (e.g., '20000000-0000-0000-0000-000000000001')
-  nameAr: string;
-  nameEn: string;
-  tradeName?: string;
-  taxNumber?: string;
-  crNumber?: string;
-  crIssueDate?: string;
-  crExpiryDate?: string;
-  chamberNumber?: string;
-  vatRate: number; // e.g., 0 for KWD standard
-  vatType: 'STANDARD' | 'EXEMPT' | 'ZERO' | 'NONE';
-  fiscalYearStart: string; // YYYY-MM-DD
-  fiscalYearEnd: string;   // YYYY-MM-DD
-  functionalCurrency: string; // e.g., 'KWD'
-  decimalPlaces: number; // 3 for KWD, 2 for SAR/USD
-  accountingBasis: 'ACCRUAL' | 'CASH';
-  inventoryCosting: 'WEIGHTED_AVERAGE' | 'FIFO' | 'LIFO';
+  id: string; // Canonical UUID (e.g. '20000000-0000-0000-0000-000000000001')
+  name_ar: string;
+  name_en: string;
+  trade_name?: string;
+  tax_number?: string;
+  cr_number?: string;
+  cr_issue_date?: string;
+  cr_expiry_date?: string;
+  chamber_number?: string;
+  vat_rate: number;
+  vat_type: 'STANDARD' | 'EXEMPT' | 'ZERO' | 'NONE';
+  fiscal_year_start: string; // YYYY-MM-DD
+  fiscal_year_end: string;   // YYYY-MM-DD
+  functional_currency: string;
+  decimal_places: number;
+  accounting_basis: 'ACCRUAL' | 'CASH';
+  inventory_costing: 'WEIGHTED_AVERAGE' | 'FIFO' | 'LIFO';
   phone?: string;
   email?: string;
   address?: string;
@@ -68,17 +78,21 @@ export interface CompanyV2 {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+
+  // Backward compatibility getters / optional aliases
+  nameAr?: string;
+  nameEn?: string;
 }
 
 // -------------------------------------------------------------
-// 2. المستخدمين (مرتبطين بالشركات وصلاحيات العزل)
+// 2. المستخدمين (Users & Roles)
 // -------------------------------------------------------------
 export interface UserV2 {
   id: string;
   email: string;
   name: string;
   role: 'SUPER_ADMIN' | 'COMPANY_ADMIN' | 'ACCOUNTANT' | 'CASHIER' | 'SALES_REP' | 'VIEWER';
-  company_ids: string[]; // Companies this user is authorized to access
+  company_ids: string[];
   current_company_id?: string;
   permissions: string[];
   is_active: boolean;
@@ -87,58 +101,66 @@ export interface UserV2 {
 }
 
 // -------------------------------------------------------------
-// 3. دليل الحسابات (شجرة الحسابات المنظمة)
+// 3. دليل الحسابات (Chart of Accounts)
 // -------------------------------------------------------------
 export interface AccountV2 {
   id: string;
-  company_id: string; // Tenant isolation key
-  code: string; // e.g. "1000", "1110", "1111", "1120", "2110", "3110", "4110", "5110"
-  nameAr: string;
-  nameEn?: string;
+  company_id: string;
+  code: string;
+  name_ar: string;
+  name_en?: string;
   category: AccountCategoryV2;
-  type: AccountTypeV2; // ROOT (مستوى رئيسي), HEADER (حساب تجميعي), DETAIL (حساب فرعي يقبل القيود)
-  normal_balance: NormalBalanceV2; // DEBIT (مدين طبيعته) | CREDIT (دائن طبيعته)
+  type: AccountTypeV2;
+  normal_balance: NormalBalanceV2;
   parent_id: string | null;
-  level: number; // 1: Root, 2: Group, 3: Control Header, 4: Sub-account
-  is_postable: boolean; // Only DETAIL accounts are postable
-  balance: number; // Dynamic calculated balance: (Debit - Credit) or (Credit - Debit) based on nature
+  level: number;
+  is_postable: boolean;
+  balance: number;
   opening_balance: number;
   currency: string;
   is_system: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+
+  // Optional aliases for legacy compatibility
+  nameAr?: string;
+  nameEn?: string;
 }
 
 // -------------------------------------------------------------
-// 4. الشركاء (العملاء + الموردين الموحدين)
+// 4. الشركاء (Partners: Customers & Suppliers Unified)
 // -------------------------------------------------------------
 export interface PartnerV2 {
   id: string;
-  company_id: string; // Tenant isolation key
-  type: PartnerTypeV2; // CUSTOMER | SUPPLIER | BOTH
-  code: string; // e.g., "00189", "SUPP-201"
-  nameAr: string;
-  nameEn?: string;
-  taxNumber?: string;
-  crNumber?: string;
+  company_id: string;
+  type: PartnerTypeV2;
+  code: string;
+  name_ar: string;
+  name_en?: string;
+  tax_number?: string;
+  cr_number?: string;
   phone?: string;
   email?: string;
   address?: string;
   city?: string;
   governorate?: string;
-  balance: number; // Current outstanding balance
+  balance: number;
   opening_balance: number;
   credit_limit?: number;
-  account_id?: string; // Subledger account ID in Chart of Accounts (e.g. 1121001 or 2111001)
+  account_id?: string;
   is_active: boolean;
   notes?: string;
   created_at: string;
   updated_at: string;
+
+  // Optional aliases
+  nameAr?: string;
+  nameEn?: string;
 }
 
 // -------------------------------------------------------------
-// 5. بنود المستند (تفاصيل سطور الفاتورة / السند)
+// 5. بنود المستند (Document Lines)
 // -------------------------------------------------------------
 export interface DocumentLineV2 {
   id: string;
@@ -164,30 +186,30 @@ export interface DocumentLineV2 {
 }
 
 // -------------------------------------------------------------
-// 6. المستندات الموحدة (أهم جدول في بنية النظام v2)
+// 6. المستندات الموحدة (Unified Documents Table)
 // -------------------------------------------------------------
 export interface DocumentV2 {
-  id: string; // Primary Key UUID
-  company_id: string; // Tenant isolation key
+  id: string;
+  company_id: string;
   branch_id: string;
   doc_type: DocumentTypeV2;
-  doc_number: string; // Official sequential number (e.g. "INV-SAL-2026-0142", "RCV-2026-0001", "REV-RCV-2026-0001")
-  doc_date: string; // YYYY-MM-DD
-  due_date?: string; // YYYY-MM-DD
-  status: DocumentStatusV2; // DRAFT | APPROVED | POSTED | REVERSED | CANCELLED
+  doc_number: string;
+  doc_date: string;
+  due_date?: string;
+  status: DocumentStatusV2;
 
-  // العلاقات المحاسبية والرقابية الحرجة (Critical Audit Links)
-  journal_entry_id?: string | null; // معرف القيد اليومي المزدوج الناتج عن الترحيل
-  reverses_id?: string | null;      // في حالة كان هذا مستنداً عكسياً، يشير للمستند الأصلي
-  reversed_by_id?: string | null;   // في حالة تم عكس هذا المستند، يشير للمستند العكسي الجديد
+  // العلاقات المحاسبية والرقابية الحرجة
+  journal_entry_id?: string | null;
+  reverses_id?: string | null;
+  reversed_by_id?: string | null;
 
-  // جهة التعامل والمستودع
-  entity_id?: string | null; // معرف الشريك (Partner ID: Customer / Supplier)
+  // الشريك والمستودع
+  entity_id?: string | null;
   warehouse_id?: string | null;
 
-  // طريقة السداد وحساب الوسيط المالي
+  // طريقة السداد والوسيط المالي
   payment_method?: PaymentMethodV2;
-  payment_account_id?: string | null; // حساب الصندوق أو البنك في سندات القبض/الصرف أو المبيعات النقدية
+  payment_account_id?: string | null;
   check_number?: string;
   check_bank_name?: string;
   check_due_date?: string;
@@ -200,7 +222,7 @@ export interface DocumentV2 {
   paid_amount: number;
   due_amount: number;
 
-  // دورة الحياة والرقابة الصارمة (Lifecycle Audit Timestamps)
+  // دورة الحياة والرقابة الصارمة
   posted_at?: string | null;
   posted_by?: string | null;
   reversed_at?: string | null;
@@ -210,12 +232,11 @@ export interface DocumentV2 {
   cancellation_reason?: string | null;
 
   notes?: string;
-  reference_no?: string; // رقم مرجع خارجي أو رقم فاتورة مسددة
+  reference_no?: string;
   created_by: string;
   created_at: string;
   updated_at: string;
 
-  // البنود التفصيلية
   lines?: DocumentLineV2[];
 }
 
@@ -224,14 +245,13 @@ export interface DocumentV2 {
 // -------------------------------------------------------------
 export interface JournalEntryV2 {
   id: string;
-  company_id: string; // Tenant isolation key
-  entry_number: string; // e.g. "JV-2026-0001", "REV-JV-2026-0001"
-  date: string; // YYYY-MM-DD
+  company_id: string;
+  entry_number: string;
+  date: string;
   description: string;
   status: 'DRAFT' | 'POSTED' | 'REVERSED' | 'CANCELLED';
 
-  // الربط القوي مع المستند المصدر
-  source_document_id?: string | null; // Foreign key directly linking to documents.id
+  source_document_id?: string | null;
   source_document_type?: DocumentTypeV2 | 'MANUAL';
 
   reverses_journal_id?: string | null;
@@ -239,7 +259,7 @@ export interface JournalEntryV2 {
 
   total_debit: number;
   total_credit: number;
-  is_balanced: boolean; // Debit === Credit validation guarantee
+  is_balanced: boolean;
 
   posted_at?: string;
   posted_by?: string;
@@ -257,14 +277,14 @@ export interface JournalEntryV2 {
 // -------------------------------------------------------------
 export interface JournalLineV2 {
   id: string;
-  company_id: string; // Tenant isolation key
+  company_id: string;
   journal_entry_id: string;
-  account_id: string; // Foreign key to AccountV2
+  account_id: string;
   account_code: string;
   account_name_ar: string;
-  debit: number; // >= 0
-  credit: number; // >= 0
-  entity_id?: string | null; // Subledger partner ID (Customer/Supplier)
+  debit: number;
+  credit: number;
+  entity_id?: string | null;
   entity_type?: 'CUSTOMER' | 'SUPPLIER' | 'NONE';
   memo: string;
   line_number: number;
