@@ -205,7 +205,26 @@ export class AccountingEngine {
     };
 
     db.addJournal(reversalEntry);
-    db.updateJournal(journalId, { status: 'REVERSED' });
+    db.updateJournal(original.id, { status: 'REVERSED' });
+
+    // Cancel any linked voucher in vouchers
+    const origRef = (original.reference || '').trim().toUpperCase();
+    const origEntryNum = (original.entryNumber || '').trim().toUpperCase();
+    db.getVouchers().forEach((v) => {
+      const vNum = (v.voucherNumber || '').trim().toUpperCase();
+      const isLinked =
+        v.journalEntryId === original.id ||
+        v.id === original.sourceId ||
+        (vNum && (origRef === vNum || origEntryNum === `JV-${vNum}`)) ||
+        (origRef && (v.reference?.trim().toUpperCase() === origRef || vNum === origRef));
+
+      if (isLinked && v.status !== 'CANCELLED') {
+        db.updateVoucher(v.id, {
+          status: 'CANCELLED',
+          notes: (v.notes ? v.notes + '\n' : '') + `[ملغى إثر عكس القيد المحاسبي بتاريخ ${today}: ${reason}]`,
+        });
+      }
+    });
 
     // Recalculate any entities referenced in lines
     original.lines.forEach((line) => {
@@ -1971,21 +1990,85 @@ export class AccountingEngine {
    */
   public static cancelVoucher(voucherId: string, reason: string = 'إلغاء السند وعكس أثره المالي'): PaymentVoucher {
     return db.executeTransaction(() => {
-      const voucher = db.getVouchers().find(
+      const cleanId = (voucherId || '').trim();
+      const cleanUpper = cleanId.toUpperCase();
+      const cleanNoVch = cleanUpper.replace(/^VCH-/, '');
+
+      let voucher = db.getVouchers().find(
         (v) =>
-          v.id === voucherId ||
-          (v.id && voucherId && v.id.toLowerCase() === voucherId.toLowerCase()) ||
-          (v.voucherNumber && voucherId && v.voucherNumber.trim().toUpperCase() === voucherId.trim().toUpperCase())
+          v.id === cleanId ||
+          (v.id && v.id.toLowerCase() === cleanId.toLowerCase()) ||
+          (v.voucherNumber && v.voucherNumber.trim().toUpperCase() === cleanUpper) ||
+          (v.voucherNumber && v.voucherNumber.trim().toUpperCase() === cleanNoVch) ||
+          (v.reference && v.reference.trim().toUpperCase() === cleanUpper) ||
+          (v.reference && v.reference.trim().toUpperCase() === cleanNoVch) ||
+          (cleanUpper.startsWith('VCH-') && v.id.toLowerCase() === cleanNoVch.toLowerCase()) ||
+          (v.journalEntryId && (v.journalEntryId.toUpperCase() === cleanUpper || v.journalEntryId.toUpperCase() === cleanNoVch))
       );
-      if (!voucher) throw new Error('السند غير موجود');
+
+      // If voucher not found, search in journals (synthesized or journal-backed)
+      if (!voucher) {
+        const journal = db.getJournals().find(
+          (j) =>
+            j.id.toUpperCase() === cleanUpper ||
+            j.id.toUpperCase() === cleanNoVch ||
+            (j.entryNumber && j.entryNumber.trim().toUpperCase() === cleanUpper) ||
+            (j.entryNumber && j.entryNumber.trim().toUpperCase() === cleanNoVch) ||
+            (j.entryNumber && `JV-${j.entryNumber.trim().toUpperCase()}` === cleanUpper) ||
+            (j.reference && j.reference.trim().toUpperCase() === cleanUpper) ||
+            (j.reference && j.reference.trim().toUpperCase() === cleanNoVch) ||
+            (j.sourceId && j.sourceId.toUpperCase() === cleanUpper) ||
+            (j.sourceId && j.sourceId.toUpperCase() === cleanNoVch)
+        );
+
+        if (journal) {
+          db.updateJournal(journal.id, { status: 'CANCELLED' });
+
+          const custLine = journal.lines.find((l) => l.entityType === 'CUSTOMER' || l.accountCode?.startsWith('112'));
+          const suppLine = journal.lines.find((l) => l.entityType === 'SUPPLIER' || l.accountCode?.startsWith('211'));
+          const isReceipt = journal.sourceModule === 'RECEIPT' || (custLine && (custLine.credit > 0 || custLine.debit > 0)) || journal.reference?.startsWith('RCV-') || journal.description?.includes('قبض');
+          const entId = custLine?.entityId || suppLine?.entityId || '';
+          const entName = custLine?.entityNameAr || suppLine?.entityNameAr || journal.description || '';
+
+          voucher = {
+            id: cleanId.startsWith('vch-') ? cleanId : `vch-${journal.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`,
+            voucherNumber: journal.reference || journal.entryNumber.replace(/^JV-/, ''),
+            type: isReceipt ? 'RECEIPT' : 'PAYMENT',
+            date: journal.date || new Date().toISOString().split('T')[0],
+            amount: journal.totalDebit || 0,
+            paymentMethod: 'BANK',
+            bankAccountId: 'acc-1111',
+            entityType: isReceipt ? 'CUSTOMER' : 'SUPPLIER',
+            entityId: entId,
+            customerId: isReceipt ? entId : undefined,
+            supplierId: !isReceipt ? entId : undefined,
+            entityNameAr: entName,
+            entityName: entName,
+            status: 'CANCELLED',
+            journalEntryId: journal.id,
+            reference: journal.reference || journal.entryNumber,
+            notes: (journal.description ? journal.description + '\n' : '') + `[ملغى بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason}]`,
+            createdAt: journal.createdAt || new Date().toISOString(),
+            companyId: journal.companyId || 'default',
+          };
+
+          db.addVoucher(voucher);
+          if (custLine?.entityId) this.recalculateCustomerBalance(custLine.entityId);
+          if (suppLine?.entityId) this.recalculateSupplierBalance(suppLine.entityId);
+          return voucher;
+        }
+
+        throw new Error('السند غير موجود');
+      }
+
       if (voucher.status === 'CANCELLED') return voucher;
 
       // 1. Reverse or cancel the associated journal entry
       const vNum = (voucher.voucherNumber || '').trim().toUpperCase();
       const journal = db.getJournals().find(
         (j) =>
-          j.id === voucher.journalEntryId ||
-          j.sourceId === voucher.id ||
+          j.id === voucher!.journalEntryId ||
+          j.sourceId === voucher!.id ||
           (vNum && j.reference && j.reference.trim().toUpperCase() === vNum) ||
           (vNum && j.entryNumber && j.entryNumber.trim().toUpperCase() === `JV-${vNum}`)
       );
@@ -1995,7 +2078,7 @@ export class AccountingEngine {
 
       // 2. If voucher was linked to an invoice, restore invoice paidAmount & dueAmount
       if (voucher.invoiceId) {
-        const inv = db.getInvoices().find((i) => i.id === voucher.invoiceId);
+        const inv = db.getInvoices().find((i) => i.id === voucher!.invoiceId);
         if (inv) {
           const restoredPaid = Math.max(0, (inv.paidAmount || 0) - voucher.amount);
           const restoredDue = Math.max(0, inv.grandTotal - restoredPaid);
@@ -2014,13 +2097,20 @@ export class AccountingEngine {
       });
 
       // 4. Recalculate entity balance
-      if (voucher.entityType === 'CUSTOMER') {
+      if (voucher.entityType === 'CUSTOMER' && voucher.entityId) {
         this.recalculateCustomerBalance(voucher.entityId);
-      } else {
+      } else if (voucher.entityId) {
         this.recalculateSupplierBalance(voucher.entityId);
       }
 
-      return db.getVouchers().find((v) => v.id === voucher.id)!;
+      if (journal && Array.isArray(journal.lines)) {
+        journal.lines.forEach((l) => {
+          if (l.entityType === 'CUSTOMER' && l.entityId) this.recalculateCustomerBalance(l.entityId);
+          if (l.entityType === 'SUPPLIER' && l.entityId) this.recalculateSupplierBalance(l.entityId);
+        });
+      }
+
+      return db.getVouchers().find((v) => v.id === voucher!.id)!;
     });
   }
 

@@ -30,7 +30,7 @@ import {
 import { formatCurrency } from '../utils/formatters.ts';
 import { matchesSearch } from '../utils/searchUtils.ts';
 import { VouchersService, BankOrCashAccountSummary } from '../services/vouchersService';
-import { DataService } from '../services/dataService.ts';
+import { DataService, localDataStore } from '../services/dataService.ts';
 import { getCalculatedCustomerBalance, getCalculatedSupplierBalance } from '../services/statementService.ts';
 
 interface ReceiptVouchersViewProps {
@@ -235,6 +235,12 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
 
       const uniqueVoucherId = j.sourceId || ('vch-' + j.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-'));
 
+      const isCancelled =
+        (j as any).status === 'CANCELLED' ||
+        (j as any).status === 'REVERSED' ||
+        localDataStore.isCancelledDoc('vouchers', uniqueVoucherId, finalVoucherNum) ||
+        localDataStore.isCancelledDoc('journals', j.id, j.entryNumber);
+
       list.push({
         id: uniqueVoucherId,
         voucherNumber: finalVoucherNum,
@@ -253,7 +259,7 @@ export const ReceiptVouchersView: React.FC<ReceiptVouchersViewProps> = ({
         entityName: matchedEntityName || (entityLine?.memo || j.description || ''),
         customerName: vType === 'RECEIPT' ? matchedEntityName : undefined,
         supplierName: vType === 'PAYMENT' ? matchedEntityName : undefined,
-        status: 'POSTED',
+        status: isCancelled ? 'CANCELLED' : 'POSTED',
         journalEntryId: j.id,
         reference: j.reference || extractedVoucherNum,
         notes: j.description || '',

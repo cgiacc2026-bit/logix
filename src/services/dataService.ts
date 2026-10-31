@@ -1753,11 +1753,12 @@ class LocalDataStore {
         idUpper.includes('0112')
       ) {
         const isCancelled = entry.status === 'CANCELLED' || entry.status === 'REVERSED' || this.isCancelledDoc('journals', entry.id, entry.entryNumber);
+        const actualAmt = Number(entry.totalDebit) || Number(entry.lines?.[0]?.debit) || Number(entry.lines?.[1]?.credit) || 90;
         entry.entryNumber = 'JV-2026-0112';
         entry.reference = 'RCV-2026-0001';
-        entry.date = '2026-10-29';
-        entry.totalDebit = 290;
-        entry.totalCredit = 290;
+        entry.date = entry.date || '2026-10-28';
+        entry.totalDebit = actualAmt;
+        entry.totalCredit = actualAmt;
         entry.description = 'قبض مبالغ سند رقم RCV-2026-0001 - جمعية علي صباح السالم التعاونية';
         entry.status = isCancelled ? (entry.status === 'REVERSED' ? 'REVERSED' : 'CANCELLED') : 'POSTED';
         entry.sourceModule = 'RECEIPT';
@@ -1767,7 +1768,7 @@ class LocalDataStore {
             accountId: 'acc-1111',
             accountCode: '1111',
             accountNameAr: 'البنك التجاري الكويتي (CBK) - الحساب الجاري',
-            debit: 290,
+            debit: actualAmt,
             credit: 0,
             memo: 'قبض مبالغ سند رقم RCV-2026-0001 - جمعية علي صباح السالم التعاونية',
             companyId: entry.companyId || 'default',
@@ -1778,7 +1779,7 @@ class LocalDataStore {
             accountCode: '1120',
             accountNameAr: 'الذمم المدينة (حسابات العملاء والجمعيات التعاونية)',
             debit: 0,
-            credit: 290,
+            credit: actualAmt,
             memo: 'قبض مبالغ سند رقم RCV-2026-0001 - جمعية علي صباح السالم التعاونية',
             entityType: 'CUSTOMER' as const,
             entityId: aliEntityId,
@@ -3102,6 +3103,42 @@ export class DataService {
         console.warn('Supabase reverseJournal revEntry notice:', err)
       );
     }
+
+    // Cancel any linked voucher in localDataStore
+    const vouchers = localDataStore.getVouchers();
+    let voucherUpdated = false;
+    const origRef = (orig.reference || '').trim().toUpperCase();
+    const origEntryNum = (orig.entryNumber || '').trim().toUpperCase();
+    vouchers.forEach((v) => {
+      const vNum = (v.voucherNumber || '').trim().toUpperCase();
+      const isLinked =
+        v.journalEntryId === orig.id ||
+        v.id === orig.sourceId ||
+        (vNum && (origRef === vNum || origEntryNum === `JV-${vNum}`)) ||
+        (origRef && (v.reference?.trim().toUpperCase() === origRef || vNum === origRef));
+
+      if (isLinked) {
+        v.status = 'CANCELLED';
+        v.notes = (v.notes ? v.notes + '\n' : '') + `[ملغى إثر عكس القيد المحاسبي بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason || 'عكس قيد'}]`;
+        localDataStore.addCancelledDoc('vouchers', v.id, v.voucherNumber);
+        voucherUpdated = true;
+      }
+    });
+    if (voucherUpdated) {
+      localDataStore.saveVouchers(vouchers);
+    }
+
+    // Recalculate customer/supplier balances touched by this journal
+    orig.lines.forEach((l) => {
+      if (l.entityType === 'CUSTOMER' && l.entityId) {
+        this.recalculateCustomerBalance(l.entityId);
+      } else if (l.entityType === 'SUPPLIER' && l.entityId) {
+        this.recalculateSupplierBalance(l.entityId);
+      }
+    });
+
+    // Re-sync bank/cash balances
+    this.syncAccountBalances();
 
     await safeApiFetch(`/api/journals/${id}/reverse`, {
       method: 'POST',
@@ -6228,38 +6265,105 @@ export class DataService {
 
   public static async cancelVoucher(id: string, reason: string): Promise<PaymentVoucher | null> {
     const vouchers = localDataStore.getVouchers();
-    const v = vouchers.find(
+    const cleanId = (id || '').trim();
+    const cleanUpper = cleanId.toUpperCase();
+    const cleanNoVch = cleanUpper.replace(/^VCH-/, '');
+
+    let v = vouchers.find(
       (x) =>
-        x.id === id ||
-        (x.id && id && x.id.toLowerCase() === id.toLowerCase()) ||
-        (x.voucherNumber && id && x.voucherNumber.trim().toUpperCase() === id.trim().toUpperCase())
+        x.id === cleanId ||
+        (x.id && x.id.toLowerCase() === cleanId.toLowerCase()) ||
+        (x.voucherNumber && x.voucherNumber.trim().toUpperCase() === cleanUpper) ||
+        (x.voucherNumber && x.voucherNumber.trim().toUpperCase() === cleanNoVch) ||
+        (x.reference && x.reference.trim().toUpperCase() === cleanUpper) ||
+        (x.reference && x.reference.trim().toUpperCase() === cleanNoVch) ||
+        (cleanUpper.startsWith('VCH-') && x.id.toLowerCase() === cleanNoVch.toLowerCase()) ||
+        (x.journalEntryId && (x.journalEntryId.toUpperCase() === cleanUpper || x.journalEntryId.toUpperCase() === cleanNoVch))
     );
+
+    const journals = localDataStore.getJournals();
+    let j: JournalEntry | undefined;
+
+    // If voucher not in local vouchers table, check if it's a journal-backed voucher (synthesized from JV)
+    if (!v) {
+      j = journals.find(
+        (item) =>
+          item.id.toUpperCase() === cleanUpper ||
+          item.id.toUpperCase() === cleanNoVch ||
+          (item.entryNumber && item.entryNumber.trim().toUpperCase() === cleanUpper) ||
+          (item.entryNumber && item.entryNumber.trim().toUpperCase() === cleanNoVch) ||
+          (item.entryNumber && `JV-${item.entryNumber.trim().toUpperCase()}` === cleanUpper) ||
+          (item.reference && item.reference.trim().toUpperCase() === cleanUpper) ||
+          (item.reference && item.reference.trim().toUpperCase() === cleanNoVch) ||
+          (item.sourceId && item.sourceId.toUpperCase() === cleanUpper) ||
+          (item.sourceId && item.sourceId.toUpperCase() === cleanNoVch)
+      );
+
+      if (j) {
+        j.status = 'CANCELLED';
+        localDataStore.addCancelledDoc('journals', j.id, j.entryNumber);
+        localDataStore.saveJournals(journals);
+
+        const custLine = j.lines.find((l) => l.entityType === 'CUSTOMER' || l.accountCode?.startsWith('112') || (l.memo && l.memo.includes('عميل')));
+        const suppLine = j.lines.find((l) => l.entityType === 'SUPPLIER' || l.accountCode?.startsWith('211') || (l.memo && l.memo.includes('مورد')));
+        const isReceipt = j.sourceModule === 'RECEIPT' || (custLine && (custLine.credit > 0 || (custLine as any).debit > 0)) || (j.reference?.startsWith('RCV-')) || (j.description?.includes('قبض'));
+        const entityId = custLine?.entityId || suppLine?.entityId || '';
+        const entityNameAr = custLine?.entityNameAr || suppLine?.entityNameAr || j.description || '';
+
+        v = {
+          id: cleanId.startsWith('vch-') ? cleanId : `vch-${j.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`,
+          voucherNumber: j.reference || j.entryNumber.replace(/^JV-/, ''),
+          type: isReceipt ? 'RECEIPT' : 'PAYMENT',
+          date: j.date || new Date().toISOString().split('T')[0],
+          amount: j.totalDebit || 0,
+          paymentMethod: 'BANK',
+          bankAccountId: 'acc-1111',
+          entityType: isReceipt ? 'CUSTOMER' : 'SUPPLIER',
+          entityId,
+          customerId: isReceipt ? entityId : undefined,
+          supplierId: !isReceipt ? entityId : undefined,
+          entityNameAr,
+          entityName: entityNameAr,
+          customerName: isReceipt ? entityNameAr : undefined,
+          supplierName: !isReceipt ? entityNameAr : undefined,
+          status: 'CANCELLED',
+          journalEntryId: j.id,
+          reference: j.reference || j.entryNumber,
+          notes: (j.description ? j.description + '\n' : '') + `[ملغى بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason}]`,
+          createdAt: j.createdAt || new Date().toISOString(),
+          companyId: j.companyId || localDataStore.getEffectiveCompanyId() || 'default',
+        };
+
+        vouchers.unshift(v);
+      }
+    }
+
     if (!v) return null;
 
     // Track cancelled voucher so it NEVER resurrects to POSTED
     localDataStore.addCancelledDoc('vouchers', v.id, v.voucherNumber);
-    if (v.status === 'CANCELLED') return v;
 
-    // 1. Cancel associated journal entry
-    const journals = localDataStore.getJournals();
-    const vNum = (v.voucherNumber || '').trim().toUpperCase();
-    const j = journals.find(
-      (item) =>
-        item.id === v.journalEntryId ||
-        item.sourceId === v.id ||
-        (vNum && item.reference && item.reference.trim().toUpperCase() === vNum) ||
-        (vNum && item.entryNumber && item.entryNumber.trim().toUpperCase() === `JV-${vNum}`)
-    );
-    if (j) {
-      j.status = 'CANCELLED';
-      localDataStore.addCancelledDoc('journals', j.id, j.entryNumber);
-      localDataStore.saveJournals(journals);
+    // 1. Cancel associated journal entry if not already cancelled
+    if (!j) {
+      const vNum = (v.voucherNumber || '').trim().toUpperCase();
+      j = journals.find(
+        (item) =>
+          item.id === v!.journalEntryId ||
+          item.sourceId === v!.id ||
+          (vNum && item.reference && item.reference.trim().toUpperCase() === vNum) ||
+          (vNum && item.entryNumber && item.entryNumber.trim().toUpperCase() === `JV-${vNum}`)
+      );
+      if (j) {
+        j.status = 'CANCELLED';
+        localDataStore.addCancelledDoc('journals', j.id, j.entryNumber);
+        localDataStore.saveJournals(journals);
+      }
     }
 
     // 2. Revert invoice if linked
     if (v.invoiceId) {
       const invoices = localDataStore.getInvoices();
-      const inv = invoices.find((i) => i.id === v.invoiceId);
+      const inv = invoices.find((i) => i.id === v!.invoiceId);
       if (inv) {
         inv.paidAmount = Math.max(0, (inv.paidAmount || 0) - v.amount);
         inv.dueAmount = Math.max(0, inv.grandTotal - inv.paidAmount);
@@ -6268,9 +6372,11 @@ export class DataService {
       }
     }
 
-    // 3. Mark voucher cancelled
+    // 3. Mark voucher cancelled with timestamp & reason
     v.status = 'CANCELLED';
-    v.notes = (v.notes ? v.notes + '\n' : '') + `[ملغى بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason}]`;
+    if (!v.notes?.includes('[ملغى بتاريخ')) {
+      v.notes = (v.notes ? v.notes + '\n' : '') + `[ملغى بتاريخ ${new Date().toISOString().split('T')[0]}: ${reason}]`;
+    }
     localDataStore.saveVouchers(vouchers);
 
     // 4. Recalculate entity balance
@@ -6278,6 +6384,17 @@ export class DataService {
       this.recalculateCustomerBalance(v.entityId);
     } else if (v.entityId) {
       this.recalculateSupplierBalance(v.entityId);
+    }
+
+    // Also recalculate from journal lines if available
+    if (j && Array.isArray(j.lines)) {
+      j.lines.forEach((l) => {
+        if (l.entityType === 'CUSTOMER' && l.entityId) {
+          this.recalculateCustomerBalance(l.entityId);
+        } else if (l.entityType === 'SUPPLIER' && l.entityId) {
+          this.recalculateSupplierBalance(l.entityId);
+        }
+      });
     }
 
     // 5. Instantly restore Bank/Cash balances
@@ -6291,10 +6408,10 @@ export class DataService {
       if (j) SupabaseDataService.saveJournal(j).catch((err) => notifyCloudSyncError("CloudSync", err));
       SupabaseDataService.saveAccounts(updatedAccounts).catch((err) => notifyCloudSyncError("CloudSync", err));
       if (v.entityType === 'CUSTOMER' && v.entityId) {
-        const c = localDataStore.getCustomers().find((x) => x.id === v.entityId);
+        const c = localDataStore.getCustomers().find((x) => x.id === v!.entityId);
         if (c) SupabaseDataService.saveCustomer(c).catch((err) => notifyCloudSyncError("CloudSync", err));
       } else if (v.entityId) {
-        const s = localDataStore.getSuppliers().find((x) => x.id === v.entityId);
+        const s = localDataStore.getSuppliers().find((x) => x.id === v!.entityId);
         if (s) SupabaseDataService.saveSupplier(s).catch((err) => notifyCloudSyncError("CloudSync", err));
       }
     }

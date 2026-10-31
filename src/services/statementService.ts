@@ -206,6 +206,30 @@ export function deduplicateStatementInvoices(invoicesList: Invoice[]): Invoice[]
 }
 
 /**
+ * دالة استعلام آمنة للتحقق من إلغاء المستند عبر سجل الحركات الملغاة
+ */
+export function isCancelledDocument(collection: string, docId?: string, docNum?: string): boolean {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    const raw = localStorage.getItem('erp_cancelled_documents');
+    if (!raw) return false;
+    const list: Array<{ collection: string; id: string; docNumber?: string }> = JSON.parse(raw);
+    const cId = (docId || '').trim().toUpperCase();
+    const cNum = (docNum || '').trim().toUpperCase();
+    return list.some(
+      (item) =>
+        item.collection === collection &&
+        ((cId && item.id && item.id.trim().toUpperCase() === cId) ||
+         (cNum && item.docNumber && item.docNumber.trim().toUpperCase() === cNum) ||
+         (cNum && item.id && item.id.trim().toUpperCase() === cNum) ||
+         (cId && item.docNumber && item.docNumber.trim().toUpperCase() === cId))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * دالة مساعدة لتنسيق وتحديد طبيعة الرصيد (مدين / دائن / متزن)
  * للعميل: الرصيد الموجب = مدين (عليه مستحقات للشركة)، السالب = دائن (له رصيد دائن مسبق الدفع)
  * للمورد: الرصيد الموجب = دائن (له مستحقات على الشركة)، السالب = مدين (عليه دفعات مقدمة)
@@ -623,7 +647,7 @@ export function getAccountStatement(
     .filter((inv) => isDocMatchingEntity(inv, entityId, entity, entityType))
     .forEach((inv) => {
       const invNum = (inv.invoiceNumber || '').trim().toUpperCase();
-      const isCancelled = inv.status === 'CANCELLED';
+      const isCancelled = inv.status === 'CANCELLED' || isCancelledDocument('invoices', inv.id, inv.invoiceNumber);
 
       let debit = 0;
       let credit = 0;
@@ -732,7 +756,7 @@ export function getAccountStatement(
         docTypeLabel = 'سند صرف وسداد لمورد';
       }
 
-      const isCancelled = v.status === 'CANCELLED';
+      const isCancelled = v.status === 'CANCELLED' || isCancelledDocument('vouchers', v.id, v.voucherNumber);
 
       allRawMovements.push({
         id: v.id,
@@ -937,13 +961,30 @@ export function getAccountStatement(
           docTypeLabel = 'سند قبض نقدية/بنك';
         }
 
-        const isCancelled = j.status === 'CANCELLED' || j.status === 'REVERSED';
+        const isCancelled =
+          j.status === 'CANCELLED' ||
+          j.status === 'REVERSED' ||
+          isCancelledDocument('journals', j.id, j.entryNumber) ||
+          Boolean(j.reference && isCancelledDocument('vouchers', undefined, j.reference));
 
         let debit = Number(line.debit) || 0;
         let credit = Number(line.credit) || 0;
 
+        const isReceiptOp =
+          docType === 'PAYMENT_RECEIPT' ||
+          refUpper.startsWith('RCV-') ||
+          entryNumUpper.startsWith('JV-RCV-') ||
+          jSource === 'RECEIPT' ||
+          Boolean(line.memo && line.memo.includes('قبض')) ||
+          Boolean(j.description && j.description.includes('قبض'));
+
+        if (isReceiptOp) {
+          docType = 'PAYMENT_RECEIPT';
+          docTypeLabel = 'سند قبض نقدية/بنك';
+        }
+
         // التدقيق المحاسبي الصارم لطبيعة سند القبض والصرف في كشف الحساب:
-        if (entityType === 'CUSTOMER' && (docType === 'PAYMENT_RECEIPT' || refUpper.startsWith('RCV-') || jSource === 'RECEIPT')) {
+        if (entityType === 'CUSTOMER' && isReceiptOp) {
           // سند القبض من العميل يجب محاسبياً أن يكون دائناً (تخفيض مديونية). إذا سُجل السطر بالخطأ كمدين:
           if (debit > 0 && credit === 0) {
             credit = debit;
