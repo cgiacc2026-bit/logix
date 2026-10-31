@@ -1,0 +1,142 @@
+{
+  "entities": {
+    "companyProfile": {
+      "title": "Company Profile",
+      "description": "Company registration and profile settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Company unique identifier" },
+        "nameAr": { "type": "string", "description": "Company Arabic name" },
+        "nameEn": { "type": "string", "description": "Company English name" }
+      },
+      "required": ["id", "nameAr"]
+    },
+    "account": {
+      "title": "Account",
+      "description": "Chart of accounts record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Account unique ID" },
+        "code": { "type": "string", "description": "Accounting code" },
+        "nameAr": { "type": "string", "description": "Account Arabic name" },
+        "type": { "type": "string", "description": "Account classification type" }
+      },
+      "required": ["id", "code", "nameAr"]
+    },
+    "customer": {
+      "title": "Customer",
+      "description": "Customer and cooperative society entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Customer ID" },
+        "code": { "type": "string", "description": "Customer code" },
+        "nameAr": { "type": "string", "description": "Customer Arabic name" }
+      },
+      "required": ["id", "code", "nameAr"]
+    },
+    "supplier": {
+      "title": "Supplier",
+      "description": "Supplier entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Supplier ID" },
+        "code": { "type": "string", "description": "Supplier code" },
+        "nameAr": { "type": "string", "description": "Supplier Arabic name" }
+      },
+      "required": ["id", "code"]
+    },
+    "item": {
+      "title": "Item",
+      "description": "Inventory product item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Item ID" },
+        "code": { "type": "string", "description": "Item SKU or code" },
+        "nameAr": { "type": "string", "description": "Item Arabic name" }
+      },
+      "required": ["id", "nameAr"]
+    },
+    "invoice": {
+      "title": "Invoice",
+      "description": "Sales invoice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Invoice ID" },
+        "invoiceNumber": { "type": "string", "description": "Invoice sequence number" },
+        "total": { "type": "number", "description": "Total amount" }
+      },
+      "required": ["id", "total"]
+    },
+    "journalEntry": {
+      "title": "Journal Entry",
+      "description": "Financial general ledger journal entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Entry ID" },
+        "entryNumber": { "type": "string", "description": "Journal entry number" },
+        "date": { "type": "string", "description": "Entry date" }
+      },
+      "required": ["id", "date"]
+    },
+    "warehouse": {
+      "title": "Warehouse",
+      "description": "Warehouse and branch storage facility",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Warehouse ID" },
+        "code": { "type": "string", "description": "Warehouse code" },
+        "nameAr": { "type": "string", "description": "Warehouse Arabic name" }
+      },
+      "required": ["id", "code", "nameAr"]
+    },
+    "unit": {
+      "title": "Unit",
+      "description": "Unit of measurement definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unit ID" },
+        "code": { "type": "string", "description": "Unit code" },
+        "nameAr": { "type": "string", "description": "Unit Arabic name" }
+      },
+      "required": ["id", "code", "nameAr"]
+    }
+  },
+  "firestore": {
+    "/companies/{companyId}/meta/profile": {
+      "schema": "companyProfile",
+      "description": "Company profile metadata"
+    },
+    "/companies/{companyId}/accounts/{accountId}": {
+      "schema": "account",
+      "description": "Company chart of accounts"
+    },
+    "/companies/{companyId}/customers/{customerId}": {
+      "schema": "customer",
+      "description": "Company customers"
+    },
+    "/companies/{companyId}/suppliers/{supplierId}": {
+      "schema": "supplier",
+      "description": "Company suppliers"
+    },
+    "/companies/{companyId}/items/{itemId}": {
+      "schema": "item",
+      "description": "Company items and inventory"
+    },
+    "/companies/{companyId}/invoices/{invoiceId}": {
+      "schema": "invoice",
+      "description": "Company sales invoices"
+    },
+    "/companies/{companyId}/journalEntries/{entryId}": {
+      "schema": "journalEntry",
+      "description": "Company journal entries"
+    },
+    "/companies/{companyId}/warehouses/{warehouseId}": {
+      "schema": "warehouse",
+      "description": "Company warehouses"
+    },
+    "/companies/{companyId}/units/{unitId}": {
+      "schema": "unit",
+      "description": "Company unit definitions"
+    }
+  }
+}
