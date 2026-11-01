@@ -74,7 +74,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "إجمالي أصول وموجودات المنشأة",
-      "balance": 26966.216036,
+      "balance": 5963.672,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 30,
@@ -85,7 +85,12 @@
       "directCreditMovement": 0,
       "directMovementCount": 0,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "updated_at": "2026-10-31T08:53:46.258Z"
+      "updated_at": "2026-10-31T08:53:46.258Z",
+      "current_balance": 5963.672,
+      "currentBalance": 5963.672,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1100",
@@ -101,7 +106,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "الأصول النقدية والقابلة للتحول إلى نقدية خلال دورة التشغيل السنوية",
-      "balance": 26966.216036,
+      "balance": 5963.672,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 22,
@@ -112,7 +117,12 @@
       "directCreditMovement": 0,
       "directMovementCount": 0,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "updated_at": "2026-10-31T08:53:46.258Z"
+      "updated_at": "2026-10-31T08:53:46.258Z",
+      "current_balance": 5963.672,
+      "currentBalance": 5963.672,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1110",
@@ -138,7 +148,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 1795,
+      "currentBalance": 1795,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1111",
@@ -164,7 +179,12 @@
       "directDebitMovement": 2135,
       "directCreditMovement": 0,
       "directMovementCount": 4,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 2135,
+      "currentBalance": 2135,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1112",
@@ -190,7 +210,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 340,
       "directMovementCount": 2,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -340,
+      "currentBalance": -340,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1120",
@@ -206,7 +231,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "إجمالي المبالغ المستحقة على العملاء والجمعيات والجهات المشترية",
-      "balance": 28732.050036,
+      "balance": 7729.506,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 5,
@@ -217,7 +242,12 @@
       "directCreditMovement": 290,
       "directMovementCount": 1,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "updated_at": "2026-10-31T08:53:46.258Z"
+      "updated_at": "2026-10-31T08:53:46.258Z",
+      "current_balance": 7729.506,
+      "currentBalance": 7729.506,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1121",
@@ -233,7 +263,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "مستحقات وفواتير الجمعيات التعاونية في دولة الكويت",
-      "balance": 28732.050036,
+      "balance": 7729.506,
       "isLeaf": true,
       "isSummary": false,
       "leafCount": 1,
@@ -244,8 +274,12 @@
       "directCreditMovement": 3086.4720399999997,
       "directMovementCount": 97,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "opening_balance": 21002.543999999998,
-      "updated_at": "2026-10-31T08:53:46.258Z"
+      "opening_balance": 0,
+      "updated_at": "2026-10-31T08:53:46.258Z",
+      "current_balance": 7729.506,
+      "currentBalance": 7729.506,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1130",
@@ -261,7 +295,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "إجمالي البضائع والمنتجات والمواد المخزنة في المستودعات",
-      "balance": -3560.8339999999994,
+      "balance": -3560.834,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 6,
@@ -271,7 +305,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -3560.834,
+      "currentBalance": -3560.834,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-1131",
@@ -287,7 +326,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "المنتجات الجاهزة للبيع والتوزيع على الجمعيات والمنافذ",
-      "balance": -3560.8339999999994,
+      "balance": -3560.834,
       "isLeaf": true,
       "isSummary": false,
       "leafCount": 1,
@@ -297,7 +336,12 @@
       "directDebitMovement": 182.161,
       "directCreditMovement": 3742.9949999999994,
       "directMovementCount": 87,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -3560.834,
+      "currentBalance": -3560.834,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-2000",
@@ -323,7 +367,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -550,
+      "currentBalance": -550,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-2100",
@@ -349,7 +398,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -550,
+      "currentBalance": -550,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-2110",
@@ -375,7 +429,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -50,
+      "currentBalance": -50,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-2111",
@@ -401,7 +460,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -50,
+      "currentBalance": -50,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-bwpqwmvbj",
@@ -428,7 +492,12 @@
       "movementCount": 1,
       "directDebitMovement": 50,
       "directCreditMovement": 0,
-      "directMovementCount": 1
+      "directMovementCount": 1,
+      "current_balance": -50,
+      "currentBalance": -50,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-2120",
@@ -454,7 +523,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -500,
+      "currentBalance": -500,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-2122",
@@ -480,7 +554,12 @@
       "directDebitMovement": 500,
       "directCreditMovement": 0,
       "directMovementCount": 1,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -500,
+      "currentBalance": -500,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-3000",
@@ -496,7 +575,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "حقوق الشركاء وأصحاب المنشأة ورأس المال والأرباح المتراكمة",
-      "balance": 25258.698,
+      "balance": 4256.154,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 8,
@@ -507,7 +586,12 @@
       "directCreditMovement": 0,
       "directMovementCount": 0,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "updated_at": "2026-10-31T08:53:46.258Z"
+      "updated_at": "2026-10-31T08:53:46.258Z",
+      "current_balance": 4256.154,
+      "currentBalance": 4256.154,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-3100",
@@ -523,7 +607,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "رأس مال المنشأة المدفوع وأرصدة الملاك التأسيسية",
-      "balance": 25258.698,
+      "balance": 4546.154,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 3,
@@ -534,7 +618,12 @@
       "directCreditMovement": 0,
       "directMovementCount": 0,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "updated_at": "2026-10-31T08:53:46.258Z"
+      "updated_at": "2026-10-31T08:53:46.258Z",
+      "current_balance": 4546.154,
+      "currentBalance": 4546.154,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-3110",
@@ -550,7 +639,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "رأس المال الرسمي المثبت بعقد تأسيس المنشأة أو السجل التجاري",
-      "balance": 25548.698,
+      "balance": 4546.154,
       "isLeaf": true,
       "isSummary": false,
       "leafCount": 1,
@@ -561,8 +650,12 @@
       "directCreditMovement": 4546.154,
       "directMovementCount": 3,
       "companyId": "20000000-0000-0000-0000-000000000001",
-      "opening_balance": 21002.543999999998,
-      "updated_at": "2026-10-31T08:53:46.258Z"
+      "opening_balance": 0,
+      "updated_at": "2026-10-31T08:53:46.258Z",
+      "current_balance": 4546.154,
+      "currentBalance": 4546.154,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-3120",
@@ -588,7 +681,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -290,
+      "currentBalance": -290,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-31202",
@@ -614,7 +712,12 @@
       "directDebitMovement": 290,
       "directCreditMovement": 0,
       "directMovementCount": 1,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": -290,
+      "currentBalance": -290,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-4000",
@@ -630,7 +733,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "إجمالي العوائد والإيرادات التشغيلية وغير التشغيلية للمنشأة",
-      "balance": 5889.622035999999,
+      "balance": 5889.622,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 10,
@@ -640,7 +743,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 5889.622,
+      "currentBalance": 5889.622,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-4100",
@@ -656,7 +764,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "المبيعات المباشرة للمنتجات الغذائية والبهارات والحبوب لمختلف القنوات",
-      "balance": 5889.622035999999,
+      "balance": 5889.622,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 4,
@@ -666,7 +774,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 5889.622,
+      "currentBalance": 5889.622,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-4110",
@@ -682,7 +795,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "قيمة فواتير توريد البضائع والبهارات للجمعيات التعاونية وفروعها",
-      "balance": 5889.622035999999,
+      "balance": 5889.622,
       "isLeaf": true,
       "isSummary": false,
       "leafCount": 1,
@@ -692,7 +805,12 @@
       "directDebitMovement": 380.20204,
       "directCreditMovement": 6269.824075999999,
       "directMovementCount": 87,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 5889.622,
+      "currentBalance": 5889.622,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-5000",
@@ -708,7 +826,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "إجمالي تكاليف الإنتاج والتشغيل والمصاريف البيعية والإدارية والمالية",
-      "balance": 3582.1039999999994,
+      "balance": 3582.104,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 28,
@@ -718,7 +836,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 3582.104,
+      "currentBalance": 3582.104,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-5100",
@@ -734,7 +857,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "التكاليف المباشرة للمواد والخامات والعمالة ومصاريف المصنع اللازمة لتصنيع المنتجات",
-      "balance": 3560.8339999999994,
+      "balance": 3560.834,
       "isLeaf": false,
       "isSummary": true,
       "leafCount": 6,
@@ -744,7 +867,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 3560.834,
+      "currentBalance": 3560.834,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-5110",
@@ -760,7 +888,7 @@
       "isSystem": true,
       "isActive": true,
       "description": "تكلفة الحبوب والبهارات والتوابل المصروفة فعلياً لخطوط الإنتاج والطحن",
-      "balance": 3560.8339999999994,
+      "balance": 3560.834,
       "isLeaf": true,
       "isSummary": false,
       "leafCount": 1,
@@ -770,7 +898,12 @@
       "directDebitMovement": 3742.9949999999994,
       "directCreditMovement": 182.161,
       "directMovementCount": 87,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 3560.834,
+      "currentBalance": 3560.834,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-5400",
@@ -796,7 +929,12 @@
       "directDebitMovement": 0,
       "directCreditMovement": 0,
       "directMovementCount": 0,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 21.27,
+      "currentBalance": 21.27,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     },
     {
       "id": "acc-5410",
@@ -822,7 +960,12 @@
       "directDebitMovement": 21.27,
       "directCreditMovement": 0,
       "directMovementCount": 1,
-      "companyId": "20000000-0000-0000-0000-000000000001"
+      "companyId": "20000000-0000-0000-0000-000000000001",
+      "current_balance": 21.27,
+      "currentBalance": 21.27,
+      "opening_balance": 0,
+      "openingBalance": 0,
+      "initialBalance": 0
     }
   ],
   "partners": [
@@ -138936,11 +139079,13 @@
           "memo": "تسوية حساب سلوي ",
           "debit": 0,
           "credit": 1051.559,
-          "accountId": "5d757787-8e2a-4244-b3b1-1809e2eddce2",
+          "accountId": "acc-3110",
           "companyId": "20000000-0000-0000-0000-000000000001",
           "entityType": "NONE",
           "accountCode": "3110",
-          "accountNameAr": "رأس مال المنشأة"
+          "accountNameAr": "رأس مال المنشأة",
+          "account_id": "acc-3110",
+          "account_code": "3110"
         }
       ],
       "totalDebit": 1051.559,
@@ -139033,11 +139178,13 @@
           "memo": "تسوية رصيد اشبيلية ",
           "debit": 0,
           "credit": 315.003,
-          "accountId": "5d757787-8e2a-4244-b3b1-1809e2eddce2",
+          "accountId": "acc-3110",
           "companyId": "20000000-0000-0000-0000-000000000001",
           "entityType": "NONE",
           "accountCode": "3110",
-          "accountNameAr": "رأس مال المنشأة"
+          "accountNameAr": "رأس مال المنشأة",
+          "account_id": "acc-3110",
+          "account_code": "3110"
         }
       ],
       "totalDebit": 315.003,
@@ -139124,11 +139271,13 @@
           "memo": "تسوية كشف جمعية مبارك ",
           "debit": 0,
           "credit": 3179.592,
-          "accountId": "5d757787-8e2a-4244-b3b1-1809e2eddce2",
+          "accountId": "acc-3110",
           "companyId": "20000000-0000-0000-0000-000000000001",
           "entityType": "NONE",
           "accountCode": "3110",
-          "accountNameAr": "رأس مال المنشأة"
+          "accountNameAr": "رأس مال المنشأة",
+          "account_id": "acc-3110",
+          "account_code": "3110"
         }
       ],
       "totalDebit": 3179.592,
@@ -140829,430 +140978,6 @@
       "sourceId": "a06107a0-54e0-42b3-ad94-cf77230206e2",
       "sourceModule": "SALES_RETURN",
       "isAutoGenerated": true
-    },
-    {
-      "id": "00000000-0000-4000-8000-5b2125690000",
-      "company_id": "20000000-0000-0000-0000-000000000001",
-      "entry_number": "JV-OPENING-2026",
-      "date": "2026-09-01",
-      "description": "القيد الافتتاحي الموحد للأرصدة الافتتاحية المعتمدة بتاريخ 01-09-2026",
-      "status": "POSTED",
-      "reference": "OB-2026-09-01",
-      "total_debit": 20052.545,
-      "total_credit": 20052.545,
-      "lines": [
-        {
-          "id": "jl-vifda0gzf",
-          "memo": "رصيد افتتاحي: جمعية مبارك الكبير التعاونية",
-          "debit": 2497.99,
-          "credit": 0,
-          "entityId": "cust-4640",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية مبارك الكبير التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-ekxb2zsmx",
-          "memo": "رصيد افتتاحي: جمعية شمال غرب الصليبيخات التعاونية",
-          "debit": 3047.53,
-          "credit": 0,
-          "entityId": "cust-301",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية شمال غرب الصليبيخات التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-78huwn73i",
-          "memo": "رصيد افتتاحي: جمعية الصباحية التعاونية",
-          "debit": 2487.84,
-          "credit": 0,
-          "entityId": "cust-3124",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية الصباحية التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-gxhx7b9kg",
-          "memo": "رصيد افتتاحي: جمعية بيان التعاونية",
-          "debit": 2397.13,
-          "credit": 0,
-          "entityId": "cust-5563",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية بيان التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-o71vwfm8j",
-          "memo": "رصيد افتتاحي: جمعية الجليب التعاونية",
-          "debit": 2359.78,
-          "credit": 0,
-          "entityId": "cust-9407",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية الجليب التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-kh3wybnij",
-          "memo": "رصيد افتتاحي: جمعية القيروان التعاونية",
-          "debit": 752.393,
-          "credit": 0,
-          "entityId": "190fd0d3-ae21-4019-b8f6-f6a0321c3ce7",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية القيروان التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-lnzhtmoui",
-          "memo": "رصيد افتتاحي: جمعية صباح الأحمد التعاونية",
-          "debit": 1508.05,
-          "credit": 0,
-          "entityId": "cust-3900",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية صباح الأحمد التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-j2deh3wqa",
-          "memo": "رصيد افتتاحي: جمعية صباح الناصر التعاونية",
-          "debit": 1001.87,
-          "credit": 0,
-          "entityId": "cust-7575",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية صباح الناصر التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-g2wugvqjk",
-          "memo": "رصيد افتتاحي: جمعية مدينة سعد العبدالله التعاونية",
-          "debit": 905.94,
-          "credit": 0,
-          "entityId": "cust-2035",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية مدينة سعد العبدالله التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-uzie5tyxb",
-          "memo": "رصيد افتتاحي: جمعية سلوى التعاونية",
-          "debit": 843.15,
-          "credit": 0,
-          "entityId": "cust-3764",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية سلوى التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-6v2pa6dgr",
-          "memo": "رصيد افتتاحي: جمعية الاحمدي التعاونية",
-          "debit": 839.813,
-          "credit": 0,
-          "entityId": "cust-875",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية الاحمدي التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-9e1lzm02c",
-          "memo": "رصيد افتتاحي: جمعية اشبيلية التعاونية",
-          "debit": 702.189,
-          "credit": 0,
-          "entityId": "cust-1804",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية اشبيلية التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-p8ui22isd",
-          "memo": "رصيد افتتاحي: جمعية علي صباح السالم التعاونية",
-          "debit": 631.94,
-          "credit": 0,
-          "entityId": "cust-2537",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية علي صباح السالم التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-lywcxqhbl",
-          "memo": "رصيد افتتاحي: جمعية مشرف التعاونية",
-          "debit": 76.93,
-          "credit": 0,
-          "entityId": "cust-CUST-014",
-          "accountId": "acc-1121",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "CUSTOMER",
-          "accountCode": "1121",
-          "entityNameAr": "جمعية مشرف التعاونية",
-          "accountNameAr": "عملاء الجمعيات التعاونية"
-        },
-        {
-          "id": "jl-rjcaum21x",
-          "memo": "رأس مال المنشأة المقابل للأرصدة الافتتاحية المعتمدة بتاريخ 01-09-2026",
-          "debit": 0,
-          "credit": 20052.545,
-          "accountId": "5d757787-8e2a-4244-b3b1-1809e2eddce2",
-          "companyId": "20000000-0000-0000-0000-000000000001",
-          "entityType": "NONE",
-          "accountCode": "3110",
-          "accountNameAr": "رأس مال المنشأة"
-        }
-      ],
-      "raw_data": {
-        "id": "jv-opening-master-2026",
-        "date": "2026-09-01",
-        "lines": [
-          {
-            "id": "jl-vifda0gzf",
-            "memo": "رصيد افتتاحي: جمعية مبارك الكبير التعاونية",
-            "debit": 2497.99,
-            "credit": 0,
-            "entityId": "cust-4640",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية مبارك الكبير التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-ekxb2zsmx",
-            "memo": "رصيد افتتاحي: جمعية شمال غرب الصليبيخات التعاونية",
-            "debit": 3047.53,
-            "credit": 0,
-            "entityId": "cust-301",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية شمال غرب الصليبيخات التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-78huwn73i",
-            "memo": "رصيد افتتاحي: جمعية الصباحية التعاونية",
-            "debit": 2487.84,
-            "credit": 0,
-            "entityId": "cust-3124",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية الصباحية التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-gxhx7b9kg",
-            "memo": "رصيد افتتاحي: جمعية بيان التعاونية",
-            "debit": 2397.13,
-            "credit": 0,
-            "entityId": "cust-5563",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية بيان التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-o71vwfm8j",
-            "memo": "رصيد افتتاحي: جمعية الجليب التعاونية",
-            "debit": 2359.78,
-            "credit": 0,
-            "entityId": "cust-9407",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية الجليب التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-kh3wybnij",
-            "memo": "رصيد افتتاحي: جمعية القيروان التعاونية",
-            "debit": 752.393,
-            "credit": 0,
-            "entityId": "190fd0d3-ae21-4019-b8f6-f6a0321c3ce7",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية القيروان التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-lnzhtmoui",
-            "memo": "رصيد افتتاحي: جمعية صباح الأحمد التعاونية",
-            "debit": 1508.05,
-            "credit": 0,
-            "entityId": "cust-3900",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية صباح الأحمد التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-j2deh3wqa",
-            "memo": "رصيد افتتاحي: جمعية صباح الناصر التعاونية",
-            "debit": 1001.87,
-            "credit": 0,
-            "entityId": "cust-7575",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية صباح الناصر التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-g2wugvqjk",
-            "memo": "رصيد افتتاحي: جمعية مدينة سعد العبدالله التعاونية",
-            "debit": 905.94,
-            "credit": 0,
-            "entityId": "cust-2035",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية مدينة سعد العبدالله التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-uzie5tyxb",
-            "memo": "رصيد افتتاحي: جمعية سلوى التعاونية",
-            "debit": 843.15,
-            "credit": 0,
-            "entityId": "cust-3764",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية سلوى التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-6v2pa6dgr",
-            "memo": "رصيد افتتاحي: جمعية الاحمدي التعاونية",
-            "debit": 839.813,
-            "credit": 0,
-            "entityId": "cust-875",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية الاحمدي التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-9e1lzm02c",
-            "memo": "رصيد افتتاحي: جمعية اشبيلية التعاونية",
-            "debit": 702.189,
-            "credit": 0,
-            "entityId": "cust-1804",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية اشبيلية التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-p8ui22isd",
-            "memo": "رصيد افتتاحي: جمعية علي صباح السالم التعاونية",
-            "debit": 631.94,
-            "credit": 0,
-            "entityId": "cust-2537",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية علي صباح السالم التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-lywcxqhbl",
-            "memo": "رصيد افتتاحي: جمعية مشرف التعاونية",
-            "debit": 76.93,
-            "credit": 0,
-            "entityId": "cust-CUST-014",
-            "accountId": "acc-1121",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "CUSTOMER",
-            "accountCode": "1121",
-            "entityNameAr": "جمعية مشرف التعاونية",
-            "accountNameAr": "عملاء الجمعيات التعاونية"
-          },
-          {
-            "id": "jl-rjcaum21x",
-            "memo": "رأس مال المنشأة المقابل للأرصدة الافتتاحية المعتمدة بتاريخ 01-09-2026",
-            "debit": 0,
-            "credit": 20052.545,
-            "accountId": "5d757787-8e2a-4244-b3b1-1809e2eddce2",
-            "companyId": "20000000-0000-0000-0000-000000000001",
-            "entityType": "NONE",
-            "accountCode": "3110",
-            "accountNameAr": "رأس مال المنشأة"
-          }
-        ],
-        "status": "POSTED",
-        "postedAt": "2026-09-01T00:00:00.000Z",
-        "sourceId": "OB-2026-09-01",
-        "companyId": "20000000-0000-0000-0000-000000000001",
-        "createdAt": "2026-09-01T00:00:00.000Z",
-        "reference": "OB-2026-09-01",
-        "source_id": "OB-2026-09-01",
-        "updatedAt": "2026-09-30T17:47:05.508Z",
-        "totalDebit": 20052.545,
-        "description": "القيد الافتتاحي الموحد للأرصدة الافتتاحية المعتمدة بتاريخ 01-09-2026",
-        "entryNumber": "JV-OPENING-2026",
-        "totalCredit": 20052.545,
-        "sourceModule": "MANUAL_JOURNAL",
-        "source_module": "MANUAL_JOURNAL",
-        "isAutoGenerated": false
-      },
-      "created_at": "2026-09-01T00:00:00+00:00",
-      "updated_at": "2026-09-30T17:47:06.047+00:00",
-      "journal_entry_lines": [],
-      "companyId": "20000000-0000-0000-0000-000000000001"
     },
     {
       "id": "00000000-0000-4000-8000-64fbd0480000",

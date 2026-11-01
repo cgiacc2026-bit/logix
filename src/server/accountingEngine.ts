@@ -379,19 +379,24 @@ export class AccountingEngine {
           const d = Number(line.debit) || 0;
           const c = Number(line.credit) || 0;
 
-          if (leafSet.has(accId)) {
-            const entry = movementMap.get(accId);
+          let targetAccId = accId;
+          const accObj = accounts.find((a) => a.id === accId || (line.accountCode && a.code === line.accountCode));
+          if (accObj) {
+            targetAccId = accObj.id;
+          }
+
+          if (leafSet.has(targetAccId)) {
+            const entry = movementMap.get(targetAccId);
             if (entry) {
               entry.debit += d;
               entry.credit += c;
             }
           } else {
             // Line booked on parent account: map to primary leaf descendant
-            const accObj = accounts.find((a) => a.id === accId);
             const leavesUnderParent = accounts.filter(
               (other) =>
                 leafSet.has(other.id) &&
-                (other.parentId === accId ||
+                (other.parentId === targetAccId ||
                   (other.code && accObj?.code && other.code.startsWith(accObj.code) && other.code !== accObj.code))
             );
             if (leavesUnderParent.length > 0) {
@@ -403,7 +408,7 @@ export class AccountingEngine {
                 entry.credit += c;
               }
             } else {
-              const entry = movementMap.get(accId);
+              const entry = movementMap.get(targetAccId);
               if (entry) {
                 entry.debit += d;
                 entry.credit += c;
@@ -469,6 +474,9 @@ export class AccountingEngine {
       totalMovementCredit,
       totalEndingDebit,
       totalEndingCredit,
+      totalDebit: totalEndingDebit,
+      totalCredit: totalEndingCredit,
+      difference: Math.abs(totalEndingDebit - totalEndingCredit),
       isBalanced,
     };
   }
