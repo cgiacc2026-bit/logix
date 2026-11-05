@@ -24,6 +24,7 @@ import {
   X,
   Layers,
   ChevronLeft,
+  RefreshCw,
 } from 'lucide-react';
 import { DataService } from '../services/dataService.ts';
 
@@ -49,11 +50,24 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
   const [balanceSheet, setBalanceSheet] = useState<BalanceSheetReport | null>(null);
   const [cashFlow, setCashFlow] = useState<CashFlowReport | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [syncing, setSyncing] = useState<boolean>(false);
 
   // Ledger Audit Modal State
   const [selectedAuditAccount, setSelectedAuditAccount] = useState<BalanceSheetItem | null>(null);
   const [auditJournals, setAuditJournals] = useState<any[]>([]);
   const [loadingAudit, setLoadingAudit] = useState<boolean>(false);
+
+  const handleSyncFirestore = async () => {
+    setSyncing(true);
+    try {
+      await DataService.clearLocalCacheAndReload();
+      await fetchReports();
+    } catch (e) {
+      console.error('Error syncing from Firestore:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const fetchReports = async () => {
     setLoading(true);
@@ -269,6 +283,18 @@ export const FinancialStatementsView: React.FC<FinancialStatementsProps> = ({ cu
                   ? 'عرض دليل الحسابات كاملاً (مُفعّل)'
                   : 'عرض بنود الأرصدة النشطة فقط'}
               </span>
+            </button>
+
+            {/* Sync from Firestore Button */}
+            <button
+              type="button"
+              onClick={handleSyncFirestore}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs border border-[#B8860B]/60 text-[#8C6D1F] bg-[#FAF7F0] hover:bg-[#F2ECE0] transition-all cursor-pointer font-medium disabled:opacity-50"
+              title="تفريغ الكاش المحلي وإعادة تحميل الأرصدة المعتمدة مباشرة من Firestore"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              <span>{syncing ? 'جاري المزامنة من Firestore...' : 'تفريغ الكاش ومزامنة Firestore'}</span>
             </button>
           </div>
 

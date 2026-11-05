@@ -13,7 +13,7 @@
  */
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, getDocs, collection, writeBatch } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, getDocs, collection, writeBatch, runTransaction } from 'firebase/firestore';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
 // Initialize Firebase App
@@ -332,10 +332,113 @@ export async function initializeNewCompany(
       },
     };
   } catch (error: any) {
-    console.error(`[Firebase] Failed to initialize company ${companyId}:`, error);
+    const targetComp = typeof firstArg === 'object' ? (firstArg?.id || firstArg?.companyId) : firstArg;
+    console.error(`[Firebase] Failed to initialize company ${targetComp}:`, error);
     return {
       success: false,
       message: `فشل تهيئة هيكل الشركة في Firebase: ${error?.message || 'خطأ غير معروف'}`,
     };
   }
+}
+
+/**
+ * Source of Truth Account Balances (النسخة الأصلية المعتمدة لشركة مطحنة الوليد المتحدة)
+ */
+export const SOURCE_OF_TRUTH_ACCOUNT_BALANCES: Record<string, number> = {
+  // Detail Accounts
+  '1111': 2135.000,      // البنك التجاري الكويتي (CBK) - مدين
+  '1112': -340.000,      // بيت التمويل الكويتي (KFH) - دائن
+  '1121': 7729.506,      // عملاء الجمعيات التعاونية - مدين
+  '1131': -3560.834,     // مخزون المنتجات التامة - دائن (كميات سالبة)
+  '2111001': 50.000,     // مورد أحمد فرغلي - دائن
+  '2122': 500.000,       // إيجارات ومصروفات مستحقة - دائن
+  '3110': 4546.154,      // رأس مال المنشأة المدفوع - دائن
+  '31202': -290.000,     // حساب جاري مينا جميل - مدين في حقوق الملكية
+  '4110': 5889.622,      // إيرادات مبيعات الجمعيات - دائن
+  '5110': 3560.834,      // تكلفة المواد - مدين
+  '5410': 21.270,        // عمولات بنكية - مدين
+
+  // Header / Rollup Accounts
+  '1110': 1795.000,      // النقدية وما في حكمها
+  '1120': 7729.506,      // الذمم المدينة
+  '1130': -3560.834,     // المخزون
+  '1100': 5963.672,      // الأصول المتداولة
+  '1000': 5963.672,      // الأصول
+  '2110': 50.000,        // الذمم الدائنة
+  '2111': 50.000,        // موردو المواد الأولية
+  '2120': 500.000,       // أرصدة دائنة أخرى ومصروفات مستحقة
+  '2100': 550.000,       // الخصوم المتداولة
+  '2000': 550.000,       // الخصوم
+  '3100': 4546.154,      // رأس المال المكتتب به
+  '3120': -290.000,      // الحساب الجاري للشركاء
+  '3000': 4256.154,      // حقوق الملكية
+  '4100': 5889.622,      // إيرادات مبيعات النشاط الرئيسي
+  '4000': 5889.622,      // الإيرادات والمبيعات
+  '5100': 3560.834,      // تكلفة البضاعة المباعة
+  '5400': 21.270,        // المصروفات والعمولات البنكية
+  '5000': 3582.104,      // المصروفات والتكاليف
+};
+
+/**
+ * Directly overrides the 'balance' field of all account documents in Firestore
+ * under companies/{companyId}/accounts using a Firestore Transaction.
+ */
+export async function forceUpdateAccountBalances(targetCompanyId?: string): Promise<{
+  success: boolean;
+  message: string;
+  updatedCount: number;
+  balances: Record<string, number>;
+}> {
+  const companyId = targetCompanyId || '20000000-0000-0000-0000-000000000001';
+  const accountsColRef = collection(firestoreDb, `companies/${companyId}/accounts`);
+  const accountsSnap = await getDocs(accountsColRef);
+
+  if (accountsSnap.empty) {
+    throw new Error(`لا توجد حسابات مسجلة في Firestore للشركة: ${companyId}`);
+  }
+
+  const appliedBalances: Record<string, number> = {};
+
+  // Execute atomic Firestore Transaction
+  await runTransaction(firestoreDb, async (transaction) => {
+    // Phase 1: Reads must come first in Firestore Transactions
+    const docRecords: { ref: any; id: string; data: any }[] = [];
+    for (const docSnap of accountsSnap.docs) {
+      const snap = await transaction.get(docSnap.ref);
+      docRecords.push({
+        ref: docSnap.ref,
+        id: docSnap.id,
+        data: snap.data(),
+      });
+    }
+
+    // Phase 2: Writes / Updates
+    for (const item of docRecords) {
+      const code = String(item.data?.code || '').trim();
+      const targetBal = SOURCE_OF_TRUTH_ACCOUNT_BALANCES[code] !== undefined
+        ? SOURCE_OF_TRUTH_ACCOUNT_BALANCES[code]
+        : 0;
+
+      appliedBalances[code || item.id] = targetBal;
+
+      transaction.update(item.ref, {
+        balance: targetBal,
+        current_balance: targetBal,
+        currentBalance: targetBal,
+        opening_balance: 0,
+        openingBalance: 0,
+        initialBalance: 0,
+        updated_at: new Date().toISOString(),
+      });
+    }
+  });
+
+  console.log(`[Firebase Transaction] ✓ Successfully force-updated ${accountsSnap.size} accounts for company ${companyId}`);
+
+  return {
+    success: true,
+    message: `تم تحديث وتثبيت أرصدة جميع الحسابات (${accountsSnap.size} حساب) في Firestore بنجاح باستخدام Transaction ذري فوري.`,
+    updatedCount: accountsSnap.size,
+    balances: appliedBalances,
+  };
 }

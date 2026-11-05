@@ -83,6 +83,8 @@ import {
   assertOperationAllowed,
   SYSTEM_CUTOVER_AT,
 } from './historicalDataProtectionService.ts';
+import { collection, getDocs } from 'firebase/firestore';
+import { firestoreDb } from './firebaseCompanyService.ts';
 
 const STORAGE_KEYS = {
   COMPANY: 'alwaleed_erp_company',
@@ -2396,13 +2398,95 @@ export class DataService {
     return cleanAccounts;
   }
 
+  /**
+   * Fetch accounts directly from Firestore for the given company
+   */
+  public static async getAccountsFromFirestore(companyId: string): Promise<Account[]> {
+    try {
+      if (!companyId) return [];
+      const colRef = collection(firestoreDb, `companies/${companyId}/accounts`);
+      const snap = await getDocs(colRef);
+      if (snap.empty) return [];
+      const list: Account[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        const cat = String(data.category || '').toUpperCase();
+        const ifrsNature: 'DEBIT' | 'CREDIT' = (cat === 'ASSET' || cat === 'EXPENSE' || cat === 'COGS') ? 'DEBIT' : 'CREDIT';
+        const norm = data.normalBalance || data.nature || ifrsNature;
+        list.push({
+          id: docSnap.id,
+          code: String(data.code || ''),
+          nameAr: String(data.nameAr || data.name_ar || ''),
+          nameEn: String(data.nameEn || data.name_en || ''),
+          category: data.category,
+          parentId: data.parentId || null,
+          level: Number(data.level || 1),
+          normalBalance: norm,
+          nature: norm,
+          type: data.type || (data.level === 1 ? 'ROOT' : data.level === 2 ? 'HEADER' : 'DETAIL'),
+          balance: Number(data.balance ?? data.current_balance ?? 0),
+          current_balance: Number(data.current_balance ?? data.balance ?? 0),
+          currentBalance: Number(data.currentBalance ?? data.balance ?? 0),
+          openingBalance: Number(data.opening_balance ?? data.openingBalance ?? 0),
+          isActive: data.isActive !== false,
+          isSystem: !!data.isSystem,
+          description: data.description || '',
+        } as Account);
+      });
+      return list.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    } catch (e) {
+      console.warn(`[DataService] Error loading accounts from Firestore for ${companyId}:`, e);
+      return [];
+    }
+  }
+
+  /**
+   * Clears browser local cache and reloads fresh accounts from Firestore
+   */
+  public static async clearLocalCacheAndReload(companyId?: string): Promise<{ success: boolean; accountsCount: number }> {
+    const compId = companyId || localDataStore.getEffectiveCompanyId();
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(`accounts_${compId}`);
+      window.localStorage.removeItem(`accounts_${ALWALEED_CANONICAL_UUID}`);
+      window.localStorage.removeItem(`alwaleed_erp_accounts_${compId}`);
+      window.localStorage.removeItem(`alwaleed_erp_accounts_${ALWALEED_CANONICAL_UUID}`);
+      window.localStorage.removeItem('alwaleed_erp_accounts');
+      window.localStorage.removeItem(`logix_tombstones_accounts_${compId}`);
+      window.localStorage.removeItem(`logix_tombstones_accounts_${ALWALEED_CANONICAL_UUID}`);
+    }
+    localDataStore.clearMemoryCache();
+    const fresh = await this.getAccountsFromFirestore(compId);
+    if (fresh && fresh.length > 0) {
+      localDataStore.saveAccounts(fresh);
+    }
+    return { success: true, accountsCount: fresh.length };
+  }
+
   public static async getAccounts(): Promise<Account[]> {
     let accounts: Account[] = [];
     const tombstones = localDataStore.getTombstones('accounts');
     const localAccounts = localDataStore.getAccounts().filter((a) => !tombstones.has(a.id));
     const isLocked = localDataStore.isRestoreLocked();
+    const effectiveCompanyId = localDataStore.getEffectiveCompanyId();
 
-    if (isSupabaseConfigured) {
+    // Priority 1: Query Firestore cloud database directly
+    if (effectiveCompanyId) {
+      try {
+        const fromFirestore = await this.getAccountsFromFirestore(effectiveCompanyId);
+        if (Array.isArray(fromFirestore) && fromFirestore.length > 0) {
+          const validFirestore = fromFirestore.filter((a) => !tombstones.has(a.id));
+          if (validFirestore.length > 0) {
+            accounts = validFirestore;
+            localDataStore.saveAccounts(validFirestore);
+          }
+        }
+      } catch (e) {
+        console.warn('Firestore getAccounts notice:', e);
+      }
+    }
+
+    // Priority 2: Query Supabase if Firestore not available
+    if ((!accounts || accounts.length === 0) && isSupabaseConfigured) {
       try {
         const fromSupabase = await SupabaseDataService.getAccounts();
         if (Array.isArray(fromSupabase) && fromSupabase.length > 0) {
@@ -2433,9 +2517,7 @@ export class DataService {
       }
     }
 
-    const journals = await this.getJournals();
-    const withBalances = this.calculateDynamicAccountBalances(accounts || [], journals);
-    return localDataStore.deduplicateAccounts(withBalances);
+    return localDataStore.deduplicateAccounts(accounts);
   }
 
   /**
@@ -8926,7 +9008,20 @@ export class DataService {
     }
 
     let accounts: Account[] = [];
-    if (isSupabaseConfigured) {
+    const effectiveCompanyId = localDataStore.getEffectiveCompanyId();
+    if (effectiveCompanyId) {
+      try {
+        const firestoreAccs = await this.getAccountsFromFirestore(effectiveCompanyId);
+        if (Array.isArray(firestoreAccs) && firestoreAccs.length > 0) {
+          accounts = firestoreAccs;
+          localDataStore.saveAccounts(firestoreAccs);
+        }
+      } catch (err) {
+        console.warn('Firestore getAccounts for balance sheet notice:', err);
+      }
+    }
+
+    if (accounts.length === 0 && isSupabaseConfigured) {
       try {
         const cloudAccs = await SupabaseDataService.getAccounts();
         if (cloudAccs && cloudAccs.length > 0) {
@@ -8964,12 +9059,12 @@ export class DataService {
       const dyn = dynamicAccMap.get(acc.id) || dynamicAccMap.get(acc.code);
       let effectiveBal = 0;
       if (calcMode === 'gl_only') {
-        effectiveBal = Math.abs(Number(dyn?.balance ?? 0));
+        effectiveBal = Number(dyn?.balance ?? 0);
       } else {
         // Cumulative mode: take recorded base balance or dynamic GL balance (whichever represents true status)
-        const recordedBal = Math.abs(Number((acc as any).current_balance ?? acc.balance ?? 0));
-        const dynBal = Math.abs(Number(dyn?.balance ?? 0));
-        effectiveBal = recordedBal > 0 ? recordedBal : dynBal;
+        const recordedBal = Number((acc as any).current_balance ?? acc.balance ?? 0);
+        const dynBal = Number(dyn?.balance ?? 0);
+        effectiveBal = recordedBal !== 0 ? recordedBal : dynBal;
       }
       return {
         ...acc,
@@ -9025,7 +9120,6 @@ export class DataService {
           if (isLeaf) totalNonCurrentLiabilities += val;
         }
       } else if (cat === 'EQUITY' || code.startsWith('3')) {
-        // Exclude 3200 from base contributed capital so we compute exact retained earnings
         if (code !== '3200') {
           equityAll.push(item);
           if (isLeaf) contributedCapital += val;
@@ -9036,23 +9130,21 @@ export class DataService {
     const totalAssets = Number((totalCurrentAssets + totalNonCurrentAssets).toFixed(3));
     const totalLiabilities = Number((totalCurrentLiabilities + totalNonCurrentLiabilities).toFixed(3));
 
-    // Dynamic Retained Earnings to strictly balance Assets = Liabilities + Equity
-    const targetTotalEquity = Number((totalAssets - totalLiabilities).toFixed(3));
-    const retainedEarnings = Number((targetTotalEquity - contributedCapital - periodNetIncome).toFixed(3));
-
-    // Account 3200 (الأرباح المبقاة والمرحلة والمدورة)
+    // Account 3200 (الاحتياطيات / الأرباح المبقاة) - Only include if explicitly exists in accounts and has balance
     const existing3200 = accounts.find((a) => a.code === '3200');
-    const retainedEarningsItem: BalanceSheetItem = {
-      accountCode: '3200',
-      accountNameAr: existing3200?.nameAr || 'الأرباح المبقاة / المرحلة والمدورة (Retained Earnings & Reserves)',
-      accountNameEn: existing3200?.nameEn || 'Retained Earnings & Reserves',
-      amount: retainedEarnings,
-      level: existing3200?.level || 3,
-      isLeaf: true,
-      isZero: Math.abs(retainedEarnings) < 0.001,
-      accountId: existing3200?.id || 'acc-3200',
-    };
-    equityAll.push(retainedEarningsItem);
+    if (existing3200 && (Math.abs(existing3200.balance || 0) > 0.001 || options?.includeZeroBalances)) {
+      const retainedEarningsItem: BalanceSheetItem = {
+        accountCode: '3200',
+        accountNameAr: existing3200.nameAr || 'الاحتياطيات النظامية والأرباح المبقاة',
+        accountNameEn: existing3200.nameEn || 'Retained Earnings & Reserves',
+        amount: Number((existing3200.balance || 0).toFixed(3)),
+        level: existing3200.level || 3,
+        isLeaf: true,
+        isZero: Math.abs(existing3200.balance || 0) < 0.001,
+        accountId: existing3200.id || 'acc-3200',
+      };
+      equityAll.push(retainedEarningsItem);
+    }
 
     // Period Net Income item
     if (Math.abs(periodNetIncome) > 0.0001 || options?.includeZeroBalances) {
@@ -9071,7 +9163,8 @@ export class DataService {
       });
     }
 
-    const totalEquity = Number((contributedCapital + retainedEarnings + periodNetIncome).toFixed(3));
+    const retainedBal = existing3200 ? Number(existing3200.balance || 0) : 0;
+    const totalEquity = Number((contributedCapital + retainedBal + periodNetIncome).toFixed(3));
     const totalLiabilitiesAndEquity = Number((totalLiabilities + totalEquity).toFixed(3));
     const difference = Number(Math.abs(totalAssets - totalLiabilitiesAndEquity).toFixed(3));
     const isBalanced = difference < 0.005;
@@ -9120,7 +9213,7 @@ export class DataService {
         totalAmount: totalEquity,
       },
       periodNetIncome,
-      retainedEarnings,
+      retainedEarnings: retainedBal,
       contributedCapital,
       totalEquity,
       totalLiabilitiesAndEquity,

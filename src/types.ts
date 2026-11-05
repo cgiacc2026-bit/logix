@@ -116,6 +116,9 @@ export interface TrialBalanceReport {
   totalMovementCredit: number;
   totalEndingDebit: number;
   totalEndingCredit: number;
+  totalDebit?: number;
+  totalCredit?: number;
+  difference?: number;
   isBalanced: boolean;
 }
 
@@ -874,6 +877,7 @@ export interface CompanyProfile {
   // Default Accounts Mapping (الربط المحاسبي الافتراضي بدليل الحسابات)
   defaultAccounts?: DefaultAccountsMapping;
   isOnboardingComplete?: boolean;
+  status?: 'active' | 'suspended' | 'pending' | string;
 
   // POS Terminal Configuration (إعدادات نقاط البيع الافتراضية)
   posTerminalName?: string;
