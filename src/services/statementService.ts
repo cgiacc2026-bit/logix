@@ -646,22 +646,24 @@ export function getAccountStatement(
   dedupedInvoices
     .filter((inv) => isDocMatchingEntity(inv, entityId, entity, entityType))
     .forEach((inv) => {
-      const invNum = (inv.invoiceNumber || '').trim().toUpperCase();
-      const isCancelled = inv.status === 'CANCELLED' || isCancelledDocument('invoices', inv.id, inv.invoiceNumber);
+      const invNum = (inv.invoiceNumber || (inv as any).invoice_number || '').trim().toUpperCase();
+      const isCancelled = inv.status === 'CANCELLED' || isCancelledDocument('invoices', inv.id, invNum);
 
       let debit = 0;
       let credit = 0;
       let docType: StatementDocType = 'SALES_INVOICE';
       let docTypeLabel = 'فاتورة';
+      const invTotal = Number(inv.grandTotal ?? (inv as any).total_amount ?? (inv as any).grand_total ?? (inv as any).total) || 0;
+      const rawType = (inv.type || (inv as any).invoice_type || '').toUpperCase();
 
       if (entityType === 'CUSTOMER') {
         const isSalesReturn =
-          inv.type === 'SALES_RETURN' ||
+          rawType === 'SALES_RETURN' ||
           invNum.startsWith('RET-SAL') ||
           Boolean((inv as any).isSalesReturn) ||
           Boolean((inv as any).raw_data?.isSalesReturn) ||
           Boolean(inv.notes?.includes('مرتجع مبيعات'));
-        const isSales = (inv.type === 'SALES' || invNum.startsWith('INV-SAL')) && !isSalesReturn;
+        const isSales = (rawType === 'SALES' || invNum.startsWith('INV-SAL')) && !isSalesReturn;
 
         if (!isSales && !isSalesReturn) {
           // عزل صارم: أي مستند ليس بيعاً أو مردود مبيعات لعميل يتم استبعاده تماماً لمنع التسريب
@@ -669,22 +671,22 @@ export function getAccountStatement(
         }
 
         if (isSales) {
-          debit = Number(inv.grandTotal) || 0;
+          debit = invTotal;
           docType = 'SALES_INVOICE';
           docTypeLabel = 'فاتورة مبيعات';
         } else if (isSalesReturn) {
-          credit = Number(inv.grandTotal) || 0;
+          credit = invTotal;
           docType = 'SALES_RETURN';
           docTypeLabel = 'إشعار دائن (مرتجع مبيعات)';
         }
       } else {
         // entityType === 'SUPPLIER'
         const isPurchaseReturn =
-          inv.type === 'PURCHASE_RETURN' ||
+          rawType === 'PURCHASE_RETURN' ||
           invNum.startsWith('RET-PUR') ||
           Boolean((inv as any).isPurchaseReturn) ||
           Boolean((inv as any).raw_data?.isPurchaseReturn);
-        const isPurchase = (inv.type === 'PURCHASE' || invNum.startsWith('INV-PUR')) && !isPurchaseReturn;
+        const isPurchase = (rawType === 'PURCHASE' || invNum.startsWith('INV-PUR')) && !isPurchaseReturn;
 
         if (!isPurchase && !isPurchaseReturn) {
           // عزل صارم: أي مستند ليس شراء أو مردود مشتريات لمورد يتم استبعاده تماماً
@@ -692,11 +694,11 @@ export function getAccountStatement(
         }
 
         if (isPurchase) {
-          credit = Number(inv.grandTotal) || 0;
+          credit = invTotal;
           docType = 'PURCHASE_INVOICE';
           docTypeLabel = 'فاتورة مشتريات';
         } else if (isPurchaseReturn) {
-          debit = Number(inv.grandTotal) || 0;
+          debit = invTotal;
           docType = 'PURCHASE_RETURN';
           docTypeLabel = 'إشعار مدين (مرتجع مشتريات)';
         }
@@ -704,24 +706,26 @@ export function getAccountStatement(
 
       allRawMovements.push({
         id: inv.id,
-        date: inv.date,
-        docNumber: inv.invoiceNumber,
+        date: inv.date || (inv as any).invoice_date,
+        docNumber: invNum,
         docType,
         docTypeLabel,
-        description: inv.notes ? `${docTypeLabel}: ${inv.notes}` : `${docTypeLabel} رقم ${inv.invoiceNumber}`,
-        reference: inv.invoiceNumber,
+        description: inv.notes ? `${docTypeLabel}: ${inv.notes}` : `${docTypeLabel} رقم ${invNum}`,
+        reference: invNum,
         debit,
         credit,
         status: isCancelled ? 'CANCELLED' : 'ACTIVE',
         isCancelled,
         sourceModule: 'INVOICE',
         originalDocId: inv.id,
-        createdAt: inv.createdAt,
+        createdAt: inv.createdAt || (inv as any).created_at,
       });
 
-      if (inv.invoiceNumber) matchedInvoiceNumbers.add(inv.invoiceNumber.trim().toUpperCase());
+      if (invNum) matchedInvoiceNumbers.add(invNum);
       if (inv.id) matchedInvoiceIds.add(inv.id.trim());
-      if (inv.journalEntryId) matchedInvoiceJournalIds.add(inv.journalEntryId.trim());
+      if (inv.journalEntryId || (inv as any).journal_entry_id) {
+        matchedInvoiceJournalIds.add((inv.journalEntryId || (inv as any).journal_entry_id).trim());
+      }
     });
 
   // ب) سندات القبض والصرف (من القائمة الفريدة غير المكررة)
