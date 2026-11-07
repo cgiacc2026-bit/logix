@@ -612,8 +612,8 @@ export function getAccountStatement(
   const entityAddress = entity?.address || '';
   const entityCreditLimit = entity?.creditLimit || 0;
 
-  // تاريخ ورصيد البداية التأسيسي من بطاقة الحساب
-  const entityInitialOpeningBalance = Number(entity?.openingBalance) || 0;
+  // إلغاء أي اعتماد على أرصدة كرت العميل الثابتة عملاً بتوجيه المحاسبة الصارم (100% قيود يومية)
+  const entityInitialOpeningBalance = 0;
   const entityOpeningDate = entity?.openingBalanceDate || '2026-01-01';
 
   // تنظيف وتوحيد التواريخ
@@ -1104,6 +1104,8 @@ export function getAccountStatement(
       ref.includes('افتتاح') ||
       ref.includes('ob-') ||
       docNum.startsWith('JV-OP-') ||
+      docNum.startsWith('JV-OPENING') ||
+      docNum.includes('OPENING') ||
       /^JV-2026-00(0[1-9]|1[0-4])$/.test(docNum)
     );
   };
